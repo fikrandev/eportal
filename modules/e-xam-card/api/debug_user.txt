@@ -1,0 +1,14 @@
+Array
+(
+    [user_id] => 1
+    [username] => superadmin
+    [nama_lengkap] => Super Administrator
+    [role] => superadmin
+    [avatar] => 
+    [status] => 1
+    [is_admin] => 1
+    [is_teacher] => 
+    [managed_class] => 
+    [has_access] => 1
+    [can_manage_xam] => 1
+)

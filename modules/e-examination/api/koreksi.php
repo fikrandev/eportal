@@ -1,0 +1,324 @@
+<?php
+/**
+ * E-Examination — API Koreksi (Otomatis & AI)
+ */
+require_once __DIR__ . '/config_exam.php';
+
+header('Content-Type: application/json; charset=UTF-8');
+
+$action = $_GET['action'] ?? '';
+$method = $_SERVER['REQUEST_METHOD'];
+
+try {
+    switch ($action) {
+        
+        // ==========================================
+        // KOREKSI SATU SESI UJIAN
+        // ==========================================
+        case 'koreksi_sesi':
+            exam_require_admin();
+            if ($method !== 'POST') throw new Exception('Method not allowed', 405);
+            
+            $data = json_decode(file_get_contents('php://input'), true);
+            $session_id = (int)($data['session_id'] ?? 0);
+            if (!$session_id) throw new Exception('Session ID tidak valid', 400);
+
+            $result = processGrading($session_id);
+            json_response(200, true, 'Koreksi berhasil', $result);
+            break;
+
+        // ==========================================
+        // KOREKSI MASAL SEMUA SESI SELESAI PADA UJIAN
+        // ==========================================
+        case 'koreksi_masal':
+            exam_require_admin();
+            if ($method !== 'POST') throw new Exception('Method not allowed', 405);
+            
+            $data = json_decode(file_get_contents('php://input'), true);
+            $ujian_id = (int)($data['ujian_id'] ?? 0);
+            if (!$ujian_id) throw new Exception('Ujian ID tidak valid', 400);
+
+            // Cari semua sesi selesai yang belum di-koreksi sepenuhnya atau butuh update
+            $stmt = db()->prepare("SELECT id FROM exam_sesi WHERE ujian_id = ? AND status IN ('selesai', 'dihentikan')");
+            $stmt->execute([$ujian_id]);
+            $sessions = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+            $graded = 0;
+            $errors = [];
+
+            foreach ($sessions as $sid) {
+                try {
+                    processGrading($sid);
+                    $graded++;
+                } catch (Exception $e) {
+                    $errors[] = "Session $sid: " . $e->getMessage();
+                }
+            }
+
+            json_response(200, true, "$graded sesi berhasil dikoreksi", ['errors' => $errors]);
+            break;
+
+        // ==========================================
+        // SETTING GEMINI API KEY
+        // ==========================================
+        case 'get_settings':
+            exam_require_admin();
+            $key = get_setting('gemini_api_key', '');
+            json_response(200, true, 'Setting', ['gemini_api_key' => $key ? '********' : '']);
+            break;
+
+        case 'save_settings':
+            exam_require_admin();
+            if ($method !== 'POST') throw new Exception('Method not allowed', 405);
+            $data = json_decode(file_get_contents('php://input'), true);
+            $key = trim($data['gemini_api_key'] ?? '');
+            
+            if ($key && $key !== '********') {
+                upsert_setting('gemini_api_key', $key, 'text', 'API Key untuk Google Gemini AI Grading');
+            }
+            json_response(200, true, 'Pengaturan AI berhasil disimpan');
+            break;
+
+        default:
+            throw new Exception('Action tidak valid', 400);
+    }
+} catch (Exception $e) {
+    $code = $e->getCode() ?: 500;
+    if ($code < 100 || $code >= 600) $code = 500;
+    json_response($code, false, $e->getMessage());
+}
+
+/**
+ * Fungsi Inti untuk Memproses Penilaian Sesi Ujian
+ */
+function processGrading($session_id) {
+    // Ambil detail sesi
+    $stmtSesi = db()->prepare("SELECT s.*, u.judul FROM exam_sesi s JOIN exam_ujian u ON s.ujian_id = u.id WHERE s.id = ?");
+    $stmtSesi->execute([$session_id]);
+    $sesi = $stmtSesi->fetch();
+
+    if (!$sesi) throw new Exception("Sesi $session_id tidak ditemukan");
+
+    // Ambil jawaban dan kunci
+    $stmtAns = db()->prepare("
+        SELECT j.id as jawaban_id, j.jawaban, s.id as soal_id, s.tipe_soal, s.bobot, s.kunci_jawaban, s.pertanyaan
+        FROM exam_jawaban j
+        JOIN exam_soal s ON j.soal_id = s.id
+        WHERE j.sesi_id = ?
+    ");
+    $stmtAns->execute([$session_id]);
+    $answers = $stmtAns->fetchAll();
+
+    $totalSkor = 0;
+    $maxSkor = 0;
+    $aiTasks = []; // Menyimpan soal esai yang perlu dikoreksi AI
+
+    // Mulai transaksi untuk menyimpan nilai detail
+    db()->beginTransaction();
+
+    $stmtUpdateAns = db()->prepare("UPDATE exam_jawaban SET skor = ?, ai_koreksi = ? WHERE id = ?");
+
+    foreach ($answers as $ans) {
+        $bobot = (float)$ans['bobot'];
+        $maxSkor += $bobot;
+        
+        $tipe = $ans['tipe_soal'];
+        $kunci = $ans['kunci_jawaban'];
+        $jawabanSiswa = $ans['jawaban'];
+        
+        $skorDidapat = 0;
+        $aiKoreksiNotes = null;
+
+        if ($tipe === 'pilihan_satu' || $tipe === 'benar_salah') {
+            if ($jawabanSiswa !== null && trim($jawabanSiswa) === trim($kunci)) {
+                $skorDidapat = $bobot;
+            }
+        } 
+        else if ($tipe === 'pilihan_banyak') {
+            $jawabanArr = json_decode($jawabanSiswa, true) ?: [];
+            $kunciArr = json_decode($kunci, true) ?: [];
+            
+            if (is_array($jawabanArr) && is_array($kunciArr)) {
+                sort($jawabanArr);
+                sort($kunciArr);
+                // Exact match = full score. (Bisa dimodifikasi untuk partial score)
+                if ($jawabanArr == $kunciArr) {
+                    $skorDidapat = $bobot;
+                } else {
+                    // Partial scoring: 
+                    // correct_selected / total_correct * bobot - wrong_selected penalty?
+                    // Untuk kesederhanaan saat ini, exact match.
+                    $correctPicks = count(array_intersect($jawabanArr, $kunciArr));
+                    $wrongPicks = count(array_diff($jawabanArr, $kunciArr));
+                    $net = $correctPicks - $wrongPicks;
+                    if ($net > 0 && count($kunciArr) > 0) {
+                        $skorDidapat = ($net / count($kunciArr)) * $bobot;
+                    }
+                }
+            }
+        }
+        else if ($tipe === 'menjodohkan') {
+            $jawabanObj = json_decode($jawabanSiswa, true) ?: [];
+            $kunciObj = json_decode($kunci, true) ?: [];
+            
+            if (is_array($jawabanObj) && is_array($kunciObj)) {
+                $totalPairs = count($kunciObj);
+                $correctPairs = 0;
+                
+                foreach ($kunciObj as $k => $v) {
+                    if (isset($jawabanObj[$k]) && $jawabanObj[$k] === $v) {
+                        $correctPairs++;
+                    }
+                }
+                
+                if ($totalPairs > 0) {
+                    $skorDidapat = ($correctPairs / $totalPairs) * $bobot;
+                }
+            }
+        }
+        else if ($tipe === 'jawaban_singkat' || $tipe === 'essai') {
+            // Queue for AI Grading
+            if ($jawabanSiswa && trim($jawabanSiswa) !== '') {
+                $aiTasks[] = [
+                    'jawaban_id' => $ans['jawaban_id'],
+                    'pertanyaan' => $ans['pertanyaan'],
+                    'kunci' => $kunci,
+                    'jawaban' => $jawabanSiswa,
+                    'bobot' => $bobot
+                ];
+                // Skor sementara 0 sampai AI memproses
+            }
+        }
+
+        $totalSkor += $skorDidapat;
+        $stmtUpdateAns->execute([$skorDidapat, $aiKoreksiNotes, $ans['jawaban_id']]);
+    }
+
+    // Eksekusi AI Grading jika ada task
+    if (!empty($aiTasks)) {
+        $aiResult = runAiGrading($aiTasks);
+        foreach ($aiResult as $res) {
+            $totalSkor += $res['skor'];
+            $stmtUpdateAns->execute([$res['skor'], $res['catatan'], $res['jawaban_id']]);
+        }
+    }
+
+    // Normalisasi Skor ke skala 100 (jika maxSkor bukan 100)
+    $skorAkhir = 0;
+    if ($maxSkor > 0) {
+        $skorAkhir = ($totalSkor / $maxSkor) * 100;
+    }
+
+    // Simpan ke sesi
+    db()->prepare("UPDATE exam_sesi SET skor = ? WHERE id = ?")->execute([$skorAkhir, $session_id]);
+    
+    db()->commit();
+
+    return [
+        'session_id' => $session_id,
+        'total_skor_asli' => $totalSkor,
+        'max_skor' => $maxSkor,
+        'skor_skala_100' => $skorAkhir,
+        'ai_graded_count' => count($aiTasks)
+    ];
+}
+
+/**
+ * Menghubungi Google Gemini API untuk grading otomatis
+ */
+function runAiGrading($tasks) {
+    $apiKey = get_setting('gemini_api_key', '');
+    if (!$apiKey) {
+        // Jika tidak ada API key, berikan skor 0 dan catatan error
+        $fallback = [];
+        foreach ($tasks as $t) {
+            $fallback[] = [
+                'jawaban_id' => $t['jawaban_id'],
+                'skor' => 0,
+                'catatan' => 'AI Grading gagal: API Key belum dikonfigurasi.'
+            ];
+        }
+        return $fallback;
+    }
+
+    $results = [];
+    
+    // Untuk menghemat kuota dan mempercepat, kita kirimkan sebagai batch prompt jika memungkinkan
+    // Namun untuk akurasi terbaik dengan Gemini, kita lakukan per soal (atau batch JSON prompt)
+    
+    // Konstruksi JSON Prompt
+    $promptData = [];
+    foreach ($tasks as $i => $t) {
+        $promptData[] = [
+            "id" => $t['jawaban_id'],
+            "pertanyaan" => strip_tags($t['pertanyaan']),
+            "rubrik_kunci" => $t['kunci'],
+            "jawaban_siswa" => $t['jawaban'],
+            "skor_maksimal" => $t['bobot']
+        ];
+    }
+
+    $promptText = "Anda adalah Guru Ahli yang bertugas memberikan nilai untuk soal esai dan jawaban singkat siswa.\n";
+    $promptText .= "Berikut adalah daftar soal beserta jawaban siswa. Berikan penilaian yang adil dan objektif berdasarkan rubrik/kunci jawaban.\n";
+    $promptText .= "Keluarkan output HANYA dalam format JSON Array dengan skema berikut:\n";
+    $promptText .= '`[{"id": <id_jawaban_id>, "skor": <angka_desimal_dari_0_sampai_skor_maksimal>, "catatan": "<alasan_singkat_kenapa_dapat_skor_tersebut>"}]`'."\n\n";
+    $promptText .= "Data Soal & Jawaban:\n" . json_encode($promptData, JSON_PRETTY_PRINT);
+
+    $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent?key=" . $apiKey;
+    
+    $payload = [
+        "contents" => [
+            ["parts" => [["text" => $promptText]]]
+        ],
+        "generationConfig" => [
+            "temperature" => 0.2, // Low temperature for consistent grading
+            "responseMimeType" => "application/json"
+        ]
+    ];
+
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+    
+    $response = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($httpCode == 200) {
+        $respData = json_decode($response, true);
+        if (isset($respData['candidates'][0]['content']['parts'][0]['text'])) {
+            $jsonStr = $respData['candidates'][0]['content']['parts'][0]['text'];
+            
+            // Clean markdown blocks if present (Gemini sometimes returns ```json ... ``` even if mimeType is JSON)
+            $jsonStr = preg_replace('/```json/i', '', $jsonStr);
+            $jsonStr = preg_replace('/```/i', '', $jsonStr);
+            
+            $aiGrades = json_decode(trim($jsonStr), true);
+            
+            if (is_array($aiGrades)) {
+                // Map results back
+                foreach ($aiGrades as $grade) {
+                    $results[] = [
+                        'jawaban_id' => $grade['id'] ?? 0,
+                        'skor' => isset($grade['skor']) ? (float)$grade['skor'] : 0,
+                        'catatan' => $grade['catatan'] ?? 'Dinilai oleh AI'
+                    ];
+                }
+                return $results;
+            }
+        }
+    }
+
+    // Jika terjadi kegagalan atau format response tidak valid
+    foreach ($tasks as $t) {
+        $results[] = [
+            'jawaban_id' => $t['jawaban_id'],
+            'skor' => 0,
+            'catatan' => 'AI Grading gagal: Gagal mem-parsing hasil dari Google Gemini API (Code: '.$httpCode.').'
+        ];
+    }
+
+    return $results;
+}
