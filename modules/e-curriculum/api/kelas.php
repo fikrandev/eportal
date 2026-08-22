@@ -1,6 +1,6 @@
 <?php
 /**
- * E-Academic Kelas API
+ * E-Curriculum Kelas API
  */
 require_once __DIR__ . '/auth_helper.php';
 

@@ -1,7 +1,7 @@
 <?php
 /**
- * E-Academic Module — Entry Point
- * Sistem Informasi Akademik Sekolah
+ * E-Curriculum Module — Entry Point
+ * Sistem Informasi Kurikulum Sekolah
  * Standalone SPA in new tab, authenticated via token parameter
  */
 require_once __DIR__ . '/../../api/config.php';
@@ -28,9 +28,9 @@ $active_academic_year = get_active_academic_year();
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <meta name="description" content="E-Academic — Sistem Informasi Akademik Sekolah">
+    <meta name="description" content="E-Curriculum — Sistem Informasi Kurikulum Sekolah">
     <meta name="theme-color" content="#7C3AED">
-    <title>E-Academic — Sistem Informasi Akademik</title>
+    <title>E-Curriculum — Sistem Informasi Kurikulum</title>
 
     <?php if($school_icon): ?>
     <link rel="icon" href="<?php echo BASE_URL . $school_icon; ?>">
@@ -43,14 +43,14 @@ $active_academic_year = get_active_academic_year();
 
     <!-- Core Design System -->
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css?v=<?php echo time(); ?>">
-    <!-- Academic Module Styles -->
-    <link rel="stylesheet" href="assets/css/academic.css?v=<?php echo time(); ?>">
+    <!-- Curriculum Module Styles -->
+    <link rel="stylesheet" href="assets/css/curriculum.css?v=<?php echo time(); ?>">
 
     <script>
         // Inject server data into JS
-        window.ACADEMIC_CONFIG = {
+        window.CURRICULUM_CONFIG = {
             baseUrl: '<?php echo BASE_URL; ?>',
-            moduleUrl: '<?php echo BASE_URL; ?>modules/e-academic/',
+            moduleUrl: '<?php echo BASE_URL; ?>modules/e-curriculum/',
             token: '<?php echo addslashes($token); ?>',
             user: {
                 id: <?php echo $user['user_id']; ?>,
@@ -76,12 +76,12 @@ $active_academic_year = get_active_academic_year();
                     <circle cx="25" cy="25" r="20" fill="none" stroke-width="4" stroke="#ffffff"></circle>
                 </svg>
             </div>
-            <p class="loader-text" style="color:white;">Memuat E-Academic...</p>
+            <p class="loader-text" style="color:white;">Memuat E-Curriculum...</p>
         </div>
     </div>
 
     <!-- App Shell -->
-    <div id="academicApp" class="academic-app">
+    <div id="curriculumApp" class="curriculum-app">
         <!-- Sidebar -->
         <div class="acad-sidebar-overlay" id="sidebarOverlay"></div>
         <aside class="acad-sidebar" id="acadSidebar">
@@ -90,8 +90,8 @@ $active_academic_year = get_active_academic_year();
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
                 </div>
                 <div class="acad-sidebar-brand">
-                    <h3>E-Academic</h3>
-                    <span>Layanan Akademik</span>
+                    <h3>E-Curriculum</h3>
+                    <span>Layanan Kurikulum</span>
                 </div>
             </div>
             <nav class="acad-sidebar-nav" id="sidebarNav">
@@ -104,7 +104,7 @@ $active_academic_year = get_active_academic_year();
                         <div class="acad-user-name" id="sidebarUserName"></div>
                         <div class="acad-user-role" id="sidebarUserRole"></div>
                     </div>
-                    <button class="acad-logout-btn" onclick="Academic.doLogout()" title="Logout / Kembali ke Portal">
+                    <button class="acad-logout-btn" onclick="Curriculum.doLogout()" title="Logout / Kembali ke Portal">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
                     </button>
                 </div>
@@ -145,7 +145,7 @@ $active_academic_year = get_active_academic_year();
     <script src="<?php echo BASE_URL; ?>assets/vendor/jquery-3.7.1.min.js"></script>
     <!-- Modal System -->
     <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=<?php echo time(); ?>"></script>
-    <!-- Academic SPA JS -->
-    <script src="assets/js/academic.js?v=<?php echo time(); ?>"></script>
+    <!-- Curriculum SPA JS -->
+    <script src="assets/js/curriculum.js?v=<?php echo time(); ?>"></script>
 </body>
 </html>

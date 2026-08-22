@@ -1,6 +1,6 @@
 <?php
 /**
- * E-Academic Penugasan Mengajar API
+ * E-Curriculum Penugasan Mengajar API
  */
 require_once __DIR__ . '/auth_helper.php';
 

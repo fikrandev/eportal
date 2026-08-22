@@ -1,6 +1,6 @@
 /**
- * E-Academic Stylesheet
- * Custom CSS for academic management SPA module
+ * E-Curriculum Stylesheet
+ * Custom CSS for curriculum management SPA module
  */
 
 :root {
@@ -22,7 +22,7 @@ body {
 }
 
 /* App Shell Layout */
-.academic-app {
+.curriculum-app {
     display: flex;
     min-height: 100vh;
     width: 100%;

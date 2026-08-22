@@ -1,6 +1,6 @@
 -- =============================================
--- E-Academic Module Database Schema
--- Sistem Informasi Akademik
+-- E-Curriculum Module Database Schema
+-- Sistem Informasi Kurikulum
 -- =============================================
 
 USE `eportal_db`;
@@ -51,4 +51,4 @@ CREATE TABLE IF NOT EXISTS `acad_mengajar` (
 -- 4. Register Modules in Main Portal
 INSERT IGNORE INTO `modules` (`nama_modul`, `slug`, `deskripsi`, `icon_svg`, `url_path`, `color`, `urutan`, `status`) VALUES
 ('E-Examination', 'e-examination', 'Sistem Ujian Digital CBT', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><polyline points="9 15 11 17 15 11"/></svg>', 'modules/e-examination/', '#2563EB', 6, 1),
-('E-Academic', 'e-academic', 'Sistem Informasi Akademik', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>', 'modules/e-academic/', '#7C3AED', 7, 1);
+('E-Curriculum', 'e-curriculum', 'Sistem Informasi Kurikulum', '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>', 'modules/e-curriculum/', '#7C3AED', 7, 1);

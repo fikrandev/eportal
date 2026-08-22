@@ -1,6 +1,6 @@
 <?php
 /**
- * E-Academic Mapel (Subjects) API
+ * E-Curriculum Mapel (Subjects) API
  */
 require_once __DIR__ . '/auth_helper.php';
 

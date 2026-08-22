@@ -1,22 +1,22 @@
 /**
- * E-Academic Core Module
+ * E-Curriculum Core Module
  * SPA Routing, State Management, and Views
  */
 
-const Academic = {
+const Curriculum = {
     // Global State
     state: {
-        user: window.ACADEMIC_CONFIG ? window.ACADEMIC_CONFIG.user : null,
-        token: window.ACADEMIC_CONFIG ? window.ACADEMIC_CONFIG.token : null,
-        school: window.ACADEMIC_CONFIG ? window.ACADEMIC_CONFIG.school : { nama: 'E-Portal', icon: '' },
-        academicYear: window.ACADEMIC_CONFIG ? window.ACADEMIC_CONFIG.academicYear : null,
+        user: window.CURRICULUM_CONFIG ? window.CURRICULUM_CONFIG.user : null,
+        token: window.CURRICULUM_CONFIG ? window.CURRICULUM_CONFIG.token : null,
+        school: window.CURRICULUM_CONFIG ? window.CURRICULUM_CONFIG.school : { nama: 'E-Portal', icon: '' },
+        academicYear: window.CURRICULUM_CONFIG ? window.CURRICULUM_CONFIG.academicYear : null,
         currentRoute: 'dashboard',
         params: {}
     },
 
     // Base URLs
-    baseUrl: window.ACADEMIC_CONFIG ? window.ACADEMIC_CONFIG.baseUrl : '/',
-    moduleUrl: window.ACADEMIC_CONFIG ? window.ACADEMIC_CONFIG.moduleUrl : 'modules/e-academic/',
+    baseUrl: window.CURRICULUM_CONFIG ? window.CURRICULUM_CONFIG.baseUrl : '/',
+    moduleUrl: window.CURRICULUM_CONFIG ? window.CURRICULUM_CONFIG.moduleUrl : 'modules/e-curriculum/',
 
     /**
      * Initialization
@@ -99,7 +99,7 @@ const Academic = {
         // Click handler
         $('.acad-nav-item').on('click', function() {
             const route = $(this).data('route');
-            Academic.navigate(route);
+            Curriculum.navigate(route);
         });
     },
 
@@ -176,7 +176,7 @@ const Academic = {
 
     setBreadcrumbs(crumbs) {
         const $breadcrumb = $('#breadcrumb');
-        let html = `<a href="#/dashboard">E-Academic</a>`;
+        let html = `<a href="#/dashboard">E-Curriculum</a>`;
         
         crumbs.forEach(c => {
             html += ` <span class="sep">/</span> `;
@@ -201,14 +201,14 @@ const Academic = {
             </div>
             <div class="acad-card">
                 <div class="acad-card-header">
-                    <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg> E-Academic Portal</h3>
+                    <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg> E-Curriculum Portal</h3>
                 </div>
                 <div class="acad-card-body" style="line-height:1.7;">
                     <h4 style="margin-top:0; font-family:'Outfit',sans-serif; color:var(--acad-primary);">Selamat Datang di Sistem Informasi Akademik Sekolah</h4>
-                    <p>Modul E-Academic mempermudah pengelolaan informasi kurikulum sekolah secara efisien. Anda dapat mengelola daftar mata pelajaran (Mapel), kelompok kelas beserta tingkatannya, dan melakukan penugasan mengajar guru secara langsung pada tahun ajaran aktif.</p>
+                    <p>Modul E-Curriculum mempermudah pengelolaan informasi kurikulum sekolah secara efisien. Anda dapat mengelola daftar mata pelajaran (Mapel), kelompok kelas beserta tingkatannya, dan melakukan penugasan mengajar guru secara langsung pada tahun ajaran aktif.</p>
                     <div style="display:flex; gap:16px; margin-top:24px;">
-                        <button class="btn-acad btn-acad-primary" onclick="Academic.navigate('kelas')">Mulai Kelola Kelas</button>
-                        <button class="btn-acad btn-acad-outline" onclick="Academic.navigate('mengajar')">Lihat Penugasan Guru</button>
+                        <button class="btn-acad btn-acad-primary" onclick="Curriculum.navigate('kelas')">Mulai Kelola Kelas</button>
+                        <button class="btn-acad btn-acad-outline" onclick="Curriculum.navigate('mengajar')">Lihat Penugasan Guru</button>
                     </div>
                 </div>
             </div>
@@ -263,7 +263,7 @@ const Academic = {
                         <p class="acad-subtitle">Kelola pembagian kelas, tingkat pendidikan, beserta guru wali kelas.</p>
                     </div>
                     <div class="acad-toolbar">
-                        <button class="btn-acad btn-acad-primary" onclick="Academic.showKelasForm()">
+                        <button class="btn-acad btn-acad-primary" onclick="Curriculum.showKelasForm()">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             Tambah Kelas
                         </button>
@@ -298,10 +298,10 @@ const Academic = {
                     <td>${k.wali_nama ? `<strong>${this.escapeHtml(k.wali_nama)}</strong>` : '<span style="color:var(--acad-text-muted)">Belum ditentukan</span>'}</td>
                     <td>
                         <div style="display:flex; gap:8px;">
-                            <button class="btn-icon" title="Edit" onclick="Academic.showKelasForm(${k.id})">
+                            <button class="btn-icon" title="Edit" onclick="Curriculum.showKelasForm(${k.id})">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                             </button>
-                            <button class="btn-icon danger" title="Hapus" onclick="Academic.deleteKelas(${k.id}, '${this.escapeHtml(k.nama_kelas)}')">
+                            <button class="btn-icon danger" title="Hapus" onclick="Curriculum.deleteKelas(${k.id}, '${this.escapeHtml(k.nama_kelas)}')">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                             </button>
                         </div>
@@ -443,7 +443,7 @@ const Academic = {
                         <p class="acad-subtitle">Kelola daftar mata pelajaran kurikulum sekolah beserta Kriteria Ketuntasan Minimal (KKM).</p>
                     </div>
                     <div class="acad-toolbar">
-                        <button class="btn-acad btn-acad-primary" onclick="Academic.showMapelForm()">
+                        <button class="btn-acad btn-acad-primary" onclick="Curriculum.showMapelForm()">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             Tambah Mapel
                         </button>
@@ -480,10 +480,10 @@ const Academic = {
                     <td><span class="badge ${m.status == 1 ? 'badge-success' : 'badge-danger'}">${m.status == 1 ? 'Aktif' : 'Nonaktif'}</span></td>
                     <td>
                         <div style="display:flex; gap:8px;">
-                            <button class="btn-icon" title="Edit" onclick="Academic.showMapelForm(${m.id})">
+                            <button class="btn-icon" title="Edit" onclick="Curriculum.showMapelForm(${m.id})">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                             </button>
-                            <button class="btn-icon danger" title="Hapus" onclick="Academic.deleteMapel(${m.id}, '${this.escapeHtml(m.nama_mapel)}')">
+                            <button class="btn-icon danger" title="Hapus" onclick="Curriculum.deleteMapel(${m.id}, '${this.escapeHtml(m.nama_mapel)}')">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                             </button>
                         </div>
@@ -636,7 +636,7 @@ const Academic = {
                     </div>
                     ${isAdmin ? `
                     <div class="acad-toolbar">
-                        <button class="btn-acad btn-acad-primary" onclick="Academic.showMengajarForm()">
+                        <button class="btn-acad btn-acad-primary" onclick="Curriculum.showMengajarForm()">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             Tambah Penugasan
                         </button>
@@ -700,7 +700,7 @@ const Academic = {
                     ${isAdmin ? `
                     <td>
                         <div style="display:flex; gap:8px;">
-                            <button class="btn-icon danger" title="Hapus Penugasan" onclick="Academic.deleteMengajar(${m.id}, '${this.escapeHtml(m.guru_nama)}', '${this.escapeHtml(m.nama_mapel)}', '${this.escapeHtml(m.nama_kelas)}')">
+                            <button class="btn-icon danger" title="Hapus Penugasan" onclick="Curriculum.deleteMengajar(${m.id}, '${this.escapeHtml(m.guru_nama)}', '${this.escapeHtml(m.nama_mapel)}', '${this.escapeHtml(m.nama_kelas)}')">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                             </button>
                         </div>
@@ -864,4 +864,4 @@ const Academic = {
     }
 };
 
-$(document).ready(() => Academic.init());
+$(document).ready(() => Curriculum.init());

@@ -1,6 +1,6 @@
 <?php
 /**
- * E-Academic Authentication Helper
+ * E-Curriculum Authentication Helper
  * Centralized logic for session resolution and authentication checks
  */
 
