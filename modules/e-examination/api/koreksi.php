@@ -93,15 +93,17 @@ try {
  */
 function processGrading($session_id) {
     // Ambil detail sesi
-    $stmtSesi = db()->prepare("SELECT s.*, u.judul FROM exam_sesi s JOIN exam_ujian u ON s.ujian_id = u.id WHERE s.id = ?");
+    $stmtSesi = db()->prepare("SELECT s.*, u.judul, u.jenis FROM exam_sesi s JOIN exam_ujian u ON s.ujian_id = u.id WHERE s.id = ?");
     $stmtSesi->execute([$session_id]);
     $sesi = $stmtSesi->fetch();
 
     if (!$sesi) throw new Exception("Sesi $session_id tidak ditemukan");
 
+    $isPsikologi = ($sesi['jenis'] === 'psikologi');
+
     // Ambil jawaban dan kunci
     $stmtAns = db()->prepare("
-        SELECT j.id as jawaban_id, j.jawaban, s.id as soal_id, s.tipe_soal, s.bobot, s.kunci_jawaban, s.pertanyaan
+        SELECT j.id as jawaban_id, j.jawaban, j.jawaban_voice, s.id as soal_id, s.tipe_soal, s.bobot, s.kunci_jawaban, s.pertanyaan, s.opsi
         FROM exam_jawaban j
         JOIN exam_soal s ON j.soal_id = s.id
         WHERE j.sesi_id = ?
@@ -116,7 +118,7 @@ function processGrading($session_id) {
     // Mulai transaksi untuk menyimpan nilai detail
     db()->beginTransaction();
 
-    $stmtUpdateAns = db()->prepare("UPDATE exam_jawaban SET skor = ?, ai_koreksi = ? WHERE id = ?");
+    $stmtUpdateAns = db()->prepare("UPDATE exam_jawaban SET skor = ?, ai_feedback = ? WHERE id = ?");
 
     foreach ($answers as $ans) {
         $bobot = (float)$ans['bobot'];
@@ -125,68 +127,83 @@ function processGrading($session_id) {
         $tipe = $ans['tipe_soal'];
         $kunci = $ans['kunci_jawaban'];
         $jawabanSiswa = $ans['jawaban'];
+        $jawabanVoice = $ans['jawaban_voice'];
         
         $skorDidapat = 0;
         $aiKoreksiNotes = null;
 
-        if ($tipe === 'pilihan_satu' || $tipe === 'benar_salah') {
-            if ($jawabanSiswa !== null && trim($jawabanSiswa) === trim($kunci)) {
-                $skorDidapat = $bobot;
+        if ($isPsikologi) {
+            // Psychology scoring: sum weights of selected options
+            $opsiList = json_decode($ans['opsi'], true) ?: [];
+            $scoreForOption = 0;
+            foreach ($opsiList as $opt) {
+                if (isset($opt['label']) && $opt['label'] === $jawabanSiswa) {
+                    $scoreForOption = (float)($opt['score'] ?? 0);
+                    break;
+                }
             }
-        } 
-        else if ($tipe === 'pilihan_banyak') {
-            $jawabanArr = json_decode($jawabanSiswa, true) ?: [];
-            $kunciArr = json_decode($kunci, true) ?: [];
-            
-            if (is_array($jawabanArr) && is_array($kunciArr)) {
-                sort($jawabanArr);
-                sort($kunciArr);
-                // Exact match = full score. (Bisa dimodifikasi untuk partial score)
-                if ($jawabanArr == $kunciArr) {
+            $skorDidapat = $scoreForOption;
+        } else {
+            // Assessment scoring
+            if ($tipe === 'pilihan_satu' || $tipe === 'benar_salah') {
+                if ($jawabanSiswa !== null && trim($jawabanSiswa) === trim($kunci)) {
                     $skorDidapat = $bobot;
-                } else {
-                    // Partial scoring: 
-                    // correct_selected / total_correct * bobot - wrong_selected penalty?
-                    // Untuk kesederhanaan saat ini, exact match.
-                    $correctPicks = count(array_intersect($jawabanArr, $kunciArr));
-                    $wrongPicks = count(array_diff($jawabanArr, $kunciArr));
-                    $net = $correctPicks - $wrongPicks;
-                    if ($net > 0 && count($kunciArr) > 0) {
-                        $skorDidapat = ($net / count($kunciArr)) * $bobot;
+                }
+            } 
+            else if ($tipe === 'pilihan_banyak') {
+                $jawabanArr = json_decode($jawabanSiswa, true) ?: [];
+                $kunciArr = json_decode($kunci, true) ?: [];
+                
+                if (is_array($jawabanArr) && is_array($kunciArr)) {
+                    sort($jawabanArr);
+                    sort($kunciArr);
+                    if ($jawabanArr == $kunciArr) {
+                        $skorDidapat = $bobot;
+                    } else {
+                        $correctPicks = count(array_intersect($jawabanArr, $kunciArr));
+                        $wrongPicks = count(array_diff($jawabanArr, $kunciArr));
+                        $net = $correctPicks - $wrongPicks;
+                        if ($net > 0 && count($kunciArr) > 0) {
+                            $skorDidapat = ($net / count($kunciArr)) * $bobot;
+                        }
                     }
                 }
             }
-        }
-        else if ($tipe === 'menjodohkan') {
-            $jawabanObj = json_decode($jawabanSiswa, true) ?: [];
-            $kunciObj = json_decode($kunci, true) ?: [];
-            
-            if (is_array($jawabanObj) && is_array($kunciObj)) {
-                $totalPairs = count($kunciObj);
-                $correctPairs = 0;
+            else if ($tipe === 'menjodohkan') {
+                $jawabanObj = json_decode($jawabanSiswa, true) ?: [];
+                $kunciObj = json_decode($kunci, true) ?: [];
                 
-                foreach ($kunciObj as $k => $v) {
-                    if (isset($jawabanObj[$k]) && $jawabanObj[$k] === $v) {
-                        $correctPairs++;
+                if (is_array($jawabanObj) && is_array($kunciObj)) {
+                    $totalPairs = count($kunciObj);
+                    $correctPairs = 0;
+                    
+                    foreach ($kunciObj as $k => $v) {
+                        if (isset($jawabanObj[$k]) && $jawabanObj[$k] === $v) {
+                            $correctPairs++;
+                        }
+                    }
+                    
+                    if ($totalPairs > 0) {
+                        $skorDidapat = ($correctPairs / $totalPairs) * $bobot;
                     }
                 }
-                
-                if ($totalPairs > 0) {
-                    $skorDidapat = ($correctPairs / $totalPairs) * $bobot;
-                }
             }
-        }
-        else if ($tipe === 'jawaban_singkat' || $tipe === 'essai') {
-            // Queue for AI Grading
-            if ($jawabanSiswa && trim($jawabanSiswa) !== '') {
-                $aiTasks[] = [
-                    'jawaban_id' => $ans['jawaban_id'],
-                    'pertanyaan' => $ans['pertanyaan'],
-                    'kunci' => $kunci,
-                    'jawaban' => $jawabanSiswa,
-                    'bobot' => $bobot
-                ];
-                // Skor sementara 0 sampai AI memproses
+            else if ($tipe === 'jawaban_singkat' || $tipe === 'essai') {
+                // Queue for AI Grading if student answered (via voice or text)
+                $hasText = ($jawabanSiswa && trim($jawabanSiswa) !== '');
+                $hasVoice = ($jawabanVoice && trim($jawabanVoice) !== '');
+                
+                if ($hasText || $hasVoice) {
+                    $aiTasks[] = [
+                        'jawaban_id' => $ans['jawaban_id'],
+                        'pertanyaan' => $ans['pertanyaan'],
+                        'kunci' => $kunci,
+                        'jawaban' => $jawabanSiswa,
+                        'jawaban_voice' => $jawabanVoice,
+                        'bobot' => $bobot
+                    ];
+                    // Skor sementara 0 sampai AI memproses
+                }
             }
         }
 
@@ -203,10 +220,13 @@ function processGrading($session_id) {
         }
     }
 
-    // Normalisasi Skor ke skala 100 (jika maxSkor bukan 100)
-    $skorAkhir = 0;
-    if ($maxSkor > 0) {
-        $skorAkhir = ($totalSkor / $maxSkor) * 100;
+    // Normalisasi Skor ke skala 100 (jika maxSkor bukan 100 dan BUKAN tes psikologi)
+    $skorAkhir = $totalSkor;
+    if (!$isPsikologi) {
+        $skorAkhir = 0;
+        if ($maxSkor > 0) {
+            $skorAkhir = ($totalSkor / $maxSkor) * 100;
+        }
     }
 
     // Simpan ke sesi
@@ -243,81 +263,94 @@ function runAiGrading($tasks) {
 
     $results = [];
     
-    // Untuk menghemat kuota dan mempercepat, kita kirimkan sebagai batch prompt jika memungkinkan
-    // Namun untuk akurasi terbaik dengan Gemini, kita lakukan per soal (atau batch JSON prompt)
-    
-    // Konstruksi JSON Prompt
-    $promptData = [];
-    foreach ($tasks as $i => $t) {
-        $promptData[] = [
-            "id" => $t['jawaban_id'],
-            "pertanyaan" => strip_tags($t['pertanyaan']),
-            "rubrik_kunci" => $t['kunci'],
-            "jawaban_siswa" => $t['jawaban'],
-            "skor_maksimal" => $t['bobot']
-        ];
-    }
+    foreach ($tasks as $t) {
+        $promptText = "Anda adalah Guru Ahli yang bertugas memberikan nilai untuk soal esai dan jawaban singkat siswa.\n";
+        $promptText .= "Berikan penilaian yang adil dan objektif berdasarkan rubrik/kunci jawaban dan jawaban yang diberikan siswa.\n\n";
+        $promptText .= "Data Soal & Jawaban:\n";
+        $promptText .= "Pertanyaan: " . strip_tags($t['pertanyaan']) . "\n";
+        $promptText .= "Kunci/Rubrik: " . $t['kunci'] . "\n";
+        $promptText .= "Jawaban Siswa (Teks): " . ($t['jawaban'] ?: '(Tidak ada jawaban teks)') . "\n";
+        $promptText .= "Skor Maksimal: " . $t['bobot'] . "\n\n";
+        
+        $promptText .= "Jika siswa melampirkan rekaman suara (audio), dengarkan rekaman audio yang disertakan dan gunakan isinya untuk menilai jawaban mereka.\n";
+        $promptText .= "Berikan output HANYA dalam format JSON objek (tanpa format markdown, tanpa ```json) dengan skema berikut:\n";
+        $promptText .= '{"skor": <angka_desimal_dari_0_sampai_skor_maksimal>, "catatan": "<alasan_singkat_kenapa_dapat_skor_tersebut>"}' . "\n";
 
-    $promptText = "Anda adalah Guru Ahli yang bertugas memberikan nilai untuk soal esai dan jawaban singkat siswa.\n";
-    $promptText .= "Berikut adalah daftar soal beserta jawaban siswa. Berikan penilaian yang adil dan objektif berdasarkan rubrik/kunci jawaban.\n";
-    $promptText .= "Keluarkan output HANYA dalam format JSON Array dengan skema berikut:\n";
-    $promptText .= '`[{"id": <id_jawaban_id>, "skor": <angka_desimal_dari_0_sampai_skor_maksimal>, "catatan": "<alasan_singkat_kenapa_dapat_skor_tersebut>"}]`'."\n\n";
-    $promptText .= "Data Soal & Jawaban:\n" . json_encode($promptData, JSON_PRETTY_PRINT);
+        // Build Gemini Parts
+        $parts = [];
+        
+        // Add Audio if present
+        if (!empty($t['jawaban_voice'])) {
+            $audioPath = __DIR__ . '/../' . $t['jawaban_voice'];
+            if (file_exists($audioPath)) {
+                $ext = strtolower(pathinfo($audioPath, PATHINFO_EXTENSION));
+                $mimeType = 'audio/webm';
+                if ($ext === 'mp3') $mimeType = 'audio/mp3';
+                elseif ($ext === 'wav') $mimeType = 'audio/wav';
+                elseif ($ext === 'm4a') $mimeType = 'audio/m4a';
+                elseif ($ext === 'ogg') $mimeType = 'audio/ogg';
 
-    $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro-latest:generateContent?key=" . $apiKey;
-    
-    $payload = [
-        "contents" => [
-            ["parts" => [["text" => $promptText]]]
-        ],
-        "generationConfig" => [
-            "temperature" => 0.2, // Low temperature for consistent grading
-            "responseMimeType" => "application/json"
-        ]
-    ];
-
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
-    
-    $response = curl_exec($ch);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
-
-    if ($httpCode == 200) {
-        $respData = json_decode($response, true);
-        if (isset($respData['candidates'][0]['content']['parts'][0]['text'])) {
-            $jsonStr = $respData['candidates'][0]['content']['parts'][0]['text'];
-            
-            // Clean markdown blocks if present (Gemini sometimes returns ```json ... ``` even if mimeType is JSON)
-            $jsonStr = preg_replace('/```json/i', '', $jsonStr);
-            $jsonStr = preg_replace('/```/i', '', $jsonStr);
-            
-            $aiGrades = json_decode(trim($jsonStr), true);
-            
-            if (is_array($aiGrades)) {
-                // Map results back
-                foreach ($aiGrades as $grade) {
-                    $results[] = [
-                        'jawaban_id' => $grade['id'] ?? 0,
-                        'skor' => isset($grade['skor']) ? (float)$grade['skor'] : 0,
-                        'catatan' => $grade['catatan'] ?? 'Dinilai oleh AI'
-                    ];
-                }
-                return $results;
+                $parts[] = [
+                    "inlineData" => [
+                        "mimeType" => $mimeType,
+                        "data" => base64_encode(file_get_contents($audioPath))
+                    ]
+                ];
             }
         }
-    }
 
-    // Jika terjadi kegagalan atau format response tidak valid
-    foreach ($tasks as $t) {
-        $results[] = [
-            'jawaban_id' => $t['jawaban_id'],
-            'skor' => 0,
-            'catatan' => 'AI Grading gagal: Gagal mem-parsing hasil dari Google Gemini API (Code: '.$httpCode.').'
+        // Add Text Prompt Part
+        $parts[] = ["text" => $promptText];
+
+        $url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" . $apiKey;
+        
+        $payload = [
+            "contents" => [
+                ["parts" => $parts]
+            ],
+            "generationConfig" => [
+                "temperature" => 0.1,
+                "responseMimeType" => "application/json"
+            ]
         ];
+
+        $ch = curl_init($url);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+        curl_setopt($ch, CURLOPT_POST, true);
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
+        curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json']);
+        
+        $response = curl_exec($ch);
+        $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+
+        $gradeInfo = null;
+
+        if ($httpCode == 200) {
+            $respData = json_decode($response, true);
+            if (isset($respData['candidates'][0]['content']['parts'][0]['text'])) {
+                $jsonStr = $respData['candidates'][0]['content']['parts'][0]['text'];
+                $jsonStr = preg_replace('/```json/i', '', $jsonStr);
+                $jsonStr = preg_replace('/```/i', '', $jsonStr);
+                
+                $gradeInfo = json_decode(trim($jsonStr), true);
+            }
+        }
+
+        if (is_array($gradeInfo) && isset($gradeInfo['skor'])) {
+            $results[] = [
+                'jawaban_id' => $t['jawaban_id'],
+                'skor' => (float)$gradeInfo['skor'],
+                'catatan' => $gradeInfo['catatan'] ?? 'Dinilai oleh AI'
+            ];
+        } else {
+            // Fallback
+            $results[] = [
+                'jawaban_id' => $t['jawaban_id'],
+                'skor' => 0,
+                'catatan' => 'AI Grading gagal: Gagal mem-parsing hasil dari Google Gemini API (Code: '.$httpCode.').'
+            ];
+        }
     }
 
     return $results;

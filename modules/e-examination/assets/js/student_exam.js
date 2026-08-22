@@ -12,6 +12,9 @@ const ExamApp = {
     isSubmitting: false,
     violations: 0,
     isTabActive: true,
+    mediaRecorder: null,
+    audioChunks: [],
+    recordingSoalId: null,
 
     init() {
         if (typeof EXAM_SESSION_ID === 'undefined' || !EXAM_SESSION_ID) {
@@ -19,6 +22,12 @@ const ExamApp = {
             return;
         }
         this.sessionId = EXAM_SESSION_ID;
+
+        $('<style>').text(`
+            .recording-active { background: #dc2626 !important; border-color: #dc2626 !important; color: white !important; }
+            .pulse { animation: recordPulse 1s infinite alternate; }
+            @keyframes recordPulse { from { opacity: 1; transform: scale(1); } to { opacity: 0.4; transform: scale(1.2); } }
+        `).appendTo('head');
 
         this.setupAntiCheat();
         this.fetchSoal();
@@ -48,6 +57,18 @@ const ExamApp = {
             } else {
                 this.isTabActive = true;
             }
+        });
+
+        // Window blur detection (unfocus)
+        window.addEventListener('blur', () => {
+            if (this.isTabActive) {
+                this.isTabActive = false;
+                this.reportCheating('tab_switch');
+            }
+        });
+
+        window.addEventListener('focus', () => {
+            this.isTabActive = true;
         });
 
         // Prevent Context Menu
@@ -239,10 +260,43 @@ const ExamApp = {
         $('#btnNext').prop('disabled', index === this.soalList.length - 1).css('opacity', index === this.soalList.length - 1 ? '0.5' : '1');
 
         // Media
+        this.audioPlayCount = this.audioPlayCount || {};
         let mediaHtml = '';
         if (s.gambar) mediaHtml += `<img src="../../uploads/exam/${s.gambar}" style="max-width:100%; border-radius:8px; margin-bottom:12px;">`;
-        if (s.audio) mediaHtml += `<audio controls controlsList="nodownload noplaybackrate" style="width:100%;"><source src="../../uploads/exam/${s.audio}" type="audio/mpeg"></audio>`;
+        if (s.audio) {
+            const playedCount = this.audioPlayCount[s.id] || 0;
+            if (playedCount >= 2) {
+                mediaHtml += `<div style="background:#fee2e2;color:#b91c1c;padding:12px;border-radius:8px;font-weight:600;text-align:center;margin-bottom:12px;">🔊 Audio listening telah diputar 2x (batas maksimal tercapai)</div>`;
+            } else {
+                mediaHtml += `
+                    <div style="margin-bottom:12px;">
+                        <audio id="audio_player_${s.id}" controls controlsList="nodownload noplaybackrate" style="width:100%;">
+                            <source src="../../uploads/exam/${s.audio}" type="audio/mpeg">
+                        </audio>
+                        <div style="font-size:12px;color:#64748b;margin-top:4px;text-align:right;">Sisa pemutaran: <strong id="audio_remaining_${s.id}">${2 - playedCount}</strong> kali</div>
+                    </div>
+                `;
+            }
+        }
         $('#uiSoalMedia').html(mediaHtml);
+
+        // Hook audio event
+        if (s.audio && (this.audioPlayCount[s.id] || 0) < 2) {
+            setTimeout(() => {
+                const player = document.getElementById(`audio_player_${s.id}`);
+                if (player) {
+                    player.addEventListener('ended', () => {
+                        this.audioPlayCount[s.id] = (this.audioPlayCount[s.id] || 0) + 1;
+                        const newCount = this.audioPlayCount[s.id];
+                        if (newCount >= 2) {
+                            $(`#audio_player_${s.id}`).parent().html(`<div style="background:#fee2e2;color:#b91c1c;padding:12px;border-radius:8px;font-weight:600;text-align:center;margin-bottom:12px;">🔊 Audio listening telah diputar 2x (batas maksimal tercapai)</div>`);
+                        } else {
+                            $(`#audio_remaining_${s.id}`).text(2 - newCount);
+                        }
+                    });
+                }
+            }, 50);
+        }
 
         // Text
         $('#uiSoalText').html(s.pertanyaan);
@@ -333,15 +387,68 @@ const ExamApp = {
             $opts.html(html);
         }
         else if (s.tipe_soal === 'jawaban_singkat') {
+            const voiceHtml = `
+                <div class="voice-recorder-wrapper" style="margin-top:16px;padding:16px;background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                        <span style="font-size:13px;font-weight:600;color:#334155;display:flex;align-items:center;gap:6px;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+                            Jawaban Suara (Listening/Voice Answer)
+                        </span>
+                        <span id="voice_status_${s.id}" style="font-size:12px;color:#2563eb;font-weight:500;">
+                            ${data.jawaban_voice ? 'Sudah terekam' : 'Ready'}
+                        </span>
+                    </div>
+                    
+                    <div style="display:flex;gap:12px;align-items:center;">
+                        <button type="button" class="btn btn-outline" id="btn_record_${s.id}" onclick="ExamApp.toggleRecord(${s.id})" style="border-radius:24px;padding:8px 16px;font-size:13px;display:inline-flex;align-items:center;gap:6px;">
+                            <span class="record-dot" style="width:10px;height:10px;background:currentColor;border-radius:50%;display:inline-block;"></span>
+                            Rekam Suara
+                        </button>
+                        
+                        <div id="voice_preview_${s.id}" style="flex:1;display:${data.jawaban_voice ? 'block' : 'none'};">
+                            <audio id="audio_voice_preview_${s.id}" controls style="width:100%;height:36px;border-radius:18px;">
+                                <source src="../../${data.jawaban_voice}" type="audio/webm">
+                            </audio>
+                        </div>
+                    </div>
+                </div>
+            `;
             $opts.html(`
                 <input type="text" class="input-short" id="ans_${s.id}" placeholder="Ketik jawaban singkat Anda..." value="${this.esc(currentAns || '')}" oninput="ExamApp.handleDebouncedInput()">
+                ${voiceHtml}
             `);
         }
         else if (s.tipe_soal === 'essai') {
+            const voiceHtml = `
+                <div class="voice-recorder-wrapper" style="margin-top:16px;padding:16px;background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;">
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+                        <span style="font-size:13px;font-weight:600;color:#334155;display:flex;align-items:center;gap:6px;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/></svg>
+                            Jawaban Suara (Listening/Voice Answer)
+                        </span>
+                        <span id="voice_status_${s.id}" style="font-size:12px;color:#2563eb;font-weight:500;">
+                            ${data.jawaban_voice ? 'Sudah terekam' : 'Ready'}
+                        </span>
+                    </div>
+                    
+                    <div style="display:flex;gap:12px;align-items:center;">
+                        <button type="button" class="btn btn-outline" id="btn_record_${s.id}" onclick="ExamApp.toggleRecord(${s.id})" style="border-radius:24px;padding:8px 16px;font-size:13px;display:inline-flex;align-items:center;gap:6px;">
+                            <span class="record-dot" style="width:10px;height:10px;background:currentColor;border-radius:50%;display:inline-block;"></span>
+                            Rekam Suara
+                        </button>
+                        
+                        <div id="voice_preview_${s.id}" style="flex:1;display:${data.jawaban_voice ? 'block' : 'none'};">
+                            <audio id="audio_voice_preview_${s.id}" controls style="width:100%;height:36px;border-radius:18px;">
+                                <source src="../../${data.jawaban_voice}" type="audio/webm">
+                            </audio>
+                        </div>
+                    </div>
+                </div>
+            `;
             $opts.html(`
                 <textarea class="input-essay" id="ans_${s.id}" placeholder="Ketik jawaban Anda dengan jelas dan lengkap...">${this.esc(currentAns || '')}</textarea>
+                ${voiceHtml}
             `);
-            // Essay uses debounced input
             $(`#ans_${s.id}`).on('input', () => this.handleDebouncedInput());
         }
     },
@@ -501,6 +608,81 @@ const ExamApp = {
         const div = document.createElement('div');
         div.textContent = str;
         return div.innerHTML;
+    },
+
+    toggleRecord(soalId) {
+        const $btn = $(`#btn_record_${soalId}`);
+        const $status = $(`#voice_status_${soalId}`);
+        
+        if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+            // Stop recording
+            this.mediaRecorder.stop();
+            $btn.html('<span class="record-dot" style="width:10px;height:10px;background:currentColor;border-radius:50%;display:inline-block;"></span> Rekam Suara').removeClass('recording-active');
+            $status.text('Mengupload rekaman...');
+        } else {
+            // Start recording
+            navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+                this.audioChunks = [];
+                this.recordingSoalId = soalId;
+                this.mediaRecorder = new MediaRecorder(stream);
+                
+                this.mediaRecorder.ondataavailable = event => {
+                    this.audioChunks.push(event.data);
+                };
+                
+                this.mediaRecorder.onstop = () => {
+                    const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+                    this.uploadVoiceBlob(soalId, audioBlob);
+                    
+                    // Stop tracks to release mic
+                    stream.getTracks().forEach(track => track.stop());
+                };
+                
+                this.mediaRecorder.start();
+                $btn.html('<span class="record-dot pulse" style="width:10px;height:10px;background:red;border-radius:50%;display:inline-block;"></span> Hentikan').addClass('recording-active');
+                $status.text('Sedang merekam...');
+            }).catch(err => {
+                EModal.alert('Mikrofon Gagal', 'Harap izinkan akses mikrofon untuk merekam jawaban suara.');
+            });
+        }
+    },
+
+    uploadVoiceBlob(soalId, blob) {
+        const currentData = this.soalList[this.currentIndex];
+        const formData = new FormData();
+        formData.append('voice', blob, `voice_${currentData.jawaban_id}.webm`);
+        formData.append('session_id', this.sessionId);
+        formData.append('jawaban_id', currentData.jawaban_id);
+
+        $.ajax({
+            url: '../api/pengerjaan.php?action=upload_voice',
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: (r) => {
+                if (r.success) {
+                    currentData.jawaban_voice = r.data.path;
+                    $(`#voice_status_${soalId}`).text('Sudah terekam').css('color', '#059669');
+                    
+                    // Refresh preview audio player
+                    $(`#voice_preview_${soalId}`).show();
+                    const player = document.getElementById(`audio_voice_preview_${soalId}`);
+                    player.src = `../../${r.data.path}`;
+                    player.load();
+
+                    // Update nav status
+                    this.updateNavGridStatus(this.currentIndex);
+                } else {
+                    $(`#voice_status_${soalId}`).text('Gagal upload').css('color', '#dc2626');
+                    EModal.alert('Gagal', r.message);
+                }
+            },
+            error: () => {
+                $(`#voice_status_${soalId}`).text('Gagal upload').css('color', '#dc2626');
+                EModal.alert('Error', 'Gagal mengupload audio');
+            }
+        });
     }
 };
 

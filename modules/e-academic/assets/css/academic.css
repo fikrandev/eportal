@@ -1,0 +1,563 @@
+/**
+ * E-Academic Stylesheet
+ * Custom CSS for academic management SPA module
+ */
+
+:root {
+    --acad-primary: #7C3AED;
+    --acad-primary-hover: #6D28D9;
+    --acad-primary-light: rgba(124, 58, 237, 0.1);
+    --acad-accent: #EC4899;
+    --acad-bg-light: #F9FAFB;
+    --acad-border: #E5E7EB;
+    --acad-text: #1F2937;
+    --acad-text-muted: #6B7280;
+    --acad-card-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+    --acad-transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+body {
+    background-color: var(--acad-bg-light);
+    color: var(--acad-text);
+}
+
+/* App Shell Layout */
+.academic-app {
+    display: flex;
+    min-height: 100vh;
+    width: 100%;
+    position: relative;
+}
+
+/* Sidebar Styling */
+.acad-sidebar {
+    width: 280px;
+    background: #111827;
+    color: #F3F4F6;
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 100;
+    transition: var(--acad-transition);
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.acad-sidebar-header {
+    padding: 24px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.acad-sidebar-logo {
+    width: 40px;
+    height: 40px;
+    background: var(--acad-primary);
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+}
+
+.acad-sidebar-logo svg {
+    width: 22px;
+    height: 22px;
+}
+
+.acad-sidebar-brand h3 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin: 0;
+    font-family: 'Outfit', sans-serif;
+    color: white;
+}
+
+.acad-sidebar-brand span {
+    font-size: 0.75rem;
+    color: var(--acad-text-muted);
+    font-weight: 500;
+    letter-spacing: 0.5px;
+}
+
+.acad-sidebar-nav {
+    flex: 1;
+    padding: 20px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    overflow-y: auto;
+}
+
+.acad-nav-group {
+    margin-bottom: 16px;
+}
+
+.acad-nav-label {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: #4B5563;
+    padding: 0 12px 6px;
+    letter-spacing: 0.8px;
+}
+
+.acad-nav-item {
+    width: 100%;
+    background: none;
+    border: none;
+    outline: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px;
+    color: #9CA3AF;
+    font-weight: 500;
+    font-size: 0.92rem;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: left;
+    transition: var(--acad-transition);
+}
+
+.acad-nav-item svg {
+    width: 18px;
+    height: 18px;
+    transition: var(--acad-transition);
+}
+
+.acad-nav-item:hover {
+    color: white;
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.acad-nav-item.active {
+    color: white;
+    background: var(--acad-primary);
+    box-shadow: 0 4px 12px rgba(124, 58, 237, 0.25);
+}
+
+.acad-nav-item.active svg {
+    color: white;
+}
+
+.acad-sidebar-footer {
+    padding: 16px 20px;
+    background: #0B0F19;
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.acad-sidebar-user {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.acad-user-avatar {
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: var(--acad-primary-light);
+    color: var(--acad-primary);
+    font-weight: 600;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid var(--acad-primary);
+}
+
+.acad-user-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.acad-user-name {
+    font-size: 0.88rem;
+    font-weight: 600;
+    color: white;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.acad-user-role {
+    font-size: 0.72rem;
+    color: #9CA3AF;
+    text-transform: capitalize;
+}
+
+.acad-logout-btn {
+    background: none;
+    border: none;
+    outline: none;
+    color: #EF4444;
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: var(--acad-transition);
+}
+
+.acad-logout-btn:hover {
+    background: rgba(239, 68, 68, 0.1);
+}
+
+/* Main Area */
+.acad-main {
+    margin-left: 280px;
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+/* Topbar */
+.acad-topbar {
+    height: 70px;
+    background: white;
+    border-bottom: 1px solid var(--acad-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 32px;
+    position: sticky;
+    top: 0;
+    z-index: 90;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02);
+}
+
+.acad-topbar-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.acad-menu-toggle {
+    display: none;
+    background: none;
+    border: none;
+    outline: none;
+    cursor: pointer;
+    color: var(--acad-text);
+}
+
+.acad-page-title {
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--acad-text);
+    margin: 0;
+    font-family: 'Outfit', sans-serif;
+}
+
+.acad-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.78rem;
+    color: var(--acad-text-muted);
+    margin-top: 2px;
+}
+
+.acad-breadcrumb a {
+    color: var(--acad-text-muted);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.acad-breadcrumb a:hover {
+    color: var(--acad-primary);
+}
+
+.acad-breadcrumb .sep {
+    color: #D1D5DB;
+}
+
+.acad-breadcrumb .current {
+    font-weight: 600;
+    color: var(--acad-text);
+}
+
+.acad-back-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border: 1px solid var(--acad-border);
+    border-radius: 8px;
+    color: var(--acad-text);
+    text-decoration: none;
+    font-size: 0.85rem;
+    font-weight: 600;
+    background: white;
+    transition: var(--acad-transition);
+}
+
+.acad-back-btn:hover {
+    background: var(--acad-bg-light);
+    border-color: #D1D5DB;
+}
+
+.acad-back-btn svg {
+    width: 16px;
+    height: 16px;
+}
+
+/* Content Area */
+.acad-content {
+    flex: 1;
+    padding: 32px;
+    overflow-y: auto;
+}
+
+/* Cards & Components */
+.acad-card {
+    background: white;
+    border-radius: 12px;
+    border: 1px solid var(--acad-border);
+    box-shadow: var(--acad-card-shadow);
+    margin-bottom: 24px;
+    overflow: hidden;
+}
+
+.acad-card-header {
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--acad-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 16px;
+}
+
+.acad-card-header h3 {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--acad-text);
+    font-family: 'Outfit', sans-serif;
+}
+
+.acad-card-header h3 svg {
+    color: var(--acad-primary);
+}
+
+.acad-card-body {
+    padding: 24px;
+}
+
+.acad-subtitle {
+    font-size: 0.85rem;
+    color: var(--acad-text-muted);
+    margin-top: 4px;
+    margin-bottom: 0;
+}
+
+/* Stats Section */
+.acad-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 24px;
+    margin-bottom: 32px;
+}
+
+.acad-stat-card {
+    background: white;
+    border: 1px solid var(--acad-border);
+    border-radius: 12px;
+    padding: 24px;
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    box-shadow: var(--acad-card-shadow);
+    transition: transform 0.2s;
+}
+
+.acad-stat-card:hover {
+    transform: translateY(-2px);
+}
+
+.acad-stat-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.acad-stat-icon svg {
+    width: 24px;
+    height: 24px;
+}
+
+.acad-stat-info h4 {
+    font-size: 1.6rem;
+    font-weight: 800;
+    margin: 0;
+    color: var(--acad-text);
+    font-family: 'Outfit', sans-serif;
+}
+
+.acad-stat-info p {
+    font-size: 0.85rem;
+    color: var(--acad-text-muted);
+    margin: 0;
+    font-weight: 500;
+}
+
+/* UI Toolbar */
+.acad-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+/* Buttons */
+.btn-acad {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    padding: 10px 18px;
+    border-radius: 8px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: var(--acad-transition);
+}
+
+.btn-acad-primary {
+    background: var(--acad-primary);
+    color: white;
+}
+
+.btn-acad-primary:hover {
+    background: var(--acad-primary-hover);
+}
+
+.btn-acad-outline {
+    background: white;
+    border-color: var(--acad-border);
+    color: var(--acad-text);
+}
+
+.btn-acad-outline:hover {
+    background: var(--acad-bg-light);
+    border-color: #D1D5DB;
+}
+
+.btn-acad-danger {
+    background: #EF4444;
+    color: white;
+}
+
+.btn-acad-danger:hover {
+    background: #DC2626;
+}
+
+/* Forms */
+.form-group-acad {
+    margin-bottom: 20px;
+}
+
+.form-label-acad {
+    display: block;
+    font-size: 0.85rem;
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--acad-text);
+}
+
+.form-input-acad,
+.form-select-acad {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1px solid var(--acad-border);
+    border-radius: 8px;
+    font-size: 0.9rem;
+    color: var(--acad-text);
+    background-color: white;
+    transition: var(--acad-transition);
+}
+
+.form-input-acad:focus,
+.form-select-acad:focus {
+    outline: none;
+    border-color: var(--acad-primary);
+    box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.15);
+}
+
+/* Empty states */
+.acad-empty {
+    text-align: center;
+    padding: 48px 24px;
+}
+
+.acad-empty svg {
+    width: 64px;
+    height: 64px;
+    color: var(--acad-text-muted);
+    opacity: 0.4;
+    margin-bottom: 16px;
+}
+
+.acad-empty h3 {
+    font-size: 1.15rem;
+    font-weight: 700;
+    margin-bottom: 8px;
+}
+
+.acad-empty p {
+    font-size: 0.88rem;
+    color: var(--acad-text-muted);
+    margin: 0;
+}
+
+/* Responsive overlay overlay styles */
+.acad-sidebar-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(2px);
+    z-index: 95;
+}
+
+@media (max-width: 991px) {
+    .acad-sidebar {
+        transform: translateX(-100%);
+    }
+    .acad-sidebar.show {
+        transform: translateX(0);
+    }
+    .acad-sidebar-overlay.show {
+        display: block;
+    }
+    .acad-main {
+        margin-left: 0;
+    }
+    .acad-menu-toggle {
+        display: block;
+    }
+    .acad-topbar {
+        padding: 0 20px;
+    }
+    .acad-content {
+        padding: 20px;
+    }
+}

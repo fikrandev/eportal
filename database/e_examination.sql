@@ -134,6 +134,8 @@ CREATE TABLE IF NOT EXISTS `exam_jawaban` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `sesi_id` INT UNSIGNED NOT NULL,
   `soal_id` INT UNSIGNED NOT NULL,
+  `urutan` INT NOT NULL DEFAULT 0,
+  `opsi_acak` TEXT DEFAULT NULL,
   `jawaban` TEXT DEFAULT NULL COMMENT 'Jawaban siswa (text / JSON)',
   `jawaban_voice` VARCHAR(255) DEFAULT NULL COMMENT 'Path voice recording',
   `is_ragu` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Tandai ragu-ragu',

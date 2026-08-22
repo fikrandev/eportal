@@ -519,6 +519,9 @@ const Exam = {
             const bank = bankR.data;
             const soalList = soalR.data || [];
 
+            this.state.currentBankJenis = bank.jenis;
+            this.state.currentBankId = bank.id;
+
             let soalCards = soalList.map((s, i) => {
                 const tipeBadge = this.tipeSoalBadge(s.tipe_soal);
                 let opsiHtml = '';
@@ -529,10 +532,11 @@ const Exam = {
                     const kunciArr = Array.isArray(kunci) ? kunci : [kunci];
                     
                     opsiHtml = '<div class="ex-soal-opsi">' + opsi.map(o => {
-                        const isCorrect = kunciArr.includes(o.label);
+                        const isCorrect = bank.jenis === 'psikologi' ? false : kunciArr.includes(o.label);
+                        const scoreLabel = (bank.jenis === 'psikologi' && o.score !== undefined) ? ` <span style="color:#7C3AED; font-weight:600;">(Skor: ${o.score})</span>` : '';
                         return `<div class="ex-opsi-item ${isCorrect ? 'correct' : ''}">
                             <span class="ex-opsi-label">${this.esc(o.label)}</span>
-                            <span>${this.esc(o.text)}</span>
+                            <span>${this.esc(o.text || o.teks)} ${scoreLabel}</span>
                         </div>`;
                     }).join('') + '</div>';
                 }
@@ -549,9 +553,10 @@ const Exam = {
                     </div>
                     <div class="ex-soal-header">
                         <span class="ex-soal-number">${i+1}</span>
-                        <div class="ex-soal-pertanyaan">${this.esc(s.pertanyaan)}</div>
+                        <div class="ex-soal-pertanyaan">${s.pertanyaan}</div>
                     </div>
                     ${s.gambar ? `<div style="padding-left:44px;margin-bottom:12px;"><img src="${this.state.moduleUrl + s.gambar}" style="max-width:300px;border-radius:8px;border:1px solid var(--bg-dark);" alt="gambar soal"></div>` : ''}
+                    ${s.audio ? `<div style="padding-left:44px;margin-bottom:12px;"><audio controls style="max-width:100%"><source src="${this.state.moduleUrl + s.audio}" type="audio/mpeg"></audio></div>` : ''}
                     ${opsiHtml}
                     <div class="ex-soal-meta">
                         ${tipeBadge}
@@ -562,6 +567,13 @@ const Exam = {
             }).join('');
 
             if (!soalCards) soalCards = `<div class="ex-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><h3>Belum ada soal</h3><p>Tambahkan soal baru atau import dari file.</p></div>`;
+
+            const psikologiBtn = bank.jenis === 'psikologi' ? `
+                <button class="btn btn-outline btn-sm" onclick="Exam.managePsikologiHasil(${bankId})" style="border-color:#7C3AED;color:#7C3AED;display:inline-flex;align-items:center;gap:6px;">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z"/></svg>
+                    Hasil Psikologi
+                </button>
+            ` : '';
 
             $c.html(`
                 <div style="margin-bottom:20px;">
@@ -578,6 +590,7 @@ const Exam = {
                             <span class="ex-badge ex-badge-green" style="margin-left:8px;">${soalList.length} soal</span>
                         </h3>
                         <div class="ex-toolbar">
+                            ${psikologiBtn}
                             <button class="btn btn-outline btn-sm" onclick="Exam.importSoalModal(${bankId})">
                                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                                 Import
@@ -591,6 +604,20 @@ const Exam = {
                     <div class="ex-card-body">${soalCards}</div>
                 </div>
             `);
+
+            // Math auto-render using KaTeX
+            if (window.renderMathInElement) {
+                setTimeout(() => {
+                    renderMathInElement(document.getElementById('mainContent'), {
+                        delimiters: [
+                            {left: "$$", right: "$$", display: true},
+                            {left: "$", right: "$", display: false},
+                            {left: "\\(", right: "\\)", display: false},
+                            {left: "\\[", right: "\\]", display: true}
+                        ]
+                    });
+                }, 100);
+            }
         });
     },
 
@@ -624,6 +651,8 @@ const Exam = {
 
     showSoalForm(bankId, existing) {
         const isEdit = !!existing;
+        const isPsikologi = (this.state.currentBankJenis === 'psikologi');
+        
         const tipe = existing ? existing.tipe_soal : 'pilihan_satu';
         const pertanyaan = existing ? existing.pertanyaan : '';
         const pembahasan = existing ? (existing.pembahasan || '') : '';
@@ -635,7 +664,9 @@ const Exam = {
             kunci = typeof existing.kunci_jawaban === 'string' ? JSON.parse(existing.kunci_jawaban || '""') : (existing.kunci_jawaban || '');
         }
 
-        const tipeOptions = [
+        const tipeOptions = isPsikologi ? [
+            ['pilihan_satu', 'Pilihan Ganda (Psikotes)']
+        ] : [
             ['pilihan_satu', 'Pilihan Ganda (1 benar)'],
             ['pilihan_banyak', 'Pilihan Ganda (> 1 benar)'],
             ['benar_salah', 'Benar / Salah'],
@@ -651,16 +682,27 @@ const Exam = {
             size: 'lg',
             form: `
                 <div class="ex-form-row">
-                    <div class="form-group"><label class="form-label">Tipe Soal *</label><select class="form-select" id="fSoalTipe" onchange="Exam.toggleSoalForm()">${tipeSelect}</select></div>
+                    <div class="form-group"><label class="form-label">Tipe Soal *</label><select class="form-select" id="fSoalTipe" ${isPsikologi ? 'disabled' : ''} onchange="Exam.toggleSoalForm()">${tipeSelect}</select></div>
                     <div class="form-group"><label class="form-label">Bobot</label><input type="number" class="form-input" id="fSoalBobot" value="${bobot}" min="0.1" step="0.1"></div>
                 </div>
                 <div class="form-group"><label class="form-label">Pertanyaan *</label><textarea class="form-input" id="fSoalPertanyaan" rows="4" placeholder="Tulis pertanyaan di sini...">${this.esc(pertanyaan)}</textarea></div>
-                <div id="fSoalOpsiContainer"></div>
+                <div class="ex-form-row">
+                    <div class="form-group">
+                        <label class="form-label">Gambar Soal (opsional)</label>
+                        <input type="file" class="form-input" id="fSoalGambarFile" accept="image/*">
+                        ${existing && existing.gambar ? `<div style="margin-top:6px; font-size:12px; color:#3b82f6;">Saat ini: ${existing.gambar}</div>` : ''}
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Audio Listening (opsional)</label>
+                        <input type="file" class="form-input" id="fSoalAudioFile" accept="audio/*">
+                        ${existing && existing.audio ? `<div style="margin-top:6px; font-size:12px; color:#7c3aed;">Saat ini: ${existing.audio}</div>` : ''}
+                    </div>
+                </div>
+                <div id="fSoalOpsiContainer" style="margin-top:16px;"></div>
                 <div id="fSoalKunciContainer"></div>
                 <div class="form-group"><label class="form-label">Pembahasan (opsional)</label><textarea class="form-input" id="fSoalPembahasan" rows="2">${this.esc(pembahasan)}</textarea></div>
             `,
             onOpen: () => {
-                // Store existing data for form builder
                 window._examSoalOpsi = opsi;
                 window._examSoalKunci = kunci;
                 this.toggleSoalForm();
@@ -669,13 +711,48 @@ const Exam = {
                 const data = this.collectSoalFormData();
                 if (!data) return false;
                 data.bank_soal_id = bankId;
-                if (isEdit) data.id = existing.id;
+                if (isEdit) {
+                    data.id = existing.id;
+                    data.gambar = existing.gambar;
+                    data.audio = existing.audio;
+                }
 
-                const action = isEdit ? 'update_soal' : 'create_soal';
-                this.api('bank_soal.php?action=' + action, { method:'POST', data }).then(r => {
-                    if (r.success) { EModal.toast({type:'success',title:'Berhasil'}); this.navigate('detail_bank', {id: bankId}); }
-                    else EModal.toast({type:'error',title:'Gagal',message:r.message});
+                const imgFile = document.getElementById('fSoalGambarFile').files[0];
+                const audFile = document.getElementById('fSoalAudioFile').files[0];
+
+                const uploadPromises = [];
+                const loader = EModal.loading('Menyimpan Soal...');
+
+                if (imgFile) {
+                    uploadPromises.push(
+                        this.uploadFile(imgFile, 'image').then(r => {
+                            if (r.success) data.gambar = r.data.path;
+                        })
+                    );
+                }
+                if (audFile) {
+                    uploadPromises.push(
+                        this.uploadFile(audFile, 'audio').then(r => {
+                            if (r.success) data.audio = r.data.path;
+                        })
+                    );
+                }
+
+                Promise.all(uploadPromises).then(() => {
+                    const action = isEdit ? 'update_soal' : 'create_soal';
+                    this.api('bank_soal.php?action=' + action, { method:'POST', data }).then(r => {
+                        EModal.close(loader);
+                        if (r.success) { EModal.toast({type:'success',title:'Berhasil'}); this.navigate('detail_bank', {id: bankId}); }
+                        else EModal.toast({type:'error',title:'Gagal',message:r.message});
+                    }).fail(() => {
+                        EModal.close(loader);
+                        EModal.toast({type:'error',title:'Gagal menyimpan soal'});
+                    });
+                }).catch(() => {
+                    EModal.close(loader);
+                    EModal.toast({type:'error',title:'Gagal mengupload media'});
                 });
+                return false;
             }
         });
     },
@@ -685,33 +762,38 @@ const Exam = {
         const opsi = window._examSoalOpsi || [];
         const kunci = window._examSoalKunci || '';
         const kunciArr = Array.isArray(kunci) ? kunci : [kunci];
+        const isPsikologi = (this.state.currentBankJenis === 'psikologi');
 
         let opsiHtml = '';
         let kunciHtml = '';
 
         if (['pilihan_satu','pilihan_banyak'].includes(tipe)) {
             const labels = ['A','B','C','D','E'];
-            const defaultOpsi = opsi.length > 0 ? opsi : labels.map(l => ({label:l, text:''}));
+            const defaultOpsi = opsi.length > 0 ? opsi : labels.map(l => ({label:l, text:'', score: 0}));
             opsiHtml = '<div class="form-group"><label class="form-label">Pilihan Jawaban</label>';
             defaultOpsi.forEach(o => {
+                const scoreValue = o.score !== undefined ? o.score : (o.nilai !== undefined ? o.nilai : 0);
                 opsiHtml += `<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
                     <span style="width:28px;height:28px;background:var(--bg-light);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;">${o.label}</span>
-                    <input type="text" class="form-input ex-opsi-input" data-label="${o.label}" value="${this.esc(o.text || '')}" placeholder="Isi opsi ${o.label}" style="flex:1;">
+                    <input type="text" class="form-input ex-opsi-input" data-label="${o.label}" value="${this.esc(o.text || o.teks || '')}" placeholder="Isi opsi ${o.label}" style="flex:1;">
+                    ${isPsikologi ? `<input type="number" class="form-input ex-opsi-score" data-label="${o.label}" value="${scoreValue}" placeholder="Skor" style="width:80px;" min="0" step="1">` : ''}
                 </div>`;
             });
             opsiHtml += '</div>';
 
-            if (tipe === 'pilihan_satu') {
-                kunciHtml = `<div class="form-group"><label class="form-label">Kunci Jawaban *</label><select class="form-select" id="fSoalKunci">
-                    ${defaultOpsi.map(o => `<option value="${o.label}" ${kunciArr.includes(o.label)?'selected':''}>${o.label}</option>`).join('')}
-                </select></div>`;
-            } else {
-                kunciHtml = `<div class="form-group"><label class="form-label">Kunci Jawaban (pilih yang benar) *</label><div>
-                    ${defaultOpsi.map(o => `<label style="display:inline-flex;align-items:center;gap:6px;margin-right:16px;font-size:0.85rem;">
-                        <input type="checkbox" class="ex-kunci-cb" value="${o.label}" ${kunciArr.includes(o.label)?'checked':''}>
-                        ${o.label}
-                    </label>`).join('')}
-                </div></div>`;
+            if (!isPsikologi) {
+                if (tipe === 'pilihan_satu') {
+                    kunciHtml = `<div class="form-group"><label class="form-label">Kunci Jawaban *</label><select class="form-select" id="fSoalKunci">
+                        ${defaultOpsi.map(o => `<option value="${o.label}" ${kunciArr.includes(o.label)?'selected':''}>${o.label}</option>`).join('')}
+                    </select></div>`;
+                } else {
+                    kunciHtml = `<div class="form-group"><label class="form-label">Kunci Jawaban (pilih yang benar) *</label><div>
+                        ${defaultOpsi.map(o => `<label style="display:inline-flex;align-items:center;gap:6px;margin-right:16px;font-size:0.85rem;">
+                            <input type="checkbox" class="ex-kunci-cb" value="${o.label}" ${kunciArr.includes(o.label)?'checked':''}>
+                            ${o.label}
+                        </label>`).join('')}
+                    </div></div>`;
+                }
             }
         } else if (tipe === 'benar_salah') {
             opsiHtml = '';
@@ -754,6 +836,7 @@ const Exam = {
         const pertanyaan = $('#fSoalPertanyaan').val().trim();
         const bobot = parseFloat($('#fSoalBobot').val()) || 1;
         const pembahasan = $('#fSoalPembahasan').val().trim();
+        const isPsikologi = (Exam.state.currentBankJenis === 'psikologi');
 
         if (!pertanyaan) { EModal.toast({type:'error',title:'Pertanyaan wajib diisi'}); return null; }
 
@@ -765,16 +848,27 @@ const Exam = {
             $('.ex-opsi-input').each(function() {
                 const label = $(this).data('label');
                 const text = $(this).val().trim();
-                if (text) opsi.push({label, text});
+                if (text) {
+                    if (isPsikologi) {
+                        const score = parseFloat($(`.ex-opsi-score[data-label="${label}"]`).val()) || 0;
+                        opsi.push({label, text, score});
+                    } else {
+                        opsi.push({label, text});
+                    }
+                }
             });
             if (opsi.length < 2) { EModal.toast({type:'error',title:'Minimal 2 opsi jawaban'}); return null; }
 
-            if (tipe === 'pilihan_satu') {
-                kunci_jawaban = $('#fSoalKunci').val();
+            if (isPsikologi) {
+                kunci_jawaban = null;
             } else {
-                kunci_jawaban = [];
-                $('.ex-kunci-cb:checked').each(function() { kunci_jawaban.push($(this).val()); });
-                if (kunci_jawaban.length === 0) { EModal.toast({type:'error',title:'Pilih minimal 1 kunci jawaban'}); return null; }
+                if (tipe === 'pilihan_satu') {
+                    kunci_jawaban = $('#fSoalKunci').val();
+                } else {
+                    kunci_jawaban = [];
+                    $('.ex-kunci-cb:checked').each(function() { kunci_jawaban.push($(this).val()); });
+                    if (kunci_jawaban.length === 0) { EModal.toast({type:'error',title:'Pilih minimal 1 kunci jawaban'}); return null; }
+                }
             }
         } else if (tipe === 'benar_salah') {
             opsi = [{label:'Benar',text:'Benar'},{label:'Salah',text:'Salah'}];
@@ -791,7 +885,7 @@ const Exam = {
                 if (left && right) opsi.push({left, right});
             });
             if (opsi.length < 2) { EModal.toast({type:'error',title:'Minimal 2 pasangan'}); return null; }
-            kunci_jawaban = opsi; // Kunci = urutan yang benar
+            kunci_jawaban = opsi;
         }
 
         return { tipe_soal: tipe, pertanyaan, opsi, kunci_jawaban, pembahasan, bobot };

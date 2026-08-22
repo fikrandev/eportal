@@ -64,10 +64,27 @@ try {
             $data = json_decode(file_get_contents('php://input'), true);
             $ujian_id = (int)($data['ujian_id'] ?? 0);
             $token = strtoupper(trim($data['token'] ?? ''));
+            $username_card = trim($data['username_card'] ?? '');
+            $password_card = trim($data['password_card'] ?? '');
 
             if (!$ujian_id || !$token) throw new Exception('Ujian ID dan Token wajib diisi', 400);
+            if (empty($username_card) || empty($password_card)) {
+                throw new Exception('Username dan Password E-xam Card wajib diisi', 400);
+            }
             
             $student = $_SESSION['exam_student'];
+
+            // Verify E-xam Card credentials for the student
+            $stmtCard = db()->prepare("
+                SELECT COUNT(*) 
+                FROM xam_exam_students 
+                WHERE student_id = ? AND username = ? AND password_plain = ?
+            ");
+            $stmtCard->execute([$student['id'], $username_card, $password_card]);
+            $cardValid = $stmtCard->fetchColumn() > 0;
+            if (!$cardValid) {
+                throw new Exception('Username atau Password E-xam Card salah.', 401);
+            }
 
             // 1. Verify Ujian and Token
             $stmt = db()->prepare("
@@ -169,7 +186,7 @@ try {
 
             // Fetch answers and questions
             $stmtAns = db()->prepare("
-                SELECT j.id as jawaban_id, j.urutan, j.jawaban, j.opsi_acak, j.ragu_ragu,
+                SELECT j.id as jawaban_id, j.urutan, j.jawaban, j.opsi_acak, j.is_ragu AS ragu_ragu,
                        s.id as soal_id, s.tipe_soal, s.pertanyaan, s.opsi, s.gambar, s.audio, s.bobot
                 FROM exam_jawaban j
                 JOIN exam_soal s ON j.soal_id = s.id
@@ -251,7 +268,7 @@ try {
             // Format jawaban as JSON if array
             $jawabanVal = is_array($jawaban) ? json_encode($jawaban) : $jawaban;
 
-            $stmt = db()->prepare("UPDATE exam_jawaban SET jawaban = ?, ragu_ragu = ? WHERE id = ? AND sesi_id = ?");
+            $stmt = db()->prepare("UPDATE exam_jawaban SET jawaban = ?, is_ragu = ? WHERE id = ? AND sesi_id = ?");
             $stmt->execute([$jawabanVal, $ragu_ragu, $jawaban_id, $session_id]);
 
             json_response(200, true, 'Jawaban disimpan');
@@ -279,9 +296,6 @@ try {
             }
             break;
 
-        // ==========================================
-        // REPORT CHEATING
-        // ==========================================
         case 'report_cheat':
             if (!isset($_SESSION['exam_student'])) throw new Exception('Silakan login', 401);
             if ($method !== 'POST') throw new Exception('Method not allowed', 405);
@@ -289,17 +303,17 @@ try {
             $data = json_decode(file_get_contents('php://input'), true);
             $session_id = (int)($data['session_id'] ?? 0);
             $cheat_type = $data['type'] ?? 'unknown'; // blur, minimize, etc
-
+ 
             if (!$session_id) throw new Exception('Data tidak valid', 400);
-
-            $stmt = db()->prepare("INSERT INTO exam_cheat_log (sesi_id, tipe_pelanggaran) VALUES (?, ?)");
+ 
+            $stmt = db()->prepare("INSERT INTO exam_cheat_log (sesi_id, jenis) VALUES (?, ?)");
             $stmt->execute([$session_id, $cheat_type]);
-
+ 
             // Check total violations
             $stmtCount = db()->prepare("SELECT COUNT(*) FROM exam_cheat_log WHERE sesi_id = ?");
             $stmtCount->execute([$session_id]);
             $totalViolations = $stmtCount->fetchColumn();
-
+ 
             // Stop exam if >= 3 violations
             if ($totalViolations >= 3) {
                 db()->prepare("UPDATE exam_sesi SET status = 'dihentikan', waktu_selesai = NOW() WHERE id = ? AND student_id = ?")->execute([$session_id, $_SESSION['exam_student']['id']]);
@@ -307,6 +321,56 @@ try {
             } else {
                 json_response(200, true, 'Pelanggaran dicatat', ['action' => 'warn', 'violations' => $totalViolations]);
             }
+            break;
+
+        case 'upload_voice':
+            if (!isset($_SESSION['exam_student'])) throw new Exception('Silakan login kembali', 401);
+            if ($method !== 'POST') throw new Exception('Method not allowed', 405);
+
+            $session_id = (int)($_POST['session_id'] ?? 0);
+            $jawaban_id = (int)($_POST['jawaban_id'] ?? 0);
+
+            if (!$session_id || !$jawaban_id) throw new Exception('Sesi atau Jawaban tidak valid', 400);
+
+            // Verify session
+            $stmtSesi = db()->prepare("SELECT status FROM exam_sesi WHERE id = ? AND student_id = ?");
+            $stmtSesi->execute([$session_id, $_SESSION['exam_student']['id']]);
+            $status = $stmtSesi->fetchColumn();
+
+            if ($status !== 'mengerjakan') throw new Exception('Ujian tidak aktif', 403);
+
+            if (!isset($_FILES['voice']) || $_FILES['voice']['error'] !== UPLOAD_ERR_OK) {
+                throw new Exception('File voice tidak terkirim atau gagal diupload.', 400);
+            }
+
+            $file = $_FILES['voice'];
+            $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION)) ?: 'webm';
+            if (!in_array($ext, ['webm', 'mp3', 'wav', 'ogg', 'm4a'])) {
+                $ext = 'webm';
+            }
+
+            $uploadDir = __DIR__ . '/../uploads/voice/';
+            if (!is_dir($uploadDir)) {
+                mkdir($uploadDir, 0755, true);
+            }
+
+            $filename = 'voice_' . $session_id . '_' . $jawaban_id . '_' . time() . '.' . $ext;
+            $filepath = $uploadDir . $filename;
+
+            if (!move_uploaded_file($file['tmp_name'], $filepath)) {
+                throw new Exception('Gagal menyimpan file audio di server.', 500);
+            }
+
+            $relativePath = 'uploads/voice/' . $filename;
+
+            // Update database column `jawaban_voice` in `exam_jawaban`
+            $stmt = db()->prepare("UPDATE exam_jawaban SET jawaban_voice = ? WHERE id = ? AND sesi_id = ?");
+            $stmt->execute([$relativePath, $jawaban_id, $session_id]);
+
+            json_response(200, true, 'Voice answer uploaded successfully', [
+                'path' => $relativePath,
+                'url' => BASE_URL . 'modules/e-examination/' . $relativePath
+            ]);
             break;
 
         default:

@@ -17,8 +17,14 @@ try {
             $ujian_id = (int)($_GET['ujian_id'] ?? 0);
             if (!$ujian_id) throw new Exception('Ujian ID tidak valid', 400);
 
+            // Fetch exam details first
+            $stmtU = db()->prepare("SELECT jenis, bank_soal_id FROM exam_ujian WHERE id = ?");
+            $stmtU->execute([$ujian_id]);
+            $ujian = $stmtU->fetch();
+            if (!$ujian) throw new Exception('Ujian tidak ditemukan', 404);
+            $isPsikologi = ($ujian['jenis'] === 'psikologi');
+
             // Fetch session status and scores for all students in the assigned class
-            // Including those who haven't started
             $stmt = db()->prepare("
                 SELECT s.id as student_id, s.nis, s.nama as nama_siswa, s.kelas,
                        es.id as sesi_id, es.status, es.waktu_mulai, es.waktu_selesai, es.skor
@@ -30,6 +36,28 @@ try {
             ");
             $stmt->execute([$ujian_id]);
             $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Resolve psychology profiles if relevant
+            if ($isPsikologi) {
+                $stmtH = db()->prepare("SELECT * FROM exam_psikologi_hasil WHERE bank_soal_id = ?");
+                $stmtH->execute([$ujian['bank_soal_id']]);
+                $profiles = $stmtH->fetchAll();
+                
+                foreach ($results as &$r) {
+                    $r['psikologi_hasil'] = null;
+                    $r['psikologi_deskripsi'] = null;
+                    if ($r['skor'] !== null) {
+                        $score = (float)$r['skor'];
+                        foreach ($profiles as $p) {
+                            if ($score >= (float)$p['rentang_min'] && $score <= (float)$p['rentang_max']) {
+                                $r['psikologi_hasil'] = $p['kode_hasil'];
+                                $r['psikologi_deskripsi'] = $p['deskripsi'];
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
 
             json_response(200, true, 'Data hasil ujian', $results);
             break;
@@ -56,11 +84,13 @@ try {
 
             $ujian_id = (int)($_GET['ujian_id'] ?? 0);
             
-            $stmtU = db()->prepare("SELECT judul, kelas_peserta FROM exam_ujian WHERE id = ?");
+            $stmtU = db()->prepare("SELECT judul, kelas_peserta, jenis, bank_soal_id FROM exam_ujian WHERE id = ?");
             $stmtU->execute([$ujian_id]);
             $ujian = $stmtU->fetch();
 
             if (!$ujian) die('Ujian tidak ditemukan');
+
+            $isPsikologi = ($ujian['jenis'] === 'psikologi');
 
             $stmt = db()->prepare("
                 SELECT s.nis, s.nama as nama_siswa, s.kelas,
@@ -74,6 +104,14 @@ try {
             $stmt->execute([$ujian_id]);
             $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
+            // Fetch psychology range profiles
+            $profiles = [];
+            if ($isPsikologi) {
+                $stmtH = db()->prepare("SELECT * FROM exam_psikologi_hasil WHERE bank_soal_id = ?");
+                $stmtH->execute([$ujian['bank_soal_id']]);
+                $profiles = $stmtH->fetchAll();
+            }
+
             // Build CSV
             $filename = "Hasil_Ujian_" . preg_replace('/[^A-Za-z0-9\-]/', '_', $ujian['judul']) . ".csv";
             
@@ -85,8 +123,14 @@ try {
             // Header
             fputcsv($output, ['Judul Ujian', $ujian['judul']]);
             fputcsv($output, ['Kelas Peserta', $ujian['kelas_peserta']]);
+            fputcsv($output, ['Jenis Ujian', $isPsikologi ? 'Tes Psikologi' : 'Tes Penilaian']);
             fputcsv($output, []); // blank line
-            fputcsv($output, ['No', 'NIS', 'Nama Siswa', 'Kelas', 'Status Pengerjaan', 'Waktu Mulai', 'Waktu Selesai', 'Skor (1-100)']);
+            
+            if ($isPsikologi) {
+                fputcsv($output, ['No', 'NIS', 'Nama Siswa', 'Kelas', 'Status Pengerjaan', 'Waktu Mulai', 'Waktu Selesai', 'Skor Raw', 'Hasil Psikologi', 'Deskripsi']);
+            } else {
+                fputcsv($output, ['No', 'NIS', 'Nama Siswa', 'Kelas', 'Status Pengerjaan', 'Waktu Mulai', 'Waktu Selesai', 'Skor (0-100)']);
+            }
             
             $no = 1;
             foreach ($results as $r) {
@@ -97,16 +141,43 @@ try {
 
                 $skor = $r['skor'] !== null ? round($r['skor'], 2) : '';
 
-                fputcsv($output, [
-                    $no++,
-                    $r['nis'],
-                    $r['nama_siswa'],
-                    $r['kelas'],
-                    $status,
-                    $r['waktu_mulai'],
-                    $r['waktu_selesai'],
-                    $skor
-                ]);
+                if ($isPsikologi) {
+                    $hasil = '';
+                    $deskripsi = '';
+                    if ($r['skor'] !== null) {
+                        $score = (float)$r['skor'];
+                        foreach ($profiles as $p) {
+                            if ($score >= (float)$p['rentang_min'] && $score <= (float)$p['rentang_max']) {
+                                $hasil = $p['kode_hasil'];
+                                $deskripsi = $p['deskripsi'];
+                                break;
+                            }
+                        }
+                    }
+                    fputcsv($output, [
+                        $no++,
+                        $r['nis'],
+                        $r['nama_siswa'],
+                        $r['kelas'],
+                        $status,
+                        $r['waktu_mulai'],
+                        $r['waktu_selesai'],
+                        $skor,
+                        $hasil,
+                        $deskripsi
+                    ]);
+                } else {
+                    fputcsv($output, [
+                        $no++,
+                        $r['nis'],
+                        $r['nama_siswa'],
+                        $r['kelas'],
+                        $status,
+                        $r['waktu_mulai'],
+                        $r['waktu_selesai'],
+                        $skor
+                    ]);
+                }
             }
             
             fclose($output);

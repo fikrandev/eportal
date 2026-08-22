@@ -60,6 +60,11 @@ $school_icon = get_setting('icon_sekolah', '');
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css?v=<?php echo time(); ?>">
     <!-- Examination Custom CSS -->
     <link rel="stylesheet" href="assets/css/examination.css?v=<?php echo time(); ?>">
+    
+    <!-- KaTeX for Math Equations -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
 
     <script>
         window.EXAM_CONFIG = {

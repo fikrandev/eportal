@@ -28,7 +28,7 @@ $activeExams = $stmt->fetchAll();
 
 // Get past/finished exams
 $stmtPast = db()->prepare("
-    SELECT s.*, u.judul as nama_ujian, b.judul as nama_bank_soal
+    SELECT s.*, u.judul as nama_ujian, b.judul as nama_bank_soal, b.jenis, b.id as bank_soal_id
     FROM exam_sesi s
     JOIN exam_ujian u ON s.ujian_id = u.id
     JOIN exam_bank_soal b ON u.bank_soal_id = b.id
@@ -52,6 +52,25 @@ $pastExams = $stmtPast->fetchAll();
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css">
     <link rel="stylesheet" href="../assets/css/examination.css">
+
+    <!-- KaTeX for Math Equations -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <script>
+        document.addEventListener("DOMContentLoaded", function() {
+            if (window.renderMathInElement) {
+                renderMathInElement(document.body, {
+                    delimiters: [
+                        {left: "$$", right: "$$", display: true},
+                        {left: "$", right: "$", display: false},
+                        {left: "\\(", right: "\\)", display: false},
+                        {left: "\\[", right: "\\]", display: true}
+                    ]
+                });
+            }
+        });
+    </script>
 
     <style>
         body { background: #f8fafc; font-family: 'Inter', sans-serif; margin: 0; padding: 0; }
@@ -166,7 +185,19 @@ $pastExams = $stmtPast->fetchAll();
                             </td>
                             <td>
                                 <?php if ($p['skor'] !== null): ?>
-                                    <span class="score-badge"><?php echo round($p['skor'], 2); ?></span>
+                                    <?php if ($p['jenis'] === 'psikologi'): 
+                                        $stmtH = db()->prepare("
+                                            SELECT kode_hasil FROM exam_psikologi_hasil 
+                                            WHERE bank_soal_id = ? AND ? >= rentang_min AND ? <= rentang_max 
+                                            LIMIT 1
+                                        ");
+                                        $stmtH->execute([$p['bank_soal_id'], $p['skor'], $p['skor']]);
+                                        $outcome = $stmtH->fetchColumn() ?: 'Tidak terdefinisi';
+                                    ?>
+                                        <span class="score-badge" style="background:#f3e8ff;color:#6b21a8;"><?php echo htmlspecialchars($outcome); ?></span>
+                                    <?php else: ?>
+                                        <span class="score-badge"><?php echo round($p['skor'], 2); ?></span>
+                                    <?php endif; ?>
                                 <?php else: ?>
                                     <span style="color:#94a3b8;">Tidak ditampilkan / Menunggu AI</span>
                                 <?php endif; ?>
@@ -204,31 +235,47 @@ $pastExams = $stmtPast->fetchAll();
 
         function showTokenModal(ujianId) {
             EModal.form({
-                title: 'Masukkan Token Ujian',
+                title: 'Masukkan Token & Kartu Ujian',
                 form: `
                     <p style="font-size:14px;color:var(--text-secondary);margin-bottom:16px;">
-                        Silakan minta token ujian kepada pengawas atau guru pengampu.
+                        Silakan masukkan token ujian beserta kredensial dari E-xam Card Anda.
                     </p>
                     <div class="form-group">
-                        <label class="form-label">TOKEN</label>
-                        <input type="text" id="fToken" class="form-input" style="font-family:monospace;font-size:24px;text-align:center;letter-spacing:4px;text-transform:uppercase;" maxlength="6" autofocus>
+                        <label class="form-label">TOKEN UJIAN</label>
+                        <input type="text" id="fToken" class="form-input" style="font-family:monospace;font-size:20px;text-align:center;letter-spacing:4px;text-transform:uppercase;" maxlength="6" autofocus placeholder="TOKEN">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">USERNAME CARD</label>
+                        <input type="text" id="fUsernameCard" class="form-input" placeholder="Username E-xam Card" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">PASSWORD CARD</label>
+                        <input type="password" id="fPasswordCard" class="form-input" placeholder="Password E-xam Card" autocomplete="off">
                     </div>
                 `,
                 confirmText: 'Verifikasi & Mulai',
                 onConfirm: () => {
                     const token = $('#fToken').val().trim().toUpperCase();
-                    if (!token) { EModal.toast({type:'error', title:'Token wajib diisi'}); return false; }
+                    const username_card = $('#fUsernameCard').val().trim();
+                    const password_card = $('#fPasswordCard').val().trim();
                     
-                    const loader = EModal.loading('Memverifikasi token...');
+                    if (!token) { EModal.toast({type:'error', title:'Token wajib diisi'}); return false; }
+                    if (!username_card || !password_card) { EModal.toast({type:'error', title:'Kredensial E-xam Card wajib diisi'}); return false; }
+                    
+                    const loader = EModal.loading('Memverifikasi kredensial...');
                     $.ajax({
                         url: '../api/pengerjaan.php?action=start',
                         method: 'POST',
-                        data: JSON.stringify({ ujian_id: ujianId, token: token }),
+                        data: JSON.stringify({ 
+                            ujian_id: ujianId, 
+                            token: token,
+                            username_card: username_card,
+                            password_card: password_card
+                        }),
                         contentType: 'application/json',
                         success: function(r) {
                             EModal.close(loader);
                             if (r.success) {
-                                // Fullscreen check is done in exam.php, redirect now
                                 window.location.href = 'exam.php?session_id=' + r.data.session_id;
                             } else {
                                 EModal.alert('Gagal', r.message);

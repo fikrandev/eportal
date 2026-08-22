@@ -414,6 +414,78 @@ try {
             break;
 
         // ==========================================
+        // PSIKOLOGI HASIL (Psychology Profile Results Ranges)
+        // ==========================================
+        case 'list_psikologi_hasil':
+            exam_require_admin_or_guru();
+            $bank_id = (int)($_GET['bank_soal_id'] ?? 0);
+            if (!$bank_id) throw new Exception('bank_soal_id wajib diisi', 400);
+
+            $stmt = db()->prepare("SELECT * FROM exam_psikologi_hasil WHERE bank_soal_id = ? ORDER BY rentang_min ASC");
+            $stmt->execute([$bank_id]);
+            json_response(200, true, '', $stmt->fetchAll());
+            break;
+
+        case 'create_psikologi_hasil':
+            exam_require_admin_or_guru();
+            if ($method !== 'POST') throw new Exception('Method not allowed', 405);
+            $data = get_input();
+
+            $bank_id = (int)($data['bank_soal_id'] ?? 0);
+            $kode_hasil = trim($data['kode_hasil'] ?? '');
+            $deskripsi = trim($data['deskripsi'] ?? '');
+            $rentang_min = (float)($data['rentang_min'] ?? 0);
+            $rentang_max = (float)($data['rentang_max'] ?? 100);
+
+            if (!$bank_id || empty($kode_hasil) || empty($deskripsi)) {
+                throw new Exception('Data tidak lengkap', 400);
+            }
+
+            $stmt = db()->prepare("
+                INSERT INTO exam_psikologi_hasil (bank_soal_id, kode_hasil, deskripsi, rentang_min, rentang_max)
+                VALUES (?, ?, ?, ?, ?)
+            ");
+            $stmt->execute([$bank_id, $kode_hasil, $deskripsi, $rentang_min, $rentang_max]);
+            json_response(201, true, 'Profil hasil psikologi berhasil ditambahkan', ['id' => db()->lastInsertId()]);
+            break;
+
+        case 'update_psikologi_hasil':
+            exam_require_admin_or_guru();
+            if ($method !== 'POST') throw new Exception('Method not allowed', 405);
+            $data = get_input();
+
+            $id = (int)($data['id'] ?? 0);
+            $kode_hasil = trim($data['kode_hasil'] ?? '');
+            $deskripsi = trim($data['deskripsi'] ?? '');
+            $rentang_min = (float)($data['rentang_min'] ?? 0);
+            $rentang_max = (float)($data['rentang_max'] ?? 100);
+
+            if (!$id || empty($kode_hasil) || empty($deskripsi)) {
+                throw new Exception('Data tidak lengkap', 400);
+            }
+
+            $stmt = db()->prepare("
+                UPDATE exam_psikologi_hasil 
+                SET kode_hasil = ?, deskripsi = ?, rentang_min = ?, rentang_max = ?
+                WHERE id = ?
+            ");
+            $stmt->execute([$kode_hasil, $deskripsi, $rentang_min, $rentang_max, $id]);
+            json_response(200, true, 'Profil hasil psikologi berhasil diperbarui');
+            break;
+
+        case 'delete_psikologi_hasil':
+            exam_require_admin_or_guru();
+            if ($method !== 'POST') throw new Exception('Method not allowed', 405);
+            $data = get_input();
+            $id = (int)($data['id'] ?? 0);
+            if (!$id) throw new Exception('ID tidak valid', 400);
+
+            $stmt = db()->prepare("DELETE FROM exam_psikologi_hasil WHERE id = ?");
+            $stmt->execute([$id]);
+            json_response(200, true, 'Profil hasil psikologi berhasil dihapus');
+            break;
+
+        // ==========================================
         // CLASSES (get available classes)
         // ==========================================
         case 'list_classes':
