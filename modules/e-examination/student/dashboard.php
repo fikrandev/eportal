@@ -2,7 +2,7 @@
 /**
  * E-Examination — Student Dashboard
  */
-require_once __DIR__ . '/../../api/config.php';
+require_once __DIR__ . '/../../../api/config.php';
 
 session_start();
 if (!isset($_SESSION['exam_student'])) {

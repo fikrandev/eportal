@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS `exam_sesi` (
   `waktu_mulai` DATETIME NOT NULL,
   `waktu_selesai` DATETIME DEFAULT NULL,
   `sisa_detik` INT DEFAULT NULL COMMENT 'Untuk resume jika keluar',
-  `status` ENUM('berlangsung','selesai','didiskualifikasi') NOT NULL DEFAULT 'berlangsung',
+  `status` ENUM('mengerjakan','berlangsung','selesai','dihentikan','didiskualifikasi') NOT NULL DEFAULT 'mengerjakan',
   `ip_address` VARCHAR(45) DEFAULT NULL,
   `user_agent` TEXT DEFAULT NULL,
   `pelanggaran` INT NOT NULL DEFAULT 0 COMMENT 'Counter anti-cheat',
@@ -127,7 +127,7 @@ CREATE TABLE IF NOT EXISTS `exam_sesi` (
   UNIQUE KEY `uk_sesi` (`ujian_id`, `student_id`),
   KEY `idx_ujian` (`ujian_id`),
   KEY `idx_student` (`student_id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- Jawaban siswa per soal
 CREATE TABLE IF NOT EXISTS `exam_jawaban` (

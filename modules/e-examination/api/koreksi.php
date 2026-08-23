@@ -16,7 +16,7 @@ try {
         // KOREKSI SATU SESI UJIAN
         // ==========================================
         case 'koreksi_sesi':
-            exam_require_admin();
+            exam_require_admin_or_guru();
             if ($method !== 'POST') throw new Exception('Method not allowed', 405);
             
             $data = json_decode(file_get_contents('php://input'), true);
@@ -31,7 +31,7 @@ try {
         // KOREKSI MASAL SEMUA SESI SELESAI PADA UJIAN
         // ==========================================
         case 'koreksi_masal':
-            exam_require_admin();
+            exam_require_admin_or_guru();
             if ($method !== 'POST') throw new Exception('Method not allowed', 405);
             
             $data = json_decode(file_get_contents('php://input'), true);
@@ -230,7 +230,7 @@ function processGrading($session_id) {
     }
 
     // Simpan ke sesi
-    db()->prepare("UPDATE exam_sesi SET skor = ? WHERE id = ?")->execute([$skorAkhir, $session_id]);
+    db()->prepare("UPDATE exam_sesi SET nilai_akhir = ? WHERE id = ?")->execute([$skorAkhir, $session_id]);
     
     db()->commit();
 

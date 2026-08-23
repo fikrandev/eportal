@@ -2,7 +2,7 @@
 /**
  * E-Examination — Student Exam Interface
  */
-require_once __DIR__ . '/../../api/config.php';
+require_once __DIR__ . '/../../../api/config.php';
 
 session_start();
 if (!isset($_SESSION['exam_student'])) {
@@ -297,18 +297,48 @@ if (!$session_id) {
             border-radius: 8px;
             font-size: 15px;
         }
+
+        /* ===== ANTI-CHEAT: Block printing ===== */
+        @media print {
+            html, body { display: none !important; }
+        }
+
+        /* ===== ANTI-CHEAT: Disable text selection on question content ===== */
+        .question-text, .option-label, .question-header {
+            -webkit-user-select: none;
+            -moz-user-select: none;
+            -ms-user-select: none;
+            user-select: none;
+        }
+        /* Allow selection only in answer input areas */
+        .input-essay, .input-short { user-select: text; }
     </style>
 </head>
 <body>
 
     <!-- Fullscreen Enforcement Overlay -->
     <div id="fullscreenOverlay">
+        <div style="animation: fsLockPulse 2s infinite alternate;">
+            <svg viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="#60a5fa" stroke-width="1.5" style="margin-bottom:16px;">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+        </div>
         <h2>Ujian Membutuhkan Layar Penuh</h2>
-        <p style="color:#94a3b8; margin-bottom:32px; max-width:500px;">
-            Untuk alasan keamanan dan integritas ujian, Anda diwajibkan menggunakan mode layar penuh (Fullscreen).
-            Menutup mode layar penuh dapat dianggap sebagai pelanggaran.
+        <p style="color:#94a3b8; margin-bottom:12px; max-width:500px;">
+            Untuk alasan keamanan dan integritas ujian, Anda <strong style="color:#fca5a5;">diwajibkan</strong> menggunakan mode layar penuh (Fullscreen).
         </p>
-        <button onclick="ExamApp.enterFullscreen()">Masuk Mode Layar Penuh</button>
+        <p style="color:#64748b; margin-bottom:32px; font-size:13px; max-width:450px;">
+            ⚠ Keluar dari mode layar penuh, berpindah tab, atau membuka aplikasi lain akan dicatat sebagai <strong style="color:#fca5a5;">pelanggaran</strong>. Pelanggaran 3× = ujian dihentikan otomatis.
+        </p>
+        <button onclick="ExamApp.enterFullscreen()">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:8px;">
+                <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
+            </svg>
+            Masuk Mode Layar Penuh
+        </button>
+        <style>
+            @keyframes fsLockPulse { from { transform:scale(1); opacity:0.8; } to { transform:scale(1.08); opacity:1; } }
+        </style>
     </div>
 
     <!-- Header -->

@@ -2,7 +2,7 @@
 /**
  * E-Examination — Student Login
  */
-require_once __DIR__ . '/../../api/config.php';
+require_once __DIR__ . '/../../../api/config.php';
 
 $school_name = get_setting('nama_sekolah', 'E-Portal');
 $school_icon = get_setting('icon_sekolah', '');

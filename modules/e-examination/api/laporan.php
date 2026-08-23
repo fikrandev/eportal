@@ -13,12 +13,12 @@ try {
         // DATA HASIL UJIAN
         // ==========================================
         case 'hasil_ujian':
-            exam_require_admin();
+            exam_require_admin_or_guru();
             $ujian_id = (int)($_GET['ujian_id'] ?? 0);
             if (!$ujian_id) throw new Exception('Ujian ID tidak valid', 400);
 
             // Fetch exam details first
-            $stmtU = db()->prepare("SELECT jenis, bank_soal_id FROM exam_ujian WHERE id = ?");
+            $stmtU = db()->prepare("SELECT judul, jenis, bank_soal_id FROM exam_ujian WHERE id = ?");
             $stmtU->execute([$ujian_id]);
             $ujian = $stmtU->fetch();
             if (!$ujian) throw new Exception('Ujian tidak ditemukan', 404);
@@ -27,7 +27,7 @@ try {
             // Fetch session status and scores for all students in the assigned class
             $stmt = db()->prepare("
                 SELECT s.id as student_id, s.nis, s.nama as nama_siswa, s.kelas,
-                       es.id as sesi_id, es.status, es.waktu_mulai, es.waktu_selesai, es.skor
+                       es.id as sesi_id, es.status, es.waktu_mulai, es.waktu_selesai, es.nilai_akhir as skor, es.pelanggaran
                 FROM exam_ujian_kelas uk
                 JOIN students s ON s.kelas = uk.kelas AND s.status = 1
                 LEFT JOIN exam_sesi es ON es.student_id = s.id AND es.ujian_id = uk.ujian_id
@@ -59,7 +59,10 @@ try {
                 }
             }
 
-            json_response(200, true, 'Data hasil ujian', $results);
+            json_response(200, true, 'Data hasil ujian', [
+                'ujian' => $ujian,
+                'results' => $results
+            ]);
             break;
 
         // ==========================================
@@ -84,7 +87,12 @@ try {
 
             $ujian_id = (int)($_GET['ujian_id'] ?? 0);
             
-            $stmtU = db()->prepare("SELECT judul, kelas_peserta, jenis, bank_soal_id FROM exam_ujian WHERE id = ?");
+            $stmtU = db()->prepare("
+                SELECT u.judul, u.jenis, u.bank_soal_id,
+                       (SELECT GROUP_CONCAT(kelas SEPARATOR ', ') FROM exam_ujian_kelas WHERE ujian_id = u.id) as kelas_peserta
+                FROM exam_ujian u 
+                WHERE u.id = ?
+            ");
             $stmtU->execute([$ujian_id]);
             $ujian = $stmtU->fetch();
 
@@ -94,7 +102,7 @@ try {
 
             $stmt = db()->prepare("
                 SELECT s.nis, s.nama as nama_siswa, s.kelas,
-                       es.status, es.waktu_mulai, es.waktu_selesai, es.skor
+                       es.status, es.waktu_mulai, es.waktu_selesai, es.nilai_akhir as skor, es.pelanggaran
                 FROM exam_ujian_kelas uk
                 JOIN students s ON s.kelas = uk.kelas AND s.status = 1
                 LEFT JOIN exam_sesi es ON es.student_id = s.id AND es.ujian_id = uk.ujian_id
@@ -135,8 +143,8 @@ try {
             $no = 1;
             foreach ($results as $r) {
                 $status = 'Belum Mulai';
-                if ($r['status'] === 'mengerjakan') $status = 'Sedang Ujian';
-                elseif ($r['status'] === 'dihentikan') $status = 'Dihentikan (Curang)';
+                if (in_array($r['status'], ['mengerjakan', 'berlangsung'])) $status = 'Sedang Ujian';
+                elseif (in_array($r['status'], ['dihentikan', 'didiskualifikasi'])) $status = 'Dihentikan (Curang)';
                 elseif ($r['status'] === 'selesai') $status = 'Selesai';
 
                 $skor = $r['skor'] !== null ? round($r['skor'], 2) : '';

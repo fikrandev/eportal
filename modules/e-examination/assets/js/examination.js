@@ -1230,43 +1230,78 @@ const Exam = {
     },
 
     detailLaporan(ujianId, judul) {
-        this.navigate('laporan', { id: ujianId });
+        this.navigate('laporan', { id: ujianId, judul: judul });
         const $c = $('#mainContent');
         $c.html('<div style="text-align:center;padding:60px;"><div class="loading-spinner"></div></div>');
         
         this.api('laporan.php?action=hasil_ujian&ujian_id=' + ujianId).then(r => {
-            if(!r.success) { $c.html('<p>Error memuat hasil</p>'); return; }
-            const res = r.data || [];
+            if(!r.success) { $c.html('<p>Error memuat hasil: ' + this.esc(r.message || '') + '</p>'); return; }
+            
+            const rawData = r.data || {};
+            const ujianInfo = rawData.ujian || {};
+            const res = Array.isArray(rawData) ? rawData : (rawData.results || []);
+            const isPsikologi = (ujianInfo.jenis === 'psikologi');
+            const displayJudul = judul || ujianInfo.judul || 'Hasil Ujian';
             
             let rows = res.map((s, i) => {
                 let statusSesi = '';
-                if(s.status === 'mengerjakan') statusSesi = '<span class="ex-badge ex-badge-gray">Sedang Ujian</span>';
-                else if(s.status === 'dihentikan') statusSesi = '<span class="ex-badge ex-badge-red">Dihentikan (Curang)</span>';
-                else statusSesi = '<span class="ex-badge ex-badge-green">Selesai</span>';
+                if (s.status === 'mengerjakan' || s.status === 'berlangsung') {
+                    statusSesi = '<span class="ex-badge ex-badge-gray">Sedang Ujian</span>';
+                } else if (s.status === 'dihentikan' || s.status === 'didiskualifikasi') {
+                    statusSesi = '<span class="ex-badge ex-badge-red">Dihentikan (Curang)</span>';
+                } else if (s.status === 'selesai') {
+                    statusSesi = '<span class="ex-badge ex-badge-green">Selesai</span>';
+                } else {
+                    statusSesi = '<span class="ex-badge" style="background:#f1f5f9;color:#64748b;">Belum Mulai</span>';
+                }
 
-                let skorHtml = s.skor !== null ? `<strong>${parseFloat(s.skor).toFixed(2)}</strong>` : '<span style="color:#94a3b8">Belum Dinilai</span>';
+                let pelanggaranBadge = (s.pelanggaran > 0) 
+                    ? `<span title="Pelanggaran Anti-Cheat" style="display:inline-flex;align-items:center;gap:2px;padding:2px 6px;border-radius:4px;background:#fee2e2;color:#991b1b;font-size:11px;font-weight:700;margin-left:6px;">⚠ ${s.pelanggaran}×</span>` 
+                    : '';
+
+                let nilaiCol = '';
+                if (isPsikologi) {
+                    if (s.psikologi_hasil) {
+                        nilaiCol = `<span class="ex-badge" style="background:#f3e8ff;color:#6b21a8;font-weight:700;">${this.esc(s.psikologi_hasil)}</span><br><span style="font-size:11px;color:#64748b;">Skor: ${s.skor !== null ? parseFloat(s.skor).toFixed(2) : '-'}</span>`;
+                    } else if (s.skor !== null) {
+                        nilaiCol = `<strong>${parseFloat(s.skor).toFixed(2)}</strong>`;
+                    } else {
+                        nilaiCol = '<span style="color:#94a3b8">Belum Selesai</span>';
+                    }
+                } else {
+                    nilaiCol = s.skor !== null ? `<strong>${parseFloat(s.skor).toFixed(2)}</strong>` : '<span style="color:#94a3b8">Belum Dinilai</span>';
+                }
 
                 return `
                 <tr>
                     <td>${i+1}</td>
-                    <td><strong>${this.esc(s.nama_siswa)}</strong><br><span style="font-size:12px;color:#64748b;">${this.esc(s.nis)}</span></td>
+                    <td>
+                        <strong>${this.esc(s.nama_siswa)}</strong> ${pelanggaranBadge}<br>
+                        <span style="font-size:12px;color:#64748b;">NIS: ${this.esc(s.nis)}</span>
+                    </td>
                     <td>${this.esc(s.kelas)}</td>
                     <td>${statusSesi}</td>
                     <td>${s.waktu_mulai ? s.waktu_mulai.substring(0,16) : '-'}</td>
-                    <td>${skorHtml}</td>
+                    <td>${s.waktu_selesai ? s.waktu_selesai.substring(0,16) : '-'}</td>
+                    <td>${nilaiCol}</td>
                 </tr>`;
             }).join('');
 
-            if (!rows) rows = '<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text-muted);">Belum ada siswa yang mengerjakan ujian ini</td></tr>';
+            if (!rows) rows = '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-muted);">Belum ada data siswa untuk kelas ujian ini</td></tr>';
+
+            const scoreColHeader = isPsikologi ? 'Hasil Psikologi' : 'Nilai (0-100)';
 
             $c.html(`
                 <button class="btn btn-primary btn-sm" style="margin-bottom:16px;" onclick="Exam.navigate('laporan')">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
-                    Kembali
+                    Kembali ke Daftar Laporan
                 </button>
                 <div class="ex-card ex-slide-up">
                     <div class="ex-card-header" style="flex-wrap:wrap; gap:16px;">
-                        <h3>Hasil: ${this.esc(judul)}</h3>
+                        <div>
+                            <h3 style="margin:0 0 4px 0;">Hasil: ${this.esc(displayJudul)}</h3>
+                            <span style="font-size:13px;color:var(--text-secondary);">${isPsikologi ? 'Tipe: Tes Psikologi' : 'Tipe: Tes Penilaian'}</span>
+                        </div>
                         <div class="ex-toolbar">
                             <button class="btn btn-primary btn-sm" onclick="Exam.koreksiMasal(${ujianId})" style="background:#eab308;color:#854d0e;border:none;">
                                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
@@ -1274,14 +1309,14 @@ const Exam = {
                             </button>
                             <a href="${this.state.apiUrl}laporan.php?action=download_excel&ujian_id=${ujianId}&token=${this.state.token}" target="_blank" class="btn btn-primary btn-sm" style="background:#10b981;border:none;">
                                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                Export Excel
+                                Export Excel (CSV)
                             </a>
                         </div>
                     </div>
                     <div class="ex-card-body" style="padding:0;">
                         <div class="ex-table-wrapper">
                             <table class="ex-table">
-                                <thead><tr><th style="width:40px">#</th><th>Nama & NIS</th><th>Kelas</th><th>Status</th><th>Mulai</th><th>Skor (0-100)</th></tr></thead>
+                                <thead><tr><th style="width:40px">#</th><th>Nama & NIS</th><th>Kelas</th><th>Status</th><th>Mulai</th><th>Selesai</th><th>${scoreColHeader}</th></tr></thead>
                                 <tbody>${rows}</tbody>
                             </table>
                         </div>

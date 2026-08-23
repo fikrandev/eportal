@@ -34,7 +34,44 @@ const ExamApp = {
     },
 
     setupAntiCheat() {
-        // Enforce Fullscreen
+        // ===== 1. MULTI-TAB PREVENTION via localStorage =====
+        const lockKey = `exam_lock_${this.sessionId}`;
+        const lockValue = Date.now().toString();
+        
+        // Check if another tab already has this exam open
+        const existingLock = localStorage.getItem(lockKey);
+        if (existingLock && (Date.now() - parseInt(existingLock)) < 5000) {
+            document.body.innerHTML = `
+                <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;background:#0f172a;color:white;text-align:center;font-family:Inter,sans-serif;">
+                    <svg viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="#ef4444" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                    <h2 style="margin-top:24px;color:#ef4444;">Ujian Sudah Dibuka di Tab Lain</h2>
+                    <p style="color:#94a3b8;max-width:400px;">Anda tidak dapat membuka ujian di lebih dari satu tab atau jendela. Tutup halaman ini dan kembali ke tab ujian sebelumnya.</p>
+                    <a href="dashboard.php" style="margin-top:24px;padding:12px 24px;background:#2563EB;color:white;border-radius:8px;text-decoration:none;font-weight:600;">Kembali ke Dashboard</a>
+                </div>`;
+            return false;
+        }
+        
+        // Set lock and refresh it periodically
+        localStorage.setItem(lockKey, lockValue);
+        this._lockInterval = setInterval(() => {
+            localStorage.setItem(lockKey, Date.now().toString());
+        }, 2000);
+        
+        // Listen for lock changes from other tabs
+        window.addEventListener('storage', (e) => {
+            if (e.key === lockKey && e.newValue !== null && e.newValue !== lockValue) {
+                // Another tab took the lock — this shouldn't happen normally
+                this.reportCheating('multi_tab');
+            }
+        });
+
+        // Release lock on page unload
+        window.addEventListener('beforeunload', () => {
+            clearInterval(this._lockInterval);
+            localStorage.removeItem(lockKey);
+        });
+
+        // ===== 2. FULLSCREEN ENFORCEMENT =====
         document.addEventListener('fullscreenchange', () => {
             if (!document.fullscreenElement) {
                 $('#fullscreenOverlay').css('display', 'flex');
@@ -44,12 +81,11 @@ const ExamApp = {
             }
         });
 
-        // Check if already fullscreen
         if (!document.fullscreenElement) {
             $('#fullscreenOverlay').css('display', 'flex');
         }
 
-        // Visibility Change (Switch tab)
+        // ===== 3. VISIBILITY CHANGE (Switch tab) =====
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
                 this.isTabActive = false;
@@ -59,31 +95,90 @@ const ExamApp = {
             }
         });
 
-        // Window blur detection (unfocus)
+        // ===== 4. WINDOW BLUR (Unfocus / Alt-Tab) =====
         window.addEventListener('blur', () => {
             if (this.isTabActive) {
                 this.isTabActive = false;
-                this.reportCheating('tab_switch');
+                this.reportCheating('window_blur');
             }
         });
-
         window.addEventListener('focus', () => {
             this.isTabActive = true;
         });
 
-        // Prevent Context Menu
+        // ===== 5. CONTEXT MENU BLOCK =====
         document.addEventListener('contextmenu', e => e.preventDefault());
-        
-        // Prevent Keyboard Shortcuts (Copy, Paste, F12, etc)
+
+        // ===== 6. COPY / PASTE / CUT EVENT BLOCK =====
+        ['copy', 'cut', 'paste'].forEach(evt => {
+            document.addEventListener(evt, e => {
+                // Allow paste only inside answer input fields
+                if (evt === 'paste' && (e.target.tagName === 'TEXTAREA' || e.target.tagName === 'INPUT')) {
+                    return; // let students paste into answer fields
+                }
+                e.preventDefault();
+            });
+        });
+
+        // ===== 7. KEYBOARD SHORTCUT BLOCK =====
         document.addEventListener('keydown', e => {
-            if (e.key === 'F12' || 
-               (e.ctrlKey && e.shiftKey && e.key === 'I') || 
-               (e.ctrlKey && e.key === 'c') ||
-               (e.ctrlKey && e.key === 'v') ||
-               (e.ctrlKey && e.key === 'u') ||
-               (e.altKey && e.key === 'Tab')) {
+            const key = e.key.toLowerCase();
+
+            // Block: F12, Ctrl+Shift+I/J/C (DevTools), Ctrl+C/V/U/S/P, Alt+Tab, PrintScreen
+            if (key === 'f12' || key === 'printscreen' ||
+               (e.ctrlKey && e.shiftKey && ['i', 'j', 'c'].includes(key)) ||
+               (e.ctrlKey && ['c', 'v', 'u', 's', 'p'].includes(key)) ||
+               (e.altKey && key === 'tab')) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                if (key === 'printscreen') {
+                    // Blank clipboard to prevent screenshot capture
+                    navigator.clipboard.writeText('').catch(() => {});
+                    this.reportCheating('screenshot');
+                }
+                return false;
+            }
+
+            // Block: Windows Key, Meta Key
+            if (e.metaKey) {
                 e.preventDefault();
             }
+        });
+
+        // ===== 8. PRINT SCREEN CAPTURE BLOCK =====
+        // When PrintScreen is pressed, overwrite clipboard with blank
+        document.addEventListener('keyup', e => {
+            if (e.key === 'PrintScreen') {
+                navigator.clipboard.writeText('').catch(() => {});
+                this.reportCheating('screenshot');
+            }
+        });
+
+        // ===== 9. DEVTOOLS OPEN DETECTION =====
+        // Detect via window outer-inner size difference (resize trick)
+        this._devtoolsCheckInterval = setInterval(() => {
+            const widthDiff = window.outerWidth - window.innerWidth;
+            const heightDiff = window.outerHeight - window.innerHeight;
+            
+            // If difference exceeds threshold, DevTools is likely open (docked)
+            if (widthDiff > 200 || heightDiff > 200) {
+                if (!this._devtoolsWarned) {
+                    this._devtoolsWarned = true;
+                    this.reportCheating('devtools');
+                }
+            } else {
+                this._devtoolsWarned = false;
+            }
+        }, 2000);
+
+        // ===== 10. DRAG PREVENTION =====
+        document.addEventListener('dragstart', e => e.preventDefault());
+
+        // ===== 11. PRINT BLOCK =====
+        window.addEventListener('beforeprint', e => {
+            e.preventDefault();
+            this.reportCheating('print_attempt');
         });
     },
 
@@ -101,8 +196,11 @@ const ExamApp = {
     },
 
     reportCheating(type) {
-        if (this.isSubmitting) return; // Ignore if already submitting
+        if (this.isSubmitting) return;
         
+        // Show big red violation overlay immediately
+        this.showViolationOverlay(type);
+
         $.ajax({
             url: '../api/pengerjaan.php?action=report_cheat',
             method: 'POST',
@@ -112,15 +210,81 @@ const ExamApp = {
                 if (r.success) {
                     this.violations = r.data.violations;
                     if (r.data.action === 'stop') {
-                        EModal.alert('Pelanggaran Fatal', 'Ujian Anda dihentikan karena terdeteksi melakukan pelanggaran lebih dari 3 kali. Silakan hubungi pengawas.', () => {
-                            window.location.href = 'dashboard.php';
-                        });
+                        // Fatal — exam terminated
+                        $('#violationOverlay').remove();
+                        EModal.alert(
+                            'UJIAN DIHENTIKAN',
+                            `<div style="text-align:center;">
+                                <svg viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="#ef4444" stroke-width="2" style="margin:0 auto 16px;">
+                                    <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
+                                </svg>
+                                <p style="font-size:16px;color:#0f172a;font-weight:600;">Ujian Anda dihentikan karena melakukan <strong>${this.violations} pelanggaran</strong>.</p>
+                                <p style="color:#64748b;">Silakan hubungi pengawas ujian.</p>
+                            </div>`,
+                            () => { window.location.href = 'dashboard.php'; }
+                        );
                     } else {
-                        EModal.toast({type:'error', title:`Peringatan Pelanggaran (${this.violations}/3)`});
+                        // Update the overlay counter
+                        this.updateViolationOverlay();
                     }
                 }
             }
         });
+    },
+
+    showViolationOverlay(type) {
+        const typeLabels = {
+            'exit_fullscreen': 'Keluar dari mode layar penuh',
+            'tab_switch': 'Berpindah tab / aplikasi',
+            'window_blur': 'Meninggalkan jendela ujian',
+            'multi_tab': 'Membuka ujian di tab lain',
+            'screenshot': 'Mencoba mengambil screenshot',
+            'devtools': 'Membuka Developer Tools',
+            'print_attempt': 'Mencoba mencetak halaman',
+            'copy': 'Mencoba menyalin konten'
+        };
+        const label = typeLabels[type] || type;
+
+        // Remove existing overlay if any
+        $('#violationOverlay').remove();
+
+        const overlay = $(`
+            <div id="violationOverlay" style="
+                position:fixed; top:0; left:0; right:0; bottom:0;
+                background:rgba(127,29,29,0.97); color:white;
+                display:flex; flex-direction:column; align-items:center; justify-content:center;
+                z-index:99999; text-align:center; font-family:Inter,sans-serif;
+                animation: violationFadeIn 0.3s ease;
+            ">
+                <style>
+                    @keyframes violationFadeIn { from { opacity:0; transform:scale(1.05); } to { opacity:1; transform:scale(1); } }
+                    @keyframes violationPulse { 0%,100% { transform:scale(1); } 50% { transform:scale(1.1); } }
+                </style>
+                <div style="animation:violationPulse 1s infinite;">
+                    <svg viewBox="0 0 24 24" width="80" height="80" fill="none" stroke="#fca5a5" stroke-width="1.5">
+                        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                        <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                    </svg>
+                </div>
+                <h1 style="font-size:28px; margin:24px 0 8px; color:#fca5a5;">⚠ PELANGGARAN TERDETEKSI</h1>
+                <p style="font-size:18px; color:#fecaca; margin-bottom:8px; font-weight:600;">${label}</p>
+                <p id="violationCounter" style="
+                    font-size:15px; color:#fca5a5; margin-bottom:32px;
+                    background:rgba(0,0,0,0.3); padding:8px 20px; border-radius:8px;
+                ">Pelanggaran ke-${this.violations + 1} dari 3 (maks)</p>
+                <button onclick="$('#violationOverlay').fadeOut(300, function(){ $(this).remove(); }); ExamApp.enterFullscreen();" style="
+                    background:white; color:#991b1b; border:none; padding:14px 32px;
+                    border-radius:10px; font-weight:700; font-size:16px; cursor:pointer;
+                    box-shadow:0 4px 14px rgba(0,0,0,0.3);
+                ">Kembali ke Ujian</button>
+            </div>
+        `);
+
+        $('body').append(overlay);
+    },
+
+    updateViolationOverlay() {
+        $('#violationCounter').text(`Pelanggaran ke-${this.violations} dari 3 (maks)`);
     },
 
     fetchSoal() {
