@@ -63,8 +63,14 @@ const Exam = {
             : (options.data instanceof FormData ? false : 'application/json; charset=UTF-8');
         let processData = !(options.data instanceof FormData);
 
+        let url = this.state.apiUrl + endpoint;
+        if (this.state.token && !url.includes('token=')) {
+            const sep = url.includes('?') ? '&' : '?';
+            url += sep + 'token=' + encodeURIComponent(this.state.token);
+        }
+
         return $.ajax({
-            url: this.state.apiUrl + endpoint,
+            url: url,
             method: options.method || 'GET',
             headers: { 'Authorization': 'Bearer ' + this.state.token },
             contentType: ct,
@@ -77,10 +83,10 @@ const Exam = {
     loadMasterData() {
         this.api('bank_soal.php?action=list_mapel').then(r => {
             if (r.success) this.state.mapelList = r.data || [];
-        });
+        }).catch(() => {});
         this.api('bank_soal.php?action=list_classes').then(r => {
             if (r.success) this.state.classList = r.data || [];
-        });
+        }).catch(() => {});
     },
 
     // ==========================================
@@ -1438,7 +1444,16 @@ const Exam = {
     renderAksesModul($c) {
         this.api('akses.php?action=list').then(r => {
             if (!r.success) {
-                $c.html(`<div class="ex-card"><div class="ex-card-body" style="text-align:center;padding:40px;color:#dc2626;">${this.esc(r.message || 'Gagal memuat akses')}</div></div>`);
+                $c.html(`
+                    <div class="ex-card">
+                        <div class="ex-card-body" style="text-align:center;padding:40px;">
+                            <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="#ef4444" stroke-width="1.5" style="margin-bottom:12px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                            <h4 style="margin-bottom:8px;color:#991b1b;">Akses Gagal Dimuat</h4>
+                            <p style="font-size:13px;color:#64748b;max-width:500px;margin:0 auto 16px;">${this.esc(r.message || 'Gagal memuat akses modul.')}</p>
+                            <button class="btn btn-primary btn-sm" onclick="Exam.renderAksesModul($('#mainContent'))">Coba Lagi</button>
+                        </div>
+                    </div>
+                `);
                 return;
             }
 
@@ -1519,7 +1534,17 @@ const Exam = {
                 $('#accessTableContent').html(this.renderAccessTableRows(filtered));
             });
         }).catch(err => {
-            $c.html(`<div class="ex-card"><div class="ex-card-body" style="text-align:center;padding:40px;color:#dc2626;">Terjadi kesalahan saat memuat data akses modul.</div></div>`);
+            const msg = (err.responseJSON && err.responseJSON.message) ? err.responseJSON.message : (err.responseText || 'Terjadi kesalahan saat memuat data akses modul.');
+            $c.html(`
+                <div class="ex-card">
+                    <div class="ex-card-body" style="text-align:center;padding:40px;">
+                        <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="#ef4444" stroke-width="1.5" style="margin-bottom:12px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        <h4 style="margin-bottom:8px;color:#991b1b;">Terjadi Kesalahan Akses Modul</h4>
+                        <p style="font-size:13px;color:#64748b;max-width:500px;margin:0 auto 16px;">${this.esc(msg)}</p>
+                        <button class="btn btn-primary btn-sm" onclick="Exam.renderAksesModul($('#mainContent'))">Coba Lagi</button>
+                    </div>
+                </div>
+            `);
         });
     },
 

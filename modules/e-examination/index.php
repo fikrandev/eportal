@@ -3,7 +3,7 @@
  * E-Examination Module — Entry Point
  * Sistem Ujian Digital (CBT)
  */
-require_once __DIR__ . '/../../api/config.php';
+require_once __DIR__ . '/api/config_exam.php';
 
 // ============================================
 // AUTH: Validate token

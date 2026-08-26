@@ -6,6 +6,54 @@
 require_once __DIR__ . '/../../../api/config.php';
 
 /**
+ * Auto-ensure E-Examination tables exist in database
+ */
+function exam_ensure_tables() {
+    static $checked = false;
+    if ($checked) return;
+    $checked = true;
+
+    try {
+        db()->exec("
+            CREATE TABLE IF NOT EXISTS `exam_roles` (
+              `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+              `user_id` INT(11) UNSIGNED NOT NULL,
+              `role` ENUM('admin', 'guru', 'proktor') NOT NULL DEFAULT 'guru',
+              `status` TINYINT(1) NOT NULL DEFAULT 1,
+              `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),
+              UNIQUE KEY `uk_exam_user` (`user_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+            CREATE TABLE IF NOT EXISTS `exam_student_login` (
+              `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+              `student_id` INT(11) UNSIGNED NOT NULL,
+              `status` ENUM('logged_in', 'mengerjakan', 'selesai', 'logged_out') NOT NULL DEFAULT 'logged_in',
+              `is_locked` TINYINT(1) NOT NULL DEFAULT 0,
+              `lock_reason` VARCHAR(255) DEFAULT NULL,
+              `ujian_id` INT(11) UNSIGNED DEFAULT NULL,
+              `sesi_id` INT(11) UNSIGNED DEFAULT NULL,
+              `ip_address` VARCHAR(45) DEFAULT NULL,
+              `user_agent` TEXT DEFAULT NULL,
+              `last_heartbeat` DATETIME DEFAULT NULL,
+              `login_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),
+              UNIQUE KEY `uk_exam_student` (`student_id`),
+              KEY `idx_status_locked` (`status`, `is_locked`),
+              KEY `idx_ujian_login` (`ujian_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        ");
+    } catch (Exception $e) {
+        // Table creation fallback handled silently
+    }
+}
+
+// Ensure tables exist on boot
+exam_ensure_tables();
+
+/**
  * Authenticate request for E-Examination (Admin/Guru)
  * Uses eportal session token
  */

@@ -10,34 +10,53 @@ $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
 
 try {
+    exam_ensure_tables();
+
     switch ($action) {
 
         // ==========================================
         // LIST AKSES & PENGGUNA PORTAL
         // ==========================================
         case 'list':
-            exam_require_admin();
+            $currentUser = exam_require_admin();
 
             // 1. Data akses yang sudah ditugaskan di exam_roles
-            $stmtAccess = db()->query("
-                SELECT er.id as access_id, er.user_id, er.role as exam_role, er.status as access_status, er.created_at,
-                       u.username, u.nama_lengkap, u.nik, u.jabatan, u.tupoksi, u.role as portal_role, u.avatar
-                FROM exam_roles er
-                JOIN users u ON u.id = er.user_id
-                ORDER BY er.created_at DESC, u.nama_lengkap ASC
-            ");
-            $accesses = $stmtAccess->fetchAll(PDO::FETCH_ASSOC);
+            $accesses = [];
+            try {
+                $stmtAccess = db()->query("
+                    SELECT er.id as access_id, er.user_id, er.role as exam_role, er.status as access_status, er.created_at,
+                           u.username, u.nama_lengkap, u.nik, u.jabatan, u.tupoksi, u.role as portal_role, u.avatar
+                    FROM exam_roles er
+                    JOIN users u ON u.id = er.user_id
+                    ORDER BY er.created_at DESC, u.nama_lengkap ASC
+                ");
+                $accesses = $stmtAccess->fetchAll(PDO::FETCH_ASSOC);
+            } catch (Exception $e) {
+                $accesses = [];
+            }
 
             // 2. Data seluruh pengguna aktif dari E-Portal untuk Dropdown Search
-            $stmtUsers = db()->query("
-                SELECT u.id, u.username, u.nama_lengkap, u.nik, u.jabatan, u.tupoksi, u.role as portal_role,
-                       er.role as current_exam_role, er.id as has_access
-                FROM users u
-                LEFT JOIN exam_roles er ON er.user_id = u.id
-                WHERE u.status = 1
-                ORDER BY u.nama_lengkap ASC
-            ");
-            $portalUsers = $stmtUsers->fetchAll(PDO::FETCH_ASSOC);
+            $portalUsers = [];
+            try {
+                $stmtUsers = db()->query("
+                    SELECT u.id, u.username, u.nama_lengkap, u.nik, u.jabatan, u.tupoksi, u.role as portal_role,
+                           er.role as current_exam_role, er.id as has_access
+                    FROM users u
+                    LEFT JOIN exam_roles er ON er.user_id = u.id
+                    WHERE u.status = 1
+                    ORDER BY u.nama_lengkap ASC
+                ");
+                $portalUsers = $stmtUsers->fetchAll(PDO::FETCH_ASSOC);
+            } catch (Exception $e) {
+                // Fallback query if some columns don't exist
+                $stmtUsers = db()->query("
+                    SELECT u.id, u.username, u.nama_lengkap, u.role as portal_role
+                    FROM users u
+                    WHERE u.status = 1
+                    ORDER BY u.nama_lengkap ASC
+                ");
+                $portalUsers = $stmtUsers->fetchAll(PDO::FETCH_ASSOC);
+            }
 
             json_response(200, true, 'Data akses modul berhasil dimuat', [
                 'accesses' => $accesses,
