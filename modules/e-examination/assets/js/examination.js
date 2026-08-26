@@ -103,6 +103,11 @@ const Exam = {
     },
 
     renderRoute(route) {
+        if (this._proktorInterval) {
+            clearInterval(this._proktorInterval);
+            this._proktorInterval = null;
+        }
+
         const $c = $('#mainContent');
         $c.html('<div style="text-align:center;padding:60px;"><div class="loading-spinner"></div></div>');
 
@@ -117,7 +122,9 @@ const Exam = {
             bank_soal: 'Bank Soal',
             detail_bank: 'Detail Bank Soal',
             ujian: 'Kelola Ujian',
-            laporan: 'Laporan & Hasil Ujian'
+            proktor: 'Proktor & Monitoring CBT',
+            laporan: 'Laporan & Hasil Ujian',
+            akses_modul: 'Akses Modul & Hak Pengguna'
         };
 
         $('#pageTitle').text(labels[route] || 'E-Examination');
@@ -129,7 +136,9 @@ const Exam = {
             case 'bank_soal': this.renderBankSoal($c); break;
             case 'detail_bank': this.renderDetailBank($c); break;
             case 'ujian': this.renderUjian($c); break;
+            case 'proktor': this.renderProktor($c); break;
             case 'laporan': this.renderLaporan($c); break;
+            case 'akses_modul': this.renderAksesModul($c); break;
             default: this.renderDashboard($c);
         }
     },
@@ -147,7 +156,7 @@ const Exam = {
     // ==========================================
     renderSidebar() {
         const u = this.state.user;
-        const role = u.role;
+        const examRole = u.exam_role || (u.role === 'superadmin' ? 'admin' : (u.role === 'guru' ? 'guru' : 'admin'));
         let navHtml = '';
 
         navHtml += `
@@ -159,36 +168,81 @@ const Exam = {
                 </button>
             </div>`;
 
-        navHtml += `
-            <div class="ex-nav-group">
-                <div class="ex-nav-label">Bank Soal</div>
-                <button class="ex-nav-item" data-route="mapel">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
-                    Mata Pelajaran
-                </button>
-                <button class="ex-nav-item" data-route="bank_soal">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                    Bank Soal
-                </button>
-            </div>
-            <div class="ex-nav-group">
-                <div class="ex-nav-label">Ujian</div>
-                <button class="ex-nav-item" data-route="ujian">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                    Kelola Ujian
-                </button>
-                <button class="ex-nav-item" data-route="laporan">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                    Laporan & Hasil
-                </button>
-            </div>
-            <div class="ex-nav-group">
-                <div class="ex-nav-label">Pengaturan</div>
-                <button class="ex-nav-item" onclick="Exam.settingGemini()">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="7.5 4.21 12 6.81 16.5 4.21"/><polyline points="7.5 19.79 7.5 14.6 3 12"/><polyline points="21 12 16.5 14.6 16.5 19.79"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-                    Koreksi AI (Gemini)
-                </button>
-            </div>`;
+        if (examRole === 'admin' || examRole === 'guru') {
+            navHtml += `
+                <div class="ex-nav-group">
+                    <div class="ex-nav-label">Bank Soal</div>
+                    <button class="ex-nav-item" data-route="mapel">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                        Mata Pelajaran
+                    </button>
+                    <button class="ex-nav-item" data-route="bank_soal">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                        Bank Soal
+                    </button>
+                </div>`;
+        }
+
+        if (examRole === 'admin') {
+            navHtml += `
+                <div class="ex-nav-group">
+                    <div class="ex-nav-label">Ujian & Proktor</div>
+                    <button class="ex-nav-item" data-route="ujian">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        Kelola Ujian
+                    </button>
+                    <button class="ex-nav-item" data-route="proktor">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>
+                        Proktor & Monitoring
+                    </button>
+                    <button class="ex-nav-item" data-route="laporan">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                        Laporan & Hasil
+                    </button>
+                </div>
+                <div class="ex-nav-group">
+                    <div class="ex-nav-label">Pengaturan</div>
+                    <button class="ex-nav-item" data-route="akses_modul">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+                        Akses Modul
+                    </button>
+                    <button class="ex-nav-item" onclick="Exam.settingGemini()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="7.5 4.21 12 6.81 16.5 4.21"/><polyline points="7.5 19.79 7.5 14.6 3 12"/><polyline points="21 12 16.5 14.6 16.5 19.79"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                        Koreksi AI (Gemini)
+                    </button>
+                </div>`;
+        } else if (examRole === 'proktor') {
+            navHtml += `
+                <div class="ex-nav-group">
+                    <div class="ex-nav-label">Proktor & Ujian</div>
+                    <button class="ex-nav-item" data-route="proktor">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>
+                        Proktor & Monitoring
+                    </button>
+                    <button class="ex-nav-item" data-route="ujian">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        Jadwal & Token Ujian
+                    </button>
+                    <button class="ex-nav-item" data-route="laporan">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                        Laporan & Hasil
+                    </button>
+                </div>`;
+        } else {
+            // Guru
+            navHtml += `
+                <div class="ex-nav-group">
+                    <div class="ex-nav-label">Ujian</div>
+                    <button class="ex-nav-item" data-route="ujian">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        Kelola Ujian
+                    </button>
+                    <button class="ex-nav-item" data-route="laporan">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                        Laporan & Hasil
+                    </button>
+                </div>`;
+        }
 
         $('#sidebarNav').html(navHtml);
         $('.ex-nav-item').on('click', (e) => {
@@ -198,8 +252,8 @@ const Exam = {
 
         $('#sidebarAvatar').text(this.getInitials(u.nama_lengkap));
         $('#sidebarUserName').text(u.nama_lengkap);
-        const roleLabels = { superadmin:'Administrator', user:'Admin', guru:'Guru' };
-        $('#sidebarUserRole').text(roleLabels[role] || role);
+        const roleLabels = { admin: 'Administrator', proktor: 'Proktor Ujian', guru: 'Guru Pengajar' };
+        $('#sidebarUserRole').text(roleLabels[examRole] || u.role);
     },
 
     // ==========================================
@@ -1375,6 +1429,899 @@ const Exam = {
                     });
                 }
             });
+        });
+    },
+
+    // ==========================================
+    // AKSES MODUL (MANAJEMEN PENGGUNA)
+    // ==========================================
+    renderAksesModul($c) {
+        this.api('akses.php?action=list').then(r => {
+            if (!r.success) {
+                $c.html(`<div class="ex-card"><div class="ex-card-body" style="text-align:center;padding:40px;color:#dc2626;">${this.esc(r.message || 'Gagal memuat akses')}</div></div>`);
+                return;
+            }
+
+            this.state.accessData = r.data || { accesses: [], portal_users: [] };
+            const accesses = this.state.accessData.accesses || [];
+
+            const totalAdmin = accesses.filter(a => a.exam_role === 'admin' && parseInt(a.access_status) === 1).length;
+            const totalGuru = accesses.filter(a => a.exam_role === 'guru' && parseInt(a.access_status) === 1).length;
+            const totalProktor = accesses.filter(a => a.exam_role === 'proktor' && parseInt(a.access_status) === 1).length;
+
+            $c.html(`
+                <div class="ex-card ex-slide-up" style="margin-bottom:24px;">
+                    <div class="ex-card-header" style="flex-wrap:wrap; gap:16px;">
+                        <div>
+                            <h3 style="margin:0 0 4px 0; font-size:1.15rem;">Akses Modul E-Examination</h3>
+                            <span style="font-size:13px; color:var(--text-secondary);">
+                                Kelola hak akses pengguna (Admin, Guru, Proktor). Akun diambil langsung dari E-Portal Admin.
+                            </span>
+                        </div>
+                        <div class="ex-toolbar">
+                            <button class="btn btn-primary btn-sm" onclick="Exam.openAccessForm()">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                Tambah Akses Pengguna
+                            </button>
+                        </div>
+                    </div>
+                    <div class="ex-card-body">
+                        <!-- Stats Grid -->
+                        <div class="ex-stats-grid" style="margin-bottom:20px;">
+                            <div class="ex-stat-card" style="padding:14px;">
+                                <div class="ex-stat-icon" style="background:#eff6ff; color:#2563EB;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                                </div>
+                                <div class="ex-stat-info"><h4>${totalAdmin}</h4><p>Admin Examination</p></div>
+                            </div>
+                            <div class="ex-stat-card" style="padding:14px;">
+                                <div class="ex-stat-icon" style="background:#fef3c7; color:#d97706;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                                </div>
+                                <div class="ex-stat-info"><h4>${totalProktor}</h4><p>Proktor Ujian</p></div>
+                            </div>
+                            <div class="ex-stat-card" style="padding:14px;">
+                                <div class="ex-stat-icon" style="background:#ecfdf5; color:#059669;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                                </div>
+                                <div class="ex-stat-info"><h4>${totalGuru}</h4><p>Guru Pengajar</p></div>
+                            </div>
+                            <div class="ex-stat-card" style="padding:14px;">
+                                <div class="ex-stat-icon" style="background:#f1f5f9; color:#475569;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                                </div>
+                                <div class="ex-stat-info"><h4>${accesses.length}</h4><p>Total Diberi Akses</p></div>
+                            </div>
+                        </div>
+
+                        <!-- Search Box -->
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
+                            <input type="text" id="accessTableSearch" class="form-input" placeholder="Cari nama, NIK/username, atau tugas..." style="max-width:340px; font-size:13px;">
+                            <div style="font-size:13px; color:var(--text-secondary);">
+                                Menampilkan <strong>${accesses.length}</strong> pengguna
+                            </div>
+                        </div>
+
+                        <!-- Table -->
+                        <div class="ex-table-wrapper" id="accessTableContent">
+                            ${this.renderAccessTableRows(accesses)}
+                        </div>
+                    </div>
+                </div>
+            `);
+
+            $('#accessTableSearch').on('input', (e) => {
+                const q = $(e.currentTarget).val().toLowerCase().trim();
+                const filtered = accesses.filter(a => {
+                    const str = `${a.nama_lengkap} ${a.username} ${a.nik || ''} ${a.jabatan || ''} ${a.exam_role}`.toLowerCase();
+                    return str.includes(q);
+                });
+                $('#accessTableContent').html(this.renderAccessTableRows(filtered));
+            });
+        }).catch(err => {
+            $c.html(`<div class="ex-card"><div class="ex-card-body" style="text-align:center;padding:40px;color:#dc2626;">Terjadi kesalahan saat memuat data akses modul.</div></div>`);
+        });
+    },
+
+    renderAccessTableRows(accesses) {
+        if (!accesses || !accesses.length) {
+            return `<div style="text-align:center;padding:40px;color:var(--text-secondary);">
+                <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.4;margin-bottom:12px;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                <p>Belum ada pengguna yang ditugaskan di modul E-Examination.<br>Klik tombol <strong>"Tambah Akses Pengguna"</strong> di atas.</p>
+            </div>`;
+        }
+
+        const roleBadges = {
+            admin: '<span class="badge badge-admin">🛡️ Admin</span>',
+            proktor: '<span class="badge badge-proktor">⏱️ Proktor</span>',
+            guru: '<span class="badge badge-guru">📖 Guru</span>'
+        };
+
+        const rows = accesses.map((a, i) => {
+            const isSuperadmin = (a.portal_role === 'superadmin');
+            const isActive = parseInt(a.access_status) === 1;
+            const statusBadge = isActive 
+                ? '<span class="badge badge-active">Aktif</span>' 
+                : '<span class="badge badge-locked">Nonaktif</span>';
+
+            return `
+                <tr>
+                    <td style="width:40px; text-align:center;">${i+1}</td>
+                    <td>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <div class="ex-user-avatar-sm">${this.getInitials(a.nama_lengkap)}</div>
+                            <div>
+                                <div style="font-weight:600; color:#0f172a;">${this.esc(a.nama_lengkap)} ${isSuperadmin ? '<span style="font-size:11px;color:#2563eb;font-weight:700;">(Superadmin)</span>' : ''}</div>
+                                <div style="font-size:12px; color:var(--text-secondary);">Username: <code style="font-family:monospace;background:#f1f5f9;padding:1px 4px;border-radius:4px;">${this.esc(a.username)}</code> ${a.nik ? `• NIK: ${this.esc(a.nik)}` : ''}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <div style="font-size:13px; color:#334155;">${this.esc(a.jabatan || a.tupoksi || 'Pegawai / Guru')}</div>
+                        <div style="font-size:11px; color:#64748b;">Role Portal: ${this.esc(a.portal_role || 'user')}</div>
+                    </td>
+                    <td>${roleBadges[a.exam_role] || a.exam_role}</td>
+                    <td>${statusBadge}</td>
+                    <td>
+                        <div class="ex-actions">
+                            <button class="ex-action-btn" title="Edit Akses" onclick="Exam.openAccessForm(${a.user_id})">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </button>
+                            ${!isSuperadmin ? `
+                            <button class="ex-action-btn danger" title="Cabut Akses" onclick="Exam.deleteAccess(${a.user_id}, '${this.esc(a.nama_lengkap)}')">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            </button>` : ''}
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        return `
+            <table class="ex-table">
+                <thead>
+                    <tr>
+                        <th style="width:40px;text-align:center;">#</th>
+                        <th>Nama Pengguna</th>
+                        <th>Jabatan E-Portal</th>
+                        <th>Peran di CBT</th>
+                        <th>Status</th>
+                        <th style="width:100px;">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `;
+    },
+
+    openAccessForm(userId = null) {
+        const accesses = (this.state.accessData && this.state.accessData.accesses) ? this.state.accessData.accesses : [];
+        const portalUsers = (this.state.accessData && this.state.accessData.portal_users) ? this.state.accessData.portal_users : [];
+        
+        let existing = null;
+        if (userId) {
+            existing = accesses.find(a => parseInt(a.user_id) === parseInt(userId));
+        }
+
+        const selectedRole = existing ? existing.exam_role : 'guru';
+        const selectedStatus = existing ? parseInt(existing.access_status) : 1;
+
+        let userPreviewHtml = '';
+        if (existing) {
+            userPreviewHtml = `
+                <div style="display:flex;align-items:center;gap:12px;background:#f8fafc;padding:12px 16px;border-radius:10px;border:1px solid #e2e8f0;">
+                    <div class="ex-user-avatar-sm" style="width:40px;height:40px;font-size:0.9rem;">${this.getInitials(existing.nama_lengkap)}</div>
+                    <div>
+                        <div style="font-weight:700;color:#0f172a;">${this.esc(existing.nama_lengkap)}</div>
+                        <div style="font-size:12px;color:#64748b;">Username: ${this.esc(existing.username)} • ${this.esc(existing.jabatan || 'Guru')}</div>
+                    </div>
+                </div>
+            `;
+        }
+
+        EModal.form({
+            title: existing ? 'Edit Akses Pengguna CBT' : 'Tambah Akses Pengguna Baru',
+            form: `
+                <input type="hidden" id="fAccessUserId" value="${userId || ''}">
+                <input type="hidden" id="fAccessRole" value="${selectedRole}">
+
+                ${!existing ? `
+                <div class="form-group" style="position:relative;">
+                    <label class="form-label" style="font-weight:600;">Cari Nama Pengguna (E-Portal Admin)</label>
+                    <div class="ex-user-select-container">
+                        <input type="text" id="fUserSearchInput" class="ex-user-search-input" placeholder="🔍 Ketik nama, username, atau NIK guru/pegawai..." autocomplete="off">
+                        <div id="fUserDropdownList" class="ex-user-dropdown-list"></div>
+                    </div>
+                    <div id="fSelectedUserBox" style="margin-top:10px;"></div>
+                </div>
+                ` : `
+                <div class="form-group">
+                    <label class="form-label" style="font-weight:600;">Pengguna Terpilih</label>
+                    ${userPreviewHtml}
+                </div>
+                `}
+
+                <div class="form-group" style="margin-top:20px;">
+                    <label class="form-label" style="font-weight:600;">Pilih Tugas / Peran di E-Examination</label>
+                    <div class="ex-role-grid">
+                        <div class="ex-role-card ${selectedRole === 'admin' ? 'active' : ''}" data-role="admin">
+                            <div class="ex-role-card-icon">
+                                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                            </div>
+                            <div class="ex-role-card-title">Admin</div>
+                            <div class="ex-role-card-desc">Akses penuh ke seluruh bank soal, jadwal ujian, proktor, hasil nilai, dan akses modul.</div>
+                        </div>
+                        <div class="ex-role-card ${selectedRole === 'guru' ? 'active' : ''}" data-role="guru">
+                            <div class="ex-role-card-icon">
+                                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                            </div>
+                            <div class="ex-role-card-title">Guru</div>
+                            <div class="ex-role-card-desc">Membuat bank soal, kelola ujian miliknya, lihat hasil ujian siswa, dan koreksi nilai.</div>
+                        </div>
+                        <div class="ex-role-card ${selectedRole === 'proktor' ? 'active' : ''}" data-role="proktor">
+                            <div class="ex-role-card-icon">
+                                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg>
+                            </div>
+                            <div class="ex-role-card-title">Proktor</div>
+                            <div class="ex-role-card-desc">Live monitoring pengerjaan, reset login siswa keluar/terkunci, dan generate link ujian.</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-top:16px;">
+                    <label class="form-label" style="font-weight:600;">Status Akses</label>
+                    <select class="form-select" id="fAccessStatus">
+                        <option value="1" ${selectedStatus === 1 ? 'selected' : ''}>Aktif (Dapat Mengakses)</option>
+                        <option value="0" ${selectedStatus === 0 ? 'selected' : ''}>Nonaktif (Diblokir)</option>
+                    </select>
+                </div>
+            `,
+            onOpen: () => {
+                // Role card selector
+                $('.ex-role-card').on('click', function() {
+                    $('.ex-role-card').removeClass('active');
+                    $(this).addClass('active');
+                    $('#fAccessRole').val($(this).data('role'));
+                });
+
+                if (!existing) {
+                    const $input = $('#fUserSearchInput');
+                    const $list = $('#fUserDropdownList');
+                    const $selectedBox = $('#fSelectedUserBox');
+
+                    const renderDropdown = (query = '') => {
+                        const q = query.toLowerCase().trim();
+                        const matches = portalUsers.filter(u => {
+                            const str = `${u.nama_lengkap} ${u.username} ${u.nik || ''} ${u.jabatan || ''}`.toLowerCase();
+                            return !q || str.includes(q);
+                        }).slice(0, 15);
+
+                        if (!matches.length) {
+                            $list.html('<div style="padding:12px;text-align:center;color:#64748b;font-size:13px;">Tidak ada pengguna yang cocok</div>').show();
+                            return;
+                        }
+
+                        const items = matches.map(u => `
+                            <div class="ex-user-dropdown-item" data-id="${u.id}" data-nama="${Exam.esc(u.nama_lengkap)}" data-user="${Exam.esc(u.username)}" data-jabatan="${Exam.esc(u.jabatan || u.tupoksi || '')}">
+                                <div class="ex-user-avatar-sm">${Exam.getInitials(u.nama_lengkap)}</div>
+                                <div style="flex:1;">
+                                    <div style="font-weight:600;font-size:13px;color:#0f172a;">${Exam.esc(u.nama_lengkap)}</div>
+                                    <div style="font-size:11px;color:#64748b;">${Exam.esc(u.username)} ${u.jabatan ? `• ${Exam.esc(u.jabatan)}` : ''}</div>
+                                </div>
+                                ${u.current_exam_role ? `<span class="badge badge-${u.current_exam_role}" style="font-size:10px;">${u.current_exam_role.toUpperCase()}</span>` : ''}
+                            </div>
+                        `).join('');
+
+                        $list.html(items).show();
+                    };
+
+                    $input.on('focus input', () => renderDropdown($input.val()));
+
+                    $(document).on('click.userSelect', (e) => {
+                        if (!$(e.target).closest('.ex-user-select-container').length) {
+                            $list.hide();
+                        }
+                    });
+
+                    $list.on('click', '.ex-user-dropdown-item', function() {
+                        const uid = $(this).data('id');
+                        const nama = $(this).data('nama');
+                        const username = $(this).data('user');
+                        const jabatan = $(this).data('jabatan');
+
+                        $('#fAccessUserId').val(uid);
+                        $input.val(nama);
+                        $list.hide();
+
+                        $selectedBox.html(`
+                            <div style="display:flex;align-items:center;gap:12px;background:#eff6ff;padding:10px 14px;border-radius:8px;border:1px solid #bfdbfe;">
+                                <div class="ex-user-avatar-sm" style="background:#2563eb;color:white;">${Exam.getInitials(nama)}</div>
+                                <div style="flex:1;">
+                                    <div style="font-weight:700;color:#1e40af;font-size:13px;">${nama}</div>
+                                    <div style="font-size:12px;color:#3b82f6;">Username: ${username} • ${jabatan || 'Guru/Pegawai'}</div>
+                                </div>
+                                <span style="font-size:11px;background:#dbeafe;color:#1e40af;padding:2px 8px;border-radius:6px;font-weight:700;">Terpilih</span>
+                            </div>
+                        `);
+                    });
+                }
+            },
+            onClose: () => {
+                $(document).off('click.userSelect');
+            },
+            onConfirm: () => {
+                const userId = $('#fAccessUserId').val();
+                const role = $('#fAccessRole').val();
+                const status = $('#fAccessStatus').val();
+
+                if (!userId || parseInt(userId) <= 0) {
+                    EModal.toast({ type: 'error', title: 'Pilih pengguna terlebih dahulu' });
+                    return false;
+                }
+
+                const loader = EModal.loading('Menyimpan hak akses...');
+                this.api('akses.php?action=save', {
+                    method: 'POST',
+                    data: { user_id: userId, role: role, status: status }
+                }).then(res => {
+                    EModal.close(loader);
+                    if (res.success) {
+                        EModal.toast({ type: 'success', title: res.message || 'Akses berhasil disimpan' });
+                        this.renderAksesModul($('#mainContent'));
+                    } else {
+                        EModal.alert('Gagal', res.message);
+                    }
+                }).catch(err => {
+                    EModal.close(loader);
+                    EModal.alert('Error', 'Gagal menghubungi server');
+                });
+            }
+        });
+    },
+
+    deleteAccess(userId, userName) {
+        EModal.confirm({
+            title: 'Cabut Akses Modul',
+            message: `Apakah Anda yakin ingin mencabut hak akses E-Examination untuk <strong>${this.esc(userName)}</strong>?`,
+            type: 'danger',
+            confirmText: 'Ya, Cabut Akses',
+            onConfirm: () => {
+                const loader = EModal.loading('Mencabut akses...');
+                this.api('akses.php?action=delete', {
+                    method: 'POST',
+                    data: { user_id: userId }
+                }).then(res => {
+                    EModal.close(loader);
+                    if (res.success) {
+                        EModal.toast({ type: 'success', title: 'Akses berhasil dicabut' });
+                        this.renderAksesModul($('#mainContent'));
+                    } else {
+                        EModal.alert('Gagal', res.message);
+                    }
+                }).catch(() => {
+                    EModal.close(loader);
+                    EModal.alert('Error', 'Gagal memproses permintaan');
+                });
+            }
+        });
+    },
+
+    // ==========================================
+    // PROKTOR & LIVE MONITORING
+    // ==========================================
+    renderProktor($c) {
+        $c.html(`
+            <div class="ex-card ex-slide-up" style="margin-bottom:24px;">
+                <div class="ex-card-header" style="flex-wrap:wrap; gap:16px;">
+                    <div>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <span class="ex-live-dot"></span>
+                            <h3 style="margin:0; font-size:1.15rem;">Proktor & Live Monitoring CBT</h3>
+                        </div>
+                        <span style="font-size:13px; color:var(--text-secondary); margin-top:4px; display:block;">
+                            Pantau pengerjaan siswa secara real-time, reset login siswa terkunci, dan generate link ujian.
+                        </span>
+                    </div>
+                    <div class="ex-toolbar" style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button class="btn btn-primary btn-sm" onclick="Exam.proktorGenerateLink()" style="background:#2563EB;">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+                            Generate Link Ujian
+                        </button>
+                        <button class="btn btn-outline btn-sm" onclick="Exam.proktorResetAllLocked()" style="color:#b91c1c;border-color:#fca5a5;">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+                            Reset Semua Terkunci
+                        </button>
+                        <button class="btn btn-outline btn-sm" onclick="Exam.loadProktorData()" title="Segarkan Data Sekarang">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                            Refresh
+                        </button>
+                    </div>
+                </div>
+
+                <div class="ex-card-body">
+                    <!-- Real-time Stat Counters -->
+                    <div class="ex-stats-grid" style="margin-bottom:20px;">
+                        <div class="ex-stat-card" style="padding:14px;border-left:4px solid #2563EB;">
+                            <div class="ex-stat-icon" style="background:#eff6ff; color:#2563EB;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                            </div>
+                            <div class="ex-stat-info"><h4 id="statMengerjakan">0</h4><p>Sedang Mengerjakan</p></div>
+                        </div>
+                        <div class="ex-stat-card" style="padding:14px;border-left:4px solid #10B981;">
+                            <div class="ex-stat-icon" style="background:#ecfdf5; color:#10B981;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                            </div>
+                            <div class="ex-stat-info"><h4 id="statLogin">0</h4><p>Sedang Login</p></div>
+                        </div>
+                        <div class="ex-stat-card" style="padding:14px;border-left:4px solid #EF4444;">
+                            <div class="ex-stat-icon" style="background:#fef2f2; color:#EF4444;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                            </div>
+                            <div class="ex-stat-info"><h4 id="statTerkunci" style="color:#b91c1c;">0</h4><p>Terkunci (Butuh Reset)</p></div>
+                        </div>
+                        <div class="ex-stat-card" style="padding:14px;border-left:4px solid #8B5CF6;">
+                            <div class="ex-stat-icon" style="background:#f5f3ff; color:#8B5CF6;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/></svg>
+                            </div>
+                            <div class="ex-stat-info"><h4 id="statServerTime" style="font-size:1.05rem;">--:--:--</h4><p>Waktu Server</p></div>
+                        </div>
+                    </div>
+
+                    <!-- Filter Toolbar -->
+                    <div style="display:flex; gap:12px; margin-bottom:20px; flex-wrap:wrap;">
+                        <div style="flex:1; min-width:200px;">
+                            <select id="proktorFilterUjian" class="form-select" style="font-size:13px;">
+                                <option value="0">-- Semua Ujian Aktif --</option>
+                            </select>
+                        </div>
+                        <div style="min-width:160px;">
+                            <select id="proktorFilterKelas" class="form-select" style="font-size:13px;">
+                                <option value="">-- Semua Kelas --</option>
+                            </select>
+                        </div>
+                        <div style="flex:1; min-width:200px;">
+                            <input type="text" id="proktorFilterSearch" class="form-input" placeholder="🔍 Cari nama siswa atau NIS..." style="font-size:13px;">
+                        </div>
+                    </div>
+
+                    <!-- Tabs Navigation -->
+                    <div class="ex-tabs">
+                        <button class="ex-tab-btn active" data-tab="tab-mengerjakan">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                            Sedang Mengerjakan
+                            <span class="ex-tab-badge" id="tabBadgeMengerjakan">0</span>
+                        </button>
+                        <button class="ex-tab-btn" data-tab="tab-terkunci">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                            Siswa Terkunci
+                            <span class="ex-tab-badge" id="tabBadgeTerkunci" style="background:#fee2e2;color:#b91c1c;">0</span>
+                        </button>
+                        <button class="ex-tab-btn" data-tab="tab-login">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                            Status Login Siswa
+                            <span class="ex-tab-badge" id="tabBadgeLogin">0</span>
+                        </button>
+                    </div>
+
+                    <!-- Tab Contents -->
+                    <div id="tab-mengerjakan" class="ex-tab-content" style="display:block;">
+                        <div class="ex-table-wrapper" id="tableMengerjakanContainer"><div class="loading-spinner"></div></div>
+                    </div>
+                    <div id="tab-terkunci" class="ex-tab-content" style="display:none;">
+                        <div class="ex-table-wrapper" id="tableTerkunciContainer"><div class="loading-spinner"></div></div>
+                    </div>
+                    <div id="tab-login" class="ex-tab-content" style="display:none;">
+                        <div class="ex-table-wrapper" id="tableLoginContainer"><div class="loading-spinner"></div></div>
+                    </div>
+                </div>
+            </div>
+        `);
+
+        // Tab Switching
+        $('.ex-tab-btn').on('click', function() {
+            $('.ex-tab-btn').removeClass('active');
+            $(this).addClass('active');
+            $('.ex-tab-content').hide();
+            $('#' + $(this).data('tab')).fadeIn(150);
+        });
+
+        // Filter events
+        $('#proktorFilterUjian, #proktorFilterKelas').on('change', () => this.loadProktorData());
+        $('#proktorFilterSearch').on('input', () => this.loadProktorData());
+
+        this.loadProktorData(true);
+
+        // Start auto refresh every 8 seconds while on proktor view
+        this._proktorInterval = setInterval(() => {
+            if (this.state.currentRoute === 'proktor') {
+                this.loadProktorData(false);
+            }
+        }, 8000);
+    },
+
+    loadProktorData(initFilters = false) {
+        const ujianId = $('#proktorFilterUjian').val() || 0;
+        const kelas = $('#proktorFilterKelas').val() || '';
+        const search = $('#proktorFilterSearch').val() || '';
+
+        this.api(`proktor.php?action=monitoring&ujian_id=${ujianId}&kelas=${encodeURIComponent(kelas)}&search=${encodeURIComponent(search)}`).then(r => {
+            if (!r.success) return;
+            const d = r.data;
+
+            // Populate filters on first load
+            if (initFilters) {
+                if (d.active_exams && d.active_exams.length) {
+                    const examOpts = d.active_exams.map(e => `<option value="${e.id}">${this.esc(e.judul)} (Token: ${this.esc(e.token || '-')})</option>`).join('');
+                    $('#proktorFilterUjian').append(examOpts);
+                }
+                if (d.classes && d.classes.length) {
+                    const classOpts = d.classes.map(k => `<option value="${this.esc(k.kelas)}">${this.esc(k.kelas)}</option>`).join('');
+                    $('#proktorFilterKelas').append(classOpts);
+                }
+            }
+
+            // Update stats
+            $('#statMengerjakan').text(d.stats.total_mengerjakan || 0);
+            $('#statLogin').text(d.stats.total_login || 0);
+            $('#statTerkunci').text(d.stats.total_terkunci || 0);
+            if (d.server_time) $('#statServerTime').text(d.server_time.split(' ')[1] || d.server_time);
+
+            $('#tabBadgeMengerjakan').text(d.mengerjakan.length);
+            $('#tabBadgeLogin').text(d.login.length);
+            $('#tabBadgeTerkunci').text(d.terkunci.length);
+
+            // 1. Render Table Mengerjakan
+            this.renderTableMengerjakan(d.mengerjakan);
+
+            // 2. Render Table Terkunci
+            this.renderTableTerkunci(d.terkunci);
+
+            // 3. Render Table Login
+            this.renderTableLogin(d.login);
+        }).catch(() => {});
+    },
+
+    renderTableMengerjakan(list) {
+        if (!list || !list.length) {
+            $('#tableMengerjakanContainer').html(`
+                <div style="text-align:center;padding:40px;color:var(--text-secondary);">
+                    <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.4;margin-bottom:12px;"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+                    <p>Tidak ada siswa yang sedang mengerjakan ujian saat ini.</p>
+                </div>
+            `);
+            return;
+        }
+
+        const rows = list.map((m, i) => {
+            const total = parseInt(m.total_soal) || 1;
+            const answered = parseInt(m.total_terjawab) || 0;
+            const pct = Math.round((answered / total) * 100);
+            const isLocked = parseInt(m.is_locked) === 1;
+
+            let remainingTimeHtml = `<span style="font-family:monospace;font-weight:700;color:#1e40af;">${m.sisa_menit}m</span>`;
+            if (m.sisa_menit <= 5) {
+                remainingTimeHtml = `<span style="font-family:monospace;font-weight:700;color:#dc2626;background:#fee2e2;padding:2px 6px;border-radius:4px;">⏱️ ${m.sisa_menit}m</span>`;
+            }
+
+            return `
+                <tr>
+                    <td style="width:40px;text-align:center;">${i+1}</td>
+                    <td>
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <div class="ex-user-avatar-sm">${this.getInitials(m.nama_siswa)}</div>
+                            <div>
+                                <div style="font-weight:600;color:#0f172a;">${this.esc(m.nama_siswa)}</div>
+                                <div style="font-size:12px;color:var(--text-secondary);"><code style="font-family:monospace;background:#f1f5f9;padding:1px 4px;border-radius:4px;">${this.esc(m.nis)}</code> • Kelas ${this.esc(m.kelas)}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <div style="font-weight:600;font-size:13px;">${this.esc(m.nama_ujian)}</div>
+                        <div style="font-size:11px;color:#64748b;">Token: <strong style="color:#2563eb;">${this.esc(m.token_ujian || '-')}</strong></div>
+                    </td>
+                    <td>${remainingTimeHtml}</td>
+                    <td style="min-width:140px;">
+                        <div style="display:flex;justify-content:space-between;font-size:11px;font-weight:600;color:#475569;margin-bottom:2px;">
+                            <span>${answered} / ${total} Soal</span>
+                            <span>${pct}%</span>
+                        </div>
+                        <div class="ex-progress-bar">
+                            <div class="ex-progress-fill" style="width:${pct}%;"></div>
+                        </div>
+                    </td>
+                    <td>
+                        ${parseInt(m.pelanggaran) > 0 
+                            ? `<span class="badge badge-locked" style="font-weight:700;">⚠ ${m.pelanggaran} Pelanggaran</span>` 
+                            : '<span class="badge" style="background:#f1f5f9;color:#64748b;">0</span>'}
+                    </td>
+                    <td>
+                        ${isLocked 
+                            ? '<span class="badge badge-locked">🔒 Terkunci (Keluar)</span>' 
+                            : '<span class="badge badge-active">🟢 Aktif Mengerjakan</span>'}
+                    </td>
+                    <td>
+                        <div class="ex-actions">
+                            <button class="ex-action-btn" title="Reset Login Siswa" onclick="Exam.proktorResetLogin(${m.student_id}, '${this.esc(m.nama_siswa)}')" style="color:#2563eb;background:#eff6ff;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+                            </button>
+                            <button class="ex-action-btn danger" title="Selesaikan Paksa Sesi Ini" onclick="Exam.proktorForceFinish(${m.sesi_id}, '${this.esc(m.nama_siswa)}')">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        $('#tableMengerjakanContainer').html(`
+            <table class="ex-table">
+                <thead>
+                    <tr>
+                        <th style="width:40px;text-align:center;">#</th>
+                        <th>Siswa & NIS</th>
+                        <th>Ujian</th>
+                        <th>Sisa Waktu</th>
+                        <th>Progres Jawaban</th>
+                        <th>Pelanggaran</th>
+                        <th>Status</th>
+                        <th style="width:100px;">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `);
+    },
+
+    renderTableTerkunci(list) {
+        if (!list || !list.length) {
+            $('#tableTerkunciContainer').html(`
+                <div style="text-align:center;padding:40px;color:var(--text-secondary);">
+                    <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="#10b981" stroke-width="1.5" style="opacity:0.6;margin-bottom:12px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    <p style="color:#059669;font-weight:600;">Semua login normal! Tidak ada akun siswa yang sedang terkunci.</p>
+                </div>
+            `);
+            return;
+        }
+
+        const rows = list.map((t, i) => `
+            <tr style="background:#fff7ed;">
+                <td style="width:40px;text-align:center;">${i+1}</td>
+                <td>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <div class="ex-user-avatar-sm" style="background:#fee2e2;color:#991b1b;">${this.getInitials(t.nama_siswa)}</div>
+                        <div>
+                            <div style="font-weight:700;color:#0f172a;">${this.esc(t.nama_siswa)}</div>
+                            <div style="font-size:12px;color:var(--text-secondary);"><code style="font-family:monospace;background:#fee2e2;padding:1px 4px;border-radius:4px;color:#991b1b;">${this.esc(t.nis)}</code> • Kelas ${this.esc(t.kelas)}</div>
+                        </div>
+                    </div>
+                </td>
+                <td><strong style="color:#334155;">${this.esc(t.nama_ujian || 'Ujian CBT')}</strong></td>
+                <td>
+                    <div style="color:#991b1b;font-weight:600;font-size:12px;">⚠ ${this.esc(t.lock_reason || 'Keluar dari aplikasi ujian')}</div>
+                    <div style="font-size:11px;color:#64748b;">${t.waktu_terkunci ? t.waktu_terkunci : '-'}</div>
+                </td>
+                <td>
+                    <button class="btn btn-primary btn-sm" onclick="Exam.proktorResetLogin(${t.student_id}, '${this.esc(t.nama_siswa)}')" style="background:#2563EB;display:inline-flex;align-items:center;gap:6px;">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+                        Reset Login
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+
+        $('#tableTerkunciContainer').html(`
+            <table class="ex-table">
+                <thead>
+                    <tr>
+                        <th style="width:40px;text-align:center;">#</th>
+                        <th>Siswa & NIS</th>
+                        <th>Ujian</th>
+                        <th>Alasan & Waktu Terkunci</th>
+                        <th style="width:140px;">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `);
+    },
+
+    renderTableLogin(list) {
+        if (!list || !list.length) {
+            $('#tableLoginContainer').html(`
+                <div style="text-align:center;padding:40px;color:var(--text-secondary);">
+                    <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.4;margin-bottom:12px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                    <p>Tidak ada sesi login siswa yang aktif.</p>
+                </div>
+            `);
+            return;
+        }
+
+        const rows = list.map((l, i) => {
+            const isLocked = parseInt(l.is_locked) === 1;
+            return `
+                <tr>
+                    <td style="width:40px;text-align:center;">${i+1}</td>
+                    <td>
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <div class="ex-user-avatar-sm">${this.getInitials(l.nama_siswa)}</div>
+                            <div>
+                                <div style="font-weight:600;color:#0f172a;">${this.esc(l.nama_siswa)}</div>
+                                <div style="font-size:12px;color:var(--text-secondary);">${this.esc(l.nis)} • Kelas ${this.esc(l.kelas)}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td><code style="font-family:monospace;font-size:12px;">${this.esc(l.ip_address || '-')}</code></td>
+                    <td><span style="font-size:12px;color:#475569;">${l.login_at || '-'}</span></td>
+                    <td>
+                        ${l.login_status === 'mengerjakan' 
+                            ? '<span class="badge badge-active">Sedang Mengerjakan</span>' 
+                            : '<span class="badge" style="background:#e0f2fe;color:#0369a1;">Dashboard CBT</span>'}
+                    </td>
+                    <td>
+                        ${isLocked 
+                            ? '<span class="badge badge-locked">🔒 Terkunci</span>' 
+                            : '<span class="badge badge-active">✓ Normal</span>'}
+                    </td>
+                    <td>
+                        <button class="btn btn-outline btn-sm" onclick="Exam.proktorResetLogin(${l.student_id}, '${this.esc(l.nama_siswa)}')" style="font-size:12px;padding:4px 10px;">
+                            Reset Login
+                        </button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        $('#tableLoginContainer').html(`
+            <table class="ex-table">
+                <thead>
+                    <tr>
+                        <th style="width:40px;text-align:center;">#</th>
+                        <th>Siswa & NIS</th>
+                        <th>IP Address</th>
+                        <th>Waktu Login</th>
+                        <th>Status CBT</th>
+                        <th>Status Lock</th>
+                        <th style="width:120px;">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `);
+    },
+
+    proktorResetLogin(studentId, studentName) {
+        EModal.confirm({
+            title: 'Reset Login Siswa',
+            message: `Apakah Anda yakin ingin melakukan <strong>Reset Login</strong> untuk siswa <strong>${this.esc(studentName)}</strong>? Siswa akan dapat login kembali.`,
+            type: 'primary',
+            confirmText: 'Ya, Reset Login',
+            onConfirm: () => {
+                const loader = EModal.loading('Mereset status login...');
+                this.api('proktor.php?action=reset_login', {
+                    method: 'POST',
+                    data: { student_id: studentId }
+                }).then(res => {
+                    EModal.close(loader);
+                    if (res.success) {
+                        EModal.toast({ type: 'success', title: res.message || 'Login berhasil di-reset' });
+                        this.loadProktorData(false);
+                    } else {
+                        EModal.alert('Gagal', res.message);
+                    }
+                }).catch(() => {
+                    EModal.close(loader);
+                    EModal.alert('Error', 'Gagal memproses permintaan');
+                });
+            }
+        });
+    },
+
+    proktorResetAllLocked() {
+        const ujianId = $('#proktorFilterUjian').val() || 0;
+        const kelas = $('#proktorFilterKelas').val() || '';
+
+        EModal.confirm({
+            title: 'Reset Semua Akun Terkunci',
+            message: `Yakin ingin mereset <strong>SEMUA</strong> akun siswa yang saat ini berstatus terkunci?`,
+            type: 'danger',
+            confirmText: 'Ya, Reset Semua',
+            onConfirm: () => {
+                const loader = EModal.loading('Mereset seluruh akun terkunci...');
+                this.api('proktor.php?action=reset_all_locked', {
+                    method: 'POST',
+                    data: { ujian_id: ujianId, kelas: kelas }
+                }).then(res => {
+                    EModal.close(loader);
+                    if (res.success) {
+                        EModal.toast({ type: 'success', title: res.message || 'Reset massal selesai' });
+                        this.loadProktorData(false);
+                    } else {
+                        EModal.alert('Gagal', res.message);
+                    }
+                }).catch(() => {
+                    EModal.close(loader);
+                    EModal.alert('Error', 'Gagal memproses permintaan');
+                });
+            }
+        });
+    },
+
+    proktorForceFinish(sesiId, studentName) {
+        EModal.confirm({
+            title: 'Selesaikan Paksa Ujian',
+            message: `Yakin ingin memaksa selesai sesi ujian untuk <strong>${this.esc(studentName)}</strong>? Jawaban siswa saat ini akan langsung difinalisasi.`,
+            type: 'danger',
+            confirmText: 'Ya, Selesaikan',
+            onConfirm: () => {
+                const loader = EModal.loading('Memproses penyelesaian ujian...');
+                this.api('proktor.php?action=force_finish', {
+                    method: 'POST',
+                    data: { sesi_id: sesiId }
+                }).then(res => {
+                    EModal.close(loader);
+                    if (res.success) {
+                        EModal.toast({ type: 'success', title: 'Sesi ujian berhasil diselesaikan' });
+                        this.loadProktorData(false);
+                    } else {
+                        EModal.alert('Gagal', res.message);
+                    }
+                }).catch(() => {
+                    EModal.close(loader);
+                    EModal.alert('Error', 'Gagal memproses permintaan');
+                });
+            }
+        });
+    },
+
+    proktorGenerateLink(ujianId = null) {
+        if (!ujianId) {
+            ujianId = $('#proktorFilterUjian').val() || 0;
+        }
+
+        const loader = EModal.loading('Mengambil link ujian...');
+        this.api(`proktor.php?action=generate_link&ujian_id=${ujianId}`).then(r => {
+            EModal.close(loader);
+            if (!r.success) { EModal.alert('Gagal', r.message); return; }
+            const d = r.data;
+
+            EModal.form({
+                title: '🔗 Link Pengerjaan Ujian CBT',
+                form: `
+                    <div class="form-group">
+                        <label class="form-label" style="font-weight:600;">Link Login Siswa CBT</label>
+                        <div style="display:flex;gap:8px;">
+                            <input type="text" class="form-input" id="fDirectLink" value="${d.login_url}" readonly style="font-family:monospace;font-size:13px;background:#f8fafc;">
+                            <button type="button" class="btn btn-primary btn-sm" onclick="navigator.clipboard.writeText($('#fDirectLink').val()); EModal.toast({type:'success',title:'Link Disalin!'});" style="white-space:nowrap;">
+                                Salin Link
+                            </button>
+                        </div>
+                    </div>
+
+                    ${d.exam_info ? `
+                    <div style="background:#eff6ff;padding:14px;border-radius:8px;border:1px solid #bfdbfe;margin-bottom:16px;">
+                        <div style="font-weight:700;color:#1e40af;margin-bottom:4px;">${this.esc(d.exam_info.judul)}</div>
+                        <div style="display:flex;gap:12px;font-size:13px;color:#3b82f6;">
+                            <span>Token: <strong style="font-size:15px;color:#1e40af;letter-spacing:1px;">${this.esc(d.exam_info.token || '-')}</strong></span>
+                            <span>Durasi: <strong>${d.exam_info.durasi_menit} Menit</strong></span>
+                        </div>
+                    </div>
+                    ` : ''}
+
+                    <div class="form-group">
+                        <label class="form-label" style="font-weight:600;">Teks Siap Bagikan (WhatsApp / Broadcast)</label>
+                        <textarea class="form-input" id="fShareText" rows="6" style="font-family:monospace;font-size:12px;resize:vertical;" readonly>${this.esc(d.share_text)}</textarea>
+                    </div>
+                `,
+                confirmText: 'Salin Teks Lengkap',
+                onConfirm: () => {
+                    const text = $('#fShareText').val();
+                    navigator.clipboard.writeText(text);
+                    EModal.toast({ type: 'success', title: 'Teks Informasi Berhasil Disalin!' });
+                }
+            });
+        }).catch(() => {
+            EModal.close(loader);
+            EModal.alert('Error', 'Gagal membuat link ujian');
         });
     },
 

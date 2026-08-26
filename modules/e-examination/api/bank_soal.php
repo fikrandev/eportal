@@ -22,6 +22,11 @@ try {
             json_response(200, true, '', $stmt->fetchAll());
             break;
 
+        case 'list_classes':
+            exam_auth();
+            json_response(200, true, '', exam_get_classes());
+            break;
+
         case 'create_mapel':
             exam_require_admin();
             if ($method !== 'POST') throw new Exception('Method not allowed', 405);

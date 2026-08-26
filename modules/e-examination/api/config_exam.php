@@ -46,29 +46,82 @@ function exam_auth() {
             json_response(401, false, 'Sesi tidak valid atau telah berakhir.');
         }
 
+        // Resolve examination-specific role from exam_roles table
+        $examRole = null;
+        try {
+            $stmtRole = db()->prepare("SELECT role, status FROM exam_roles WHERE user_id = ?");
+            $stmtRole->execute([$session['user_id']]);
+            $rRow = $stmtRole->fetch();
+            if ($rRow && (int)$rRow['status'] === 1) {
+                $examRole = $rRow['role'];
+            }
+        } catch (PDOException $e) {
+            // Table might not exist yet before migration
+            $examRole = null;
+        }
+
+        $isSuperAdmin = ($session['role'] === 'superadmin');
+        $isExamAdmin = $isSuperAdmin || ($examRole === 'admin') || (!$examRole && $session['role'] === 'user');
+        $isProktor = $isExamAdmin || ($examRole === 'proktor');
+        $isGuru = $isExamAdmin || ($examRole === 'guru') || (!$examRole && $session['role'] === 'guru');
+
+        // Determine primary effective exam role
+        $effectiveRole = 'guru';
+        if ($isExamAdmin) {
+            $effectiveRole = 'admin';
+        } elseif ($examRole === 'proktor') {
+            $effectiveRole = 'proktor';
+        } elseif ($isGuru) {
+            $effectiveRole = 'guru';
+        }
+
         $user = [
-            'user_id'       => $session['user_id'],
+            'user_id'       => (int)$session['user_id'],
             'username'      => $session['username'],
             'nama_lengkap'  => $session['nama_lengkap'],
-            'role'          => $session['role'],
+            'role'          => $session['role'], // portal role
+            'exam_role'     => $effectiveRole,   // examination module role: admin, guru, proktor
             'avatar'        => $session['avatar'],
-            'is_admin'      => in_array($session['role'], ['superadmin', 'user']),
-            'is_guru'       => ($session['role'] === 'guru'),
+            'is_admin'      => $isExamAdmin,
+            'is_proktor'    => $isProktor,
+            'is_guru'       => $isGuru,
         ];
 
         return $user;
     } catch (PDOException $e) {
-        json_response(500, false, 'Server error.');
+        json_response(500, false, 'Server error: ' . $e->getMessage());
     }
 }
 
 /**
- * Require admin access
+ * Require admin access (Full superadmin / admin examination)
  */
 function exam_require_admin() {
     $user = exam_auth();
     if (!$user['is_admin']) {
-        json_response(403, false, 'Akses ditolak. Hanya admin yang dapat mengakses.');
+        json_response(403, false, 'Akses ditolak. Hanya admin yang dapat mengakses menu ini.');
+    }
+    return $user;
+}
+
+/**
+ * Require proktor access (Admin or Proktor)
+ */
+function exam_require_proktor() {
+    $user = exam_auth();
+    if (!$user['is_proktor'] && !$user['is_admin']) {
+        json_response(403, false, 'Akses ditolak. Hanya Proktor dan Admin yang dapat mengakses menu ini.');
+    }
+    return $user;
+}
+
+/**
+ * Require guru access (Admin or Guru)
+ */
+function exam_require_guru() {
+    $user = exam_auth();
+    if (!$user['is_guru'] && !$user['is_admin']) {
+        json_response(403, false, 'Akses ditolak. Hanya Guru dan Admin yang dapat mengakses menu ini.');
     }
     return $user;
 }
@@ -77,11 +130,7 @@ function exam_require_admin() {
  * Require admin or guru access
  */
 function exam_require_admin_or_guru() {
-    $user = exam_auth();
-    if (!$user['is_admin'] && !$user['is_guru']) {
-        json_response(403, false, 'Akses ditolak.');
-    }
-    return $user;
+    return exam_require_guru();
 }
 
 /**

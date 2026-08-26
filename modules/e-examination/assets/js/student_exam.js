@@ -65,11 +65,32 @@ const ExamApp = {
             }
         });
 
-        // Release lock on page unload
+        // Release lock and send lock signal on page unload if not submitted
         window.addEventListener('beforeunload', () => {
             clearInterval(this._lockInterval);
+            if (this._heartbeatInterval) clearInterval(this._heartbeatInterval);
             localStorage.removeItem(lockKey);
+
+            if (!this.isSubmitting) {
+                const payload = JSON.stringify({ reason: 'Keluar / reload dari halaman ujian' });
+                if (navigator.sendBeacon) {
+                    const blob = new Blob([payload], { type: 'application/json' });
+                    navigator.sendBeacon('../api/pengerjaan.php?action=lock_student', blob);
+                }
+            }
         });
+
+        // Heartbeat interval (every 10 seconds)
+        this._heartbeatInterval = setInterval(() => {
+            if (!this.isSubmitting && this.sessionId) {
+                $.ajax({
+                    url: '../api/pengerjaan.php?action=heartbeat',
+                    method: 'POST',
+                    data: JSON.stringify({ session_id: this.sessionId, remaining_seconds: this.remainingSeconds }),
+                    contentType: 'application/json'
+                });
+            }
+        }, 10000);
 
         // ===== 2. FULLSCREEN ENFORCEMENT =====
         document.addEventListener('fullscreenchange', () => {

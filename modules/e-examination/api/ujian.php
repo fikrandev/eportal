@@ -17,13 +17,16 @@ try {
         // DAFTAR UJIAN
         // ==========================================
         case 'list':
-            $user = exam_require_admin_or_guru();
+            $user = exam_auth();
+            if (!$user['is_admin'] && !$user['is_guru'] && !$user['is_proktor']) {
+                json_response(403, false, 'Akses ditolak.');
+            }
             
             $where = "1=1";
             $params = [];
 
-            // Jika guru, hanya lihat ujian yang dia buat
-            if ($user['is_guru'] && !$user['is_admin']) {
+            // Jika guru (bukan admin & bukan proktor), hanya lihat ujian yang dia buat
+            if ($user['is_guru'] && !$user['is_admin'] && !$user['is_proktor']) {
                 $where .= " AND u.created_by = ?";
                 $params[] = $user['user_id'];
             }

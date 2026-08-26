@@ -12,7 +12,7 @@ $token = isset($_GET['token']) ? $_GET['token'] : '';
 $user = null;
 
 if (!empty($token)) {
-    // Eportal session token (admin/guru)
+    // Eportal session token (admin/guru/proktor)
     try {
         $stmt = db()->prepare("
             SELECT u.id as user_id, u.username, u.nama_lengkap, u.role, u.avatar
@@ -23,9 +23,31 @@ if (!empty($token)) {
         $stmt->execute([$token]);
         $user = $stmt->fetch();
         
-        // Block students/unauthorized
+        // Block unauthorized
         if ($user && !in_array($user['role'], ['superadmin', 'user', 'guru'])) {
             $user = null;
+        }
+
+        if ($user) {
+            // Check exam_roles table
+            $examRole = null;
+            try {
+                $stmtRole = db()->prepare("SELECT role, status FROM exam_roles WHERE user_id = ?");
+                $stmtRole->execute([$user['user_id']]);
+                $r = $stmtRole->fetch();
+                if ($r && (int)$r['status'] === 1) {
+                    $examRole = $r['role'];
+                }
+            } catch (Exception $e) { $examRole = null; }
+
+            if ($user['role'] === 'superadmin' || ($examRole === 'admin') || (!$examRole && $user['role'] === 'user')) {
+                $effectiveExamRole = 'admin';
+            } elseif ($examRole === 'proktor') {
+                $effectiveExamRole = 'proktor';
+            } else {
+                $effectiveExamRole = 'guru';
+            }
+            $user['exam_role'] = $effectiveExamRole;
         }
     } catch (PDOException $e) { $user = null; }
 }
@@ -72,10 +94,11 @@ $school_icon = get_setting('icon_sekolah', '');
             moduleUrl: '<?php echo BASE_URL; ?>modules/e-examination/',
             token: '<?php echo addslashes($token); ?>',
             user: {
-                id: <?php echo $user['user_id']; ?>,
+                id: <?php echo (int)$user['user_id']; ?>,
                 username: '<?php echo addslashes($user['username']); ?>',
                 nama_lengkap: '<?php echo addslashes($user['nama_lengkap']); ?>',
                 role: '<?php echo $user['role']; ?>',
+                exam_role: '<?php echo $user['exam_role']; ?>',
                 avatar: '<?php echo addslashes($user['avatar'] ?? ''); ?>'
             },
             school: {

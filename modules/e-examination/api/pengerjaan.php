@@ -39,6 +39,21 @@ try {
                 throw new Exception('Password salah', 401);
             }
 
+            // ===== CHECK PROCTOR LOCK STATUS =====
+            try {
+                $stmtLock = db()->prepare("SELECT is_locked, lock_reason FROM exam_student_login WHERE student_id = ?");
+                $stmtLock->execute([$student['id']]);
+                $lockInfo = $stmtLock->fetch();
+
+                if ($lockInfo && (int)$lockInfo['is_locked'] === 1) {
+                    $reason = $lockInfo['lock_reason'] ? " ({$lockInfo['lock_reason']})" : "";
+                    throw new Exception("Akun Anda terkunci{$reason} karena keluar dari aplikasi ujian. Harap hubungi Proktor ujian untuk melakukan Reset Login.", 403);
+                }
+            } catch (Exception $e) {
+                if ($e->getCode() === 403) throw $e;
+                // Table might not exist yet if not migrated, ignore other errors
+            }
+
             $_SESSION['exam_student'] = [
                 'id' => $student['id'],
                 'nis' => $student['nis'],
@@ -46,12 +61,93 @@ try {
                 'kelas' => $student['kelas']
             ];
 
+            // Record login status in exam_student_login
+            try {
+                $ip = $_SERVER['REMOTE_ADDR'] ?? '';
+                $ua = $_SERVER['HTTP_USER_AGENT'] ?? '';
+                $stmtLog = db()->prepare("
+                    INSERT INTO exam_student_login (student_id, status, is_locked, lock_reason, ip_address, user_agent, login_at, last_heartbeat)
+                    VALUES (?, 'logged_in', 0, NULL, ?, ?, NOW(), NOW())
+                    ON DUPLICATE KEY UPDATE
+                        status = 'logged_in',
+                        is_locked = 0,
+                        lock_reason = NULL,
+                        ip_address = VALUES(ip_address),
+                        user_agent = VALUES(user_agent),
+                        login_at = NOW(),
+                        last_heartbeat = NOW()
+                ");
+                $stmtLog->execute([$student['id'], $ip, $ua]);
+            } catch (Exception $e) {}
+
             json_response(200, true, 'Login berhasil');
             break;
 
         case 'logout':
+            if (isset($_SESSION['exam_student'])) {
+                $studentId = $_SESSION['exam_student']['id'];
+                try {
+                    // If student was in exam, lock their account on logout
+                    $stmtCheck = db()->prepare("SELECT status FROM exam_student_login WHERE student_id = ?");
+                    $stmtCheck->execute([$studentId]);
+                    $currStatus = $stmtCheck->fetchColumn();
+
+                    $isLocked = ($currStatus === 'mengerjakan') ? 1 : 0;
+                    $lockReason = $isLocked ? 'Logout saat ujian sedang berlangsung' : null;
+
+                    db()->prepare("
+                        UPDATE exam_student_login 
+                        SET status = 'logged_out', is_locked = ?, lock_reason = ?, updated_at = NOW() 
+                        WHERE student_id = ?
+                    ")->execute([$isLocked, $lockReason, $studentId]);
+                } catch (Exception $e) {}
+            }
             unset($_SESSION['exam_student']);
             json_response(200, true, 'Logout berhasil');
+            break;
+
+        case 'lock_student':
+            // Endpoint called via beacon or API when student leaves exam page
+            $studentId = $_SESSION['exam_student']['id'] ?? 0;
+            $data = json_decode(file_get_contents('php://input'), true) ?: $_POST;
+            if (!$studentId && !empty($data['student_id'])) {
+                $studentId = (int)$data['student_id'];
+            }
+            $reason = sanitize($data['reason'] ?? 'Keluar dari aplikasi ujian');
+
+            if ($studentId > 0) {
+                try {
+                    db()->prepare("
+                        UPDATE exam_student_login 
+                        SET is_locked = 1, status = 'logged_out', lock_reason = ?, updated_at = NOW() 
+                        WHERE student_id = ?
+                    ")->execute([$reason, $studentId]);
+                } catch (Exception $e) {}
+                unset($_SESSION['exam_student']);
+            }
+            json_response(200, true, 'Akun siswa telah dikunci');
+            break;
+
+        case 'heartbeat':
+            if (!isset($_SESSION['exam_student'])) throw new Exception('Session expired', 401);
+            $studentId = $_SESSION['exam_student']['id'];
+            $data = json_decode(file_get_contents('php://input'), true) ?: $_GET;
+            $sessionId = (int)($data['session_id'] ?? 0);
+            $remaining = (int)($data['remaining_seconds'] ?? 0);
+
+            try {
+                db()->prepare("
+                    UPDATE exam_student_login 
+                    SET last_heartbeat = NOW() 
+                    WHERE student_id = ?
+                ")->execute([$studentId]);
+
+                if ($sessionId > 0 && $remaining > 0) {
+                    db()->prepare("UPDATE exam_sesi SET sisa_detik = ? WHERE id = ? AND student_id = ?")->execute([$remaining, $sessionId, $studentId]);
+                }
+            } catch (Exception $e) {}
+
+            json_response(200, true, 'Heartbeat OK');
             break;
 
         // ==========================================
@@ -109,6 +205,10 @@ try {
                     throw new Exception('Anda sudah menyelesaikan atau dihentikan dari ujian ini.', 403);
                 }
                 // Resume
+                try {
+                    db()->prepare("UPDATE exam_student_login SET status = 'mengerjakan', ujian_id = ?, sesi_id = ?, is_locked = 0, last_heartbeat = NOW() WHERE student_id = ?")->execute([$ujian_id, $sesi['id'], $student['id']]);
+                } catch (Exception $e) {}
+
                 json_response(200, true, 'Melanjutkan ujian', ['session_id' => $sesi['id']]);
             } else {
                 // New Session
@@ -143,6 +243,9 @@ try {
                         $stmtAns->execute([$session_id, $s['id'], $idx + 1, $opsiAcak]);
                     }
 
+                    // Update login status
+                    db()->prepare("UPDATE exam_student_login SET status = 'mengerjakan', ujian_id = ?, sesi_id = ?, is_locked = 0, last_heartbeat = NOW() WHERE student_id = ?")->execute([$ujian_id, $session_id, $student['id']]);
+
                     db()->commit();
                     json_response(200, true, 'Ujian dimulai', ['session_id' => $session_id]);
                 } catch (Exception $e) {
@@ -173,6 +276,11 @@ try {
             if (!$sesi) throw new Exception('Sesi tidak ditemukan', 404);
             if ($sesi['status'] !== 'mengerjakan') throw new Exception('Ujian sudah selesai atau dihentikan', 403);
 
+            // Ensure login tracker is marked as mengerjakan
+            try {
+                db()->prepare("UPDATE exam_student_login SET status = 'mengerjakan', ujian_id = ?, sesi_id = ?, is_locked = 0, last_heartbeat = NOW() WHERE student_id = ?")->execute([$sesi['ujian_id'], $session_id, $_SESSION['exam_student']['id']]);
+            } catch (Exception $e) {}
+
             // Calculate remaining time
             $startTime = strtotime($sesi['waktu_mulai']);
             $endTime = $startTime + ($sesi['durasi_menit'] * 60);
@@ -181,6 +289,9 @@ try {
             if ($remainingSeconds <= 0) {
                 // Auto submit if time is up
                 db()->prepare("UPDATE exam_sesi SET status = 'selesai', waktu_selesai = NOW() WHERE id = ?")->execute([$session_id]);
+                try {
+                    db()->prepare("UPDATE exam_student_login SET status = 'selesai', is_locked = 0 WHERE student_id = ?")->execute([$_SESSION['exam_student']['id']]);
+                } catch (Exception $e) {}
                 throw new Exception('Waktu ujian telah habis', 403);
             }
 
@@ -210,8 +321,6 @@ try {
                         $opsiBaru = [];
                         foreach ($acakOrder as $l) {
                             if (isset($opsiMap[$l])) {
-                                // Ganti labelnya secara virtual untuk UI (A, B, C...) tapi aslinya tetap value lama?
-                                // Atau biarkan label asli, UI yang render berdasarkan urutan array
                                 $opsiBaru[] = $opsiMap[$l];
                             }
                         }
@@ -289,7 +398,10 @@ try {
             $stmt->execute([$session_id, $_SESSION['exam_student']['id']]);
 
             if ($stmt->rowCount() > 0) {
-                // Background processing could be triggered here for auto-grading
+                try {
+                    db()->prepare("UPDATE exam_student_login SET status = 'selesai', is_locked = 0, updated_at = NOW() WHERE student_id = ?")->execute([$_SESSION['exam_student']['id']]);
+                } catch (Exception $e) {}
+
                 json_response(200, true, 'Ujian berhasil diselesaikan');
             } else {
                 json_response(400, false, 'Gagal menyelesaikan ujian atau ujian sudah selesai');
@@ -317,6 +429,9 @@ try {
             // Stop exam if >= 3 violations
             if ($totalViolations >= 3) {
                 db()->prepare("UPDATE exam_sesi SET status = 'dihentikan', waktu_selesai = NOW() WHERE id = ? AND student_id = ?")->execute([$session_id, $_SESSION['exam_student']['id']]);
+                try {
+                    db()->prepare("UPDATE exam_student_login SET status = 'logged_out', is_locked = 1, lock_reason = 'Ujian dihentikan karena 3 kali pelanggaran anti-cheat', updated_at = NOW() WHERE student_id = ?")->execute([$_SESSION['exam_student']['id']]);
+                } catch (Exception $e) {}
                 json_response(200, true, 'Ujian dihentikan', ['action' => 'stop', 'violations' => $totalViolations]);
             } else {
                 json_response(200, true, 'Pelanggaran dicatat', ['action' => 'warn', 'violations' => $totalViolations]);
