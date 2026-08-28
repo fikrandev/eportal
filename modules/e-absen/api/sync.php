@@ -127,7 +127,7 @@ if ($action === 'pull') {
             SELECT l.*, m.nama_mesin, 
                 COALESCE(s.nama, u.nama_lengkap, l.mesin_pin) as nama_pegawai 
             FROM absen_logs l
-            JOIN absen_mesin m ON l.mesin_id = m.id
+            LEFT JOIN absen_mesin m ON l.mesin_id = m.id
             LEFT JOIN absen_user_map map ON l.mesin_pin = map.mesin_pin
             LEFT JOIN users u ON map.user_id = u.id
             LEFT JOIN students s ON l.mesin_pin = s.nis
