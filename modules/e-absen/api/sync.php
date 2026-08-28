@@ -48,6 +48,11 @@ if ($action === 'pull') {
         $mesinErrors = [];
         
         foreach ($mesins as $mesin) {
+            // Lewati mesin ADMS karena bersifat Push, tidak bisa ditarik manual via ZKLibrary
+            if (empty($mesin['ip_address'])) {
+                continue;
+            }
+
             $zk = new ZKLibrary($mesin['ip_address'], $mesin['port']);
             $connected = $zk->connect();
             
