@@ -5,10 +5,18 @@
  */
 
 // --- MANUAL CONFIGURATION (ONLY CHANGE THIS) ---
+// define('DB_HOST', 'localhost');
+// define('DB_NAME', 'eportal_db');
+// define('DB_USER', 'root');
+// define('DB_PASS', '');
+// define('DB_CHARSET', 'utf8mb4');
+
+// --- Online---
+
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'eportal_db');
-define('DB_USER', 'root');
-define('DB_PASS', '');
+define('DB_NAME', 'db_eportal');
+define('DB_USER', 'db_eportal');
+define('DB_PASS', 'F55117002@akun');
 define('DB_CHARSET', 'utf8mb4');
 
 // Set to your full URL if automatic detection fails (e.g., 'https://myschool.com/')
@@ -470,3 +478,8 @@ function paginate($query, $params = [], $page = 1, $perPage = 10)
         'total_pages' => ceil($total / $perPage)
     ];
 }
+
+// Auto-run database migrations on config load
+require_once __DIR__ . '/migration_helper.php';
+run_auto_migrations();
+
