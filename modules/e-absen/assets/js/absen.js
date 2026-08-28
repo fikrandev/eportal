@@ -269,7 +269,7 @@ const Absen = {
                         <td>${m.status == 1 ? '<span style="color:green">Aktif</span>' : '<span style="color:red">Nonaktif</span>'}</td>
                         <td>${m.last_sync || '-'}</td>
                         <td style="text-align:right">
-                            <button class="btn btn-outline" style="padding:4px 8px; font-size:12px;" onclick="Absen.testMesin('${this.escapeHtml(m.ip_address)}', ${m.port})">Tes</button>
+                            ${m.ip_address ? `<button class="btn btn-outline" style="padding:4px 8px; font-size:12px;" onclick="Absen.testMesin('${this.escapeHtml(m.ip_address)}', ${m.port})">Tes</button>` : ''}
                             <button class="btn btn-outline" style="padding:4px 8px; font-size:12px;" onclick='Absen.showMesinModal(${JSON.stringify(m).replace(/'/g, "&apos;")})'>Edit</button>
                             <button class="btn btn-outline" style="padding:4px 8px; font-size:12px; color:red; border-color:red;" onclick="Absen.deleteMesin(${m.id}, '${this.escapeHtml(m.nama_mesin)}')">Hapus</button>
                         </td>
