@@ -95,16 +95,22 @@ function listJurnal($user) {
             $params[] = $kelas_id;
         }
 
+        $jenis = isset($_GET['jenis_jurnal']) ? trim($_GET['jenis_jurnal']) : '';
+        if (!empty($jenis)) {
+            $where .= " AND j.jenis_jurnal = ?";
+            $params[] = $jenis;
+        }
+
         $stmt = db()->prepare("
             SELECT j.*, k.nama_kelas, m.nama_mapel
             FROM acad_jurnal j
-            JOIN sch_kelas k ON j.kelas_id = k.id
-            JOIN sch_mapel m ON j.mapel_id = m.id
+            LEFT JOIN sch_kelas k ON j.kelas_id = k.id
+            LEFT JOIN sch_mapel m ON j.mapel_id = m.id
             WHERE $where
-            ORDER BY j.tanggal DESC, j.jam_ke ASC
+            ORDER BY j.tanggal DESC, j.jam_ke ASC, j.created_at DESC
         ");
         $stmt->execute($params);
-        $data = $stmt->fetchAll();
+        $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         json_response(200, true, 'Data jurnal dimuat.', $data);
     } catch (PDOException $e) {
@@ -123,8 +129,8 @@ function getJurnal($user) {
         $stmt = db()->prepare("
             SELECT j.*, k.nama_kelas, m.nama_mapel
             FROM acad_jurnal j
-            JOIN sch_kelas k ON j.kelas_id = k.id
-            JOIN sch_mapel m ON j.mapel_id = m.id
+            LEFT JOIN sch_kelas k ON j.kelas_id = k.id
+            LEFT JOIN sch_mapel m ON j.mapel_id = m.id
             WHERE j.id = ? AND j.guru_id = ?
         ");
         $stmt->execute([$id, $user['user_id']]);
@@ -132,19 +138,21 @@ function getJurnal($user) {
 
         if (!$data) json_response(404, false, 'Jurnal tidak ditemukan.');
 
-        // Get matching attendance from acad_absensi
-        $jam_ke_int = 0;
-        if (preg_match('/(\d+)/', $data['jam_ke'], $matches)) {
-            $jam_ke_int = (int)$matches[1];
-        }
+        $data['absensi'] = [];
+        if ($data['jenis_jurnal'] === 'kbm' && !empty($data['kelas_id'])) {
+            $jam_ke_int = 0;
+            if (preg_match('/(\d+)/', $data['jam_ke'], $matches)) {
+                $jam_ke_int = (int)$matches[1];
+            }
 
-        $stmtAbs = db()->prepare("
-            SELECT student_id, status, keterangan 
-            FROM acad_absensi 
-            WHERE tanggal = ? AND kelas_id = ? AND jam_ke = ?
-        ");
-        $stmtAbs->execute([$data['tanggal'], $data['kelas_id'], $jam_ke_int]);
-        $data['absensi'] = $stmtAbs->fetchAll(PDO::FETCH_ASSOC);
+            $stmtAbs = db()->prepare("
+                SELECT student_id, status, keterangan 
+                FROM acad_absensi 
+                WHERE tanggal = ? AND kelas_id = ? AND jam_ke = ?
+            ");
+            $stmtAbs->execute([$data['tanggal'], $data['kelas_id'], $jam_ke_int]);
+            $data['absensi'] = $stmtAbs->fetchAll(PDO::FETCH_ASSOC);
+        }
 
         json_response(200, true, 'Data jurnal.', $data);
     } catch (PDOException $e) {
@@ -159,8 +167,7 @@ function createJurnal($user) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed.');
 
     $input = get_input();
-    $kelas_id = isset($input['kelas_id']) ? (int)$input['kelas_id'] : 0;
-    $mapel_id = isset($input['mapel_id']) ? (int)$input['mapel_id'] : 0;
+    $jenis_jurnal = isset($input['jenis_jurnal']) && in_array($input['jenis_jurnal'], ['kbm', 'non_kbm', 'wali_kelas']) ? $input['jenis_jurnal'] : 'kbm';
     $tanggal = isset($input['tanggal']) ? $input['tanggal'] : date('Y-m-d');
     
     // Strict restriction: Can only fill journal for today
@@ -168,14 +175,77 @@ function createJurnal($user) {
         json_response(400, false, 'Jurnal hanya bisa diisi pada hari ini.');
     }
 
+    $active_year = get_active_academic_year();
+    $year_id = $active_year['id'] ?? 0;
+    $catatan = isset($input['catatan']) ? trim($input['catatan']) : '';
+
+    // ==========================================
+    // 1. NON-KBM ACTIVITY JOURNAL (Guru Non-Mapel)
+    // ==========================================
+    if ($jenis_jurnal === 'non_kbm') {
+        if (empty($catatan)) {
+            json_response(400, false, 'Catatan kegiatan wajib diisi.');
+        }
+
+        try {
+            $stmt = db()->prepare("
+                INSERT INTO acad_jurnal (guru_id, academic_year_id, jenis_jurnal, tanggal, catatan)
+                VALUES (?, ?, 'non_kbm', ?, ?)
+            ");
+            $stmt->execute([$user['user_id'], $year_id, $tanggal, $catatan]);
+            $jurnal_id = db()->lastInsertId();
+
+            json_response(201, true, 'Jurnal kegiatan berhasil disimpan.', ['id' => $jurnal_id]);
+        } catch (PDOException $e) {
+            json_response(500, false, 'Server error: ' . $e->getMessage());
+        }
+        return;
+    }
+
+    // ==========================================
+    // 2. WALI KELAS JOURNAL (Catatan Wali Kelas)
+    // ==========================================
+    if ($jenis_jurnal === 'wali_kelas') {
+        if (empty($catatan)) {
+            json_response(400, false, 'Catatan kegiatan wali kelas wajib diisi.');
+        }
+
+        // Get homeroom class ID
+        $stmtWali = db()->prepare("SELECT id, nama_kelas FROM ref_kelas WHERE wali_kelas_id = ? LIMIT 1");
+        $stmtWali->execute([$user['user_id']]);
+        $wali = $stmtWali->fetch(PDO::FETCH_ASSOC);
+
+        $kelas_id = null;
+        if ($wali) {
+            $stmtSK = db()->prepare("SELECT id FROM sch_kelas WHERE nama_kelas = ? LIMIT 1");
+            $stmtSK->execute([$wali['nama_kelas']]);
+            $kelas_id = $stmtSK->fetchColumn() ?: null;
+        }
+
+        try {
+            $stmt = db()->prepare("
+                INSERT INTO acad_jurnal (guru_id, kelas_id, academic_year_id, jenis_jurnal, tanggal, catatan)
+                VALUES (?, ?, ?, 'wali_kelas', ?, ?)
+            ");
+            $stmt->execute([$user['user_id'], $kelas_id, $year_id, $tanggal, $catatan]);
+            $jurnal_id = db()->lastInsertId();
+
+            json_response(201, true, 'Jurnal kegiatan wali kelas berhasil disimpan.', ['id' => $jurnal_id]);
+        } catch (PDOException $e) {
+            json_response(500, false, 'Server error: ' . $e->getMessage());
+        }
+        return;
+    }
+
+    // ==========================================
+    // 3. REGULAR KBM JOURNAL (Guru Mengajar)
+    // ==========================================
+    $kelas_id = isset($input['kelas_id']) ? (int)$input['kelas_id'] : 0;
+    $mapel_id = isset($input['mapel_id']) ? (int)$input['mapel_id'] : 0;
     $jam_ke = isset($input['jam_ke']) ? trim($input['jam_ke']) : '';
     $tp = isset($input['tujuan_pembelajaran']) ? trim($input['tujuan_pembelajaran']) : '';
     $iptp = isset($input['indikator_tp']) ? trim($input['indikator_tp']) : '';
-    $catatan = isset($input['catatan']) ? trim($input['catatan']) : '';
     $absensi = isset($input['absensi']) ? $input['absensi'] : [];
-
-    $active_year = get_active_academic_year();
-    $year_id = $active_year['id'] ?? 0;
 
     if ($kelas_id <= 0 || $mapel_id <= 0 || empty($jam_ke)) {
         json_response(400, false, 'Kelas, Mata Pelajaran, dan Jam wajib diisi.');
@@ -185,7 +255,7 @@ function createJurnal($user) {
         // Check for duplicate
         $stmtCheck = db()->prepare("
             SELECT id FROM acad_jurnal 
-            WHERE guru_id = ? AND kelas_id = ? AND mapel_id = ? AND tanggal = ? AND jam_ke = ? AND academic_year_id = ?
+            WHERE guru_id = ? AND kelas_id = ? AND mapel_id = ? AND tanggal = ? AND jam_ke = ? AND academic_year_id = ? AND jenis_jurnal = 'kbm'
         ");
         $stmtCheck->execute([$user['user_id'], $kelas_id, $mapel_id, $tanggal, $jam_ke, $year_id]);
         if ($stmtCheck->fetch()) {
@@ -222,8 +292,8 @@ function createJurnal($user) {
         db()->beginTransaction();
 
         $stmt = db()->prepare("
-            INSERT INTO acad_jurnal (guru_id, kelas_id, mapel_id, academic_year_id, tanggal, jam_ke, tujuan_pembelajaran, indikator_tp, catatan, siswa_tidak_hadir)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO acad_jurnal (guru_id, kelas_id, mapel_id, academic_year_id, jenis_jurnal, tanggal, jam_ke, tujuan_pembelajaran, indikator_tp, catatan, siswa_tidak_hadir)
+            VALUES (?, ?, ?, ?, 'kbm', ?, ?, ?, ?, ?, ?)
         ");
         $stmt->execute([
             $user['user_id'], $kelas_id, $mapel_id, $year_id, $tanggal, $jam_ke, $tp, $iptp, $catatan, $siswa_tidak_hadir
@@ -281,7 +351,7 @@ function updateJurnal($user) {
 
     // Strict restriction: Can only edit today's journal
     try {
-        $stmtCheckDate = db()->prepare("SELECT tanggal, kelas_id, jam_ke FROM acad_jurnal WHERE id = ? AND guru_id = ?");
+        $stmtCheckDate = db()->prepare("SELECT * FROM acad_jurnal WHERE id = ? AND guru_id = ?");
         $stmtCheckDate->execute([$id, $user['user_id']]);
         $existingJurnal = $stmtCheckDate->fetch(PDO::FETCH_ASSOC);
         if (!$existingJurnal) {
@@ -294,9 +364,25 @@ function updateJurnal($user) {
         json_response(500, false, 'Database error: ' . $e->getMessage());
     }
 
+    $catatan = isset($input['catatan']) ? trim($input['catatan']) : '';
+
+    if ($existingJurnal['jenis_jurnal'] === 'non_kbm' || $existingJurnal['jenis_jurnal'] === 'wali_kelas') {
+        if (empty($catatan)) {
+            json_response(400, false, 'Catatan kegiatan wajib diisi.');
+        }
+        try {
+            $stmt = db()->prepare("UPDATE acad_jurnal SET catatan = ? WHERE id = ? AND guru_id = ?");
+            $stmt->execute([$catatan, $id, $user['user_id']]);
+            json_response(200, true, 'Jurnal kegiatan berhasil diperbarui.');
+        } catch (PDOException $e) {
+            json_response(500, false, 'Server error: ' . $e->getMessage());
+        }
+        return;
+    }
+
+    // KBM update
     $tp = isset($input['tujuan_pembelajaran']) ? trim($input['tujuan_pembelajaran']) : '';
     $iptp = isset($input['indikator_tp']) ? trim($input['indikator_tp']) : '';
-    $catatan = isset($input['catatan']) ? trim($input['catatan']) : '';
     $absensi = isset($input['absensi']) ? $input['absensi'] : [];
 
     try {
@@ -535,11 +621,11 @@ function listJurnalWaliKelas($user) {
         $stmt = db()->prepare("
             SELECT j.*, k.nama_kelas, m.nama_mapel, u.nama_lengkap as nama_guru
             FROM acad_jurnal j
-            JOIN sch_kelas k ON j.kelas_id = k.id
-            JOIN sch_mapel m ON j.mapel_id = m.id
+            LEFT JOIN sch_kelas k ON j.kelas_id = k.id
+            LEFT JOIN sch_mapel m ON j.mapel_id = m.id
             LEFT JOIN users u ON j.guru_id = u.id
             WHERE $where
-            ORDER BY j.tanggal DESC, j.jam_ke ASC
+            ORDER BY j.tanggal DESC, j.jam_ke ASC, j.created_at DESC
         ");
         $stmt->execute($params);
         $data = $stmt->fetchAll(PDO::FETCH_ASSOC);

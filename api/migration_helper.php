@@ -6,7 +6,7 @@
 require_once __DIR__ . '/config.php';
 
 function run_auto_migrations() {
-    $target_version = 4;
+    $target_version = 5;
     
     // 1. Get current version (default to 0 if not set or if table settings doesn't exist yet)
     $current_version = 0;
@@ -146,6 +146,40 @@ function run_auto_migrations() {
         } catch (PDOException $e) {
             // Table may already exist
         }
+    }
+
+    // Version 5 migrations (Support Non-KBM Activity Journals and Homeroom Wali Kelas Journals)
+    if ($current_version < 5) {
+        // 1. Add jenis_jurnal column to acad_jurnal if not exists
+        try {
+            $colExists = false;
+            $cols = $pdo->query("SHOW COLUMNS FROM `acad_jurnal` LIKE 'jenis_jurnal'")->fetchAll();
+            if (count($cols) > 0) $colExists = true;
+
+            if (!$colExists) {
+                $pdo->exec("ALTER TABLE `acad_jurnal` ADD COLUMN `jenis_jurnal` VARCHAR(30) NOT NULL DEFAULT 'kbm' AFTER `academic_year_id`");
+            }
+        } catch (PDOException $e) {
+            // Ignore error if column already exists
+        }
+
+        // 2. Modify kelas_id, mapel_id, jam_ke to allow NULL (for non-KBM activity journals)
+        try {
+            $pdo->exec("ALTER TABLE `acad_jurnal` MODIFY COLUMN `kelas_id` INT(10) UNSIGNED NULL DEFAULT NULL");
+        } catch (PDOException $e) {}
+
+        try {
+            $pdo->exec("ALTER TABLE `acad_jurnal` MODIFY COLUMN `mapel_id` INT(10) UNSIGNED NULL DEFAULT NULL");
+        } catch (PDOException $e) {}
+
+        try {
+            $pdo->exec("ALTER TABLE `acad_jurnal` MODIFY COLUMN `jam_ke` VARCHAR(20) NULL DEFAULT NULL");
+        } catch (PDOException $e) {}
+
+        // 3. Add index on (guru_id, jenis_jurnal, tanggal)
+        try {
+            $pdo->exec("ALTER TABLE `acad_jurnal` ADD INDEX `idx_jurnal_jenis` (`guru_id`, `jenis_jurnal`, `tanggal`)");
+        } catch (PDOException $e) {}
     }
 
     // Update DB migration version to target_version

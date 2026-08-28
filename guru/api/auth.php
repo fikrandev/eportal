@@ -80,10 +80,8 @@ function handleGuruLogin() {
         $iconSekolah = get_setting('icon_sekolah', '');
         $activeAcademicYear = get_active_academic_year();
 
-        // Check if teacher is a wali kelas
-        $stmtWali = db()->prepare("SELECT id, tingkat, nama_kelas FROM ref_kelas WHERE wali_kelas_id = ? LIMIT 1");
-        $stmtWali->execute([$user['id']]);
-        $waliKelas = $stmtWali->fetch(PDO::FETCH_ASSOC) ?: null;
+        // Get teacher capabilities & homeroom status
+        $meta = getTeacherMetadata($user['id'], $user['username']);
 
         json_response(200, true, 'Login berhasil!', [
             'token' => $token,
@@ -93,7 +91,9 @@ function handleGuruLogin() {
                 'nama_lengkap'  => $user['nama_lengkap'],
                 'role'          => $user['role'],
                 'avatar'        => $user['avatar'],
-                'wali_kelas'    => $waliKelas
+                'wali_kelas'    => $meta['wali_kelas'],
+                'has_mapel'     => $meta['has_mapel'],
+                'teacher_type'  => $meta['teacher_type']
             ],
             'school' => [
                 'nama' => $namaSekolah,
@@ -105,6 +105,41 @@ function handleGuruLogin() {
     } catch (PDOException $e) {
         json_response(500, false, 'Server error: ' . $e->getMessage());
     }
+}
+
+/**
+ * Helper to fetch teacher metadata (homeroom, teaching assignment, profile type)
+ */
+function getTeacherMetadata($userId, $username) {
+    // 1. Wali Kelas check
+    $stmtWali = db()->prepare("SELECT id, tingkat, nama_kelas FROM ref_kelas WHERE wali_kelas_id = ? LIMIT 1");
+    $stmtWali->execute([$userId]);
+    $waliKelas = $stmtWali->fetch(PDO::FETCH_ASSOC) ?: null;
+
+    // 2. Has Mapel / Teaching schedule check
+    $stmtGuru = db()->prepare("SELECT id FROM sch_guru WHERE kode_guru = ?");
+    $stmtGuru->execute([$username]);
+    $guru = $stmtGuru->fetch(PDO::FETCH_ASSOC);
+
+    $hasMapel = false;
+    if ($guru) {
+        $stmtDist = db()->prepare("SELECT COUNT(*) FROM sch_distribusi WHERE guru_id = ?");
+        $stmtDist->execute([$guru['id']]);
+        $hasMapel = ((int)$stmtDist->fetchColumn() > 0);
+    }
+
+    $teacherType = 'kbm';
+    if (!$hasMapel) {
+        $teacherType = $waliKelas ? 'non_kbm_wali' : 'non_kbm';
+    } else {
+        $teacherType = $waliKelas ? 'kbm_wali' : 'kbm';
+    }
+
+    return [
+        'wali_kelas' => $waliKelas,
+        'has_mapel' => $hasMapel,
+        'teacher_type' => $teacherType
+    ];
 }
 
 /**
@@ -131,11 +166,11 @@ function handleGuruCheck() {
             json_response(401, false, 'Sesi tidak valid atau telah berakhir.');
         }
 
-        // Check if teacher is a wali kelas
-        $stmtWali = db()->prepare("SELECT id, tingkat, nama_kelas FROM ref_kelas WHERE wali_kelas_id = ? LIMIT 1");
-        $stmtWali->execute([$user['user_id']]);
-        $waliKelas = $stmtWali->fetch(PDO::FETCH_ASSOC) ?: null;
-        $user['wali_kelas'] = $waliKelas;
+        // Get teacher metadata
+        $meta = getTeacherMetadata($user['user_id'], $user['username']);
+        $user['wali_kelas'] = $meta['wali_kelas'];
+        $user['has_mapel'] = $meta['has_mapel'];
+        $user['teacher_type'] = $meta['teacher_type'];
 
         // Get school settings
         $namaSekolah = get_setting('nama_sekolah', 'E-Portal Sekolah');

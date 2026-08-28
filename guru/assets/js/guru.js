@@ -331,10 +331,19 @@
             const content = $('#appContent');
             const hariIni = getHariIni();
             const tanggalIni = getTanggalIni();
+            const isWali = !!Auth.user?.wali_kelas;
+            const hasMapel = !!Auth.user?.has_mapel;
+
+            let roleSubtitle = 'Tenaga Pendidik';
+            if (isWali) {
+                roleSubtitle = `Wali Kelas ${escapeHtml(Auth.user.wali_kelas.nama_kelas)}${!hasMapel ? ' (Non-KBM)' : ''}`;
+            } else if (!hasMapel) {
+                roleSubtitle = 'Tenaga Pendidik (Non-KBM)';
+            }
 
             content.innerHTML = `
                 <div class="page-enter">
-                    <!-- Curved Gradient Header Block (mimicking Reference Image) -->
+                    <!-- Curved Gradient Header Block -->
                     <div class="welcome-header-block" style="background: var(--primary-gradient); color: white; padding: 24px 20px 30px; border-radius: 0 0 28px 28px; margin: -20px -16px 20px; box-shadow: 0 10px 25px -5px rgba(21, 101, 192, 0.25); position: relative; overflow: hidden;">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
                             <div style="display:flex; align-items:center; gap:12px;">
@@ -348,7 +357,7 @@
                                     <div style="font-size:0.75rem; opacity:0.8; font-weight:500;">Assalamu'alaikum,</div>
                                     <div style="font-family:var(--font-heading); font-size:1.05rem; font-weight:800; line-height:1.2;">${escapeHtml(Auth.user?.nama_lengkap || 'Guru')}</div>
                                     <div style="font-size:0.7rem; opacity:0.75; font-weight:600; margin-top:2px;">
-                                        ${Auth.user?.wali_kelas ? `Wali Kelas ${escapeHtml(Auth.user.wali_kelas.nama_kelas)}` : 'Tenaga Pendidik'}
+                                        ${roleSubtitle}
                                     </div>
                                 </div>
                             </div>
@@ -360,12 +369,12 @@
                             </div>
                         </div>
 
-                        <!-- Selamat Pagi Card banner -->
+                        <!-- Banner Hero -->
                         <div class="welcome-banner-hero" style="background:rgba(255,255,255,0.08); border-radius:16px; margin-top:20px; padding:16px; display:flex; justify-content:space-between; align-items:center; border:1px solid rgba(255,255,255,0.12);">
                             <div>
                                 <div style="font-size:0.75rem; font-weight:700; opacity:0.95; color:#fff;">${formatTanggal(tanggalIni)}</div>
                                 <div style="font-family:var(--font-heading); font-size:1.25rem; font-weight:800; margin-top:2px;">Selamat Hari Ini!</div>
-                                <div style="font-size:0.75rem; opacity:0.85; margin-top:2px;">Semangat menginspirasi hari ini ☀️</div>
+                                <div style="font-size:0.75rem; opacity:0.85; margin-top:2px;">Semangat beraktivitas & menginspirasi ☀️</div>
                             </div>
                             <div style="font-size:2.2rem; opacity:0.95; padding-right:4px;">📚</div>
                         </div>
@@ -378,19 +387,28 @@
                         Menu Cepat
                     </div>
                     <div class="quick-shortcuts-grid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:20px;">
-                        <div class="shortcut-card" onclick="location.hash='#/jadwal'" style="background:white; border-radius:16px; padding:14px 10px; text-align:center; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px; transition:transform 0.2s ease;">
-                            <div style="width:40px; height:40px; border-radius:12px; background:rgba(59,130,246,0.1); color:#3b82f6; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        ${hasMapel ? `
+                            <div class="shortcut-card" onclick="location.hash='#/jadwal'" style="background:white; border-radius:16px; padding:14px 10px; text-align:center; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px; transition:transform 0.2s ease;">
+                                <div style="width:40px; height:40px; border-radius:12px; background:rgba(59,130,246,0.1); color:#3b82f6; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                </div>
+                                <span style="font-size:0.75rem; font-weight:700; color:var(--text-primary);">Jadwal</span>
                             </div>
-                            <span style="font-size:0.75rem; font-weight:700; color:var(--text-primary);">Jadwal</span>
-                        </div>
+                        ` : `
+                            <div class="shortcut-card" onclick="location.hash='#/jurnal'" style="background:white; border-radius:16px; padding:14px 10px; text-align:center; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px; transition:transform 0.2s ease;">
+                                <div style="width:40px; height:40px; border-radius:12px; background:rgba(59,130,246,0.1); color:#3b82f6; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                </div>
+                                <span style="font-size:0.75rem; font-weight:700; color:var(--text-primary);">Isi Jurnal</span>
+                            </div>
+                        `}
                         <div class="shortcut-card" onclick="location.hash='#/riwayat'" style="background:white; border-radius:16px; padding:14px 10px; text-align:center; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px; transition:transform 0.2s ease;">
                             <div style="width:40px; height:40px; border-radius:12px; background:rgba(16,185,129,0.1); color:#10b981; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                             </div>
                             <span style="font-size:0.75rem; font-weight:700; color:var(--text-primary);">Riwayat</span>
                         </div>
-                        ${Auth.user?.wali_kelas ? `
+                        ${isWali ? `
                             <div class="shortcut-card" onclick="location.hash='#/jurnal-kelas'" style="background:white; border-radius:16px; padding:14px 10px; text-align:center; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px; transition:transform 0.2s ease;">
                                 <div style="width:40px; height:40px; border-radius:12px; background:rgba(245,158,11,0.1); color:#f59e0b; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
@@ -407,13 +425,13 @@
                         `}
                     </div>
 
-                    <!-- Ringkasan Absensi Kelas (Mimicking Reference Image 2) -->
+                    <!-- Ringkasan Absensi Kelas (Untuk Wali Kelas) -->
                     <div id="homeWaliAbsenSummary"></div>
 
-                    <!-- Jadwal Mengajar Hari Ini -->
+                    <!-- Jadwal Mengajar / Jurnal Kegiatan Hari Ini -->
                     <div class="section-title">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                        Jadwal Hari Ini
+                        ${hasMapel ? 'Jadwal Hari Ini' : 'Jurnal Kegiatan Hari Ini'}
                     </div>
                     <div id="homeTodaySchedule" style="margin-bottom:20px;">
                         <div class="skeleton skeleton-card" style="height:60px; margin-bottom:8px;"></div>
@@ -466,8 +484,44 @@
                         `;
                     }
 
-                    // Render Schedule
-                    this.renderScheduleSlots('#homeTodaySchedule', schedules, true);
+                    // Render Schedule or Non-KBM Activity Box
+                    const scheduleContainer = $('#homeTodaySchedule');
+                    if (scheduleContainer) {
+                        if (hasMapel) {
+                            if (isWali) {
+                                // Add button for Wali Kelas journal entry
+                                const waliActionHtml = `
+                                    <div style="margin-bottom:12px;">
+                                        <button class="btn btn-sm" onclick="GuruApp.openKegiatanModal('wali_kelas')" style="width:100%; background:#eff6ff; color:#2563eb; border:1.5px dashed #93c5fd; border-radius:12px; padding:10px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px;">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                                            <span>+ Isi Jurnal Wali Kelas (${escapeHtml(Auth.user.wali_kelas.nama_kelas)})</span>
+                                        </button>
+                                    </div>
+                                `;
+                                scheduleContainer.innerHTML = waliActionHtml + '<div id="homeScheduleSlotsWrap"></div>';
+                                this.renderScheduleSlots('#homeScheduleSlotsWrap', schedules, true);
+                            } else {
+                                this.renderScheduleSlots(scheduleContainer, schedules, true);
+                            }
+                        } else {
+                            // Non-KBM teacher: direct activity box
+                            scheduleContainer.innerHTML = `
+                                <div class="non-kbm-card" style="background:white; border-radius:18px; padding:18px; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9;">
+                                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
+                                        <div>
+                                            <div style="font-family:var(--font-heading); font-size:0.95rem; font-weight:800; color:var(--text-primary);">Kegiatan Hari Ini</div>
+                                            <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Catat ringkasan aktivitas / tugas Anda hari ini</div>
+                                        </div>
+                                        <span class="badge badge-primary" style="font-size:0.7rem;">Non-KBM</span>
+                                    </div>
+                                    <button class="btn btn-primary btn-block" onclick="GuruApp.openKegiatanModal('non_kbm')" style="display:flex; align-items:center; justify-content:center; gap:8px; border-radius:12px; padding:12px; font-weight:700;">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                        <span>+ Tulis Catatan Kegiatan</span>
+                                    </button>
+                                </div>
+                            `;
+                        }
+                    }
 
                     // Render Recent Journals
                     const recentContainer = $('#homeRecentJournals');
@@ -475,23 +529,45 @@
                         if (recents.length === 0) {
                             recentContainer.innerHTML = '<div class="text-center text-muted text-sm py-3" style="background:white; border-radius:16px; border:1.5px solid #f1f5f9; padding:20px;">Belum ada jurnal yang diisi.</div>';
                         } else {
-                            recentContainer.innerHTML = recents.map(r => `
-                                <div class="recent-jurnal-card" onclick="GuruApp.viewJurnal(${r.id})" style="background:white; border-radius:16px; padding:14px 16px; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; margin-bottom:10px; display:flex; flex-direction:column; gap:8px; cursor:pointer; position:relative; transition:all 0.2s ease;">
-                                    <div style="display:flex; justify-content:space-between; align-items:start;">
-                                        <div style="font-family:var(--font-heading); font-size:0.875rem; font-weight:800; color:var(--text-primary);">${escapeHtml(r.nama_mapel)}</div>
-                                        <span class="badge badge-primary">Jam ke-${escapeHtml(r.jam_ke)}</span>
-                                    </div>
-                                    <div style="font-size:0.75rem; color:var(--text-muted); font-weight:500; display:flex; align-items:center; gap:4px; margin-top:-4px;">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                                        ${formatTanggal(r.tanggal)} — Kelas ${escapeHtml(r.nama_kelas)}
-                                    </div>
-                                    ${r.tujuan_pembelajaran ? `
-                                        <div style="background:var(--bg-light); padding:8px 10px; border-radius:8px; font-size:0.75rem; color:var(--text-secondary); white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">
-                                            <strong>TP:</strong> ${escapeHtml(r.tujuan_pembelajaran)}
+                            recentContainer.innerHTML = recents.map(r => {
+                                let cardTitle = escapeHtml(r.nama_mapel || 'Jurnal Kegiatan');
+                                let cardBadge = `Jam ke-${escapeHtml(r.jam_ke || '-')}`;
+                                let cardBadgeClass = 'badge-primary';
+                                let cardSubtitle = `${formatTanggal(r.tanggal)} — Kelas ${escapeHtml(r.nama_kelas || '-')}`;
+                                let noteSnippet = r.tujuan_pembelajaran ? `<strong>TP:</strong> ${escapeHtml(r.tujuan_pembelajaran)}` : (r.catatan ? escapeHtml(r.catatan) : '');
+
+                                if (r.jenis_jurnal === 'non_kbm') {
+                                    cardTitle = 'Jurnal Kegiatan Guru';
+                                    cardBadge = 'Non-KBM';
+                                    cardBadgeClass = 'badge-info';
+                                    cardSubtitle = `${formatTanggal(r.tanggal)} — Tenaga Pendidik`;
+                                    noteSnippet = escapeHtml(r.catatan || 'Tidak ada catatan.');
+                                } else if (r.jenis_jurnal === 'wali_kelas') {
+                                    cardTitle = 'Jurnal Wali Kelas';
+                                    cardBadge = `Kelas ${escapeHtml(r.nama_kelas || '')}`;
+                                    cardBadgeClass = 'badge-warning';
+                                    cardSubtitle = `${formatTanggal(r.tanggal)} — Aktivitas Wali Kelas`;
+                                    noteSnippet = escapeHtml(r.catatan || 'Tidak ada catatan.');
+                                }
+
+                                return `
+                                    <div class="recent-jurnal-card" onclick="GuruApp.viewJurnal(${r.id})" style="background:white; border-radius:16px; padding:14px 16px; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; margin-bottom:10px; display:flex; flex-direction:column; gap:8px; cursor:pointer; position:relative; transition:all 0.2s ease;">
+                                        <div style="display:flex; justify-content:space-between; align-items:start;">
+                                            <div style="font-family:var(--font-heading); font-size:0.875rem; font-weight:800; color:var(--text-primary);">${cardTitle}</div>
+                                            <span class="badge ${cardBadgeClass}">${cardBadge}</span>
                                         </div>
-                                    ` : ''}
-                                </div>
-                            `).join('');
+                                        <div style="font-size:0.75rem; color:var(--text-muted); font-weight:500; display:flex; align-items:center; gap:4px; margin-top:-4px;">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                            ${cardSubtitle}
+                                        </div>
+                                        ${noteSnippet ? `
+                                            <div style="background:var(--bg-light); padding:8px 10px; border-radius:8px; font-size:0.75rem; color:var(--text-secondary); white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">
+                                                ${noteSnippet}
+                                            </div>
+                                        ` : ''}
+                                    </div>
+                                `;
+                            }).join('');
                         }
                     }
                 }
@@ -616,16 +692,71 @@
                         <span class="badge badge-primary">${escapeHtml(j.kode_mapel || '')}</span>
                     </div>
                 </div>
-            `).join('');
-        },
-
-        // --- JURNAL FORM ---
+            `).join        // --- JURNAL FORM ---
         async renderJurnal(editId = null) {
             const content = $('#appContent');
             const tanggalIni = getTanggalIni();
+            const hasMapel = !!Auth.user?.has_mapel;
+            const isWali = !!Auth.user?.wali_kelas;
 
+            if (!hasMapel) {
+                // Non-KBM Teacher: Simplified Journal Form (Pilih Tanggal, Catatan Kegiatan, Simpan)
+                content.innerHTML = `
+                    <div class="page-enter">
+                        <div class="section-title">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            Jurnal Kegiatan Harian
+                        </div>
+                        <p class="section-subtitle">Catat ringkasan aktivitas / tugas kerja Anda hari ini</p>
+
+                        <div class="form-info-row mb-2">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                            <span>Tanggal: <strong>${formatTanggal(tanggalIni)}</strong></span>
+                            <input type="hidden" id="jurnalDate" value="${tanggalIni}">
+                        </div>
+
+                        <div class="guru-card mb-3" style="background:white; border-radius:18px; padding:18px; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9;">
+                            <div class="form-group">
+                                <label class="form-label" style="font-weight:700; color:var(--text-primary);">Catatan Kegiatan</label>
+                                <textarea class="form-textarea" id="directKegiatanCatatan" placeholder="Tuliskan uraian atau catatan kegiatan kerja Anda hari ini (misal bimbingan konseling, pembinaan, piket sekolah, administrasi, dll)..." style="min-height:120px;"></textarea>
+                            </div>
+                            <button class="btn btn-primary btn-block" id="directKegiatanSaveBtn" onclick="GuruApp.saveDirectKegiatan('non_kbm')" style="font-weight:700; padding:12px; border-radius:12px;">
+                                <span class="btn-label">Simpan Kegiatan</span>
+                            </button>
+                        </div>
+
+                        <div class="section-title mt-3">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            Kegiatan Hari Ini
+                        </div>
+                        <div id="directTodayKegiatanList">
+                            <div class="skeleton skeleton-card" style="height:70px; margin-bottom:8px;"></div>
+                        </div>
+                    </div>
+                `;
+
+                this.loadDirectTodayKegiatan('non_kbm');
+                return;
+            }
+
+            // KBM Teacher with Teaching Schedule
             content.innerHTML = `
                 <div class="page-enter">
+                    ${isWali ? `
+                        <div class="wali-journal-banner" onclick="GuruApp.openKegiatanModal('wali_kelas')" style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border: 1.5px solid #bfdbfe; border-radius: 16px; padding: 14px 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; box-shadow: var(--shadow-sm); transition:transform 0.2s ease;">
+                            <div style="display:flex; align-items:center; gap:12px;">
+                                <div style="width:38px; height:38px; border-radius:10px; background:#2563eb; color:white; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                                </div>
+                                <div>
+                                    <div style="font-family:var(--font-heading); font-size:0.875rem; font-weight:800; color:#1e40af;">Jurnal Wali Kelas (${escapeHtml(Auth.user.wali_kelas.nama_kelas)})</div>
+                                    <div style="font-size:0.75rem; color:#3b82f6; font-weight:600;">Klik untuk catat kegiatan & pembinaan kelas</div>
+                                </div>
+                            </div>
+                            <span class="btn btn-sm btn-primary" style="pointer-events:none; font-size:0.75rem; padding:6px 12px; border-radius:8px;">+ Isi</span>
+                        </div>
+                    ` : ''}
+
                     <div class="section-title">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         Jurnal Mengajar
@@ -633,7 +764,7 @@
                     <p class="section-subtitle">Pilih jadwal untuk mengisi jurnal hari ini</p>
 
                     <div class="form-info-row mb-2">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                         <span>Jurnal Hari Ini: <strong>${formatTanggal(tanggalIni)}</strong></span>
                         <input type="hidden" id="jurnalDate" value="${tanggalIni}">
                     </div>
@@ -646,6 +777,180 @@
             `;
 
             this.loadJurnalSchedule();
+        },
+
+        async loadDirectTodayKegiatan(jenis = 'non_kbm') {
+            const container = $('#directTodayKegiatanList');
+            if (!container) return;
+            const tanggalIni = getTanggalIni();
+
+            try {
+                const res = await API.get(`api/jurnal.php?action=list&tanggal=${tanggalIni}&jenis_jurnal=${jenis}`);
+                if (res.success) {
+                    const list = res.data || [];
+                    if (list.length === 0) {
+                        container.innerHTML = '<div class="text-center text-muted text-sm py-3" style="background:white; border-radius:16px; border:1.5px solid #f1f5f9; padding:20px;">Belum ada kegiatan yang dicatat hari ini.</div>';
+                    } else {
+                        container.innerHTML = list.map(item => `
+                            <div class="jurnal-item" onclick="GuruApp.viewJurnal(${item.id})">
+                                <div class="jurnal-item-header">
+                                    <div class="jurnal-item-mapel">${item.jenis_jurnal === 'wali_kelas' ? 'Jurnal Wali Kelas' : 'Jurnal Kegiatan'}</div>
+                                    <span class="badge ${item.jenis_jurnal === 'wali_kelas' ? 'badge-warning' : 'badge-info'}">${item.jenis_jurnal === 'wali_kelas' ? 'Wali Kelas' : 'Non-KBM'}</span>
+                                </div>
+                                <div class="jurnal-item-tp" style="margin-top:6px; font-size:0.85rem; color:var(--text-primary); line-height:1.5;">${escapeHtml(item.catatan || '-')}</div>
+                                <div class="jurnal-item-footer" style="margin-top:10px;">
+                                    <div class="jurnal-item-date">${formatTanggal(item.tanggal)}</div>
+                                    <div class="jurnal-item-actions">
+                                        <button onclick="event.stopPropagation(); GuruApp.editJurnal(${item.id})" title="Edit">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                        </button>
+                                        <button class="danger" onclick="event.stopPropagation(); GuruApp.deleteJurnal(${item.id})" title="Hapus">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('');
+                    }
+                }
+            } catch(e) {
+                container.innerHTML = '<div class="text-center text-danger text-sm py-3">Gagal memuat catatan kegiatan.</div>';
+            }
+        },
+
+        async saveDirectKegiatan(jenis = 'non_kbm') {
+            const btn = $('#directKegiatanSaveBtn');
+            const textarea = $('#directKegiatanCatatan');
+            const catatan = textarea?.value?.trim() || '';
+
+            if (!catatan) {
+                Toast.show('Catatan kegiatan wajib diisi.', 'warning');
+                if (textarea) textarea.focus();
+                return;
+            }
+
+            if (btn) btn.classList.add('loading');
+
+            try {
+                const res = await API.post('api/jurnal.php?action=create', {
+                    jenis_jurnal: jenis,
+                    tanggal: getTanggalIni(),
+                    catatan: catatan
+                });
+
+                if (res.success) {
+                    Toast.show(res.message || 'Jurnal kegiatan berhasil disimpan!', 'success');
+                    if (textarea) textarea.value = '';
+                    this.loadDirectTodayKegiatan(jenis);
+                } else {
+                    Toast.show(res.message || 'Gagal menyimpan.', 'error');
+                }
+            } catch(e) {
+                Toast.show('Tidak dapat terhubung ke server.', 'error');
+            } finally {
+                if (btn) btn.classList.remove('loading');
+            }
+        },
+
+        // --- KEGIATAN / WALI KELAS MODAL FORM ---
+        async openKegiatanModal(jenis = 'non_kbm', existingId = null) {
+            let existing = null;
+            if (existingId) {
+                try {
+                    const res = await API.get(`api/jurnal.php?action=get&id=${existingId}`);
+                    if (res.success) existing = res.data;
+                } catch(e) {}
+            }
+
+            const tanggal = getTanggalIni();
+            const isWali = jenis === 'wali_kelas';
+            const title = existing ? (isWali ? 'Edit Jurnal Wali Kelas' : 'Edit Jurnal Kegiatan') : (isWali ? 'Isi Jurnal Wali Kelas' : 'Isi Jurnal Kegiatan');
+            const placeholder = isWali 
+                ? 'Tuliskan catatan pembinaan siswa, koordinasi wali murid, atau kejadian di kelas hari ini...'
+                : 'Tuliskan uraian kegiatan harian kerja Anda hari ini...';
+
+            const overlay = document.createElement('div');
+            overlay.className = 'guru-modal-overlay';
+            overlay.id = 'kegiatanModal';
+            overlay.innerHTML = `
+                <div class="guru-modal">
+                    <div class="guru-modal-header">
+                        <h3>${title}</h3>
+                        <button class="guru-modal-close" onclick="GuruApp.closeModal('kegiatanModal')">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
+                    <div class="guru-modal-body">
+                        <div class="form-info-row">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                            <span>Tanggal: <strong>${formatTanggal(tanggal)}</strong></span>
+                        </div>
+                        ${isWali && Auth.user?.wali_kelas ? `
+                            <div class="form-info-row">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                                <span>Wali Kelas: <strong>${escapeHtml(Auth.user.wali_kelas.nama_kelas)}</strong></span>
+                            </div>
+                        ` : ''}
+
+                        <div class="form-group mt-2">
+                            <label class="form-label">Catatan Kegiatan</label>
+                            <textarea class="form-textarea" id="kegiatanCatatanText" placeholder="${placeholder}" style="min-height:120px;">${escapeHtml(existing?.catatan || '')}</textarea>
+                        </div>
+                    </div>
+                    <div class="guru-modal-footer">
+                        <button class="btn btn-ghost" onclick="GuruApp.closeModal('kegiatanModal')">Batal</button>
+                        <button class="btn btn-primary" id="kegiatanSaveBtn" onclick="GuruApp.saveKegiatanJurnal('${jenis}', ${existing ? existing.id : 0})">
+                            <span class="btn-label">${existing ? 'Perbarui' : 'Simpan'}</span>
+                        </button>
+                    </div>
+                </div>
+            `;
+
+            document.body.appendChild(overlay);
+            overlay.addEventListener('click', (e) => {
+                if (e.target === overlay) GuruApp.closeModal('kegiatanModal');
+            });
+        },
+
+        async saveKegiatanJurnal(jenis = 'non_kbm', existingId = 0) {
+            const btn = $('#kegiatanSaveBtn');
+            const textarea = $('#kegiatanCatatanText');
+            const catatan = textarea?.value?.trim() || '';
+
+            if (!catatan) {
+                Toast.show('Catatan kegiatan wajib diisi.', 'warning');
+                if (textarea) textarea.focus();
+                return;
+            }
+
+            if (btn) btn.classList.add('loading');
+
+            const payload = {
+                jenis_jurnal: jenis,
+                tanggal: getTanggalIni(),
+                catatan: catatan
+            };
+            if (existingId > 0) payload.id = existingId;
+
+            try {
+                const action = existingId > 0 ? 'update' : 'create';
+                const res = await API.post(`api/jurnal.php?action=${action}`, payload);
+
+                if (res.success) {
+                    Toast.show(res.message || 'Jurnal kegiatan berhasil disimpan!', 'success');
+                    GuruApp.closeModal('kegiatanModal');
+                    if (Router.currentPage === 'home') Pages.renderHome();
+                    else if (Router.currentPage === 'jurnal') Pages.renderJurnal();
+                    else if (Router.currentPage === 'riwayat') Pages.loadRiwayat();
+                    else if (Router.currentPage === 'jurnal-kelas') Pages.loadWaliJurnal();
+                } else {
+                    Toast.show(res.message || 'Gagal menyimpan jurnal.', 'error');
+                }
+            } catch(e) {
+                Toast.show('Tidak dapat terhubung ke server.', 'error');
+            } finally {
+                if (btn) btn.classList.remove('loading');
+            }
         },
 
         async loadJurnalSchedule() {
@@ -678,7 +983,7 @@
             }
         },
 
-        // --- JURNAL FORM MODAL ---
+        // --- JURNAL FORM MODAL (KBM) ---
         async openJurnalForm(jadwalData, existingJurnalId = null) {
             let existing = null;
 
@@ -869,6 +1174,7 @@
             });
 
             const payload = {
+                jenis_jurnal: 'kbm',
                 kelas_id,
                 mapel_id,
                 jam_ke: String(jam_ke),
@@ -966,31 +1272,53 @@
 
                     container.innerHTML = `
                         <p class="text-sm text-muted mb-2">${data.length} jurnal ditemukan</p>
-                        ${data.map(j => `
-                            <div class="jurnal-item" onclick="GuruApp.viewJurnal(${j.id})">
-                                <div class="jurnal-item-header">
-                                    <div class="jurnal-item-mapel">${escapeHtml(j.nama_mapel)}</div>
-                                    <div class="jurnal-item-jam">Jam ${escapeHtml(j.jam_ke)}</div>
-                                </div>
-                                <div class="jurnal-item-kelas">${escapeHtml(j.nama_kelas)}</div>
-                                ${j.tujuan_pembelajaran ? `<div class="jurnal-item-tp">${escapeHtml(j.tujuan_pembelajaran)}</div>` : ''}
-                                <div class="jurnal-item-footer">
-                                    <div class="jurnal-item-date">${formatTanggal(j.tanggal)}</div>
-                                    <div class="jurnal-item-actions">
-                                        ${j.tanggal === getTanggalIni() ? `
-                                            <button onclick="event.stopPropagation(); GuruApp.editJurnal(${j.id})" title="Edit">
-                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                                            </button>
-                                            <button class="danger" onclick="event.stopPropagation(); GuruApp.deleteJurnal(${j.id})" title="Hapus">
-                                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                            </button>
-                                        ` : `
-                                            <span class="badge badge-success">Selesai</span>
-                                        `}
+                        ${data.map(j => {
+                            let title = escapeHtml(j.nama_mapel || 'Jurnal');
+                            let badgeText = `Jam ke-${escapeHtml(j.jam_ke || '-')}`;
+                            let badgeClass = 'badge-primary';
+                            let subtitle = `Kelas ${escapeHtml(j.nama_kelas || '')}`;
+                            let snippet = j.tujuan_pembelajaran ? `<strong>TP:</strong> ${escapeHtml(j.tujuan_pembelajaran)}` : (j.catatan ? escapeHtml(j.catatan) : '');
+
+                            if (j.jenis_jurnal === 'non_kbm') {
+                                title = 'Jurnal Kegiatan Guru';
+                                badgeText = 'Non-KBM';
+                                badgeClass = 'badge-info';
+                                subtitle = 'Tenaga Pendidik / Non-Mapel';
+                                snippet = escapeHtml(j.catatan || 'Tidak ada catatan.');
+                            } else if (j.jenis_jurnal === 'wali_kelas') {
+                                title = 'Jurnal Wali Kelas';
+                                badgeText = `Kelas ${escapeHtml(j.nama_kelas || '')}`;
+                                badgeClass = 'badge-warning';
+                                subtitle = 'Aktivitas & Pembinaan Siswa';
+                                snippet = escapeHtml(j.catatan || 'Tidak ada catatan.');
+                            }
+
+                            return `
+                                <div class="jurnal-item" onclick="GuruApp.viewJurnal(${j.id})">
+                                    <div class="jurnal-item-header">
+                                        <div class="jurnal-item-mapel">${title}</div>
+                                        <span class="badge ${badgeClass}" style="font-size:0.7rem;">${badgeText}</span>
+                                    </div>
+                                    <div class="jurnal-item-kelas" style="font-size:0.75rem; color:var(--text-secondary); margin-top:-2px;">${subtitle}</div>
+                                    ${snippet ? `<div class="jurnal-item-tp" style="margin-top:6px; font-size:0.8rem; color:var(--text-primary); line-height:1.4;">${snippet}</div>` : ''}
+                                    <div class="jurnal-item-footer" style="margin-top:10px;">
+                                        <div class="jurnal-item-date">${formatTanggal(j.tanggal)}</div>
+                                        <div class="jurnal-item-actions">
+                                            ${j.tanggal === getTanggalIni() ? `
+                                                <button onclick="event.stopPropagation(); GuruApp.editJurnal(${j.id})" title="Edit">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                                </button>
+                                                <button class="danger" onclick="event.stopPropagation(); GuruApp.deleteJurnal(${j.id})" title="Hapus">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                                </button>
+                                            ` : `
+                                                <span class="badge badge-success">Selesai</span>
+                                            `}
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        `).join('')}
+                            `;
+                        }).join('')}
                     `;
                 }
             } catch(e) {
@@ -1066,51 +1394,98 @@
                 const overlay = document.createElement('div');
                 overlay.className = 'guru-modal-overlay';
                 overlay.id = 'viewJurnalModal';
+
+                let headerMetaHtml = '';
+                let bodyContentHtml = '';
+                let modalTitle = 'Detail Jurnal Mengajar';
+
+                if (j.jenis_jurnal === 'non_kbm') {
+                    modalTitle = 'Detail Jurnal Kegiatan';
+                    headerMetaHtml = `
+                        <div class="form-info-row">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                            <span><strong>${formatTanggal(j.tanggal)}</strong> — Jurnal Kegiatan Guru</span>
+                        </div>
+                    `;
+                    bodyContentHtml = `
+                        <div class="form-group mt-2">
+                            <label class="form-label">Catatan Kegiatan</label>
+                            <div style="padding:12px 14px;background:var(--bg-light);border-radius:var(--radius-md);font-size:0.875rem;line-height:1.6;white-space:pre-wrap;">${escapeHtml(j.catatan || '-')}</div>
+                        </div>
+                    `;
+                } else if (j.jenis_jurnal === 'wali_kelas') {
+                    modalTitle = 'Detail Jurnal Wali Kelas';
+                    headerMetaHtml = `
+                        <div class="form-info-row">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                            <span><strong>${formatTanggal(j.tanggal)}</strong> — Jurnal Wali Kelas</span>
+                        </div>
+                        ${j.nama_kelas ? `
+                            <div class="form-info-row">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                                <span>Kelas: <strong>${escapeHtml(j.nama_kelas)}</strong></span>
+                            </div>
+                        ` : ''}
+                    `;
+                    bodyContentHtml = `
+                        <div class="form-group mt-2">
+                            <label class="form-label">Catatan Kegiatan Wali Kelas</label>
+                            <div style="padding:12px 14px;background:var(--bg-light);border-radius:var(--radius-md);font-size:0.875rem;line-height:1.6;white-space:pre-wrap;">${escapeHtml(j.catatan || '-')}</div>
+                        </div>
+                    `;
+                } else {
+                    headerMetaHtml = `
+                        <div class="form-info-row">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                            <span><strong>${formatTanggal(j.tanggal)}</strong> — Jam ke-${escapeHtml(j.jam_ke || '-')}</span>
+                        </div>
+                        <div class="form-info-row">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                            <span><strong>${escapeHtml(j.nama_mapel || '')}</strong> — ${escapeHtml(j.nama_kelas || '')}</span>
+                        </div>
+                    `;
+                    bodyContentHtml = `
+                        ${j.tujuan_pembelajaran ? `
+                            <div class="form-group mt-2">
+                                <label class="form-label">Tujuan Pembelajaran</label>
+                                <div style="padding:10px 14px;background:var(--bg-light);border-radius:var(--radius-md);font-size:0.875rem;line-height:1.6;">${escapeHtml(j.tujuan_pembelajaran)}</div>
+                            </div>
+                        ` : ''}
+
+                        ${j.indikator_tp ? `
+                            <div class="form-group">
+                                <label class="form-label">Indikator TP</label>
+                                <div style="padding:10px 14px;background:var(--bg-light);border-radius:var(--radius-md);font-size:0.875rem;line-height:1.6;">${escapeHtml(j.indikator_tp)}</div>
+                            </div>
+                        ` : ''}
+
+                        ${j.catatan ? `
+                            <div class="form-group">
+                                <label class="form-label">Catatan</label>
+                                <div style="padding:10px 14px;background:var(--bg-light);border-radius:var(--radius-md);font-size:0.875rem;line-height:1.6;">${escapeHtml(j.catatan)}</div>
+                            </div>
+                        ` : ''}
+
+                        ${j.siswa_tidak_hadir ? `
+                            <div class="form-group">
+                                <label class="form-label">Siswa Tidak Hadir</label>
+                                <div style="padding:10px 14px;background:var(--danger-light);border-radius:var(--radius-md);font-size:0.875rem;line-height:1.6;color:var(--danger);">${escapeHtml(j.siswa_tidak_hadir)}</div>
+                            </div>
+                        ` : ''}
+                    `;
+                }
+
                 overlay.innerHTML = `
                     <div class="guru-modal">
                         <div class="guru-modal-header">
-                            <h3>Detail Jurnal</h3>
+                            <h3>${modalTitle}</h3>
                             <button class="guru-modal-close" onclick="GuruApp.closeModal('viewJurnalModal')">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                             </button>
                         </div>
                         <div class="guru-modal-body">
-                            <div class="form-info-row">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                                <span><strong>${formatTanggal(j.tanggal)}</strong> — Jam ke-${escapeHtml(j.jam_ke)}</span>
-                            </div>
-                            <div class="form-info-row">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-                                <span><strong>${escapeHtml(j.nama_mapel)}</strong> — ${escapeHtml(j.nama_kelas)}</span>
-                            </div>
-
-                            ${j.tujuan_pembelajaran ? `
-                                <div class="form-group mt-2">
-                                    <label class="form-label">Tujuan Pembelajaran</label>
-                                    <div style="padding:10px 14px;background:var(--bg-light);border-radius:var(--radius-md);font-size:0.875rem;line-height:1.6;">${escapeHtml(j.tujuan_pembelajaran)}</div>
-                                </div>
-                            ` : ''}
-
-                            ${j.indikator_tp ? `
-                                <div class="form-group">
-                                    <label class="form-label">Indikator TP</label>
-                                    <div style="padding:10px 14px;background:var(--bg-light);border-radius:var(--radius-md);font-size:0.875rem;line-height:1.6;">${escapeHtml(j.indikator_tp)}</div>
-                                </div>
-                            ` : ''}
-
-                            ${j.catatan ? `
-                                <div class="form-group">
-                                    <label class="form-label">Catatan</label>
-                                    <div style="padding:10px 14px;background:var(--bg-light);border-radius:var(--radius-md);font-size:0.875rem;line-height:1.6;">${escapeHtml(j.catatan)}</div>
-                                </div>
-                            ` : ''}
-
-                            ${j.siswa_tidak_hadir ? `
-                                <div class="form-group">
-                                    <label class="form-label">Siswa Tidak Hadir</label>
-                                    <div style="padding:10px 14px;background:var(--danger-light);border-radius:var(--radius-md);font-size:0.875rem;line-height:1.6;color:var(--danger);">${escapeHtml(j.siswa_tidak_hadir)}</div>
-                                </div>
-                            ` : ''}
+                            ${headerMetaHtml}
+                            ${bodyContentHtml}
                         </div>
                         <div class="guru-modal-footer">
                             <button class="btn btn-ghost" onclick="GuruApp.closeModal('viewJurnalModal')">Tutup</button>
@@ -1394,13 +1769,17 @@
                 const res = await API.get(`api/jurnal.php?action=get&id=${id}`);
                 if (res.success) {
                     const j = res.data;
-                    this.openJurnalForm({
-                        kelas_id: j.kelas_id,
-                        mapel_id: j.mapel_id,
-                        jam_ke: j.jam_ke,
-                        nama_mapel: j.nama_mapel,
-                        nama_kelas: j.nama_kelas
-                    }, j.id);
+                    if (j.jenis_jurnal === 'non_kbm' || j.jenis_jurnal === 'wali_kelas') {
+                        this.openKegiatanModal(j.jenis_jurnal, j.id);
+                    } else {
+                        this.openJurnalForm({
+                            kelas_id: j.kelas_id,
+                            mapel_id: j.mapel_id,
+                            jam_ke: j.jam_ke,
+                            nama_mapel: j.nama_mapel,
+                            nama_kelas: j.nama_kelas
+                        }, j.id);
+                    }
                 }
             } catch(e) {
                 Toast.show('Gagal memuat data jurnal.', 'error');
@@ -1627,6 +2006,18 @@
 
         switchWaliTab(tab) {
             Pages.switchWaliTab(tab);
+        },
+
+        openKegiatanModal(jenis, existingId) {
+            Pages.openKegiatanModal(jenis, existingId);
+        },
+
+        async saveKegiatanJurnal(jenis, existingId) {
+            await Pages.saveKegiatanJurnal(jenis, existingId);
+        },
+
+        async saveDirectKegiatan(jenis) {
+            await Pages.saveDirectKegiatan(jenis);
         },
 
         filterWaliRekap(query) {
