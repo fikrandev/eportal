@@ -72,8 +72,8 @@ function listJurnal($user) {
             SELECT j.*, u.nama_lengkap as guru_nama, k.nama_kelas, m.nama_mapel, m.nama_mapel as kode_mapel
             FROM acad_jurnal j
             JOIN users u ON j.guru_id = u.id
-            JOIN sch_kelas k ON j.kelas_id = k.id
-            JOIN sch_mapel m ON j.mapel_id = m.id
+            LEFT JOIN sch_kelas k ON j.kelas_id = k.id
+            LEFT JOIN sch_mapel m ON j.mapel_id = m.id
             WHERE $where
             ORDER BY j.tanggal DESC, j.jam_ke ASC
         ");
@@ -95,8 +95,8 @@ function getJurnal($user) {
             SELECT j.*, u.nama_lengkap as guru_nama, k.nama_kelas, m.nama_mapel
             FROM acad_jurnal j
             JOIN users u ON j.guru_id = u.id
-            JOIN sch_kelas k ON j.kelas_id = k.id
-            JOIN sch_mapel m ON j.mapel_id = m.id
+            LEFT JOIN sch_kelas k ON j.kelas_id = k.id
+            LEFT JOIN sch_mapel m ON j.mapel_id = m.id
             WHERE j.id = ?
         ");
         $stmt->execute([$id]);
@@ -212,8 +212,8 @@ function reportJurnal($user) {
             SELECT j.*, u.nama_lengkap as guru_nama, k.nama_kelas, m.nama_mapel, m.nama_mapel as kode_mapel
             FROM acad_jurnal j
             JOIN users u ON j.guru_id = u.id
-            JOIN sch_kelas k ON j.kelas_id = k.id
-            JOIN sch_mapel m ON j.mapel_id = m.id
+            LEFT JOIN sch_kelas k ON j.kelas_id = k.id
+            LEFT JOIN sch_mapel m ON j.mapel_id = m.id
             WHERE $where
             ORDER BY j.tanggal ASC, k.nama_kelas ASC, j.jam_ke ASC
         ");

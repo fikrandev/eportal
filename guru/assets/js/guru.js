@@ -688,11 +688,10 @@
                         <div class="schedule-slot-mapel">${escapeHtml(j.nama_mapel)}</div>
                         <div class="schedule-slot-kelas">${escapeHtml(j.nama_kelas)}</div>
                     </div>
-                    <div class="schedule-slot-status">
-                        <span class="badge badge-primary">${escapeHtml(j.kode_mapel || '')}</span>
-                    </div>
-                </div>
-            `).join        // --- JURNAL FORM ---
+            `).join('');
+        },
+
+        // --- JURNAL FORM ---
         async renderJurnal(editId = null) {
             const content = $('#appContent');
             const tanggalIni = getTanggalIni();
