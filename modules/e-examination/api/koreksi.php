@@ -152,39 +152,106 @@ function processGrading($session_id) {
             } 
             else if ($tipe === 'pilihan_banyak') {
                 $jawabanArr = json_decode($jawabanSiswa, true) ?: [];
-                $kunciArr = json_decode($kunci, true) ?: [];
+                $opsiList = json_decode($ans['opsi'], true) ?: [];
                 
-                if (is_array($jawabanArr) && is_array($kunciArr)) {
-                    sort($jawabanArr);
-                    sort($kunciArr);
-                    if ($jawabanArr == $kunciArr) {
-                        $skorDidapat = $bobot;
-                    } else {
-                        $correctPicks = count(array_intersect($jawabanArr, $kunciArr));
-                        $wrongPicks = count(array_diff($jawabanArr, $kunciArr));
-                        $net = $correctPicks - $wrongPicks;
-                        if ($net > 0 && count($kunciArr) > 0) {
-                            $skorDidapat = ($net / count($kunciArr)) * $bobot;
+                // Cek apakah opsi punya field "score" (format baru)
+                $hasCustomScore = false;
+                $scoreMap = [];
+                foreach ($opsiList as $opt) {
+                    if (array_key_exists('score', $opt)) {
+                        $hasCustomScore = true;
+                    }
+                    if (isset($opt['label'])) {
+                        $scoreMap[$opt['label']] = isset($opt['score']) ? (float)$opt['score'] : 0;
+                    }
+                }
+
+                if ($hasCustomScore) {
+                    // Format baru: tambahkan skor dari masing-masing opsi yang dipilih
+                    if (is_array($jawabanArr)) {
+                        foreach ($jawabanArr as $jawab) {
+                            if (isset($scoreMap[$jawab])) {
+                                $skorDidapat += $scoreMap[$jawab];
+                            }
+                        }
+                    }
+                } else {
+                    // Format lama (Proporsional berdasarkan kunci_jawaban)
+                    $kunciArr = json_decode($kunci, true) ?: [];
+                    if (is_array($jawabanArr) && is_array($kunciArr)) {
+                        sort($jawabanArr);
+                        sort($kunciArr);
+                        if ($jawabanArr == $kunciArr) {
+                            $skorDidapat = $bobot;
+                        } else {
+                            $correctPicks = count(array_intersect($jawabanArr, $kunciArr));
+                            $wrongPicks = count(array_diff($jawabanArr, $kunciArr));
+                            $net = $correctPicks - $wrongPicks;
+                            if ($net > 0 && count($kunciArr) > 0) {
+                                $skorDidapat = ($net / count($kunciArr)) * $bobot;
+                            }
                         }
                     }
                 }
             }
             else if ($tipe === 'menjodohkan') {
                 $jawabanObj = json_decode($jawabanSiswa, true) ?: [];
+                $opsiList = json_decode($ans['opsi'], true) ?: [];
                 $kunciObj = json_decode($kunci, true) ?: [];
                 
-                if (is_array($jawabanObj) && is_array($kunciObj)) {
-                    $totalPairs = count($kunciObj);
-                    $correctPairs = 0;
-                    
-                    foreach ($kunciObj as $k => $v) {
-                        if (isset($jawabanObj[$k]) && $jawabanObj[$k] === $v) {
-                            $correctPairs++;
-                        }
+                // Cek apakah opsi punya field "score"
+                $hasCustomScore = false;
+                foreach ($opsiList as $opt) {
+                    if (array_key_exists('score', $opt)) {
+                        $hasCustomScore = true;
+                        break;
                     }
-                    
-                    if ($totalPairs > 0) {
-                        $skorDidapat = ($correctPairs / $totalPairs) * $bobot;
+                }
+
+                if (is_array($jawabanObj)) {
+                    if ($hasCustomScore) {
+                        // Format Baru: Cek terhadap opsiList untuk mengambil skor
+                        foreach ($opsiList as $pair) {
+                            $kiri = $pair['left'] ?? '';
+                            $kanan = $pair['right'] ?? '';
+                            $skorKiri = $pair['score'] ?? 0;
+                            
+                            if (isset($jawabanObj[$kiri]) && $jawabanObj[$kiri] === $kanan) {
+                                $skorDidapat += (float)$skorKiri;
+                            }
+                        }
+                    } else {
+                        // Format Lama:
+                        if (is_array($kunciObj)) {
+                            // Cek struktur lama: jika kunci_jawaban adalah array of objects (hasil update baru) 
+                            // atau array assoc (format lama banget)
+                            $totalPairs = 0;
+                            $correctPairs = 0;
+                            
+                            // Jika format array of objects: [{left:'', right:''}]
+                            if (isset($kunciObj[0]) && is_array($kunciObj[0])) {
+                                $totalPairs = count($kunciObj);
+                                foreach ($kunciObj as $pair) {
+                                    $kiri = $pair['left'] ?? '';
+                                    $kanan = $pair['right'] ?? '';
+                                    if (isset($jawabanObj[$kiri]) && $jawabanObj[$kiri] === $kanan) {
+                                        $correctPairs++;
+                                    }
+                                }
+                            } else {
+                                // Jika format assoc: {"A":"B"}
+                                $totalPairs = count($kunciObj);
+                                foreach ($kunciObj as $k => $v) {
+                                    if (isset($jawabanObj[$k]) && $jawabanObj[$k] === $v) {
+                                        $correctPairs++;
+                                    }
+                                }
+                            }
+                            
+                            if ($totalPairs > 0) {
+                                $skorDidapat = ($correctPairs / $totalPairs) * $bobot;
+                            }
+                        }
                     }
                 }
             }

@@ -10,7 +10,8 @@ $school_icon = get_setting('icon_sekolah', '');
 // Redirect jika sudah login
 session_start();
 if (isset($_SESSION['exam_student'])) {
-    header("Location: " . BASE_URL . "modules/e-examination/student/dashboard.php");
+    $qs = $_SERVER['QUERY_STRING'] ? '?' . $_SERVER['QUERY_STRING'] : '';
+    header("Location: " . BASE_URL . "modules/e-examination/student/dashboard.php" . $qs);
     exit;
 }
 ?>
@@ -197,6 +198,10 @@ if (isset($_SESSION['exam_student'])) {
             $btn.prop('disabled', true).html('Sedang masuk...');
             $alert.hide();
 
+            // Kumpulkan query parameters dari URL saat ini
+            const urlParams = new URLSearchParams(window.location.search);
+            const queryString = urlParams.toString() ? '?' + urlParams.toString() : '';
+
             $.ajax({
                 url: '../api/pengerjaan.php?action=login',
                 method: 'POST',
@@ -204,7 +209,7 @@ if (isset($_SESSION['exam_student'])) {
                 contentType: 'application/json',
                 success: function(r) {
                     if (r.success) {
-                        window.location.href = 'dashboard.php';
+                        window.location.href = 'dashboard.php' + queryString;
                     } else {
                         $alert.text(r.message || 'Login gagal').show();
                         $btn.prop('disabled', false).html('Masuk Ujian <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>');

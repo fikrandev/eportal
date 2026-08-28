@@ -233,7 +233,7 @@ $pastExams = $stmtPast->fetchAll();
             });
         }
 
-        function showTokenModal(ujianId) {
+        function showTokenModal(ujianId, defaultToken = '') {
             EModal.form({
                 title: 'Masukkan Token & Kartu Ujian',
                 form: `
@@ -242,7 +242,7 @@ $pastExams = $stmtPast->fetchAll();
                     </p>
                     <div class="form-group">
                         <label class="form-label">TOKEN UJIAN</label>
-                        <input type="text" id="fToken" class="form-input" style="font-family:monospace;font-size:20px;text-align:center;letter-spacing:4px;text-transform:uppercase;" maxlength="6" autofocus placeholder="TOKEN">
+                        <input type="text" id="fToken" class="form-input" style="font-family:monospace;font-size:20px;text-align:center;letter-spacing:4px;text-transform:uppercase;" maxlength="6" autofocus placeholder="TOKEN" value="${defaultToken}">
                     </div>
                     <div class="form-group">
                         <label class="form-label">USERNAME CARD</label>
@@ -291,6 +291,16 @@ $pastExams = $stmtPast->fetchAll();
                 }
             });
         }
+
+        // Auto-trigger if URL has exam_id and token
+        $(document).ready(function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const examId = urlParams.get('exam_id');
+            const token = urlParams.get('token');
+            if (examId && token) {
+                setTimeout(() => showTokenModal(examId, token), 500);
+            }
+        });
     </script>
 </body>
 </html>

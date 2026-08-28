@@ -189,6 +189,7 @@ const Admin = {
         });
     },
 
+
     // ==================== USERS & GURU SECTION ====================
     usersPage: 1,
     usersSearch: '',
@@ -579,6 +580,25 @@ const Admin = {
         this.loadUsersTable();
     },
 
+    updateKodeGuru(id, kode) {
+        if (!kode.trim()) {
+            EModal.toast({type: 'error', title: 'Gagal', message: 'Kode Guru tidak boleh kosong'});
+            return;
+        }
+        App.api('api/users.php?action=update_kode_guru', {
+            method: 'POST',
+            data: { id: id, kode_guru: kode.trim().toUpperCase() }
+        }).done(res => {
+            if (res.success) {
+                EModal.toast({type: 'success', title: 'Tersimpan', message: res.message});
+            } else {
+                EModal.toast({type: 'error', title: 'Gagal', message: res.message});
+            }
+        }).fail(xhr => {
+            EModal.toast({type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menyimpan kode'});
+        });
+    },
+
     loadUsersTable() {
         const extraRole = this.usersType === 'gurus' ? '&role=guru' : '&exclude_guru=1';
         const params = `action=list&page=${this.usersPage}&per_page=50&search=${encodeURIComponent(this.usersSearch)}${extraRole}`;
@@ -591,14 +611,21 @@ const Admin = {
             }
             let rows = d.data.map(u => {
                 const safeName = App.escapeHtml(u.nama_lengkap);
+                const photo = u.avatar ? `<img src="${App.baseUrl}${u.avatar}" class="user-avatar" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">` : `<div class="user-avatar" style="width:32px;height:32px;font-size:11px;border:none;cursor:default;">${App.getInitials(u.nama_lengkap)}</div>`;
                 if (this.usersType === 'gurus') {
                     return `
                     <tr>
                         <td style="text-align: center;"><input type="checkbox" class="user-checkbox" value="${u.id}" onchange="Admin.checkUserSelection()"></td>
                         <td><div class="d-flex gap-sm" style="align-items:center">
-                            <div class="user-avatar" style="width:32px;height:32px;font-size:11px;border:none;cursor:default;">${App.getInitials(u.nama_lengkap)}</div>
+                            ${photo}
                             <div><strong style="font-size:13px">${safeName}</strong><br><span class="text-muted" style="font-size:11px">Username: ${App.escapeHtml(u.username || '-')}</span></div>
                         </div></td>
+                        <td>
+                            <input type="text" value="${App.escapeHtml(u.kode_guru || '')}" class="form-input" style="width: 70px; text-transform: uppercase; padding: 4px; height: 30px; font-weight: bold; font-size: 12px; text-align: center;" 
+                                oninput="clearTimeout(this.timer); this.timer = setTimeout(() => Admin.updateKodeGuru(${u.id}, this.value), 600);" 
+                                onkeydown="if(event.key === 'Enter') { clearTimeout(this.timer); Admin.updateKodeGuru(${u.id}, this.value); this.blur(); }"
+                                title="Ketik untuk otomatis menyimpan">
+                        </td>
                         <td><strong>${App.escapeHtml(u.nik || '-')}</strong><br><span class="text-muted" style="font-size:11px">${App.escapeHtml(u.email || '-')}</span></td>
                         <td style="font-size:12px">${App.escapeHtml(u.tempat_lahir || '-')}<br><span class="text-muted">${u.tgl_lahir ? App.formatDate(u.tgl_lahir) : '-'}</span></td>
                         <td>${App.escapeHtml(u.tupoksi || '-')}</td>
@@ -617,7 +644,7 @@ const Admin = {
                 <tr>
                     <td style="text-align: center;"><input type="checkbox" class="user-checkbox" value="${u.id}" onchange="Admin.checkUserSelection()"></td>
                     <td><div class="d-flex gap-sm" style="align-items:center">
-                        <div class="user-avatar" style="width:32px;height:32px;font-size:11px;border:none;cursor:default;">${App.getInitials(u.nama_lengkap)}</div>
+                        ${u.avatar ? `<img src="${App.baseUrl}${u.avatar}" class="user-avatar" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">` : `<div class="user-avatar" style="width:32px;height:32px;font-size:11px;border:none;cursor:default;">${App.getInitials(u.nama_lengkap)}</div>`}
                         <div><strong style="font-size:13px">${safeName}</strong><br><span class="text-muted" style="font-size:11px">${u.jabatan ? App.escapeHtml(u.jabatan) : ''} @${App.escapeHtml(u.username)}</span></div>
                     </div></td>
                     <td><span class="badge ${u.role==='superadmin'?'badge-primary':'badge-warning'}">${u.role}</span></td>
@@ -660,7 +687,7 @@ const Admin = {
             }
 
             const headers = this.usersType === 'gurus'
-                ? '<tr><th style="width: 40px; text-align: center;"><input type="checkbox" id="selectAllUsers" onclick="Admin.toggleSelectAllUsers(this)"></th><th>Nama</th><th>NIK / Email</th><th>TTL</th><th>Tupoksi</th><th>Jabatan</th><th>Status Guru</th><th>TPG / TMT</th><th>Status Akun</th><th>Aksi</th></tr>'
+                ? '<tr><th style="width: 40px; text-align: center;"><input type="checkbox" id="selectAllUsers" onclick="Admin.toggleSelectAllUsers(this)"></th><th>Nama</th><th>Kode</th><th>NIK / Email</th><th>TTL</th><th>Tupoksi</th><th>Jabatan</th><th>Status Guru</th><th>TPG / TMT</th><th>Status Akun</th><th>Aksi</th></tr>'
                 : '<tr><th style="width: 40px; text-align: center;"><input type="checkbox" id="selectAllUsers" onclick="Admin.toggleSelectAllUsers(this)"></th><th>User</th><th>Role</th><th>Status</th><th>Login Terakhir</th><th>Aksi</th></tr>';
             $('#usersTableWrapper').html(`
                 <table class="data-table"><thead>${headers}</thead><tbody>${rows}</tbody></table>
@@ -761,6 +788,7 @@ const Admin = {
                     <div class="form-row">
                         <div class="form-group"><label class="form-label">NIK</label><input class="form-input" id="userNik" placeholder="NIK guru"></div>
                         <div class="form-group"><label class="form-label">Email</label><input class="form-input" type="email" id="userEmail" placeholder="nama@email.com"></div>
+                        <div class="form-group"><label class="form-label">No HP</label><input class="form-input" id="userNoHp" placeholder="08123..."></div>
                     </div>
                     <div class="form-row">
                         <div class="form-group"><label class="form-label">Tempat Lahir</label><input class="form-input" id="userTempatLahir" placeholder="Tempat lahir"></div>
@@ -775,8 +803,11 @@ const Admin = {
                         <div class="form-group"><label class="form-label">Status Guru</label><select class="form-select" id="userStatusGuru"><option value="">-- Pilih Status --</option></select></div>
                         <div class="form-group"><label class="form-label">TPG</label><select class="form-select" id="userTpg"><option value="Tidak">Tidak</option><option value="Ya">Ya</option></select></div>
                     </div>
-                    <div class="form-group"><label class="form-label">TMT</label><input class="form-input" type="date" id="userTmt"></div>
-                    ` : `<input type="hidden" id="userNik" value=""><input type="hidden" id="userEmail" value=""><input type="hidden" id="userTempatLahir" value=""><input type="hidden" id="userTglLahir" value=""><input type="hidden" id="userTupoksi" value=""><input type="hidden" id="userJabatan" value=""><input type="hidden" id="userMapel" value=""><input type="hidden" id="userStatusGuru" value=""><input type="hidden" id="userTpg" value="Tidak"><input type="hidden" id="userTmt" value="">`}
+                    <div class="form-row">
+                        <div class="form-group"><label class="form-label">TMT</label><input class="form-input" type="date" id="userTmt"></div>
+                        <div class="form-group"><label class="form-label">Foto / Avatar (Opsional)</label><input class="form-input" type="file" id="userAvatar" accept="image/*" style="padding:10px"><div id="userAvatarPreview" class="mt-sm"></div></div>
+                    </div>
+                    ` : `<input type="hidden" id="userNik" value=""><input type="hidden" id="userEmail" value=""><input type="hidden" id="userNoHp" value=""><input type="hidden" id="userTempatLahir" value=""><input type="hidden" id="userTglLahir" value=""><input type="hidden" id="userTupoksi" value=""><input type="hidden" id="userJabatan" value=""><input type="hidden" id="userMapel" value=""><input type="hidden" id="userStatusGuru" value=""><input type="hidden" id="userTpg" value="Tidak"><input type="hidden" id="userTmt" value="">`}
                     ${this.usersType === 'gurus' ? `<input type="hidden" id="userRole" value="guru">` : `<div class="form-group"><label class="form-label">Role Akses</label><select class="form-select" id="userRole"><option value="user">User Standar</option><option value="superadmin">Superadmin</option></select></div>`}
                     ${isEdit?`<div class="form-group"><label class="form-label">Status Akun</label><select class="form-select" id="userStatus"><option value="1">Aktif</option><option value="0">Nonaktif</option></select></div>`:''}
                 </div>
@@ -805,6 +836,7 @@ const Admin = {
                             $('#userNama').val(u.nama_lengkap);
                             $('#userNik').val(u.nik || '');
                             $('#userEmail').val(u.email || '');
+                            $('#userNoHp').val(u.no_hp || '');
                             $('#userTempatLahir').val(u.tempat_lahir || '');
                             $('#userTglLahir').val(u.tgl_lahir || '');
                             this.setSelectValue('#userTupoksi', u.tupoksi || '');
@@ -814,6 +846,7 @@ const Admin = {
                             $('#userTpg').val(u.tpg || 'Tidak');
                             $('#userTmt').val(u.tmt || '');
                             $('#userStatus').val(u.status);
+                            if (u.avatar) $('#userAvatarPreview').html(`<img src="${App.baseUrl}${u.avatar}" style="width:64px;height:64px;border-radius:8px;object-fit:cover;border:1px solid var(--border-color);" alt="Avatar">`);
                         }
                     });
                 }
@@ -846,34 +879,54 @@ const Admin = {
     saveUser() {
         const id = $('#userId').val();
         const btn = document.getElementById('saveUserBtn');
-        const data = {
-            username: $('#userUsername').val().trim(),
-            password: $('#userPassword').val(),
-            nama_lengkap: $('#userNama').val().trim(),
-            nik: $('#userNik').val().trim(),
-            email: $('#userEmail').val().trim(),
-            tempat_lahir: $('#userTempatLahir').val().trim(),
-            tgl_lahir: $('#userTglLahir').val(),
-            tupoksi: $('#userTupoksi').val(),
-            jabatan: $('#userJabatan').val().trim(),
-            mapel: $('#userMapel').val().trim(),
-            status_guru: $('#userStatusGuru').val(),
-            tpg: $('#userTpg').val(),
-            tmt: $('#userTmt').val(),
-            role: $('#userRole').val()
-        };
-        if (id) { data.id = parseInt(id); data.status = parseInt($('#userStatus').val()); }
-        if (!id && this.usersType === 'gurus') {
-            if (!data.username && data.nik) data.username = data.nik;
-            if (!data.password) data.password = '1234567';
+        const data = new FormData();
+        data.append('username', $('#userUsername').val().trim());
+        data.append('password', $('#userPassword').val());
+        data.append('nama_lengkap', $('#userNama').val().trim());
+        data.append('nik', $('#userNik').val().trim());
+        data.append('email', $('#userEmail').val().trim());
+        data.append('no_hp', $('#userNoHp').val().trim());
+        data.append('tempat_lahir', $('#userTempatLahir').val().trim());
+        data.append('tgl_lahir', $('#userTglLahir').val());
+        data.append('tupoksi', $('#userTupoksi').val() || '');
+        data.append('jabatan', $('#userJabatan').val() || '');
+        data.append('mapel', $('#userMapel').val().trim());
+        data.append('status_guru', $('#userStatusGuru').val() || '');
+        data.append('tpg', $('#userTpg').val() || 'Tidak');
+        data.append('tmt', $('#userTmt').val());
+        data.append('role', $('#userRole').val());
+
+        const avatarFile = $('#userAvatar')[0]?.files[0];
+        if (avatarFile) data.append('avatar', avatarFile);
+
+        if (id) {
+            data.append('id', id);
+            data.append('status', $('#userStatus').val());
         }
 
-        if (!data.nama_lengkap) { EModal.toast({type:'warning',title:'Perhatian',message:'Nama lengkap harus diisi.'}); return; }
-        if (!id && (!data.username || (this.usersType !== 'gurus' && !data.password))) { EModal.toast({type:'warning',title:'Perhatian',message: this.usersType === 'gurus' ? 'NIK harus diisi agar username bisa digenerate.' : 'Username dan password harus diisi.'}); return; }
+        const role = data.get('role');
+        let username = data.get('username');
+        let password = data.get('password');
+        let nama_lengkap = data.get('nama_lengkap');
+        const nik = data.get('nik');
+
+        if (!id && this.usersType === 'gurus') {
+            if (!username && nik) { username = nik; data.set('username', username); }
+            if (!password) { password = '1234567'; data.set('password', password); }
+        }
+
+        if (!nama_lengkap) { EModal.toast({type:'warning',title:'Perhatian',message:'Nama lengkap harus diisi.'}); return; }
+        if (!id && (!username || (this.usersType !== 'gurus' && !password))) { EModal.toast({type:'warning',title:'Perhatian',message: this.usersType === 'gurus' ? 'NIK harus diisi agar username bisa digenerate.' : 'Username dan password harus diisi.'}); return; }
 
         EModal.btnLoading(btn, true);
         const action = id ? 'update' : 'create';
-        App.api(`api/users.php?action=${action}`, { method:'POST', data }).done(res => {
+        
+        App.api(`api/users.php?action=${action}`, { 
+            method:'POST', 
+            data: data,
+            processData: false,
+            contentType: false
+        }).done(res => {
             if (res.success) {
                 this.closeFormModal('userFormModal');
                 EModal.info({type:'success',title:'Berhasil!',message:res.message});
@@ -1152,6 +1205,10 @@ const Admin = {
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                             Ekspor Excel
                         </button>
+                        <button class="btn btn-warning btn-sm" onclick="Admin.showSetGuruWaliModal()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                            Set Guru Wali
+                        </button>
                         <button class="btn btn-primary btn-sm" onclick="Admin.showStudentForm()">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             Tambah Siswa
@@ -1292,8 +1349,15 @@ const Admin = {
                         <div class="form-group"><label class="form-label">NIS</label><input class="form-input" id="studentNis" placeholder="NIS"></div>
                         <div class="form-group"><label class="form-label">NISN</label><input class="form-input" id="studentNisn" placeholder="NISN"></div>
                     </div>
-                    <div class="form-group"><label class="form-label">Email</label><input class="form-input" id="studentEmail" type="email" placeholder="nama@email.com"></div>
-                    <div class="form-group"><label class="form-label">Nama</label><input class="form-input" id="studentNama" placeholder="Nama lengkap siswa"></div>
+                    <div class="form-row">
+                        <div class="form-group"><label class="form-label">Email</label><input class="form-input" id="studentEmail" type="email" placeholder="nama@email.com"></div>
+                        <div class="form-group"><label class="form-label">Nama</label><input class="form-input" id="studentNama" placeholder="Nama lengkap siswa"></div>
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group"><label class="form-label">No HP Orang Tua</label><input class="form-input" id="studentNoHpOrtu" placeholder="0812..."></div>
+                        <div class="form-group"><label class="form-label">No HP Siswa</label><input class="form-input" id="studentNoHpSiswa" placeholder="0857..."></div>
+                    </div>
+                    <div class="form-group"><label class="form-label">Guru Wali</label><input class="form-input" id="studentGuruWali" placeholder="Nama Wali Kelas"></div>
                     <div class="form-group"><label class="form-label">Tempat Lahir</label><input class="form-input" id="studentBirthPlace" placeholder="Tempat lahir"></div>
                     <div class="form-row">
                         <div class="form-group"><label class="form-label">L/P</label><select class="form-select" id="studentGender"><option value="L">L</option><option value="P">P</option></select></div>
@@ -1320,6 +1384,9 @@ const Admin = {
                     $('#studentNisn').val(s.nisn);
                     $('#studentEmail').val(s.email || '');
                     $('#studentNama').val(s.nama);
+                    $('#studentNoHpOrtu').val(s.no_hp_ortu || '');
+                    $('#studentNoHpSiswa').val(s.no_hp_siswa || '');
+                    $('#studentGuruWali').val(s.guru_wali || '');
                     $('#studentBirthPlace').val(s.tempat_lahir || '');
                     $('#studentGender').val(s.jenis_kelamin);
                     $('#studentBirthDate').val(s.tanggal_lahir);
@@ -1341,6 +1408,9 @@ const Admin = {
         fd.append('nisn', $('#studentNisn').val().trim());
         fd.append('email', $('#studentEmail').val().trim());
         fd.append('nama', $('#studentNama').val().trim());
+        fd.append('no_hp_ortu', $('#studentNoHpOrtu').val().trim());
+        fd.append('no_hp_siswa', $('#studentNoHpSiswa').val().trim());
+        fd.append('guru_wali', $('#studentGuruWali').val().trim());
         fd.append('tempat_lahir', $('#studentBirthPlace').val().trim());
         fd.append('jenis_kelamin', $('#studentGender').val());
         fd.append('tanggal_lahir', $('#studentBirthDate').val());
@@ -1385,6 +1455,191 @@ const Admin = {
                 });
             }
         });
+    },
+
+    showSetGuruWaliModal() {
+        const modal = `
+        <div class="admin-form-modal show" id="setGuruWaliModal" onclick="if(event.target===this)Admin.closeFormModal('setGuruWaliModal')">
+            <div class="admin-form-panel" style="max-width: 600px;">
+                <div class="panel-header"><h3>Set Guru Wali Massal</h3>
+                    <button class="panel-close" onclick="Admin.closeFormModal('setGuruWaliModal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                </div>
+                <div class="panel-body">
+                    <div class="form-group" style="position:relative; z-index:9999;">
+                        <label class="form-label">Nama Guru Wali</label>
+                        <div class="sp-cs-wrapper" style="position:relative; width:100%;">
+                            <input type="hidden" id="guruWaliInput" value="">
+                            <div class="sp-cs-display" id="csGuruWaliDisplay" tabindex="0" style="padding:10px 14px; border:1px solid var(--border-color, #cbd5e1); border-radius:8px; background:var(--bg-panel, #fff); cursor:pointer; display:flex; justify-content:space-between; align-items:center;">
+                                <span class="cs-placeholder text-muted" id="csGuruWaliText" style="font-size: 14px;">Pilih Guru Wali...</span>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                            </div>
+                            <div class="sp-cs-dropdown" id="csGuruWaliDropdown" style="display:none; position:absolute; top:calc(100% + 4px); left:0; width:100%; background:var(--bg-panel, #fff); border:1px solid var(--border-color, #cbd5e1); border-radius:8px; z-index:99999; box-shadow:0 10px 25px rgba(0,0,0,0.15);">
+                                <div class="cs-search-box" style="padding:10px; border-bottom:1px solid var(--border-color, #f1f5f9); background:var(--bg-body, #f8fafc); border-radius:8px 8px 0 0;">
+                                    <input type="text" id="csGuruWaliSearch" class="form-input" placeholder="Ketik nama guru..." autocomplete="off" style="width:100%; padding:8px 12px; font-size:13px; border:1px solid var(--border-color, #cbd5e1); border-radius:6px; outline:none;">
+                                </div>
+                                <div class="cs-options-list" id="csGuruWaliOptions" style="max-height:220px; overflow-y:auto; padding:0;">
+                                    <div style="padding: 10px; text-align: center;" class="text-muted">Memuat...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="form-group" style="position:relative; z-index:1;">
+                        <label class="form-label">Pilih Kelas</label>
+                        <select class="form-select" id="guruWaliKelas" onchange="Admin.loadSetGuruWaliStudents(this.value)">
+                            <option value="">-- Pilih Kelas --</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Pilih Siswa</label>
+                        <div class="data-table-wrapper" style="max-height: 250px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px;">
+                            <table class="data-table" style="margin: 0;">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 40px; text-align: center;"><input type="checkbox" id="selectAllWaliStudents" onclick="Admin.toggleSelectAllWaliStudents(this)"></th>
+                                        <th>Nama Siswa</th>
+                                        <th>Guru Wali Saat Ini</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="waliStudentsList">
+                                    <tr><td colspan="3" style="text-align:center; padding: 20px;" class="text-muted">Silakan pilih kelas terlebih dahulu</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="panel-footer">
+                    <button class="btn btn-ghost" onclick="Admin.closeFormModal('setGuruWaliModal')">Batal</button>
+                    <button class="btn btn-primary" id="saveGuruWaliBtn" onclick="Admin.saveGuruWaliBulk()"><span class="btn-text">Simpan Guru Wali</span></button>
+                </div>
+            </div>
+        </div>`;
+        $('body').append(modal);
+
+        // Load Gurus for custom dropdown
+        App.api('api/users.php?action=list&role=guru&per_page=1000').done(res => {
+            if (res.success && res.data && res.data.data) {
+                const list = res.data.data.map(g => `<div class="sp-cs-option" data-value="${App.escapeHtml(g.nama_lengkap)}" style="padding: 10px 14px; cursor: pointer; font-size: 14px; border-bottom:1px solid var(--border-color, #f1f5f9);" onmouseover="this.style.background='var(--bg-hover, #f8fafc)'" onmouseout="this.style.background='transparent'">${App.escapeHtml(g.nama_lengkap)}</div>`).join('');
+                $('#csGuruWaliOptions').html(list);
+            }
+        });
+
+        // Dropdown Events
+        $('#csGuruWaliDisplay').on('click', function() {
+            $('#csGuruWaliDropdown').toggle();
+            if ($('#csGuruWaliDropdown').is(':visible')) {
+                $('#csGuruWaliSearch').val('').trigger('input').focus();
+            }
+        });
+
+        $('#csGuruWaliSearch').on('input', function() {
+            const val = $(this).val().toLowerCase();
+            $('#csGuruWaliOptions .sp-cs-option').each(function() {
+                const text = $(this).text().toLowerCase();
+                $(this).toggle(text.includes(val));
+            });
+        });
+
+        $('#csGuruWaliOptions').on('click', '.sp-cs-option', function() {
+            const val = $(this).data('value');
+            const text = $(this).text();
+            $('#guruWaliInput').val(val);
+            $('#csGuruWaliText').text(text).removeClass('text-muted');
+            $('#csGuruWaliDropdown').hide();
+        });
+
+        $(document).on('click.csGuruWali', function(e) {
+            if (!$(e.target).closest('.sp-cs-wrapper').length) {
+                $('#csGuruWaliDropdown').hide();
+            }
+        });
+
+        // Cleanup on close
+        const originalClose = Admin.closeFormModal;
+        Admin.closeFormModal = function(id) {
+            if (id === 'setGuruWaliModal') {
+                $(document).off('click.csGuruWali');
+                Admin.closeFormModal = originalClose;
+            }
+            originalClose.call(Admin, id);
+        };
+
+        // Load Classes
+        const activeYear = this.studentsAcademicYearId || (App.state.academicYear?.id || '');
+        App.api(`api/students.php?action=get_classes&academic_year_id=${activeYear}`).done(res => {
+            if (res.success && res.data) {
+                const options = res.data.map(c => `<option value="${App.escapeHtml(c)}">${App.escapeHtml(c)}</option>`).join('');
+                $('#guruWaliKelas').append(options);
+            }
+        });
+    },
+
+    loadSetGuruWaliStudents(kelas) {
+        if (!kelas) {
+            $('#waliStudentsList').html('<tr><td colspan="3" style="text-align:center; padding: 20px;" class="text-muted">Silakan pilih kelas terlebih dahulu</td></tr>');
+            return;
+        }
+        $('#waliStudentsList').html('<tr><td colspan="3" style="text-align:center; padding: 20px;">Memuat data siswa...</td></tr>');
+        
+        const activeYear = this.studentsAcademicYearId || (App.state.academicYear?.id || '');
+        App.api(`api/students.php?action=list&kelas=${encodeURIComponent(kelas)}&academic_year_id=${activeYear}&per_page=1000`).done(res => {
+            if (res.success && res.data && res.data.data) {
+                const students = res.data.data;
+                if (students.length === 0) {
+                    $('#waliStudentsList').html('<tr><td colspan="3" style="text-align:center; padding: 20px;" class="text-muted">Tidak ada siswa di kelas ini</td></tr>');
+                    return;
+                }
+                const rows = students.map(s => `
+                    <tr>
+                        <td style="text-align: center;"><input type="checkbox" class="wali-student-checkbox" value="${s.id}"></td>
+                        <td><strong>${App.escapeHtml(s.nama)}</strong><br><span class="text-muted" style="font-size:11px">${s.nis}</span></td>
+                        <td>${s.guru_wali ? App.escapeHtml(s.guru_wali) : '<span class="text-muted">-</span>'}</td>
+                    </tr>
+                `).join('');
+                $('#waliStudentsList').html(rows);
+                $('#selectAllWaliStudents').prop('checked', false);
+            }
+        });
+    },
+
+    toggleSelectAllWaliStudents(checkbox) {
+        $('.wali-student-checkbox').prop('checked', checkbox.checked);
+    },
+
+    saveGuruWaliBulk() {
+        const guruWali = $('#guruWaliInput').val().trim();
+        if (!guruWali) {
+            EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Nama Guru Wali harus diisi.' });
+            return;
+        }
+
+        const selectedIds = [];
+        $('.wali-student-checkbox:checked').each(function() {
+            selectedIds.push($(this).val());
+        });
+
+        if (selectedIds.length === 0) {
+            EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Pilih setidaknya satu siswa.' });
+            return;
+        }
+
+        const btn = document.getElementById('saveGuruWaliBtn');
+        EModal.btnLoading(btn, true);
+
+        App.api('api/students.php?action=set_guru_wali_bulk', {
+            method: 'POST',
+            data: {
+                guru_wali: guruWali,
+                ids: selectedIds
+            }
+        }).done(res => {
+            if (res.success) {
+                this.closeFormModal('setGuruWaliModal');
+                EModal.info({ type: 'success', title: 'Berhasil!', message: res.message });
+                this.loadStudentsTable();
+            }
+        }).fail(xhr => {
+            EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Terjadi kesalahan.' });
+        }).always(() => EModal.btnLoading(btn, false));
     },
 
     showStudentImportExcel() {
@@ -2072,12 +2327,14 @@ const Admin = {
     refCategories: {
         jabatan: 'Jabatan',
         tupoksi: 'Tupoksi',
-        status_guru: 'Status Guru'
+        status_guru: 'Status Guru',
+        kelas: 'Data Kelas'
     },
     refCategoryDescriptions: {
         jabatan: 'Pilihan jabatan yang muncul pada form Data Guru.',
         tupoksi: 'Daftar tupoksi untuk pemetaan tugas guru.',
-        status_guru: 'Status kepegawaian atau status guru.'
+        status_guru: 'Status kepegawaian atau status guru.',
+        kelas: 'Kelola referensi data kelas dan tingkat.'
     },
 
     renderReferensi() {
@@ -2154,12 +2411,18 @@ const Admin = {
                 counts[r.kategori] = (counts[r.kategori] || 0) + 1;
             });
             Object.keys(this.refCategories).forEach(key => {
-                $(`.ref-tab-count[data-cat="${key}"]`).text(counts[key] || 0);
+                if (key !== 'kelas') $(`.ref-tab-count[data-cat="${key}"]`).text(counts[key] || 0);
             });
+        });
+        App.api('api/ref_kelas.php?action=list').done(res => {
+            if (res.success) {
+                $(`.ref-tab-count[data-cat="kelas"]`).text(res.data.length);
+            }
         });
     },
 
     loadRefTable() {
+        if (this.refCategory === 'kelas') return this.loadKelasTable();
         const label = this.refCategories[this.refCategory] || 'Referensi';
         const query = (this.refSearch || '').trim().toLowerCase();
         App.api(`api/referensi.php?action=list&kategori=${this.refCategory}`).done(res => {
@@ -2215,6 +2478,7 @@ const Admin = {
     },
 
     showRefForm(id=null) {
+        if (this.refCategory === 'kelas') return this.showKelasForm(id);
         const isEdit=id!==null;
         const label = this.refCategories[this.refCategory] || 'Referensi';
         const modal=`
@@ -2247,6 +2511,93 @@ const Admin = {
     deleteRef(id,name) {
         EModal.confirm({title:'Hapus Referensi',message:`Yakin hapus referensi <strong>${name}</strong>?`,type:'danger',confirmText:'Ya, Hapus',
             onConfirm:()=>{const l=EModal.loading('Menghapus...');App.api('api/referensi.php?action=delete',{method:'POST',data:{id}}).done(res=>{EModal.close(l);if(res.success){EModal.info({type:'success',title:'Dihapus!',message:res.message});this.loadRefSummary();this.loadRefTable();}}).fail(xhr=>{EModal.close(l);EModal.toast({type:'error',title:'Gagal',message:xhr.responseJSON?.message||'Error'});});}
+        });
+    },
+    loadKelasTable() {
+        const query = (this.refSearch || '').trim().toLowerCase();
+        App.api(`api/ref_kelas.php?action=list`).done(res => {
+            if (!res.success) return;
+            const allRows = res.data || [];
+            const filteredRows = query
+                ? allRows.filter(r => (`${r.tingkat || ''} ${r.nama_kelas || ''} ${r.keterangan || ''}`).toLowerCase().includes(query))
+                : allRows;
+            $('#refCount').text(query ? `${filteredRows.length} dari ${allRows.length} data` : `${allRows.length} data`);
+
+            if (!filteredRows.length) {
+                const emptyTitle = query ? 'Data Tidak Ditemukan' : 'Belum Ada Data Kelas';
+                const emptyText = query ? 'Coba gunakan kata kunci lain.' : 'Tambahkan data kelas baru.';
+                $('#refTableWrapper').html(`
+                    <div class="reference-empty">
+                        <div class="reference-empty-illustration">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 6h16M4 12h10M4 18h7"/><circle cx="18" cy="16" r="3"/><path d="m21 19-1.5-1.5"/></svg>
+                        </div>
+                        <h3>${emptyTitle}</h3>
+                        <p>${emptyText}</p>
+                        ${query ? `<button class="btn btn-ghost btn-sm" onclick="Admin.refSearch='';Admin.renderReferensi()">Reset Pencarian</button>` : `<button class="btn btn-primary btn-sm" onclick="Admin.showKelasForm()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Tambah Data Kelas</button>`}
+                    </div>`);
+                return;
+            }
+
+            const rows = filteredRows.map((r, i) => `
+                <tr>
+                    <td>
+                        <div class="reference-name">
+                            <span class="reference-number">${i + 1}</span>
+                            <div>
+                                <strong>${App.escapeHtml(r.tingkat)}</strong>
+                            </div>
+                        </div>
+                    </td>
+                    <td><strong>${App.escapeHtml(r.nama_kelas)}</strong></td>
+                    <td class="reference-note">${App.escapeHtml(r.keterangan || '-')}</td>
+                    <td style="text-align:right">
+                        <div class="actions" style="justify-content:flex-end">
+                            <button class="btn-icon" title="Edit" onclick="Admin.showKelasForm(${r.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                            <button class="btn-icon danger" title="Hapus" onclick="Admin.deleteKelas(${r.id},'${App.escapeHtml(r.nama_kelas)}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                        </div>
+                    </td>
+                </tr>`).join('');
+            $('#refTableWrapper').html(`
+                <table class="data-table reference-table">
+                    <thead><tr><th>Tingkat</th><th>Nama Kelas</th><th>Keterangan</th><th style="text-align:right">Aksi</th></tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `);
+        });
+    },
+
+    showKelasForm(id=null) {
+        const isEdit=id!==null;
+        const modal=`
+        <div class="admin-form-modal show" id="refFormModal" onclick="if(event.target===this)Admin.closeFormModal('refFormModal')">
+            <div class="admin-form-panel">
+                <div class="panel-header"><h3>${isEdit?'Edit':'Tambah'} Data Kelas</h3><button class="panel-close" onclick="Admin.closeFormModal('refFormModal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+                <div class="panel-body">
+                    <div class="form-group"><label class="form-label">Tingkat</label><input class="form-input" id="refTingkat" placeholder="Misal: X, XI, XII atau 7, 8, 9"></div>
+                    <div class="form-group"><label class="form-label">Nama Kelas</label><input class="form-input" id="refNamaKelas" placeholder="Misal: MIPA 1"></div>
+                    <div class="form-group"><label class="form-label">Keterangan (Opsional)</label><input class="form-input" id="refKet" placeholder="Keterangan singkat"></div>
+                </div>
+                <div class="panel-footer"><button class="btn btn-ghost" onclick="Admin.closeFormModal('refFormModal')">Batal</button><button class="btn btn-primary" id="saveRefBtn" onclick="Admin.saveKelas(${id||'null'})"><span class="btn-text">Simpan</span></button></div>
+            </div>
+        </div>`;
+        $('body').append(modal);
+        if(isEdit){App.api(`api/ref_kelas.php?action=get&id=${id}`).done(res=>{if(res.success){$('#refTingkat').val(res.data.tingkat);$('#refNamaKelas').val(res.data.nama_kelas);$('#refKet').val(res.data.keterangan);}});}
+    },
+
+    saveKelas(id) {
+        const btn=document.getElementById('saveRefBtn');
+        const data={tingkat:$('#refTingkat').val().trim(),nama_kelas:$('#refNamaKelas').val().trim(),keterangan:$('#refKet').val().trim()};
+        if(id)data.id=id;
+        if(!data.tingkat || !data.nama_kelas){EModal.toast({type:'warning',title:'Perhatian',message:'Tingkat dan Nama Kelas wajib diisi.'});return;}
+        EModal.btnLoading(btn,true);
+        App.api(`api/ref_kelas.php?action=${id?'update':'create'}`,{method:'POST',data}).done(res=>{
+            if(res.success){this.closeFormModal('refFormModal');EModal.info({type:'success',title:'Berhasil!',message:res.message});this.loadRefSummary();this.loadRefTable();}
+        }).fail(xhr=>EModal.toast({type:'error',title:'Gagal',message:xhr.responseJSON?.message||'Error'})).always(()=>EModal.btnLoading(btn,false));
+    },
+
+    deleteKelas(id,name) {
+        EModal.confirm({title:'Hapus Data Kelas',message:`Yakin hapus kelas <strong>${name}</strong>?`,type:'danger',confirmText:'Ya, Hapus',
+            onConfirm:()=>{const l=EModal.loading('Menghapus...');App.api('api/ref_kelas.php?action=delete',{method:'POST',data:{id}}).done(res=>{EModal.close(l);if(res.success){EModal.info({type:'success',title:'Dihapus!',message:res.message});this.loadRefSummary();this.loadRefTable();}}).fail(xhr=>{EModal.close(l);EModal.toast({type:'error',title:'Gagal',message:xhr.responseJSON?.message||'Error'});});}
         });
     },
 

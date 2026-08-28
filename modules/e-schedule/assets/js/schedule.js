@@ -450,23 +450,46 @@ const Schedule = {
             this.state.jamData = res.data;
             if (!res.data.length) { $('#jamTable').html('<div class="sch-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg><h3>Belum ada jam belajar</h3><p>Tambahkan jam belajar per hari untuk menyusun blok jadwal.</p></div>'); return; }
             
-            let html = '<table class="sch-table"><thead><tr><th>No</th><th>Hari</th><th>Jam Ke</th><th>Tipe</th><th>Nama Jam</th><th>Aksi</th></tr></thead><tbody>';
-            res.data.forEach((d, i) => {
-                html += `<tr>
-                    <td>${i+1}</td>
-                    <td>${d.hari}</td>
-                    <td>${d.jam_ke}</td>
-                    <td><span style="font-size:0.8rem;padding:4px 8px;border-radius:4px;background:#f1f5f9">${d.tipe}</span></td>
-                    <td><strong>${d.nama_jam}</strong></td>
-                    <td>
-                        <div class="sch-actions">
-                            <button class="sch-btn-icon" onclick="Schedule.formJam(${d.id})" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-                            <button class="sch-btn-icon danger" onclick="Schedule.deleteMaster('jam', ${d.id})" title="Hapus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
-                        </div>
-                    </td>
-                </tr>`;
+            const days = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+            let maxJamKe = 0;
+            res.data.forEach(d => {
+                if (parseInt(d.jam_ke) > maxJamKe) maxJamKe = parseInt(d.jam_ke);
             });
-            html += '</tbody></table>';
+
+            if (maxJamKe === 0) maxJamKe = 1;
+
+            let html = '<div style="overflow-x:auto"><table class="sch-table matrix-table" style="min-width:1000px;border-collapse:collapse;width:100%"><thead><tr><th style="width:80px;text-align:center;border-bottom:2px solid var(--border-color);padding:12px;background:#f8fafc">Jam Ke</th>';
+            days.forEach(day => {
+                html += `<th style="text-align:center;border-bottom:2px solid var(--border-color);padding:12px;background:#f8fafc">${day}</th>`;
+            });
+            html += '</tr></thead><tbody>';
+
+            for (let i = 1; i <= maxJamKe; i++) {
+                html += `<tr><td style="text-align:center;font-weight:bold;border-bottom:1px solid var(--border-color);padding:12px">${i}</td>`;
+                days.forEach(day => {
+                    const cell = res.data.find(x => x.hari === day && parseInt(x.jam_ke) === i);
+                    if (cell) {
+                        html += `<td style="border-bottom:1px solid var(--border-color);padding:8px">
+                            <div style="padding:10px;border:1px solid var(--border-color);border-radius:8px;background:${cell.tipe !== 'Pembelajaran' ? '#FFF3E0' : '#fff'};position:relative;min-height:85px;box-shadow:0 1px 2px rgba(0,0,0,0.05)">
+                                <div style="font-size:0.7rem;padding:3px 6px;border-radius:4px;background:rgba(0,0,0,0.05);display:inline-block;margin-bottom:6px;color:var(--text-muted);font-weight:500">${cell.tipe}</div>
+                                <div style="font-weight:600;font-size:0.85rem;margin-bottom:12px;color:${cell.tipe !== 'Pembelajaran' ? '#E65100' : 'var(--text-main)'};line-height:1.3">${cell.nama_jam}</div>
+                                <div class="sch-actions" style="position:absolute;bottom:8px;right:8px;gap:6px;display:flex">
+                                    <button class="sch-btn-icon" style="width:26px;height:26px;background:#f1f5f9;border-radius:4px;display:flex;align-items:center;justify-content:center" onclick="Schedule.formJam(${cell.id})" title="Edit"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                                    <button class="sch-btn-icon danger" style="width:26px;height:26px;background:#FEE2E2;color:#DC2626;border-radius:4px;display:flex;align-items:center;justify-content:center" onclick="Schedule.deleteMaster('jam', ${cell.id})" title="Hapus"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
+                                </div>
+                            </div>
+                        </td>`;
+                    } else {
+                        html += `<td style="background:#fafafa;border-bottom:1px solid var(--border-color);padding:8px">
+                            <div style="height:100%;min-height:85px;display:flex;align-items:center;justify-content:center;color:#ccc;font-size:0.8rem;border:1px dashed #e2e8f0;border-radius:8px">
+                                Kosong
+                            </div>
+                        </td>`;
+                    }
+                });
+                html += '</tr>';
+            }
+            html += '</tbody></table></div>';
             $('#jamTable').html(html);
         });
     },

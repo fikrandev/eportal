@@ -29,7 +29,7 @@ try {
                 SELECT s.id as student_id, s.nis, s.nama as nama_siswa, s.kelas,
                        es.id as sesi_id, es.status, es.waktu_mulai, es.waktu_selesai, es.nilai_akhir as skor, es.pelanggaran
                 FROM exam_ujian_kelas uk
-                JOIN students s ON s.kelas = uk.kelas AND s.status = 1
+                JOIN students s ON s.kelas COLLATE utf8mb4_unicode_ci = uk.kelas COLLATE utf8mb4_unicode_ci AND s.status = 1
                 LEFT JOIN exam_sesi es ON es.student_id = s.id AND es.ujian_id = uk.ujian_id
                 WHERE uk.ujian_id = ?
                 ORDER BY s.kelas ASC, s.nama ASC
@@ -104,7 +104,7 @@ try {
                 SELECT s.nis, s.nama as nama_siswa, s.kelas,
                        es.status, es.waktu_mulai, es.waktu_selesai, es.nilai_akhir as skor, es.pelanggaran
                 FROM exam_ujian_kelas uk
-                JOIN students s ON s.kelas = uk.kelas AND s.status = 1
+                JOIN students s ON s.kelas COLLATE utf8mb4_unicode_ci = uk.kelas COLLATE utf8mb4_unicode_ci AND s.status = 1
                 LEFT JOIN exam_sesi es ON es.student_id = s.id AND es.ujian_id = uk.ujian_id
                 WHERE uk.ujian_id = ?
                 ORDER BY s.kelas ASC, s.nama ASC

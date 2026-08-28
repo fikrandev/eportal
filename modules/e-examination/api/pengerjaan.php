@@ -327,6 +327,26 @@ try {
                         $opsi = $opsiBaru;
                     }
                 }
+                
+                if ($s['tipe_soal'] === 'menjodohkan') {
+                    $kiri = [];
+                    $kanan = [];
+                    foreach ($opsi as $opt) {
+                        if (isset($opt['left']) && isset($opt['right'])) {
+                            $kiri[] = $opt['left'];
+                            $kanan[] = $opt['right'];
+                        }
+                    }
+                    // Acak pasangan kanan agar siswa harus mencocokkan
+                    if ($s['opsi_acak']) {
+                        shuffle($kanan);
+                    } else {
+                        // Walaupun tidak diset acak, kanan sebaiknya diacak sedikit atau biarkan original jika guru mau
+                        // Default kita acak agar logis
+                        shuffle($kanan);
+                    }
+                    $opsi = ['kiri' => $kiri, 'kanan' => $kanan];
+                }
 
                 $formattedSoal[] = [
                     'jawaban_id' => $s['jawaban_id'],

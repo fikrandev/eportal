@@ -349,6 +349,7 @@ const Sarpras = {
             type: 'danger',
             confirmText: 'Ya, Logout',
             onConfirm: () => {
+                const loader = EModal.loading('Logging out...');
                 // Call server to invalidate the session token in database
                 $.ajax({
                     url: this.state.baseUrl + 'api/auth.php?action=logout',
@@ -356,12 +357,14 @@ const Sarpras = {
                     headers: { 'Authorization': 'Bearer ' + this.state.token },
                     complete: () => {
                         // Remember to redirect back to sarpras after re-login
-                        sessionStorage.setItem('eportal_intended_module', 'modules/e-sarpras/');
-                        // Clear client-side storage
-                        localStorage.removeItem('auth_token');
-                        localStorage.removeItem('user');
-                        // Redirect to portal login
-                        window.location.href = this.state.baseUrl + '#/dashboard';
+                        if (window.localStorage) {
+                            localStorage.removeItem('eportal_token');
+                            localStorage.removeItem('eportal_user');
+                            localStorage.removeItem('eportal_school');
+                            localStorage.removeItem('eportal_academic_year');
+                        }
+                        EModal.close(loader);
+                        window.location.href = this.state.baseUrl + '#/login';
                     }
                 });
             }
@@ -1814,7 +1817,7 @@ const Sarpras = {
         return '';
     },
 
-    renderAssetGroup($container, group) {
+    renderAssetGroup($container, group, page = 1) {
         let route = this.state.currentRoute;
         let title = '';
         if (route === 'ahp-bhp') { title = 'Alat & Bahan Habis Pakai (AHP-BHP)'; }
@@ -1822,48 +1825,65 @@ const Sarpras = {
         else if (route === 'buku') { title = 'Koleksi Buku'; }
 
         const isAngkutan = route === 'angkutan';
-        const isBuku = route === 'buku';
-        
-        let addBtnAction = 'Sarpras.formSarpras(null, null)';
-        let addBtnLabel = '+ Tambah Barang';
-        let extraBtn = '';
+        let needsLayout = $container.find('#groupTable').length === 0 || $container.find('.sp-card-header h3').text() !== title;
 
-        if (isAngkutan) {
-            addBtnAction = 'Sarpras.formAngkutan()';
-            addBtnLabel = '+ Tambah Kendaraan';
-        } else if (isBuku) {
-            addBtnAction = 'Sarpras.formBuku()';
-            addBtnLabel = '+ Tambah Buku';
-            extraBtn = '<button class="btn btn-secondary btn-sm" onclick="Sarpras.formImportBuku(null)">Import (CSV)</button>';
-        }
+        if (needsLayout) {
+            let addBtnAction = `Sarpras.formSarpras(null, null, '${route}')`;
+            let addBtnLabel = '+ Tambah Barang';
+            let extraBtn = '';
 
-        $container.html(`
-            <div class="sp-card">
-                <div class="sp-card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                    <h3 style="margin:0">${title}</h3>
-                    <div class="sp-toolbar" style="display:flex; align-items:center; gap:10px;">
-                        <div class="sp-search-box" style="position:relative;">
-                            <input type="text" id="assetLiveSearch" placeholder="Pencarian cepat..." style="padding:6px 12px 6px 30px; border-radius:20px; border:1px solid #cbd5e1; font-size:13px; width:220px; outline:none; transition: border-color 0.2s;">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute; left:10px; top:8px; width:14px; height:14px; color:#94a3b8;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            if (isAngkutan) {
+                addBtnAction = 'Sarpras.formAngkutan()';
+                addBtnLabel = '+ Tambah Kendaraan';
+            } else if (route === 'buku') {
+                addBtnAction = 'Sarpras.formBuku()';
+                addBtnLabel = '+ Tambah Buku';
+                extraBtn = '<button class="btn btn-secondary btn-sm" onclick="Sarpras.formImportBuku(null)">Import (CSV)</button>';
+            }
+
+            $container.html(`
+                <div class="sp-card">
+                    <div class="sp-card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                        <h3 style="margin:0">${title}</h3>
+                        <div class="sp-toolbar" style="display:flex; align-items:center; gap:10px;">
+                            <div class="sp-search-box" style="position:relative;">
+                                <input type="text" id="assetLiveSearch" placeholder="Pencarian server..." style="padding:6px 12px 6px 30px; border-radius:20px; border:1px solid #cbd5e1; font-size:13px; width:220px; outline:none; transition: border-color 0.2s;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="position:absolute; left:10px; top:8px; width:14px; height:14px; color:#94a3b8;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            </div>
+                            ${extraBtn}
+                            <button class="btn btn-primary btn-sm" onclick="${addBtnAction}">${addBtnLabel}</button>
                         </div>
-                        ${extraBtn}
-                        <button class="btn btn-primary btn-sm" onclick="${addBtnAction}">${addBtnLabel}</button>
+                    </div>
+                    <div class="sp-card-body">
+                        <div class="sp-table-wrapper" id="groupTable"><div class="skeleton" style="height:200px"></div></div>
                     </div>
                 </div>
-                <div class="sp-card-body">
-                    <div class="sp-table-wrapper" id="groupTable"><div class="skeleton" style="height:200px"></div></div>
-                </div>
-            </div>
-        `);
+            `);
 
-        $('#assetLiveSearch').on('keyup', function() {
-            const val = $(this).val().toLowerCase();
-            $('#groupTable table tbody tr').filter(function() {
-                $(this).toggle($(this).text().toLowerCase().indexOf(val) > -1);
+            let searchTimer;
+            $('#assetLiveSearch').on('keyup', (e) => {
+                clearTimeout(searchTimer);
+                searchTimer = setTimeout(() => {
+                    this._loadAssetGroupData(route, 1, $(e.target).val());
+                }, 500);
             });
-        });
+        }
 
-        this.api(`sarpras.php?action=list&grup=${route}&per_page=50`).done(res => {
+        this._loadAssetGroupData(route, page, $('#assetLiveSearch').val() || '');
+    },
+
+    _loadAssetGroupData(route, page, searchKeyword) {
+        const isAngkutan = route === 'angkutan';
+        const isBuku = route === 'buku';
+
+        $('#groupTable').html('<div class="skeleton" style="height:200px"></div>');
+        
+        let apiEndpoint = `sarpras.php?action=list&grup=${route}&per_page=15&page=${page}`;
+        if (searchKeyword) {
+            apiEndpoint += `&search=${encodeURIComponent(searchKeyword)}`;
+        }
+
+        this.api(apiEndpoint).done(res => {
             const items = res.data.data || [];
             if (!items.length) { 
                 $('#groupTable').html('<div class="sp-empty">Belum ada data di grup ini. Silakan tambah barang baru.</div>'); 
@@ -1894,37 +1914,20 @@ const Sarpras = {
                                 <button class="sp-btn-icon" title="Edit" onclick="Sarpras.formAngkutan(${s.id})">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                                 </button>
-                                <button class="sp-btn-icon danger" title="Hapus" onclick="Sarpras.delSarprasGroup(${s.id}, '${s.nama.replace(/'/g, "\\\\\'")}')">
+                                <button class="sp-btn-icon danger" title="Hapus" onclick="Sarpras.delSarprasGroup(${s.id}, '${s.nama.replace(/'/g, "\\'")}')">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                                 </button>
                             </div>
                         </td>
                     </tr>
                 `).join('');
-                
-                $('#groupTable').html(`
-                    <table class="sp-table">
-                        <thead>
-                            <tr>
-                                <th>Nama / Kode</th>
-                                <th>Jenis Sarana</th>
-                                <th>Merk</th>
-                                <th style="text-align:center">No. Polisi</th>
-                                <th style="text-align:center">Total</th>
-                                <th style="text-align:center">Terpakai</th>
-                                <th style="text-align:center">Sisa Stok</th>
-                                <th>Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody>${rows}</tbody>
-                    </table>
-                `);
+                $('#groupTable').html(`<table class="sp-table"><thead><tr><th>Nama / Kode</th><th>Jenis</th><th>Merk</th><th style="text-align:center">No. Polisi</th><th style="text-align:center">Total (Gudang+Ruang)</th><th style="text-align:center">Didistribusi</th><th style="text-align:center">Sisa Gudang</th><th>Aksi</th></tr></thead><tbody>${rows}</tbody></table>`);
             } else if (isBuku) {
                 // === BUKU TABLE ===
                 const rows = items.map(s => `
                     <tr>
                         <td>
-                            <strong>${s.nama}</strong><br>
+                            <strong>${s.judul_buku || s.nama}</strong><br>
                             <small style="color:var(--text-muted)">${s.kode_inventaris}</small>
                         </td>
                         <td>${s.pengarang || '-'}</td>
@@ -1940,81 +1943,69 @@ const Sarpras = {
                                 <button class="sp-btn-icon" title="Edit" onclick="Sarpras.formBuku(${s.id})">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                                 </button>
-                                <button class="sp-btn-icon" title="Tambah Batch (Lagi)" style="color:var(--success)" onclick="Sarpras.formBuku(${s.id}, true)">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-                                </button>
-                                <button class="sp-btn-icon" title="Hapus" onclick="Sarpras.delSarprasGroup(${s.id}, '${s.nama.replace(/'/g, "\\\\\'")}')">
+                                <button class="sp-btn-icon danger" title="Hapus" onclick="Sarpras.delSarprasGroup(${s.id}, '${(s.judul_buku || s.nama).replace(/'/g, "\\'")}')">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                                 </button>
                             </div>
                         </td>
                     </tr>
                 `).join('');
-
-                $('#groupTable').html(`
-                    <table class="sp-table">
-                        <thead>
-                            <tr>
-                                <th>Judul / Kode</th>
-                                <th>Pengarang</th>
-                                <th>Penerbit</th>
-                                <th style="text-align:center">Total</th>
-                                <th style="text-align:center">Terdistribusi</th>
-                                <th style="text-align:center">Sisa Stok</th>
-                                <th>Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody>${rows}</tbody>
-                    </table>
-                `);
+                $('#groupTable').html(`<table class="sp-table"><thead><tr><th>Judul / Kode</th><th>Pengarang</th><th>Penerbit</th><th style="text-align:center">Total (Gudang+Ruang)</th><th style="text-align:center">Didistribusi</th><th style="text-align:center">Sisa Gudang</th><th>Aksi</th></tr></thead><tbody>${rows}</tbody></table>`);
             } else {
-                // === DEFAULT TABLE (AHP-BHP / BUKU) ===
-                const isAHPBHP = route === 'ahp-bhp';
+                // === AHP/BHP TABLE ===
                 const rows = items.map(s => `
                     <tr>
-                        <td><strong>${s.nama}</strong><br><small>${s.kode_inventaris}</small></td>
+                        <td>
+                            <div style="display:flex; align-items:center; gap:10px;">
+                                ${s.foto_utama ? `<img src="../api/uploads/${s.foto_utama}" style="width:40px; height:40px; border-radius:6px; object-fit:cover; border:1px solid #e2e8f0;">` : `<div style="width:40px; height:40px; border-radius:6px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; color:#94a3b8;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>`}
+                                <div>
+                                    <strong>${s.nama}</strong><br>
+                                    <small style="color:var(--text-muted)">${s.kode_inventaris}</small>
+                                </div>
+                            </div>
+                        </td>
                         <td>${s.kategori_nama}</td>
-                        ${isAHPBHP ? `<td style="text-align:right">Rp ${Sarpras.formatNumber(s.harga_perolehan)}</td>` : ''}
+                        <td>${s.merk || '-'}</td>
                         <td style="text-align:center"><strong>${s.total_batch || s.jumlah}</strong></td>
                         <td style="text-align:center; color:var(--primary)">${s.terpakai_batch || 0}</td>
                         <td style="text-align:center; color:var(--warning)"><strong>${s.jumlah}</strong></td>
-                        <td>
-                            <div style="font-size:0.75rem">
-                                <span style="color:var(--success)">B: ${s.kondisi_baik}</span> | 
-                                <span style="color:var(--warning)">RR: ${s.kondisi_rusak_ringan}</span> | 
-                                <span style="color:var(--danger)">RB: ${s.kondisi_rusak_berat}</span>
-                            </div>
-                        </td>
                         <td>
                             <div class="sp-actions">
                                 <button class="sp-btn-icon" title="Detail" onclick="Sarpras.navigate('sarpras-detail', {id: ${s.id}})">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                                 </button>
-                                <button class="sp-btn-icon" title="Edit" onclick="Sarpras.formSarpras(${s.id}, null)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-                                <button class="sp-btn-icon" title="Tambah Batch (Lagi)" style="color:var(--success)" onclick="Sarpras.formSarpras(${s.id}, null, null, true)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg></button>
-                                <button class="sp-btn-icon danger" title="Hapus" onclick="Sarpras.delSarprasGroup(${s.id}, '${s.nama.replace(/'/g, "\\\\'")}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                                <button class="sp-btn-icon" title="Edit" onclick="Sarpras.formSarpras(${s.id}, null, '${route}')">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                </button>
+                                <button class="sp-btn-icon danger" title="Hapus" onclick="Sarpras.delSarprasGroup(${s.id}, '${s.nama.replace(/'/g, "\\'")}')">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                </button>
                             </div>
                         </td>
                     </tr>
                 `).join('');
+                $('#groupTable').html(`<table class="sp-table"><thead><tr><th>Barang / Kode</th><th>Kategori</th><th>Merk</th><th style="text-align:center">Total (Gudang+Ruang)</th><th style="text-align:center">Didistribusi</th><th style="text-align:center">Sisa Gudang</th><th>Aksi</th></tr></thead><tbody>${rows}</tbody></table>`);
+            }
+
+            // Pagination UI
+            if (res.data.total_pages > 1) {
+                let safeSearch = searchKeyword ? searchKeyword.replace(/'/g, "\\'") : '';
+                let paginationHtml = '<div style="display:flex; justify-content:center; align-items:center; gap:5px; margin-top:20px; padding-top:15px; border-top:1px solid var(--border-color);">';
+                if (res.data.page > 1) {
+                    paginationHtml += `<button class="btn btn-outline btn-sm" onclick="Sarpras._loadAssetGroupData('${route}', ${res.data.page - 1}, '${safeSearch}')">&laquo; Prev</button>`;
+                }
                 
-                $('#groupTable').html(`
-                    <table class="sp-table">
-                        <thead>
-                            <tr>
-                                <th>Nama / Kode</th>
-                                <th>Kategori</th>
-                                ${isAHPBHP ? '<th style="text-align:right">Harga Satuan</th>' : ''}
-                                <th style="text-align:center">Total Stok</th>
-                                <th style="text-align:center">Terdistribusi</th>
-                                <th style="text-align:center">Sisa Stok</th>
-                                <th>Kondisi (Gudang)</th>
-                                <th>Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody>${rows}</tbody>
-                    </table>
-                `);
+                let startP = Math.max(1, res.data.page - 2);
+                let endP = Math.min(res.data.total_pages, res.data.page + 2);
+                for(let p = startP; p <= endP; p++) {
+                    paginationHtml += `<button class="btn ${p === res.data.page ? 'btn-primary' : 'btn-outline'} btn-sm" onclick="Sarpras._loadAssetGroupData('${route}', ${p}, '${safeSearch}')">${p}</button>`;
+                }
+                
+                if (res.data.page < res.data.total_pages) {
+                    paginationHtml += `<button class="btn btn-outline btn-sm" onclick="Sarpras._loadAssetGroupData('${route}', ${res.data.page + 1}, '${safeSearch}')">Next &raquo;</button>`;
+                }
+                paginationHtml += '</div>';
+                $('#groupTable').append(paginationHtml);
             }
         });
     },
@@ -2814,7 +2805,7 @@ const Sarpras = {
                         </div>
 
                         <!-- SECTION 2: DETAIL PEROLEHAN -->
-                        <div class="sp-form-section" ${(ruangId && !isEdit) || groupFilter ? 'style="display:none"' : ''}>
+                        <div class="sp-form-section" ${(ruangId && !isEdit) ? 'style="display:none"' : ''}>
                             <div class="sp-form-section-title">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                                 Detail & Perolehan

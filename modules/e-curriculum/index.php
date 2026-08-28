@@ -34,7 +34,18 @@ $active_academic_year = get_active_academic_year();
 
     <?php if($school_icon): ?>
     <link rel="icon" href="<?php echo BASE_URL . $school_icon; ?>">
+    <link rel="apple-touch-icon" href="<?php echo BASE_URL . $school_icon; ?>">
     <?php endif; ?>
+
+    <!-- PWA Manifest & Service Worker -->
+    <link rel="manifest" href="manifest.php">
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js').catch(err => console.error('SW registration failed:', err));
+            });
+        }
+    </script>
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">

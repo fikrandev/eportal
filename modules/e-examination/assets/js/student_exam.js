@@ -447,16 +447,16 @@ const ExamApp = {
         // Media
         this.audioPlayCount = this.audioPlayCount || {};
         let mediaHtml = '';
-        if (s.gambar) mediaHtml += `<img src="../../uploads/exam/${s.gambar}" style="max-width:100%; border-radius:8px; margin-bottom:12px;">`;
+        if (s.gambar) mediaHtml += `<img src="../${s.gambar}" style="max-width:100%; border-radius:8px; margin-bottom:12px;">`;
         if (s.audio) {
             const playedCount = this.audioPlayCount[s.id] || 0;
             if (playedCount >= 2) {
-                mediaHtml += `<div style="background:#fee2e2;color:#b91c1c;padding:12px;border-radius:8px;font-weight:600;text-align:center;margin-bottom:12px;">🔊 Audio listening telah diputar 2x (batas maksimal tercapai)</div>`;
+                mediaHtml += `<div style="background:#fee2e2;color:#b91c1c;padding:12px;border-radius:8px;font-weight:600;text-align:center;margin-bottom:12px;">⚠️ Audio listening telah diputar 2x (batas maksimal tercapai)</div>`;
             } else {
                 mediaHtml += `
                     <div style="margin-bottom:12px;">
                         <audio id="audio_player_${s.id}" controls controlsList="nodownload noplaybackrate" style="width:100%;">
-                            <source src="../../uploads/exam/${s.audio}" type="audio/mpeg">
+                            <source src="../${s.audio}" type="audio/mpeg">
                         </audio>
                         <div style="font-size:12px;color:#64748b;margin-top:4px;text-align:right;">Sisa pemutaran: <strong id="audio_remaining_${s.id}">${2 - playedCount}</strong> kali</div>
                     </div>
@@ -624,7 +624,7 @@ const ExamApp = {
                         
                         <div id="voice_preview_${s.id}" style="flex:1;display:${data.jawaban_voice ? 'block' : 'none'};">
                             <audio id="audio_voice_preview_${s.id}" controls style="width:100%;height:36px;border-radius:18px;">
-                                <source src="../../${data.jawaban_voice}" type="audio/webm">
+                                <source src="../${data.jawaban_voice}" type="audio/webm">
                             </audio>
                         </div>
                     </div>
@@ -853,7 +853,7 @@ const ExamApp = {
                     // Refresh preview audio player
                     $(`#voice_preview_${soalId}`).show();
                     const player = document.getElementById(`audio_voice_preview_${soalId}`);
-                    player.src = `../../${r.data.path}`;
+                    player.src = `../${r.data.path}`;
                     player.load();
 
                     // Update nav status

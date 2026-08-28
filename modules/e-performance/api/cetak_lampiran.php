@@ -13,6 +13,14 @@ if (!$auth) {
 
 $db = db();
 
+function getDeskripsiPenilaian($db, $tupoksi, $nilai) {
+    $stmt = $db->prepare("SELECT deskripsi FROM perf_deskripsi WHERE tupoksi = ? AND ? >= min_nilai AND ? <= max_nilai LIMIT 1");
+    $stmt->execute([$tupoksi, $nilai, $nilai]);
+    $res = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $res ? $res['deskripsi'] : '-';
+}
+
+
 $ptk_id = isset($_GET['ptk_id']) ? (int)$_GET['ptk_id'] : 0;
 $periode_id = isset($_GET['periode_id']) ? (int)$_GET['periode_id'] : 0;
 
@@ -66,25 +74,17 @@ $nama_kepsek = $kepsek ? $kepsek['nama_lengkap'] : "SADIKIN, S.Pd.";
 
 $ptk_jenis = trim($ptk['jenis_ptk'] ? $ptk['jenis_ptk'] : ($ptk['tupoksi'] ? $ptk['tupoksi'] : 'Guru'));
 
-// Tentukan Kategori Utama dan Tugas Tambahan berdasarkan Tupoksi
+// Tentukan Kategori Utama secara dinamis dari perf_penilaian
 $kategori_list = [];
-$allowed_tambahan = [];
-
-$ptk_jenis_lower = strtolower($ptk_jenis);
-if (strpos($ptk_jenis_lower, 'kepala tu') !== false) {
-    $kategori_list = ['Kepribadian', 'Sosial', 'Teknis'];
-    $allowed_tambahan = ['Manajerial'];
-} elseif (strpos($ptk_jenis_lower, 'wakil kepala sekolah') !== false) {
-    $kategori_list = ['Pedagogik', 'Kepribadian', 'Sosial', 'Profesional'];
-    $allowed_tambahan = ['Manajerial', 'Teknis', 'Kepemimpinan', 'Kewirausahaan'];
-} elseif (strpos($ptk_jenis_lower, 'guru') !== false) {
-    $kategori_list = ['Pedagogik', 'Kepribadian', 'Sosial', 'Profesional'];
-    $allowed_tambahan = []; // Tidak ada tugas tambahan
-} else {
-    // Default untuk staf lain (IT-Support, Tenaga Administrasi, dll)
-    $kategori_list = ['Kepribadian', 'Sosial', 'Teknis'];
-    $allowed_tambahan = []; // Tidak ada tugas tambahan
+$stmtKat = $db->prepare("SELECT DISTINCT i.kategori FROM perf_penilaian p JOIN perf_instrumen i ON p.instrumen_id = i.id WHERE p.periode_id = ? AND p.dinilai_ptk_id = ?");
+$stmtKat->execute([$periode_id, $ptk_id]);
+while ($rowKat = $stmtKat->fetch(PDO::FETCH_ASSOC)) {
+    $katName = trim($rowKat['kategori']);
+    if ($katName && !in_array($katName, $kategori_list)) {
+        $kategori_list[] = $katName;
+    }
 }
+$allowed_tambahan = []; // Tidak lagi membedakan tambahan, semua masuk utama
 $penilai_list = [
     'kepsek'  => ['label' => 'Kepala Sekolah', 'bobot' => 0.40],
     'sendiri' => ['label' => 'Diri Sendiri', 'bobot' => 0.10],
@@ -139,7 +139,7 @@ foreach ($rawScores as $row) {
     
     $kat_db = trim($row['kategori']);
     
-    // Cek apakah kategori ini adalah kategori utama
+    // Cek apakah kategori ini ada di list (seharusnya selalu ada karena diambil dari db)
     $is_main = false;
     $main_kat_name = null;
     foreach ($kategori_list as $k) {
@@ -149,39 +149,16 @@ foreach ($rawScores as $row) {
             break;
         }
     }
-
-    // Cek apakah kategori ini adalah tugas tambahan
-    $is_tambahan = false;
-    $tambahan_kat_name = null;
-    if (!$is_main) {
-        foreach ($allowed_tambahan as $at) {
-            if (stripos($kat_db, $at) !== false) {
-                $is_tambahan = true;
-                $tambahan_kat_name = $at;
-                break;
-            }
-        }
-    }
     
-    if (!$is_main && !$is_tambahan) {
-        continue; // Abaikan jika bukan main dan bukan tambahan
+    if (!$is_main) {
+        continue;
     }
 
-    if ($is_main) {
-        if (!isset($agg[$ptype])) $agg[$ptype] = [];
-        if (!isset($agg[$ptype][$main_kat_name])) $agg[$ptype][$main_kat_name] = ['sum' => 0, 'count' => 0];
-        
-        $agg[$ptype][$main_kat_name]['sum'] += (float)$row['nilai'];
-        $agg[$ptype][$main_kat_name]['count']++;
-    } else {
-        // Ini adalah kategori angket tambahan (misal: Manajerial, dsb)
-        $kat_tambahan = ucwords(strtolower($tambahan_kat_name));
-        if (!isset($agg_tambahan[$ptype])) $agg_tambahan[$ptype] = [];
-        if (!isset($agg_tambahan[$ptype][$kat_tambahan])) $agg_tambahan[$ptype][$kat_tambahan] = ['sum' => 0, 'count' => 0];
-        
-        $agg_tambahan[$ptype][$kat_tambahan]['sum'] += (float)$row['nilai'];
-        $agg_tambahan[$ptype][$kat_tambahan]['count']++;
-    }
+    if (!isset($agg[$ptype])) $agg[$ptype] = [];
+    if (!isset($agg[$ptype][$main_kat_name])) $agg[$ptype][$main_kat_name] = ['sum' => 0, 'count' => 0];
+    
+    $agg[$ptype][$main_kat_name]['sum'] += (float)$row['nilai'];
+    $agg[$ptype][$main_kat_name]['count']++;
 }
 
 // Fetch manual scores
@@ -706,7 +683,7 @@ $qr_url = $full_base_url . "/modules/e-xam-card/api/qr.php?size=4&data=" . urlen
 
         <div class="desc-box">
             DESKRIPSI<br>
-            <?php echo $deskripsi; ?>
+            <?php echo getDeskripsiPenilaian($db, $ptk_jenis, $total_nilai_page1); ?>
         </div>
 
         <div class="signature-area clearfix">
@@ -858,7 +835,7 @@ $qr_url = $full_base_url . "/modules/e-xam-card/api/qr.php?size=4&data=" . urlen
         <!-- Deskripsi -->
         <div class="desc-box">
             DESKRIPSI<br>
-            <?php echo $deskripsi; ?>
+            <?php echo getDeskripsiPenilaian($db, $ptk_jenis, $total_nilai_akhir); ?>
         </div>
 
         <!-- Signature -->
@@ -995,9 +972,9 @@ $qr_url = $full_base_url . "/modules/e-xam-card/api/qr.php?size=4&data=" . urlen
 ?>
 
 <?php
-// Tampilkan rekap keseluruhan untuk semua PTK di lembar paling terakhir
-define('REKAP_INCLUDED', true);
-require_once __DIR__ . '/cetak_rekap_keseluruhan.php';
+// Tampilkan rekap keseluruhan untuk semua PTK di lembar paling terakhir (Dinonaktifkan atas permintaan user)
+// define('REKAP_INCLUDED', true);
+// require_once __DIR__ . '/cetak_rekap_keseluruhan.php';
 ?>
 
 </body>

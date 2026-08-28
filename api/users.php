@@ -23,6 +23,9 @@ switch ($action) {
     case 'delete':
         deleteUser();
         break;
+    case 'update_kode_guru':
+        updateKodeGuru();
+        break;
     case 'delete-bulk':
         deleteBulkUsers();
         break;
@@ -67,10 +70,33 @@ function listUsers() {
             $where .= " AND role != 'guru'";
         }
 
-        $query = "SELECT id, username, nama_lengkap, nik, email, tempat_lahir, tgl_lahir, tupoksi, jabatan, mapel, status_guru, tpg, tmt, role, avatar, status, last_login, created_at FROM users {$where} ORDER BY created_at DESC";
+        $query = "SELECT id, username, kode_guru, nama_lengkap, nik, email, no_hp, tempat_lahir, tgl_lahir, tupoksi, jabatan, mapel, status_guru, tpg, tmt, role, avatar, status, last_login, created_at FROM users {$where} ORDER BY created_at DESC";
         $result = paginate($query, $params, $page, $perPage);
 
         json_response(200, true, 'Data user berhasil dimuat.', $result);
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Update kode guru
+ */
+function updateKodeGuru() {
+    require_superadmin();
+    
+    $input = get_input();
+    $id = isset($input['id']) ? (int)$input['id'] : 0;
+    $kode = isset($input['kode_guru']) ? sanitize($input['kode_guru']) : '';
+
+    if ($id <= 0 || empty($kode)) {
+        json_response(400, false, 'ID dan Kode Guru harus diisi.');
+    }
+
+    try {
+        $stmt = db()->prepare("UPDATE users SET kode_guru = ? WHERE id = ? AND role = 'guru'");
+        $stmt->execute([strtoupper($kode), $id]);
+        json_response(200, true, 'Kode Guru berhasil diperbarui.');
     } catch (PDOException $e) {
         json_response(500, false, 'Server error: ' . $e->getMessage());
     }
@@ -88,7 +114,7 @@ function getUser() {
     }
 
     try {
-        $stmt = db()->prepare("SELECT id, username, nama_lengkap, nik, email, tempat_lahir, tgl_lahir, tupoksi, jabatan, mapel, status_guru, tpg, tmt, role, avatar, status, last_login, created_at FROM users WHERE id = ?");
+        $stmt = db()->prepare("SELECT id, username, kode_guru, nama_lengkap, nik, email, no_hp, tempat_lahir, tgl_lahir, tupoksi, jabatan, mapel, status_guru, tpg, tmt, role, avatar, status, last_login, created_at FROM users WHERE id = ?");
         $stmt->execute([$id]);
         $user = $stmt->fetch();
 
@@ -112,12 +138,13 @@ function createUser() {
         json_response(405, false, 'Method not allowed.');
     }
 
-    $input = get_input();
+    $input = $_POST ?: get_input();
     $username = isset($input['username']) ? sanitize($input['username']) : '';
     $password = isset($input['password']) ? $input['password'] : '';
     $namaLengkap = isset($input['nama_lengkap']) ? sanitize($input['nama_lengkap']) : '';
     $nik = isset($input['nik']) ? sanitize($input['nik']) : '';
     $email = isset($input['email']) ? strtolower(sanitize($input['email'])) : '';
+    $no_hp = isset($input['no_hp']) ? sanitize($input['no_hp']) : '';
     $tempatLahir = isset($input['tempat_lahir']) ? sanitize($input['tempat_lahir']) : '';
     $tglLahir = normalize_user_date($input['tgl_lahir'] ?? null);
     $tupoksi = isset($input['tupoksi']) ? sanitize($input['tupoksi']) : '';
@@ -132,6 +159,7 @@ function createUser() {
         $role = 'user';
     }
 
+    $kode_guru = null;
     // Auto-generate username/password for Guru
     if ($role === 'guru') {
         if (empty($username) && !empty($nik)) {
@@ -140,6 +168,11 @@ function createUser() {
         if (empty($password)) {
             $password = '1234567';
         }
+        
+        // Auto-generate kode_guru dari nama
+        $consonants = preg_replace('/[AEIOUaeiou\s]/', '', strtoupper(trim($namaLengkap)));
+        $kode_guru = substr($consonants, 0, 4);
+        if (empty($kode_guru)) $kode_guru = substr(strtoupper(trim($namaLengkap)), 0, 4);
     }
 
     if (empty($username) || empty($password) || empty($namaLengkap)) {
@@ -168,11 +201,20 @@ function createUser() {
 
         $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
 
+        $avatarPath = null;
+        if (isset($_FILES['avatar']) && $_FILES['avatar']['error'] === UPLOAD_ERR_OK) {
+            $upload = handle_upload($_FILES['avatar'], 'avatars/', ['jpg', 'jpeg', 'png', 'webp']);
+            if (!$upload['success']) {
+                json_response(400, false, $upload['message']);
+            }
+            $avatarPath = $upload['path'];
+        }
+
         $stmt = db()->prepare("
-            INSERT INTO users (username, password, nama_lengkap, nik, email, tempat_lahir, tgl_lahir, tupoksi, jabatan, mapel, status_guru, tpg, tmt, role)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO users (username, kode_guru, password, nama_lengkap, nik, email, no_hp, tempat_lahir, tgl_lahir, tupoksi, jabatan, mapel, status_guru, tpg, tmt, role, avatar)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
-        $stmt->execute([$username, $hashedPassword, $namaLengkap, $nik ?: null, $email ?: null, $tempatLahir, $tglLahir, $tupoksi, $jabatan, $mapel, $statusGuru, $tpg, $tmt, $role]);
+        $stmt->execute([$username, $kode_guru, $hashedPassword, $namaLengkap, $nik ?: null, $email ?: null, $no_hp ?: null, $tempatLahir, $tglLahir, $tupoksi, $jabatan, $mapel, $statusGuru, $tpg, $tmt, $role, $avatarPath]);
 
         json_response(201, true, 'User berhasil ditambahkan.', [
             'id' => db()->lastInsertId()
@@ -192,7 +234,7 @@ function updateUser() {
         json_response(405, false, 'Method not allowed.');
     }
 
-    $input = get_input();
+    $input = $_POST ?: get_input();
     $id = isset($input['id']) ? (int)$input['id'] : 0;
     
     if ($id <= 0) {
@@ -202,6 +244,7 @@ function updateUser() {
     $namaLengkap = isset($input['nama_lengkap']) ? sanitize($input['nama_lengkap']) : '';
     $nik = isset($input['nik']) ? sanitize($input['nik']) : '';
     $email = isset($input['email']) ? strtolower(sanitize($input['email'])) : '';
+    $no_hp = isset($input['no_hp']) ? sanitize($input['no_hp']) : '';
     $tempatLahir = isset($input['tempat_lahir']) ? sanitize($input['tempat_lahir']) : '';
     $tglLahir = normalize_user_date($input['tgl_lahir'] ?? null);
     $tupoksi = isset($input['tupoksi']) ? sanitize($input['tupoksi']) : '';
@@ -229,18 +272,51 @@ function updateUser() {
     }
 
     try {
+        $avatarPath = null;
+        if (isset($_FILES['avatar']) && $_FILES['avatar']['error'] === UPLOAD_ERR_OK) {
+            $upload = handle_upload($_FILES['avatar'], 'avatars/', ['jpg', 'jpeg', 'png', 'webp']);
+            if (!$upload['success']) {
+                json_response(400, false, $upload['message']);
+            }
+            $avatarPath = $upload['path'];
+            
+            // Delete old avatar
+            $old = db()->prepare("SELECT avatar FROM users WHERE id = ?");
+            $old->execute([$id]);
+            $oldPath = $old->fetchColumn();
+            if ($oldPath && file_exists(__DIR__ . '/../' . $oldPath)) {
+                unlink(__DIR__ . '/../' . $oldPath);
+            }
+        }
+
         if (!empty($input['password'])) {
-            $stmt = db()->prepare("
-                UPDATE users SET nama_lengkap = ?, nik = ?, email = ?, tempat_lahir = ?, tgl_lahir = ?, tupoksi = ?, jabatan = ?, mapel = ?, status_guru = ?, tpg = ?, tmt = ?, role = ?, status = ?, password = ?
-                WHERE id = ?
-            ");
-            $stmt->execute([$namaLengkap, $nik ?: null, $email ?: null, $tempatLahir, $tglLahir, $tupoksi, $jabatan, $mapel, $statusGuru, $tpg, $tmt, $role, $status, $hashedPassword, $id]);
+            if ($avatarPath !== null) {
+                $stmt = db()->prepare("
+                    UPDATE users SET nama_lengkap = ?, nik = ?, email = ?, no_hp = ?, tempat_lahir = ?, tgl_lahir = ?, tupoksi = ?, jabatan = ?, mapel = ?, status_guru = ?, tpg = ?, tmt = ?, role = ?, status = ?, password = ?, avatar = ?
+                    WHERE id = ?
+                ");
+                $stmt->execute([$namaLengkap, $nik ?: null, $email ?: null, $no_hp ?: null, $tempatLahir, $tglLahir, $tupoksi, $jabatan, $mapel, $statusGuru, $tpg, $tmt, $role, $status, $hashedPassword, $avatarPath, $id]);
+            } else {
+                $stmt = db()->prepare("
+                    UPDATE users SET nama_lengkap = ?, nik = ?, email = ?, no_hp = ?, tempat_lahir = ?, tgl_lahir = ?, tupoksi = ?, jabatan = ?, mapel = ?, status_guru = ?, tpg = ?, tmt = ?, role = ?, status = ?, password = ?
+                    WHERE id = ?
+                ");
+                $stmt->execute([$namaLengkap, $nik ?: null, $email ?: null, $no_hp ?: null, $tempatLahir, $tglLahir, $tupoksi, $jabatan, $mapel, $statusGuru, $tpg, $tmt, $role, $status, $hashedPassword, $id]);
+            }
         } else {
-            $stmt = db()->prepare("
-                UPDATE users SET nama_lengkap = ?, nik = ?, email = ?, tempat_lahir = ?, tgl_lahir = ?, tupoksi = ?, jabatan = ?, mapel = ?, status_guru = ?, tpg = ?, tmt = ?, role = ?, status = ?
-                WHERE id = ?
-            ");
-            $stmt->execute([$namaLengkap, $nik ?: null, $email ?: null, $tempatLahir, $tglLahir, $tupoksi, $jabatan, $mapel, $statusGuru, $tpg, $tmt, $role, $status, $id]);
+            if ($avatarPath !== null) {
+                $stmt = db()->prepare("
+                    UPDATE users SET nama_lengkap = ?, nik = ?, email = ?, no_hp = ?, tempat_lahir = ?, tgl_lahir = ?, tupoksi = ?, jabatan = ?, mapel = ?, status_guru = ?, tpg = ?, tmt = ?, role = ?, status = ?, avatar = ?
+                    WHERE id = ?
+                ");
+                $stmt->execute([$namaLengkap, $nik ?: null, $email ?: null, $no_hp ?: null, $tempatLahir, $tglLahir, $tupoksi, $jabatan, $mapel, $statusGuru, $tpg, $tmt, $role, $status, $avatarPath, $id]);
+            } else {
+                $stmt = db()->prepare("
+                    UPDATE users SET nama_lengkap = ?, nik = ?, email = ?, no_hp = ?, tempat_lahir = ?, tgl_lahir = ?, tupoksi = ?, jabatan = ?, mapel = ?, status_guru = ?, tpg = ?, tmt = ?, role = ?, status = ?
+                    WHERE id = ?
+                ");
+                $stmt->execute([$namaLengkap, $nik ?: null, $email ?: null, $no_hp ?: null, $tempatLahir, $tglLahir, $tupoksi, $jabatan, $mapel, $statusGuru, $tpg, $tmt, $role, $status, $id]);
+            }
         }
 
         json_response(200, true, 'User berhasil diperbarui.');

@@ -1,0 +1,9 @@
+2026/08/23-19:49:53.332 2c7c Reusing MANIFEST E:\xampp\htdocs\eportal\wa-server\.wwebjs_auth\session\Default\Local Storage\leveldb/MANIFEST-000001
+2026/08/23-19:49:53.372 2c7c Recovering log #3
+2026/08/23-19:49:53.455 2c7c Reusing old log E:\xampp\htdocs\eportal\wa-server\.wwebjs_auth\session\Default\Local Storage\leveldb/000003.log 
+2026/08/23-20:38:41.472 2c7c Level-0 table #5: started
+2026/08/23-20:38:41.531 2c7c Level-0 table #5: 18403 bytes OK
+2026/08/23-20:38:41.534 2c7c Delete type=0 #3
+2026/08/23-21:03:25.302 2c7c Level-0 table #7: started
+2026/08/23-21:03:25.318 2c7c Level-0 table #7: 15095 bytes OK
+2026/08/23-21:03:25.321 2c7c Delete type=0 #4

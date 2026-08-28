@@ -44,8 +44,8 @@ function importUsers() {
     try {
         $stmtCheck = db()->prepare("SELECT id FROM users WHERE username = ?");
         $stmtInsert = db()->prepare("
-            INSERT INTO users (username, password, nama_lengkap, nik, email, tempat_lahir, tgl_lahir, tupoksi, jabatan, mapel, status_guru, tpg, tmt, role)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO users (username, kode_guru, password, nama_lengkap, nik, email, tempat_lahir, tgl_lahir, tupoksi, jabatan, mapel, status_guru, tpg, tmt, role)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
 
         db()->beginTransaction();
@@ -68,6 +68,7 @@ function importUsers() {
             $tmt = normalize_import_date(import_value($user, ['tmt', 'TMT']));
             $role = strtolower(import_value($user, ['role', 'Role'], $importType === 'gurus' ? 'guru' : 'user'));
 
+            $kode_guru = null;
             if ($importType === 'gurus') {
                 $role = 'guru';
                 if (empty($username) && !empty($nik)) {
@@ -76,6 +77,11 @@ function importUsers() {
                 if (empty($password)) {
                     $password = '1234567';
                 }
+                
+                // Auto-generate kode_guru dari nama
+                $consonants = preg_replace('/[AEIOUaeiou\s]/', '', strtoupper(trim($namaLengkap)));
+                $kode_guru = substr($consonants, 0, 4);
+                if (empty($kode_guru)) $kode_guru = substr(strtoupper(trim($namaLengkap)), 0, 4);
             }
 
             // Validate
@@ -117,7 +123,7 @@ function importUsers() {
 
             // Insert
             $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
-            $stmtInsert->execute([$username, $hashedPassword, $namaLengkap, $nik ?: null, $email ?: null, $tempatLahir, $tglLahir, $tupoksi, $jabatan, $mapel, $statusGuru, $tpg, $tmt, $role]);
+            $stmtInsert->execute([$username, $kode_guru, $hashedPassword, $namaLengkap, $nik ?: null, $email ?: null, $tempatLahir, $tglLahir, $tupoksi, $jabatan, $mapel, $statusGuru, $tpg, $tmt, $role]);
             $success++;
         }
 

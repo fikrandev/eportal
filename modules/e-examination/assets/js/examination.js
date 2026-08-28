@@ -28,7 +28,23 @@ const Exam = {
             type: 'danger',
             confirmText: 'Ya, Logout',
             onConfirm: () => {
-                window.location.href = this.state.baseUrl + '#/dashboard';
+                const loader = EModal.loading('Logging out...');
+                const token = this.state.token || (window.localStorage ? localStorage.getItem('eportal_token') : null);
+                $.ajax({
+                    url: this.state.baseUrl + 'api/auth.php?action=logout',
+                    method: 'POST',
+                    headers: { 'Authorization': 'Bearer ' + token },
+                    complete: () => {
+                        if (window.localStorage) {
+                            localStorage.removeItem('eportal_token');
+                            localStorage.removeItem('eportal_user');
+                            localStorage.removeItem('eportal_school');
+                            localStorage.removeItem('eportal_academic_year');
+                        }
+                        EModal.close(loader);
+                        window.location.href = this.state.baseUrl + '#/login';
+                    }
+                });
             }
         });
     },
@@ -60,7 +76,7 @@ const Exam = {
     api(endpoint, options = {}) {
         let ct = options.contentType !== undefined
             ? options.contentType
-            : (options.data instanceof FormData ? false : 'application/json; charset=UTF-8');
+            : (options.data instanceof FormData ? false : (options.method === 'POST' ? 'application/json; charset=UTF-8' : 'application/x-www-form-urlencoded'));
         let processData = !(options.data instanceof FormData);
 
         let url = this.state.apiUrl + endpoint;
@@ -72,12 +88,19 @@ const Exam = {
         return $.ajax({
             url: url,
             method: options.method || 'GET',
-            headers: { 'Authorization': 'Bearer ' + this.state.token },
+            headers: {
+                'Authorization': 'Bearer ' + this.state.token
+            },
+            data: options.method === 'POST' ? (options.data instanceof FormData ? options.data : JSON.stringify(options.data)) : options.data,
             contentType: ct,
             processData: processData,
-            data: (options.data && !(options.data instanceof FormData))
-                ? JSON.stringify(options.data) : options.data
         });
+    },
+
+    uploadFile(file, type) {
+        const formData = new FormData();
+        formData.append('file', file);
+        return this.api('upload.php?action=' + type, { method: 'POST', data: formData });
     },
 
     loadMasterData() {
@@ -96,7 +119,11 @@ const Exam = {
         this.state.params = params;
         let hash = '#/' + route;
         if (params.id) hash += '/' + params.id;
-        window.location.hash = hash;
+        if (window.location.hash === hash) {
+            this.loadRouteFromHash();
+        } else {
+            window.location.hash = hash;
+        }
     },
 
     loadRouteFromHash() {
@@ -836,7 +863,7 @@ const Exam = {
                 opsiHtml += `<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
                     <span style="width:28px;height:28px;background:var(--bg-light);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:0.75rem;font-weight:700;">${o.label}</span>
                     <input type="text" class="form-input ex-opsi-input" data-label="${o.label}" value="${this.esc(o.text || o.teks || '')}" placeholder="Isi opsi ${o.label}" style="flex:1;">
-                    ${isPsikologi ? `<input type="number" class="form-input ex-opsi-score" data-label="${o.label}" value="${scoreValue}" placeholder="Skor" style="width:80px;" min="0" step="1">` : ''}
+                    ${(isPsikologi || tipe === 'pilihan_banyak') ? `<input type="number" class="form-input ex-opsi-score" data-label="${o.label}" value="${scoreValue}" placeholder="Skor" style="width:80px;" step="0.1">` : ''}
                 </div>`;
             });
             opsiHtml += '</div>';
@@ -847,12 +874,10 @@ const Exam = {
                         ${defaultOpsi.map(o => `<option value="${o.label}" ${kunciArr.includes(o.label)?'selected':''}>${o.label}</option>`).join('')}
                     </select></div>`;
                 } else {
-                    kunciHtml = `<div class="form-group"><label class="form-label">Kunci Jawaban (pilih yang benar) *</label><div>
-                        ${defaultOpsi.map(o => `<label style="display:inline-flex;align-items:center;gap:6px;margin-right:16px;font-size:0.85rem;">
-                            <input type="checkbox" class="ex-kunci-cb" value="${o.label}" ${kunciArr.includes(o.label)?'checked':''}>
-                            ${o.label}
-                        </label>`).join('')}
+                    kunciHtml = `<div class="form-group"><label class="form-label">Kunci Jawaban (Otomatis dari input skor) </label><div>
+                        <span class="text-muted" style="font-size:0.85rem;">Centang jawaban benar tidak diperlukan lagi karena penilaian berdasarkan Skor masing-masing opsi di atas.</span>
                     </div></div>`;
+                    $('#fSoalBobot').prop('disabled', true).attr('title', 'Bobot dihitung otomatis dari total skor opsi');
                 }
             }
         } else if (tipe === 'benar_salah') {
@@ -866,16 +891,23 @@ const Exam = {
         } else if (tipe === 'esai') {
             kunciHtml = `<div class="form-group"><label class="form-label">Kunci / Rubrik Jawaban (untuk referensi AI koreksi)</label><textarea class="form-input" id="fSoalKunci" rows="3" placeholder="Tulis poin-poin jawaban yang diharapkan...">${this.esc(typeof kunci === 'string' ? kunci : '')}</textarea></div>`;
         } else if (tipe === 'menjodohkan') {
-            const pairs = opsi.length > 0 ? opsi : [{left:'',right:''},{left:'',right:''},{left:'',right:''}];
+            const pairs = opsi.length > 0 ? opsi : [{left:'',right:'', score:0},{left:'',right:'', score:0},{left:'',right:'', score:0}];
             opsiHtml = `<div class="form-group"><label class="form-label">Pasangan (Kiri → Kanan)</label><div id="fMenjodohkanPairs">`;
             pairs.forEach((p, i) => {
+                const scoreValue = p.score !== undefined ? p.score : 0;
                 opsiHtml += `<div style="display:flex;gap:8px;margin-bottom:8px;" class="ex-pair-row">
                     <input type="text" class="form-input ex-pair-left" value="${this.esc(p.left || '')}" placeholder="Pernyataan ${i+1}" style="flex:1;">
                     <span style="display:flex;align-items:center;font-weight:700;color:var(--text-muted);">→</span>
                     <input type="text" class="form-input ex-pair-right" value="${this.esc(p.right || '')}" placeholder="Jawaban ${i+1}" style="flex:1;">
+                    <input type="number" class="form-input ex-pair-score" value="${scoreValue}" placeholder="Skor" style="width:80px;" step="0.1">
                 </div>`;
             });
             opsiHtml += `</div><button type="button" class="btn btn-ghost btn-sm" onclick="Exam.addPairRow()">+ Tambah pasangan</button></div>`;
+            $('#fSoalBobot').prop('disabled', true).attr('title', 'Bobot dihitung otomatis dari total skor pasangan');
+        }
+
+        if (tipe !== 'pilihan_banyak' && tipe !== 'menjodohkan') {
+            $('#fSoalBobot').prop('disabled', false).removeAttr('title');
         }
 
         $('#fSoalOpsiContainer').html(opsiHtml);
@@ -888,13 +920,14 @@ const Exam = {
             <input type="text" class="form-input ex-pair-left" placeholder="Pernyataan ${idx}" style="flex:1;">
             <span style="display:flex;align-items:center;font-weight:700;color:var(--text-muted);">→</span>
             <input type="text" class="form-input ex-pair-right" placeholder="Jawaban ${idx}" style="flex:1;">
+            <input type="number" class="form-input ex-pair-score" value="0" placeholder="Skor" style="width:80px;" step="0.1">
         </div>`);
     },
 
     collectSoalFormData() {
         const tipe = $('#fSoalTipe').val();
         const pertanyaan = $('#fSoalPertanyaan').val().trim();
-        const bobot = parseFloat($('#fSoalBobot').val()) || 1;
+        let bobot = parseFloat($('#fSoalBobot').val()) || 1;
         const pembahasan = $('#fSoalPembahasan').val().trim();
         const isPsikologi = (Exam.state.currentBankJenis === 'psikologi');
 
@@ -905,13 +938,15 @@ const Exam = {
 
         if (['pilihan_satu','pilihan_banyak'].includes(tipe)) {
             opsi = [];
+            let totalScore = 0;
             $('.ex-opsi-input').each(function() {
                 const label = $(this).data('label');
                 const text = $(this).val().trim();
                 if (text) {
-                    if (isPsikologi) {
+                    if (isPsikologi || tipe === 'pilihan_banyak') {
                         const score = parseFloat($(`.ex-opsi-score[data-label="${label}"]`).val()) || 0;
                         opsi.push({label, text, score});
+                        totalScore += score;
                     } else {
                         opsi.push({label, text});
                     }
@@ -924,10 +959,13 @@ const Exam = {
             } else {
                 if (tipe === 'pilihan_satu') {
                     kunci_jawaban = $('#fSoalKunci').val();
-                } else {
+                } else if (tipe === 'pilihan_banyak') {
+                    // Kunci jawaban tidak lagi menggunakan checkbox karena berbasis skor masing-masing opsi
                     kunci_jawaban = [];
-                    $('.ex-kunci-cb:checked').each(function() { kunci_jawaban.push($(this).val()); });
-                    if (kunci_jawaban.length === 0) { EModal.toast({type:'error',title:'Pilih minimal 1 kunci jawaban'}); return null; }
+                    opsi.forEach(o => {
+                        if (o.score > 0) kunci_jawaban.push(o.label); // Auto-assign kunci based on score > 0 (for legacy fallback if needed)
+                    });
+                    bobot = totalScore;
                 }
             }
         } else if (tipe === 'benar_salah') {
@@ -939,13 +977,19 @@ const Exam = {
             kunci_jawaban = $('#fSoalKunci').val().trim();
         } else if (tipe === 'menjodohkan') {
             opsi = [];
+            let totalScore = 0;
             $('.ex-pair-row').each(function() {
                 const left = $(this).find('.ex-pair-left').val().trim();
                 const right = $(this).find('.ex-pair-right').val().trim();
-                if (left && right) opsi.push({left, right});
+                const score = parseFloat($(this).find('.ex-pair-score').val()) || 0;
+                if (left && right) {
+                    opsi.push({left, right, score});
+                    totalScore += score;
+                }
             });
             if (opsi.length < 2) { EModal.toast({type:'error',title:'Minimal 2 pasangan'}); return null; }
             kunci_jawaban = opsi;
+            bobot = totalScore;
         }
 
         return { tipe_soal: tipe, pertanyaan, opsi, kunci_jawaban, pembahasan, bobot };
@@ -1011,10 +1055,13 @@ const Exam = {
                 else if (u.status === 'selesai') statusBadge = '<span class="ex-badge ex-badge-blue">Selesai</span>';
 
                 let tokenHtml = u.status === 'aktif' 
-                    ? `<div style="font-family:monospace;font-weight:bold;color:var(--primary);font-size:1.1rem;">
+                    ? `<div style="font-family:monospace;font-weight:bold;color:var(--primary);font-size:1.1rem;display:flex;align-items:center;">
                         ${u.token}
-                        <button class="ex-btn-icon" style="display:inline-flex;margin-left:4px;" onclick="Exam.refreshToken(${u.id})" title="Refresh Token">
+                        <button class="ex-btn-icon" style="display:inline-flex;margin-left:8px;" onclick="Exam.refreshToken(${u.id})" title="Refresh Token">
                             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                        </button>
+                        <button class="ex-btn-icon" style="display:inline-flex;margin-left:4px;" onclick="Exam.shareUjian(${u.id}, '${u.token}', '${this.esc(u.judul)}')" title="Bagikan Tautan & QR">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
                         </button>
                        </div>` 
                     : '-';
@@ -1232,6 +1279,37 @@ const Exam = {
                 });
             }
         });
+    },
+
+    shareUjian(id, token, judul) {
+        const link = `${this.state.moduleUrl}student/login.php?exam_id=${id}&token=${token}`;
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(link)}`;
+        
+        EModal.form({
+            title: 'Bagikan Tautan Ujian',
+            form: `
+                <div style="text-align:center; padding: 10px 20px;">
+                    <h3 style="margin-top:0; font-size:16px; color:var(--text-main);">${this.esc(judul)}</h3>
+                    <div style="margin: 20px 0; display: flex; justify-content: center;">
+                        <img src="${qrUrl}" alt="QR Code" style="border-radius: 8px; border: 1px solid #e2e8f0; padding: 10px; background: white; width:200px; height:200px; object-fit:contain;">
+                    </div>
+                    <p style="font-size:12px; color:var(--text-secondary); margin-bottom:8px;">Bagikan tautan ini ke siswa, token otomatis terisi:</p>
+                    <div style="display:flex; gap: 8px; align-items:center;">
+                        <input type="text" id="fShareLink" class="form-input" value="${link}" readonly style="background:#f8fafc; font-size: 13px;">
+                        <button type="button" class="ex-btn primary" onclick="Exam.copyLink()" style="white-space:nowrap; padding: 8px 16px;">Copy Link</button>
+                    </div>
+                </div>
+            `,
+            confirmText: 'Tutup',
+            onConfirm: () => { return true; } // close
+        });
+    },
+
+    copyLink() {
+        const input = document.getElementById('fShareLink');
+        input.select();
+        document.execCommand('copy');
+        EModal.toast({type: 'success', title: 'Tautan disalin!'});
     },
 
     // ==========================================

@@ -12,6 +12,14 @@ if (!$periode_id) {
     die("Periode ID diperlukan.");
 }
 
+function getDeskripsiPenilaian($db, $tupoksi, $nilai) {
+    $stmt = $db->prepare("SELECT deskripsi FROM perf_deskripsi WHERE tupoksi = ? AND ? >= min_nilai AND ? <= max_nilai LIMIT 1");
+    $stmt->execute([$tupoksi, $nilai, $nilai]);
+    $res = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $res ? $res['deskripsi'] : '-';
+}
+
+
 // 1. Get Periode
 $stmtPer = $db->prepare("SELECT * FROM perf_periode WHERE id = ?");
 $stmtPer->execute([$periode_id]);
@@ -139,23 +147,13 @@ foreach ($all_ptks as $ptk) {
     $ptk_jenis = trim($ptk['jenis_ptk'] ? $ptk['jenis_ptk'] : 'Guru');
     $ptk_jenis_lower = strtolower($ptk_jenis);
 
-    // Tentukan Kategori Utama dan Tugas Tambahan berdasarkan Tupoksi
+    // Tentukan Kategori Utama secara dinamis dari rawScores (angket)
     $kategori_list = [];
-    $allowed_tambahan = [];
-
-    if (strpos($ptk_jenis_lower, 'kepala tu') !== false) {
-        $kategori_list = ['Kepribadian', 'Sosial', 'Teknis'];
-        $allowed_tambahan = ['Manajerial'];
-    } elseif (strpos($ptk_jenis_lower, 'wakil kepala sekolah') !== false) {
-        $kategori_list = ['Pedagogik', 'Kepribadian', 'Sosial', 'Profesional'];
-        $allowed_tambahan = ['Manajerial', 'Teknis', 'Kepemimpinan', 'Kewirausahaan'];
-    } elseif (strpos($ptk_jenis_lower, 'guru') !== false) {
-        $kategori_list = ['Pedagogik', 'Kepribadian', 'Sosial', 'Profesional'];
-        $allowed_tambahan = []; // Tidak ada tugas tambahan
-    } else {
-        // Default untuk staf lain (IT-Support, Tenaga Administrasi, dll)
-        $kategori_list = ['Kepribadian', 'Sosial', 'Teknis'];
-        $allowed_tambahan = []; // Tidak ada tugas tambahan
+    foreach ($rawScores as $rScore) {
+        $kName = trim($rScore['kategori']);
+        if ($kName && !in_array($kName, $kategori_list)) {
+            $kategori_list[] = $kName;
+        }
     }
 
     $scores = [];
@@ -186,7 +184,7 @@ foreach ($all_ptks as $ptk) {
         // Loose matching for kategori
         $kat_db = trim($row['kategori']);
         
-        // Cek apakah kategori ini adalah kategori utama
+        // Cek apakah kategori ini ada di list
         $is_main = false;
         $main_kat_name = null;
         foreach ($kategori_list as $k) {
@@ -196,30 +194,9 @@ foreach ($all_ptks as $ptk) {
                 break;
             }
         }
-
-        // Cek apakah kategori ini adalah tugas tambahan
-        $is_tambahan = false;
-        if (!$is_main) {
-            foreach ($allowed_tambahan as $at) {
-                if (stripos($kat_db, $at) !== false) {
-                    $is_tambahan = true;
-                    break;
-                }
-            }
-        }
-        
-        if (!$is_main && !$is_tambahan) {
-            continue; // Abaikan jika bukan main dan bukan tambahan
-        }
-
-        // Untuk rekap keseluruhan, tugas tambahan BISA dimasukkan ke perhitungan rata-rata Angket
-        // atau mungkin user HANYA ingin menghitung $kategori_list (Kategori Utama)?
-        // Di cetak_lampiran.php, tugas tambahan dihitung konversinya TAPI tidak dimasukkan ke rata-rata Angket.
-        // Oleh karena itu, di cetak_rekap_keseluruhan, kita HANYA perlu memproses kategori UTAMA
-        // agar nilai 'Angket' cocok dengan cetak_lampiran.php
         
         if (!$is_main) {
-            continue; // Di rekap keseluruhan, kita tidak menampilkan kolom tugas tambahan, hanya Angket Utama
+            continue;
         }
         
         $kat = $main_kat_name;
@@ -342,6 +319,7 @@ foreach ($all_ptks as $ptk) {
     $results[] = [
         'nama' => $ptk['nama'],
         'jabatan' => $ptk['jabatan'] ? $ptk['jabatan'] : $ptk['jenis_ptk'],
+        'jenis_ptk' => $ptk_jenis,
         'scores' => $ptk_scores,
         'tot' => $total_score_ptk,
         'predikat' => $pred_initial
@@ -493,6 +471,7 @@ $qr_url = $full_base_url . "/modules/e-xam-card/api/qr.php?size=4&data=" . urlen
                     <th colspan="<?php echo count($columns) + 1; ?>">Penilaian</th>
                     <th rowspan="2" width="10%">TOT</th>
                     <th rowspan="2" width="10%">Predikat</th>
+                    <th rowspan="2" width="25%">Deskripsi</th>
                 </tr>
                 <tr>
                     <?php for($i=1; $i<=count($columns) + 1; $i++): ?>
@@ -511,6 +490,7 @@ $qr_url = $full_base_url . "/modules/e-xam-card/api/qr.php?size=4&data=" . urlen
                     <?php endforeach; ?>
                     <td class="text-center"><?php echo fmod((float)$r['tot'], 1) !== 0.0 ? number_format($r['tot'], 2) : number_format($r['tot'], 0); ?></td>
                     <td class="text-center"><?php echo $r['predikat']; ?></td>
+                    <td><?php echo getDeskripsiPenilaian($db, $r['jenis_ptk'], $r['tot']); ?></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>

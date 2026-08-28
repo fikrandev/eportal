@@ -26,6 +26,12 @@ switch ($action) {
     case 'delete-bulk':
         deleteBulkStudents();
         break;
+    case 'get_classes':
+        getClasses();
+        break;
+    case 'set_guru_wali_bulk':
+        setGuruWaliBulk();
+        break;
     case 'import':
         importRows();
         break;
@@ -160,25 +166,25 @@ function saveStudent($isUpdate)
                 }
 
                 $stmt = db()->prepare("
-                    UPDATE students SET academic_year_id=?, no_urut=?, nis=?, nisn=?, nama=?, email=?, tempat_lahir=?, jenis_kelamin=?, tanggal_lahir=?, kelas=?, foto_path=?
+                    UPDATE students SET academic_year_id=?, no_urut=?, nis=?, nisn=?, nama=?, email=?, no_hp_ortu=?, no_hp_siswa=?, tempat_lahir=?, jenis_kelamin=?, tanggal_lahir=?, kelas=?, guru_wali=?, foto_path=?
                     WHERE id=?
                 ");
-                $stmt->execute([$academicYearId, $data['no_urut'], $data['nis'], $data['nisn'], $data['nama'], $data['email'], $data['tempat_lahir'], $data['jenis_kelamin'], $data['tanggal_lahir'], $data['kelas'], $photoPath, $id]);
+                $stmt->execute([$academicYearId, $data['no_urut'], $data['nis'], $data['nisn'], $data['nama'], $data['email'], $data['no_hp_ortu'], $data['no_hp_siswa'], $data['tempat_lahir'], $data['jenis_kelamin'], $data['tanggal_lahir'], $data['kelas'], $data['guru_wali'], $photoPath, $id]);
             } else {
                 $stmt = db()->prepare("
-                    UPDATE students SET academic_year_id=?, no_urut=?, nis=?, nisn=?, nama=?, email=?, tempat_lahir=?, jenis_kelamin=?, tanggal_lahir=?, kelas=?
+                    UPDATE students SET academic_year_id=?, no_urut=?, nis=?, nisn=?, nama=?, email=?, no_hp_ortu=?, no_hp_siswa=?, tempat_lahir=?, jenis_kelamin=?, tanggal_lahir=?, kelas=?, guru_wali=?
                     WHERE id=?
                 ");
-                $stmt->execute([$academicYearId, $data['no_urut'], $data['nis'], $data['nisn'], $data['nama'], $data['email'], $data['tempat_lahir'], $data['jenis_kelamin'], $data['tanggal_lahir'], $data['kelas'], $id]);
+                $stmt->execute([$academicYearId, $data['no_urut'], $data['nis'], $data['nisn'], $data['nama'], $data['email'], $data['no_hp_ortu'], $data['no_hp_siswa'], $data['tempat_lahir'], $data['jenis_kelamin'], $data['tanggal_lahir'], $data['kelas'], $data['guru_wali'], $id]);
             }
             json_response(200, true, 'Data siswa berhasil diperbarui.');
         }
 
         $stmt = db()->prepare("
-            INSERT INTO students (academic_year_id, no_urut, nis, nisn, nama, email, tempat_lahir, jenis_kelamin, tanggal_lahir, kelas, foto_path)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO students (academic_year_id, no_urut, nis, nisn, nama, email, no_hp_ortu, no_hp_siswa, tempat_lahir, jenis_kelamin, tanggal_lahir, kelas, guru_wali, foto_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
-        $stmt->execute([$academicYearId, $data['no_urut'], $data['nis'], $data['nisn'], $data['nama'], $data['email'], $data['tempat_lahir'], $data['jenis_kelamin'], $data['tanggal_lahir'], $data['kelas'], $photoPath]);
+        $stmt->execute([$academicYearId, $data['no_urut'], $data['nis'], $data['nisn'], $data['nama'], $data['email'], $data['no_hp_ortu'], $data['no_hp_siswa'], $data['tempat_lahir'], $data['jenis_kelamin'], $data['tanggal_lahir'], $data['kelas'], $data['guru_wali'], $photoPath]);
         json_response(201, true, 'Data siswa berhasil ditambahkan.', ['id' => db()->lastInsertId()]);
     } catch (PDOException $e) {
         if (strpos($e->getMessage(), 'uk_student_nis_year') !== false) {
@@ -428,11 +434,67 @@ function templateCsv()
 {
     require_superadmin();
 
-    header('Content-Type: text/csv; charset=UTF-8');
-    header('Content-Disposition: attachment; filename="template_data_siswa.csv"');
-    echo "no,nis,nisn,nama,email,tempat_lahir,jenis_kelamin,tanggal_lahir,kelas\n";
-    echo "1,12345,0012345678,Ahmad Fikri,ahmad.fikri@email.com,Surabaya,L,2008-05-12,XII IPA 1\n";
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="template_import_siswa.csv"');
+    $output = fopen('php://output', 'w');
+    fputcsv($output, ['No Urut', 'NIS', 'NISN', 'Nama', 'Tempat Lahir', 'Tanggal Lahir (YYYY-MM-DD)', 'Jenis Kelamin (L/P)', 'Kelas', 'Email']);
+    fputcsv($output, ['1', '1001', '0011223344', 'Siswa Contoh', 'Jakarta', '2005-12-31', 'L', 'XII IPA 1', 'siswa@email.com']);
+    fclose($output);
     exit;
+}
+
+function getClasses()
+{
+    require_superadmin();
+    $academicYearId = isset($_GET['academic_year_id']) ? (int) $_GET['academic_year_id'] : 0;
+    
+    if ($academicYearId <= 0) {
+        $active = get_active_academic_year();
+        $academicYearId = (int) ($active['id'] ?? 0);
+    }
+
+    try {
+        $stmt = db()->prepare("SELECT DISTINCT kelas FROM students WHERE academic_year_id = ? AND kelas IS NOT NULL AND kelas != '' ORDER BY kelas ASC");
+        $stmt->execute([$academicYearId]);
+        $classes = $stmt->fetchAll(PDO::FETCH_COLUMN);
+        json_response(200, true, 'Daftar kelas', $classes);
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
+function setGuruWaliBulk()
+{
+    require_superadmin();
+    
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        json_response(405, false, 'Method not allowed.');
+    }
+    
+    $input = $_POST ?: get_input();
+    $guruWali = isset($input['guru_wali']) ? sanitize($input['guru_wali']) : '';
+    $studentIds = isset($input['ids']) && is_array($input['ids']) ? $input['ids'] : [];
+
+    if (empty($guruWali)) {
+        json_response(400, false, 'Nama Guru Wali harus diisi.');
+    }
+
+    if (empty($studentIds)) {
+        json_response(400, false, 'Pilih setidaknya satu siswa.');
+    }
+
+    try {
+        $placeholders = implode(',', array_fill(0, count($studentIds), '?'));
+        $query = "UPDATE students SET guru_wali = ? WHERE id IN ($placeholders)";
+        $params = array_merge([$guruWali], $studentIds);
+        
+        $stmt = db()->prepare($query);
+        $stmt->execute($params);
+        
+        json_response(200, true, 'Berhasil menetapkan Guru Wali untuk ' . $stmt->rowCount() . ' siswa.');
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
 }
 
 function normalizeStudentInput($input)
@@ -450,8 +512,11 @@ function normalizeStudentInput($input)
         'nisn' => trim(strip_tags((string) ($input['nisn'] ?? ''))) ?: null,
         'nama' => trim(strip_tags((string) ($input['nama'] ?? $input['nama_siswa'] ?? ''))),
         'email' => normalizeStudentEmail($input['email'] ?? $input['email_siswa'] ?? ''),
+        'no_hp_ortu' => trim(strip_tags((string) ($input['no_hp_ortu'] ?? ''))) ?: null,
+        'no_hp_siswa' => trim(strip_tags((string) ($input['no_hp_siswa'] ?? ''))) ?: null,
+        'guru_wali' => trim(strip_tags((string) ($input['guru_wali'] ?? ''))) ?: null,
         'tempat_lahir' => trim(strip_tags((string) ($input['tempat_lahir'] ?? $input['tempat'] ?? ''))) ?: null,
-        'jenis_kelamin' => $gender,
+        'jenis_kelamin' => $gender ?: null,
         'tanggal_lahir' => normalizeDate($input['tanggal_lahir'] ?? $input['tgl_lahir'] ?? ''),
         'kelas' => trim(strip_tags((string) ($input['kelas'] ?? '')))
     ];

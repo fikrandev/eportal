@@ -164,3 +164,16 @@ CREATE TABLE IF NOT EXISTS `perf_sessions` (
   UNIQUE KEY `uk_token` (`token`),
   KEY `idx_user` (`perf_user_id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- =============================================
+-- DESKRIPSI PENILAIAN
+-- =============================================
+
+CREATE TABLE IF NOT EXISTS `perf_deskripsi` (
+  `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `tupoksi` VARCHAR(100) NOT NULL,
+  `min_nilai` DECIMAL(5,2) NOT NULL,
+  `max_nilai` DECIMAL(5,2) NOT NULL,
+  `deskripsi` TEXT NOT NULL,
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

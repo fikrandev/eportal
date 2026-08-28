@@ -16,17 +16,17 @@ if ($action === 'stats') {
         $year_id = $active_year['id'] ?? 0;
 
         // Count classes
-        $stmt = db()->query("SELECT COUNT(*) as total FROM acad_kelas");
+        $stmt = db()->query("SELECT COUNT(*) as total FROM sch_kelas");
         $total_kelas = $stmt->fetch()['total'] ?? 0;
 
         // Count subjects
-        $stmt = db()->query("SELECT COUNT(*) as total FROM acad_mapel");
+        $stmt = db()->query("SELECT COUNT(*) as total FROM sch_mapel");
         $total_mapel = $stmt->fetch()['total'] ?? 0;
 
         // Count assignments
         $total_mengajar = 0;
         if ($year_id) {
-            $stmt = db()->prepare("SELECT COUNT(*) as total FROM acad_mengajar WHERE academic_year_id = ?");
+            $stmt = db()->prepare("SELECT COUNT(*) as total FROM sch_distribusi WHERE academic_year_id = ?");
             $stmt->execute([$year_id]);
             $total_mengajar = $stmt->fetch()['total'] ?? 0;
         }
@@ -35,11 +35,29 @@ if ($action === 'stats') {
         $stmt = db()->query("SELECT COUNT(*) as total FROM users WHERE role = 'guru' AND status = 1");
         $total_guru = $stmt->fetch()['total'] ?? 0;
 
+        // Count students
+        $stmt = db()->query("SELECT COUNT(*) as total FROM students WHERE status = 1");
+        $total_siswa = $stmt->fetch()['total'] ?? 0;
+
+        // Jurnal hari ini
+        $today = date('Y-m-d');
+        $stmt = db()->prepare("SELECT COUNT(*) as total FROM acad_jurnal WHERE tanggal = ?");
+        $stmt->execute([$today]);
+        $jurnal_hari_ini = $stmt->fetch()['total'] ?? 0;
+
+        // Ketidakhadiran hari ini
+        $stmt = db()->prepare("SELECT COUNT(*) as total FROM acad_ketidakhadiran WHERE tanggal = ?");
+        $stmt->execute([$today]);
+        $tidak_hadir_hari_ini = $stmt->fetch()['total'] ?? 0;
+
         json_response(200, true, 'Statistics loaded.', [
             'total_kelas' => (int)$total_kelas,
             'total_mapel' => (int)$total_mapel,
             'total_mengajar' => (int)$total_mengajar,
             'total_guru' => (int)$total_guru,
+            'total_siswa' => (int)$total_siswa,
+            'jurnal_hari_ini' => (int)$jurnal_hari_ini,
+            'tidak_hadir_hari_ini' => (int)$tidak_hadir_hari_ini,
             'academic_year' => $active_year
         ]);
     } catch (PDOException $e) {

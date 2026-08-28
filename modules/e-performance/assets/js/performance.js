@@ -45,7 +45,7 @@ const Perf = {
                         localStorage.removeItem('perf_token');
                         localStorage.removeItem('perf_user');
                         // Redirect to E-Portal login page
-                        window.location.href = this.state.baseUrl + '#/dashboard';
+                        window.location.href = this.state.baseUrl + '#/login';
                     }
                 });
                 return false;
@@ -152,6 +152,15 @@ const Perf = {
         $('#sidebarOverlay').on('click', () => this.toggleSidebar(false));
     },
 
+    escapeHtml(unsafe) {
+        return (unsafe || '').toString()
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    },
+
     api(endpoint, options = {}) {
         let ct = options.contentType !== undefined 
             ? options.contentType 
@@ -237,6 +246,18 @@ const Perf = {
                 <button class="pf-nav-item" data-route="hasil">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
                     Hasil Penilaian
+                </button>`;
+        }
+        if (isAdmin) {
+            settingsHtml += `
+                <button class="pf-nav-item" data-route="acak_penilai">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                    Acak Penilai
+                </button>`;
+            settingsHtml += `
+                <button class="pf-nav-item" data-route="deskripsi">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                    Deskripsi Penilaian
                 </button>`;
         }
         if (settingsHtml) {
@@ -1236,6 +1257,10 @@ const Perf = {
                 $t.text('Periode Penilaian'); this.setBreadcrumbs([{label:'Pengaturan'},{label:'Periode'}]); this.renderPeriode($c); break;
             case 'instrumen':
                 $t.text('Buat Penilaian'); this.setBreadcrumbs([{label:'Pengaturan'},{label:'Buat Penilaian'}]); this.renderInstrumen($c); break;
+            case 'acak_penilai':
+                $t.text('Hasil Acak Penilai'); this.setBreadcrumbs([{label:'Pengaturan'},{label:'Acak Penilai (Sejawat)'}]); this.renderAcakPenilai($c); break;
+            case 'deskripsi':
+                $t.text('Deskripsi Penilaian'); this.setBreadcrumbs([{label:'Pengaturan'},{label:'Deskripsi Penilaian'}]); this.renderDeskripsi($c); break;
             case 'progress':
                 $t.text('Progress Penilaian'); this.setBreadcrumbs([{label:'Monitoring'},{label:'Progress Penilaian'}]); this.renderProgress($c); break;
             case 'penilaian':
@@ -2681,7 +2706,7 @@ const Perf = {
                             <button id="btnReleaseHasil" class="btn btn-outline btn-sm" onclick="Perf.toggleReleaseHasil()" style="display:none; color:#10B981; border-color:#10B981;">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg> <span>Release Hasil</span>
                             </button>
-                            <button id="btnCetakRekapKeseluruhan" class="btn btn-primary btn-sm" onclick="window.open(window.PERF_CONFIG.moduleUrl + 'api/cetak_rekap_keseluruhan.php?periode_id=' + $('#laporanPeriodeSelector').val(), '_blank')" style="display:none; background:#10B981; border-color:#10B981; color:white;">
+                            <button id="btnCetakRekapKeseluruhan" class="btn btn-primary btn-sm" onclick="window.open(window.PERF_CONFIG.moduleUrl + 'api/cetak_semua.php?periode_id=' + $('#laporanPeriodeSelector').val() + '&token=' + window.PERF_CONFIG.token, '_blank')" style="display:none; background:#10B981; border-color:#10B981; color:white;">
                                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg> Cetak Rekap Keseluruhan
                             </button>
                             <button class="btn btn-outline btn-sm" onclick="Perf.loadLaporanData($('#laporanPeriodeSelector').val())">
@@ -4450,6 +4475,391 @@ const Perf = {
                         EModal.toast({type:'error', message:res.message});
                     }
                 }).fail(xhr => EModal.toast({type:'error', message:xhr.responseJSON?.message}));
+            }
+        });
+    },
+
+    renderAcakPenilai($container) {
+        let html = `
+            <div class="pf-card" style="min-height: 400px;">
+                <div class="pf-card-header" style="display:flex; flex-wrap:wrap; gap:16px;">
+                    <div style="display:flex; align-items:center; gap:16px; margin-right:auto;">
+                        <h3 style="margin:0;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg> Hasil Pengacakan Penilai (Teman Sejawat)</h3>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <span style="font-weight:600; color:var(--text-muted);">Periode:</span>
+                            <select id="acakPeriodeSelector" class="form-input" style="width: 400px; max-width: 100%;"></select>
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <input type="text" id="acakSearch" class="form-input" placeholder="Cari nama penilai..." style="min-width: 200px;">
+                    </div>
+                </div>
+                
+                <div class="table-responsive">
+                    <table class="pf-table">
+                        <thead>
+                            <tr>
+                                <th style="width:50px; text-align:center;">No</th>
+                                <th>Nama PTK (Target)</th>
+                                <th>Dinilai Oleh Siapa Saja? (Sejawat)</th>
+                                <th style="width:120px; text-align:center;">Jumlah Penilai</th>
+                            </tr>
+                        </thead>
+                        <tbody id="acakTable">
+                            <tr><td colspan="4" style="text-align:center; padding:30px;"><div class="pf-loader"></div></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+        $container.html(html);
+
+        // Load periode
+        this.api('periode.php?action=list', {method:'GET'}).done(res => {
+            if(!res.data || res.data.length === 0) {
+                $('#acakTable').html(`<tr><td colspan="4"><div class="pf-empty">Silakan buat Periode terlebih dahulu di menu Pengaturan</div></td></tr>`);
+                $('#acakPeriodeSelector').html('<option value="">Tidak ada periode</option>');
+                return;
+            }
+            
+            const opts = res.data.map(p => {
+                let name = p.nama_periode;
+                if (p.tahun_ajaran) name += ` (${p.tahun_ajaran} (${p.semester == 1 ? 'Ganjil' : 'Genap'}))`;
+                return `<option value="${p.id}">${Perf.escapeHtml(name)}</option>`;
+            }).join('');
+            $('#acakPeriodeSelector').html('<option value="">-- Pilih Periode --</option>' + opts).val('');
+            this.state.selectedPeriodeId = '';
+            
+            $('#acakTable').html('<tr><td colspan="4" style="text-align:center; padding:30px;" class="text-muted">Silakan pilih Periode terlebih dahulu.</td></tr>');
+            
+            $('#acakPeriodeSelector').on('change', (e) => {
+                this.state.selectedPeriodeId = $(e.target).val();
+                if(this.state.selectedPeriodeId) {
+                    this.loadAcakData();
+                } else {
+                    $('#acakTable').html('<tr><td colspan="4" style="text-align:center; padding:30px;" class="text-muted">Silakan pilih Periode terlebih dahulu.</td></tr>');
+                }
+            });
+            $('#acakSearch').on('input', () => {
+                if(this.state.selectedPeriodeId) this.loadAcakData();
+            });
+        });
+    },
+
+    loadAcakData() {
+        if(!this.state.selectedPeriodeId) return;
+        $('#acakTable').html('<tr><td colspan="4" style="text-align:center; padding:30px;"><div class="pf-loader"></div></td></tr>');
+        
+        this.api(`pengaturan_sejawat.php?action=list&periode_id=${this.state.selectedPeriodeId}`, {method:'GET'}).done(res => {
+            if(!res.data || res.data.length === 0) {
+                $('#acakTable').html('<tr><td colspan="4" style="text-align:center; padding:30px;" class="text-muted">Tidak ada data PTK.</td></tr>');
+                return;
+            }
+            
+            this.state.acakData = res.data;
+            this.renderAcakTable();
+        });
+    },
+
+    renderAcakTable() {
+        const q = ($('#acakSearch').val() || '').toLowerCase();
+        let html = '';
+        let no = 1;
+
+        const data = this.state.acakData.filter(d => 
+            (d.target_nama || '').toLowerCase().includes(q) || 
+            (d.detail_penilai && d.detail_penilai.some(t => (t.penilai_nama || '').toLowerCase().includes(q)))
+        );
+
+        if(data.length === 0) {
+            $('#acakTable').html('<tr><td colspan="4" style="text-align:center; padding:30px;" class="text-muted">Data tidak ditemukan.</td></tr>');
+            return;
+        }
+
+        data.forEach(d => {
+            const jumlah = parseInt(d.jumlah_penilai);
+            // Tambah 1 untuk menghitung diri sendiri (jika bukan kepala sekolah/lainnya)
+            const total = jumlah + 1;
+            let badge = '';
+            let targetHtml = '';
+
+            if (jumlah === 0) {
+                badge = `<span class="pf-badge" style="background:#e2e8f0; color:#64748b;">Hanya Diri Sendiri</span>`;
+                targetHtml = `<span class="text-muted">Belum ada teman sejawat yang ditugaskan menilai orang ini.</span>`;
+            } else if (total > 2) {
+                badge = `<span class="pf-badge pf-badge-danger">${total} Penilai</span>`;
+            } else {
+                badge = `<span class="pf-badge pf-badge-primary">${total} Penilai</span>`;
+            }
+
+            if (jumlah > 0) {
+                targetHtml = `<div style="display:flex; flex-direction:column; gap:8px;">`;
+                d.detail_penilai.forEach(t => {
+                    targetHtml += `
+                        <div draggable="true" ondragstart="Perf.dragStart(event, ${t.id}, '${Perf.escapeHtml(t.penilai_nama)}')" style="display:flex; justify-content:space-between; align-items:center; background:var(--bg-light); padding:8px 12px; border-radius:6px; border:1px solid var(--border-color); cursor:grab;">
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="color:var(--text-muted); cursor:grab;"><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></svg>
+                                <div>
+                                    <strong>${Perf.escapeHtml(t.penilai_nama)}</strong>
+                                    <div style="font-size:0.8rem; color:var(--text-muted);">${Perf.escapeHtml(t.penilai_jenis)}</div>
+                                </div>
+                            </div>
+                            <button class="pf-btn-icon danger" onclick="Perf.deletePenugasanSejawat(${t.id})" title="Hapus Tugas Ini">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            </button>
+                        </div>
+                    `;
+                });
+                targetHtml += `</div>`;
+            }
+
+            html += `
+                <tr ondragover="Perf.dragOver(event)" ondragleave="Perf.dragLeave(event)" ondrop="Perf.drop(event, ${d.target_id})" style="transition: background-color 0.2s;">
+                    <td style="text-align:center;">${no++}</td>
+                    <td>
+                        <div style="font-weight:600;">${Perf.escapeHtml(d.target_nama)}</div>
+                        <div style="font-size:0.8rem; color:var(--text-muted);">${Perf.escapeHtml(d.target_jenis)}</div>
+                    </td>
+                    <td>${targetHtml}</td>
+                    <td style="text-align:center;">
+                        ${badge}
+                        ${total > 2 ? '<div style="font-size:0.75rem; color:var(--danger); margin-top:4px; font-weight: 600;">Terlalu Banyak</div>' : ''}
+                    </td>
+                </tr>
+            `;
+        });
+
+        $('#acakTable').html(html);
+    },
+
+    dragStart(e, penugasanId, penilaiNama) {
+        e.dataTransfer.setData('text/plain', penugasanId);
+        e.dataTransfer.effectAllowed = 'move';
+        // Add styling class to dragged item if needed
+        e.target.style.opacity = '0.4';
+        
+        // Restore opacity after drag
+        e.target.addEventListener('dragend', function() {
+            this.style.opacity = '1';
+        }, {once: true});
+    },
+
+    dragOver(e) {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        const tr = $(e.target).closest('tr');
+        if (!tr.hasClass('pf-drag-over')) {
+            tr.addClass('pf-drag-over');
+            tr.css('background-color', '#f0f9ff'); // Light blue highlighting
+        }
+    },
+
+    dragLeave(e) {
+        const tr = $(e.target).closest('tr');
+        tr.removeClass('pf-drag-over');
+        tr.css('background-color', '');
+    },
+
+    drop(e, newTargetId) {
+        e.preventDefault();
+        const tr = $(e.target).closest('tr');
+        tr.removeClass('pf-drag-over');
+        tr.css('background-color', '');
+
+        const penugasanId = e.dataTransfer.getData('text/plain');
+        if (!penugasanId) return;
+
+        // Tampilkan konfirmasi
+        EModal.confirm({
+            title: 'Pindahkan Penilai',
+            type: 'warning',
+            message: 'Apakah Anda yakin ingin memindahkan penilai ini? Nilai yang sudah tersimpan untuk target sebelumnya akan dihapus otomatis.',
+            onConfirm: () => {
+                this.api('pengaturan_sejawat.php?action=move', {
+                    method: 'POST',
+                    data: { id: penugasanId, new_target_id: newTargetId }
+                }).done(res => {
+                    if (res.success) {
+                        EModal.toast({type: 'success', message: res.message});
+                        this.loadAcakData();
+                    } else {
+                        EModal.toast({type: 'error', message: res.message});
+                    }
+                }).fail(xhr => EModal.toast({type:'error', message:xhr.responseJSON?.message}));
+            }
+        });
+    },
+
+    deletePenugasanSejawat(id) {
+        EModal.confirm({
+            title: 'Hapus Penugasan', 
+            type: 'danger',
+            message: 'Apakah Anda yakin ingin menghapus penugasan ini? Jika penilai sudah terlanjur mengisi nilai untuk orang ini, nilainya juga akan ikut terhapus!',
+            onConfirm: () => {
+                this.api('pengaturan_sejawat.php?action=delete', {
+                    method: 'POST',
+                    data: { id: id }
+                }).done(res => {
+                    if(res.success) {
+                        EModal.toast({type:'success', message:res.message});
+                        this.loadAcakData();
+                    } else {
+                        EModal.toast({type:'error', message:res.message});
+                    }
+                }).fail(xhr => EModal.toast({type:'error', message:xhr.responseJSON?.message}));
+            }
+        });
+    },
+
+    // ==============================================
+    // DESKRIPSI PENILAIAN
+    // ==============================================
+    renderDeskripsi($c) {
+        $c.html(`
+            <div class="pf-card">
+                <div class="pf-card-header">
+                    <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg> Data Deskripsi Penilaian</h3>
+                    <button class="btn btn-primary btn-sm" onclick="Perf.addDeskripsiModal()">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Tambah Deskripsi
+                    </button>
+                </div>
+                <div class="pf-card-body">
+                    <div class="pf-table-wrapper" id="deskripsiTableContainer">
+                        <div class="pf-empty">Memuat data...</div>
+                    </div>
+                </div>
+            </div>
+        `);
+        this.loadDeskripsi();
+    },
+
+    loadDeskripsi() {
+        this.api('deskripsi.php?action=list').done(res => {
+            if (!res.data || !res.data.length) {
+                $('#deskripsiTableContainer').html('<div class="pf-empty">Belum ada data deskripsi.</div>');
+                return;
+            }
+            let html = `
+                <table class="pf-table">
+                    <thead>
+                        <tr>
+                            <th width="5%">No</th>
+                            <th width="20%">Tupoksi</th>
+                            <th width="15%">Min Nilai</th>
+                            <th width="15%">Max Nilai</th>
+                            <th width="35%">Deskripsi</th>
+                            <th width="10%">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
+            res.data.forEach((d, i) => {
+                html += `
+                    <tr>
+                        <td>${i+1}</td>
+                        <td>${d.tupoksi}</td>
+                        <td>${d.min_nilai}</td>
+                        <td>${d.max_nilai}</td>
+                        <td>${d.deskripsi}</td>
+                        <td>
+                            <button class="pf-btn-icon danger" onclick="Perf.deleteDeskripsi(${d.id})" title="Hapus">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+            html += '</tbody></table>';
+            $('#deskripsiTableContainer').html(html);
+        });
+    },
+
+    addDeskripsiModal() {
+        this.api('instrumen.php?action=list_tupoksi').done(res => {
+            let tupoksiOptions = '<option value="">Pilih Tupoksi</option>';
+            if (res.data) {
+                res.data.forEach(item => {
+                    tupoksiOptions += `<option value="${item.nama}">${item.nama}</option>`;
+                });
+            }
+            const html = `
+                <div class="form-group">
+                    <label>Tupoksi <span class="pf-required">*</span></label>
+                    <select class="form-input" id="fDeskripsiTupoksi">${tupoksiOptions}</select>
+                </div>
+                <div style="display:flex; gap:16px;">
+                    <div class="form-group" style="flex:1;">
+                        <label>Min Nilai (0-100) <span class="pf-required">*</span></label>
+                        <input type="text" inputmode="decimal" class="form-input" id="fDeskripsiMin" placeholder="0">
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label>Max Nilai (0-100) <span class="pf-required">*</span></label>
+                        <input type="text" inputmode="decimal" class="form-input" id="fDeskripsiMax" placeholder="100">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Deskripsi <span class="pf-required">*</span></label>
+                    <textarea class="form-input" id="fDeskripsiTeks" rows="4" placeholder="Contoh: Telah melaksanakan tugas dengan sangat baik..."></textarea>
+                </div>
+            `;
+            EModal.form({
+                title: 'Tambah Deskripsi Penilaian',
+                form: html,
+                confirmText: 'Simpan',
+                onConfirm: () => {
+                    const t = $('#fDeskripsiTupoksi').val();
+                    const min = $('#fDeskripsiMin').val();
+                    const max = $('#fDeskripsiMax').val();
+                    const teks = $('#fDeskripsiTeks').val();
+                    
+                    if (!t || min === '' || max === '' || !teks) {
+                        EModal.toast({type: 'warning', message: 'Semua kolom wajib diisi'});
+                        return false;
+                    }
+                    
+                    this.api('deskripsi.php?action=create', {
+                        method: 'POST',
+                        contentType: 'application/x-www-form-urlencoded',
+                        data: {
+                            tupoksi: t,
+                            min_nilai: min,
+                            max_nilai: max,
+                            deskripsi: teks
+                        }
+                    }).done(r => {
+                        if (r.success) {
+                            EModal.toast({type: 'success', message: 'Berhasil disimpan'});
+                            EModal.closeAll();
+                            this.loadDeskripsi();
+                        } else {
+                            EModal.alert('Gagal', r.message);
+                        }
+                    });
+                    return false;
+                }
+            });
+        });
+    },
+
+    deleteDeskripsi(id) {
+        EModal.confirm({
+            title: 'Hapus Deskripsi',
+            message: 'Yakin ingin menghapus deskripsi ini?',
+            type: 'danger',
+            confirmText: 'Ya, Hapus',
+            onConfirm: () => {
+                this.api('deskripsi.php?action=delete', {
+                    method: 'POST',
+                    contentType: 'application/x-www-form-urlencoded',
+                    data: { id: id }
+                }).done(res => {
+                    if (res.success) {
+                        EModal.toast({type: 'success', message: 'Berhasil dihapus'});
+                        this.loadDeskripsi();
+                    } else {
+                        EModal.toast({type: 'error', message: res.message});
+                    }
+                });
             }
         });
     }

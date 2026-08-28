@@ -200,15 +200,21 @@ const Graduation = {
             type: 'danger',
             confirmText: 'Ya, Logout',
             onConfirm: () => {
+                const loader = EModal.loading('Logging out...');
+                const token = this.state.token || (window.localStorage ? localStorage.getItem('eportal_token') : null);
                 $.ajax({
                     url: this.state.baseUrl + 'api/auth.php?action=logout',
                     method: 'POST',
-                    headers: { Authorization: 'Bearer ' + this.state.token },
+                    headers: { 'Authorization': 'Bearer ' + token },
                     complete: () => {
-                        sessionStorage.setItem('eportal_intended_module', 'modules/e-graduation/');
-                        localStorage.removeItem('auth_token');
-                        localStorage.removeItem('user');
-                        window.location.href = this.state.baseUrl + '#/dashboard';
+                        if (window.localStorage) {
+                            localStorage.removeItem('eportal_token');
+                            localStorage.removeItem('eportal_user');
+                            localStorage.removeItem('eportal_school');
+                            localStorage.removeItem('eportal_academic_year');
+                        }
+                        EModal.close(loader);
+                        window.location.href = this.state.baseUrl + '#/login';
                     }
                 });
             }
