@@ -155,35 +155,166 @@ const Admin = {
 
     // ==================== ADMIN DASHBOARD ====================
     renderAdminDashboard() {
+        const user = App.state.user;
+        const activeYear = App.state.academicYear;
+
         $('#adminContent').html(`
-            <div class="admin-stats" id="adminStats">
-                <div class="stat-card skeleton" style="height:90px"></div>
-                <div class="stat-card skeleton" style="height:90px"></div>
-                <div class="stat-card skeleton" style="height:90px"></div>
+            <div style="display:flex; flex-direction:column; gap:20px;">
+                <div class="skeleton" style="height:120px; border-radius:16px;"></div>
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:20px;">
+                    <div class="skeleton" style="height:90px; border-radius:12px;"></div>
+                    <div class="skeleton" style="height:90px; border-radius:12px;"></div>
+                    <div class="skeleton" style="height:90px; border-radius:12px;"></div>
+                    <div class="skeleton" style="height:90px; border-radius:12px;"></div>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr; gap:24px;">
+                    <div class="skeleton" style="height:200px; border-radius:12px;"></div>
+                </div>
             </div>
         `);
 
         App.api('api/users.php?action=stats').done(res => {
             if (!res.success) return;
             const s = res.data;
-            $('#adminStats').html(`
-                <div class="stat-card fade-in">
-                    <div class="stat-icon" style="background:rgba(21,101,192,0.1);color:var(--primary);">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+
+            const formatTimeAgo = (dateStr) => {
+                try {
+                    const date = new Date(dateStr.replace(/-/g, '/')); // Fix Safari parse
+                    const seconds = Math.floor((new Date() - date) / 1000);
+                    if (seconds < 60) return 'baru saja';
+                    const minutes = Math.floor(seconds / 60);
+                    if (minutes < 60) return `${minutes} menit lalu`;
+                    const hours = Math.floor(minutes / 60);
+                    if (hours < 24) return `${hours} jam lalu`;
+                    const days = Math.floor(hours / 24);
+                    return `${days} hari lalu`;
+                } catch(e) {
+                    return 'beberapa saat lalu';
+                }
+            };
+
+            let recentJournalsHtml = '';
+            if (s.recent_journals && s.recent_journals.length > 0) {
+                recentJournalsHtml = s.recent_journals.map(j => {
+                    const timeLabel = formatTimeAgo(j.created_at || j.tanggal);
+                    return `
+                        <div style="padding:12px 16px; border-left:4px solid var(--primary); background:#f8fafc; border-radius: 0 8px 8px 0; border-top:1px solid #e2e8f0; border-right:1px solid #e2e8f0; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; gap:10px;">
+                            <div>
+                                <strong style="font-size:0.9rem; color:#1e293b; display:block;">${App.escapeHtml(j.guru_nama)}</strong>
+                                <span style="font-size:0.78rem; color:#64748b;">Kelas: <strong>${App.escapeHtml(j.nama_kelas || '-')}</strong> • Mapel: <strong>${App.escapeHtml(j.nama_mapel || '-')}</strong> • Jam ke: ${App.escapeHtml(j.jam_ke || '-')}</span>
+                            </div>
+                            <span style="font-size:0.7rem; color:#94a3b8; font-weight:700; white-space:nowrap;">${timeLabel}</span>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                recentJournalsHtml = `
+                    <div style="text-align:center; padding:40px 20px; color:#94a3b8; font-style:italic; font-size:0.85rem; border: 1px dashed #cbd5e1; border-radius:8px; background:#f8fafc;">
+                        Belum ada aktivitas pengisian jurnal guru hari ini.
                     </div>
-                    <div class="stat-info"><h4>${s.total_users}</h4><p>Total User</p></div>
-                </div>
-                <div class="stat-card fade-in" style="animation-delay:0.1s">
-                    <div class="stat-icon" style="background:rgba(16,185,129,0.1);color:var(--success);">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                `;
+            }
+
+            $('#adminContent').html(`
+                <style>
+                    .admin-details-grid {
+                        display: grid;
+                        grid-template-columns: 1fr 1fr;
+                        gap: 24px;
+                    }
+                    @media (max-width: 900px) {
+                        .admin-details-grid {
+                            grid-template-columns: 1fr !important;
+                        }
+                    }
+                </style>
+                <div style="display:flex; flex-direction:column; gap:24px;">
+                    <!-- HERO BANNER -->
+                    <div class="admin-welcome-hero fade-in" style="background: linear-gradient(135deg, var(--primary) 0%, #1e40af 100%); color: white; padding: 28px 32px; border-radius: 16px; box-shadow: 0 10px 25px rgba(37,99,235,0.15); display: flex; justify-content: space-between; align-items: center; position: relative; overflow: hidden;">
+                        <div style="z-index: 2;">
+                            <h2 style="margin: 0 0 8px 0; font-size: 1.6rem; font-weight: 800; font-family: var(--font-heading);">Selamat Datang Kembali, ${App.escapeHtml(user.nama_lengkap)}! 👋</h2>
+                            <p style="margin: 0; opacity: 0.85; font-size: 0.95rem;">Kelola administrasi portal sekolah, modul akademik, dan pengawasan aktivitas jurnal guru.</p>
+                        </div>
+                        <div style="z-index: 2; text-align: right; flex-shrink: 0;">
+                            <span style="background: rgba(255,255,255,0.15); padding: 8px 16px; border-radius: 30px; font-size: 0.8rem; font-weight: 700; border: 1px solid rgba(255,255,255,0.2); backdrop-filter: blur(10px);">
+                                TA: ${activeYear?.tahun_ajaran ? App.escapeHtml(activeYear.tahun_ajaran) : 'Belum Diatur'} (${activeYear?.semester === '1' ? 'Ganjil' : 'Genap'})
+                            </span>
+                        </div>
+                        <div style="position: absolute; right: -50px; top: -50px; width: 180px; height: 180px; background: rgba(255,255,255,0.08); border-radius: 50%; z-index: 1;"></div>
+                        <div style="position: absolute; left: 40%; bottom: -80px; width: 220px; height: 220px; background: rgba(255,255,255,0.05); border-radius: 50%; z-index: 1;"></div>
                     </div>
-                    <div class="stat-info"><h4>${s.active_users}</h4><p>User Aktif</p></div>
-                </div>
-                <div class="stat-card fade-in" style="animation-delay:0.2s">
-                    <div class="stat-icon" style="background:rgba(255,179,0,0.1);color:var(--accent);">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8M8 12h8"/></svg>
+
+                    <!-- METRICS GRID -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 20px;">
+                        <!-- Total Siswa -->
+                        <div class="stat-card fade-in" style="background: white; padding: 22px 24px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.02); display: flex; align-items: center; gap: 16px; border: 1px solid #f1f5f9;">
+                            <div style="background: rgba(37,99,235,0.1); color: var(--primary); width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink:0;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                            </div>
+                            <div><h3 style="margin:0 0 2px 0; font-size:1.5rem; font-weight:800; color:#1e293b;">${s.total_students}</h3><p style="margin:0; color:#64748b; font-size:0.8rem; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">Total Siswa</p></div>
+                        </div>
+                        <!-- Total Guru -->
+                        <div class="stat-card fade-in" style="background: white; padding: 22px 24px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.02); display: flex; align-items: center; gap: 16px; border: 1px solid #f1f5f9; animation-delay:0.05s">
+                            <div style="background: rgba(16,185,129,0.1); color: var(--success); width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink:0;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                            </div>
+                            <div><h3 style="margin:0 0 2px 0; font-size:1.5rem; font-weight:800; color:#1e293b;">${s.total_teachers}</h3><p style="margin:0; color:#64748b; font-size:0.8rem; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">Total Guru</p></div>
+                        </div>
+                        <!-- Total Kelas -->
+                        <div class="stat-card fade-in" style="background: white; padding: 22px 24px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.02); display: flex; align-items: center; gap: 16px; border: 1px solid #f1f5f9; animation-delay:0.1s">
+                            <div style="background: rgba(245,158,11,0.1); color: #d97706; width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink:0;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+                            </div>
+                            <div><h3 style="margin:0 0 2px 0; font-size:1.5rem; font-weight:800; color:#1e293b;">${s.total_classes}</h3><p style="margin:0; color:#64748b; font-size:0.8rem; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">Total Kelas</p></div>
+                        </div>
+                        <!-- Jurnal Hari Ini -->
+                        <div class="stat-card fade-in" style="background: white; padding: 22px 24px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.02); display: flex; align-items: center; gap: 16px; border: 1px solid #f1f5f9; animation-delay:0.15s">
+                            <div style="background: rgba(239,68,68,0.1); color: #dc2626; width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink:0;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="22" height="22"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            </div>
+                            <div><h3 style="margin:0 0 2px 0; font-size:1.5rem; font-weight:800; color:#1e293b;">${s.total_journals_today}</h3><p style="margin:0; color:#64748b; font-size:0.8rem; font-weight:700; text-transform:uppercase; letter-spacing:0.5px;">Jurnal Hari Ini</p></div>
+                        </div>
                     </div>
-                    <div class="stat-info"><h4>${s.total_modules}</h4><p>Modul Aktif</p></div>
+
+                    <!-- DETAILS SPLIT SECTION -->
+                    <div class="admin-details-grid">
+                        <!-- LEFT: PORTAL SYSTEM & MODULES INFO -->
+                        <div class="admin-card fade-in" style="background: white; padding: 24px; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 4px 10px rgba(0,0,0,0.01); display:flex; flex-direction:column; gap:16px; animation-delay:0.2s">
+                            <h3 style="margin:0; font-size:1.05rem; font-family:var(--font-heading); color:#0f172a; display:flex; align-items:center; gap:8px;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                                Sistem Portal & Modul
+                            </h3>
+                            <div style="display:flex; flex-direction:column; gap:12px;">
+                                <div style="padding:14px; background:#f8fafc; border-radius:8px; border:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+                                    <span style="color:#64748b; font-size:0.875rem;">Status Kepegawaian</span>
+                                    <strong style="color:#1e293b;">${s.total_teachers} Guru Terdaftar</strong>
+                                </div>
+                                <div style="padding:14px; background:#f8fafc; border-radius:8px; border:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+                                    <span style="color:#64748b; font-size:0.875rem;">Total User Sistem</span>
+                                    <strong style="color:#1e293b;">${s.total_users} Akun (${s.active_users} Aktif)</strong>
+                                </div>
+                                <div style="padding:14px; background:#f8fafc; border-radius:8px; border:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+                                    <span style="color:#64748b; font-size:0.875rem;">Modul Portal</span>
+                                    <strong style="color:#1e293b;">${s.total_modules} Modul Aktif</strong>
+                                </div>
+                                <div style="padding:14px; background:#f8fafc; border-radius:8px; border:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center;">
+                                    <span style="color:#64748b; font-size:0.875rem;">Skema Migrasi DB</span>
+                                    <strong style="color:#1e293b;">Versi 3.0.0</strong>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- RIGHT: LIVE ACTIVITY JOURNAL FEED -->
+                        <div class="admin-card fade-in" style="background: white; padding: 24px; border-radius: 12px; border: 1px solid #e2e8f0; box-shadow: 0 4px 10px rgba(0,0,0,0.01); display:flex; flex-direction:column; gap:16px; animation-delay:0.25s">
+                            <h3 style="margin:0; font-size:1.05rem; font-family:var(--font-heading); color:#0f172a; display:flex; align-items:center; gap:8px;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+                                Jurnal Mengajar Terbaru (Live Feed)
+                            </h3>
+                            <div style="display:flex; flex-direction:column; gap:12px;">
+                                ${recentJournalsHtml}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             `);
         });
@@ -2549,6 +2680,7 @@ const Admin = {
                         </div>
                     </td>
                     <td><strong>${App.escapeHtml(r.nama_kelas)}</strong></td>
+                    <td><span class="badge ${r.wali_kelas_nama ? 'badge-primary' : 'badge-danger'}">${App.escapeHtml(r.wali_kelas_nama || 'Belum Ditentukan')}</span></td>
                     <td class="reference-note">${App.escapeHtml(r.keterangan || '-')}</td>
                     <td style="text-align:right">
                         <div class="actions" style="justify-content:flex-end">
@@ -2559,7 +2691,7 @@ const Admin = {
                 </tr>`).join('');
             $('#refTableWrapper').html(`
                 <table class="data-table reference-table">
-                    <thead><tr><th>Tingkat</th><th>Nama Kelas</th><th>Keterangan</th><th style="text-align:right">Aksi</th></tr></thead>
+                    <thead><tr><th>Tingkat</th><th>Nama Kelas</th><th>Wali Kelas</th><th>Keterangan</th><th style="text-align:right">Aksi</th></tr></thead>
                     <tbody>${rows}</tbody>
                 </table>
             `);
@@ -2568,30 +2700,133 @@ const Admin = {
 
     showKelasForm(id=null) {
         const isEdit=id!==null;
-        const modal=`
-        <div class="admin-form-modal show" id="refFormModal" onclick="if(event.target===this)Admin.closeFormModal('refFormModal')">
-            <div class="admin-form-panel">
-                <div class="panel-header"><h3>${isEdit?'Edit':'Tambah'} Data Kelas</h3><button class="panel-close" onclick="Admin.closeFormModal('refFormModal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
-                <div class="panel-body">
-                    <div class="form-group"><label class="form-label">Tingkat</label><input class="form-input" id="refTingkat" placeholder="Misal: X, XI, XII atau 7, 8, 9"></div>
-                    <div class="form-group"><label class="form-label">Nama Kelas</label><input class="form-input" id="refNamaKelas" placeholder="Misal: MIPA 1"></div>
-                    <div class="form-group"><label class="form-label">Keterangan (Opsional)</label><input class="form-input" id="refKet" placeholder="Keterangan singkat"></div>
+        const loader = EModal.loading('Memuat data guru...');
+        App.api('api/ref_kelas.php?action=list_teachers').done(res => {
+            EModal.close(loader);
+            const teachers = res.data || [];
+
+            const modal=`
+            <div class="admin-form-modal show" id="refFormModal" onclick="if(event.target===this){Admin.closeFormModal('refFormModal');$(document).off('click.waliDropdown');}">
+                <div class="admin-form-panel">
+                    <div class="panel-header"><h3>${isEdit?'Edit':'Tambah'} Data Kelas</h3><button class="panel-close" onclick="Admin.closeFormModal('refFormModal');$(document).off('click.waliDropdown');"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button></div>
+                    <div class="panel-body">
+                        <style>
+                            #waliSelectBtn:hover { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
+                            #waliSelectBtn.active { border-color: #3b82f6; }
+                            .wali-opt:hover { background: #f1f5f9; }
+                        </style>
+                        <div class="form-group"><label class="form-label">Tingkat</label><input class="form-input" id="refTingkat" placeholder="Misal: X, XI, XII atau 7, 8, 9"></div>
+                        <div class="form-group"><label class="form-label">Nama Kelas</label><input class="form-input" id="refNamaKelas" placeholder="Misal: MIPA 1"></div>
+                        
+                        <div class="form-group">
+                            <label class="form-label">Wali Kelas</label>
+                            <div class="sp-cs-container" id="waliSelectContainer" style="position:relative; user-select:none; margin-bottom:15px;">
+                                <div class="sp-cs-btn" id="waliSelectBtn" style="cursor:pointer; display:flex; justify-content:space-between; align-items:center; background:#fff; border:1px solid #cbd5e1; border-radius:8px; padding:10px 15px; height:44px; transition:all 0.2s;">
+                                    <span id="waliSelectedText" style="color:#64748b; font-size:0.95rem;">-- Pilih Wali Kelas --</span>
+                                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                </div>
+                                <div class="sp-cs-dropdown" id="waliSelectDropdown" style="display:none; position:absolute; top:calc(100% + 5px); left:0; right:0; background:#fff; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 10px 25px rgba(0,0,0,0.1); z-index:9999; overflow:hidden;">
+                                    <div style="padding:10px; border-bottom:1px solid #e2e8f0; background:#f8fafc;">
+                                        <input type="text" id="waliSearchInput" class="form-input" placeholder="Cari nama guru..." style="width:100%; padding:8px 12px; height:38px; border-radius:6px; border:1px solid #cbd5e1; outline:none;" autocomplete="off">
+                                    </div>
+                                    <div id="waliOptionsList" style="max-height:200px; overflow-y:auto; padding:5px 0;">
+                                        <div class="sp-cs-option wali-opt" data-id="" data-nama="-- Pilih Wali Kelas --" style="padding:10px 15px; cursor:pointer; border-bottom:1px solid #f1f5f9; font-style:italic; color:#94a3b8;">
+                                            -- Tanpa Wali Kelas --
+                                        </div>
+                                        ${teachers.map(t => `
+                                            <div class="sp-cs-option wali-opt" data-id="${t.id}" data-nama="${App.escapeHtml(t.nama_lengkap)}" style="padding:10px 15px; cursor:pointer; border-bottom:1px solid #f1f5f9; transition:background 0.2s;">
+                                                <div class="cs-opt-m" style="font-weight:600; color:#1e293b; font-size:0.95rem;">${App.escapeHtml(t.nama_lengkap)}</div>
+                                                <div class="cs-opt-k" style="font-size:0.8rem; color:#64748b; margin-top:2px;">Username: ${App.escapeHtml(t.username)}</div>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            </div>
+                            <input type="hidden" id="refWaliKelas" value="">
+                        </div>
+
+                        <div class="form-group"><label class="form-label">Keterangan (Opsional)</label><input class="form-input" id="refKet" placeholder="Keterangan singkat"></div>
+                    </div>
+                    <div class="panel-footer"><button class="btn btn-ghost" onclick="Admin.closeFormModal('refFormModal');$(document).off('click.waliDropdown');">Batal</button><button class="btn btn-primary" id="saveRefBtn" onclick="Admin.saveKelas(${id||'null'})"><span class="btn-text">Simpan</span></button></div>
                 </div>
-                <div class="panel-footer"><button class="btn btn-ghost" onclick="Admin.closeFormModal('refFormModal')">Batal</button><button class="btn btn-primary" id="saveRefBtn" onclick="Admin.saveKelas(${id||'null'})"><span class="btn-text">Simpan</span></button></div>
-            </div>
-        </div>`;
-        $('body').append(modal);
-        if(isEdit){App.api(`api/ref_kelas.php?action=get&id=${id}`).done(res=>{if(res.success){$('#refTingkat').val(res.data.tingkat);$('#refNamaKelas').val(res.data.nama_kelas);$('#refKet').val(res.data.keterangan);}});}
+            </div>`;
+            $('body').append(modal);
+
+            // Bind dropdown click
+            $('#waliSelectBtn').on('click', function(e) {
+                e.stopPropagation();
+                $(this).toggleClass('active');
+                $('#waliSelectDropdown').toggle();
+                if ($('#waliSelectDropdown').is(':visible')) {
+                    $('#waliSearchInput').val('').trigger('input').focus();
+                }
+            });
+
+            // Click outside handler
+            $(document).on('click.waliDropdown', function(e) {
+                if (!$(e.target).closest('#waliSelectContainer').length) {
+                    $('#waliSelectDropdown').hide();
+                    $('#waliSelectBtn').removeClass('active');
+                }
+            });
+
+            // Filter options
+            $('#waliSearchInput').on('input', function() {
+                const term = $(this).val().toLowerCase();
+                $('.wali-opt').each(function() {
+                    const text = $(this).text().toLowerCase();
+                    $(this).toggle(text.includes(term));
+                });
+            });
+
+            // Option selection
+            $('#waliOptionsList').on('click', '.wali-opt', function() {
+                const optId = $(this).attr('data-id');
+                const optNama = $(this).attr('data-nama');
+                
+                $('#refWaliKelas').val(optId);
+                $('#waliSelectedText').text(optNama).css('color', optId ? '#1e293b' : '#64748b');
+                
+                $('#waliSelectDropdown').hide();
+                $('#waliSelectBtn').removeClass('active');
+            });
+
+            if(isEdit){
+                App.api(`api/ref_kelas.php?action=get&id=${id}`).done(res=>{
+                    if(res.success){
+                        $('#refTingkat').val(res.data.tingkat);
+                        $('#refNamaKelas').val(res.data.nama_kelas);
+                        $('#refKet').val(res.data.keterangan);
+                        
+                        if(res.data.wali_kelas_id) {
+                            const matched = teachers.find(t => String(t.id) === String(res.data.wali_kelas_id));
+                            if(matched) {
+                                $('#refWaliKelas').val(res.data.wali_kelas_id);
+                                $('#waliSelectedText').text(matched.nama_lengkap).css('color', '#1e293b');
+                            }
+                        }
+                    }
+                });
+            }
+        }).fail(() => {
+            EModal.close(loader);
+            EModal.toast({type:'error',title:'Gagal',message:'Gagal memuat data guru.'});
+        });
     },
 
     saveKelas(id) {
         const btn=document.getElementById('saveRefBtn');
-        const data={tingkat:$('#refTingkat').val().trim(),nama_kelas:$('#refNamaKelas').val().trim(),keterangan:$('#refKet').val().trim()};
+        const data={
+            tingkat:$('#refTingkat').val().trim(),
+            nama_kelas:$('#refNamaKelas').val().trim(),
+            wali_kelas_id:$('#refWaliKelas').val() || null,
+            keterangan:$('#refKet').val().trim()
+        };
         if(id)data.id=id;
         if(!data.tingkat || !data.nama_kelas){EModal.toast({type:'warning',title:'Perhatian',message:'Tingkat dan Nama Kelas wajib diisi.'});return;}
         EModal.btnLoading(btn,true);
         App.api(`api/ref_kelas.php?action=${id?'update':'create'}`,{method:'POST',data}).done(res=>{
-            if(res.success){this.closeFormModal('refFormModal');EModal.info({type:'success',title:'Berhasil!',message:res.message});this.loadRefSummary();this.loadRefTable();}
+            if(res.success){this.closeFormModal('refFormModal');$(document).off('click.waliDropdown');EModal.info({type:'success',title:'Berhasil!',message:res.message});this.loadRefSummary();this.loadRefTable();}
         }).fail(xhr=>EModal.toast({type:'error',title:'Gagal',message:xhr.responseJSON?.message||'Error'})).always(()=>EModal.btnLoading(btn,false));
     },
 

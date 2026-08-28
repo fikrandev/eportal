@@ -471,6 +471,42 @@ function getStats() {
         $stmt = db()->query("SELECT COUNT(*) as total FROM modules WHERE status = 1");
         $stats['total_modules'] = (int)$stmt->fetch()['total'];
 
+        // Total students
+        $stmt = db()->query("SELECT COUNT(*) as total FROM students");
+        $stats['total_students'] = (int)$stmt->fetch()['total'];
+
+        // Total teachers
+        $stmt = db()->query("SELECT COUNT(*) as total FROM users WHERE role = 'guru'");
+        $stats['total_teachers'] = (int)$stmt->fetch()['total'];
+
+        // Total classes
+        $stmt = db()->query("SELECT COUNT(*) as total FROM ref_kelas");
+        $stats['total_classes'] = (int)$stmt->fetch()['total'];
+
+        // Total journals today
+        $stmt = db()->prepare("SELECT COUNT(*) as total FROM acad_jurnal WHERE tanggal = ?");
+        $stmt->execute([date('Y-m-d')]);
+        $stats['total_journals_today'] = (int)$stmt->fetch()['total'];
+
+        // Recent journals list
+        try {
+            $stmtRecent = db()->prepare("
+                SELECT j.id, j.tanggal, j.jam_ke, j.created_at,
+                       u.nama_lengkap as guru_nama,
+                       k.nama_kelas, m.nama_mapel
+                FROM acad_jurnal j
+                LEFT JOIN users u ON j.guru_id = u.id
+                LEFT JOIN sch_kelas k ON j.kelas_id = k.id
+                LEFT JOIN sch_mapel m ON j.mapel_id = m.id
+                ORDER BY j.created_at DESC
+                LIMIT 5
+            ");
+            $stmtRecent->execute();
+            $stats['recent_journals'] = $stmtRecent->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {
+            $stats['recent_journals'] = [];
+        }
+
         json_response(200, true, 'Statistik berhasil dimuat.', $stats);
     } catch (PDOException $e) {
         json_response(500, false, 'Server error: ' . $e->getMessage());

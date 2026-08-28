@@ -24,12 +24,8 @@ if ($action === 'stats') {
         $total_mapel = $stmt->fetch()['total'] ?? 0;
 
         // Count assignments
-        $total_mengajar = 0;
-        if ($year_id) {
-            $stmt = db()->prepare("SELECT COUNT(*) as total FROM sch_distribusi WHERE academic_year_id = ?");
-            $stmt->execute([$year_id]);
-            $total_mengajar = $stmt->fetch()['total'] ?? 0;
-        }
+        $stmt = db()->query("SELECT COUNT(*) as total FROM sch_distribusi");
+        $total_mengajar = $stmt->fetch()['total'] ?? 0;
 
         // Count teachers
         $stmt = db()->query("SELECT COUNT(*) as total FROM users WHERE role = 'guru' AND status = 1");

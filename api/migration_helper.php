@@ -6,7 +6,7 @@
 require_once __DIR__ . '/config.php';
 
 function run_auto_migrations() {
-    $target_version = 2;
+    $target_version = 4;
     
     // 1. Get current version (default to 0 if not set or if table settings doesn't exist yet)
     $current_version = 0;
@@ -105,6 +105,47 @@ function run_auto_migrations() {
 
         // Set or update default settings for Guru App PWA
         upsert_setting('guru_pwa_version', '1.0.0', 'text', 'Versi PWA Guru');
+    }
+
+    // Version 3 migrations (Add wali_kelas_id to ref_kelas)
+    if ($current_version < 3) {
+        try {
+            $pdo->exec("ALTER TABLE `ref_kelas` ADD COLUMN `wali_kelas_id` INT(11) UNSIGNED NULL DEFAULT NULL AFTER `nama_kelas`");
+        } catch (PDOException $e) {
+            // Column may already exist
+        }
+        try {
+            $pdo->exec("ALTER TABLE `ref_kelas` ADD CONSTRAINT `fk_ref_kelas_wali` FOREIGN KEY (`wali_kelas_id`) REFERENCES `users`(`id`) ON DELETE SET NULL");
+        } catch (PDOException $e) {
+            // Constraint may already exist
+        }
+    }
+
+    // Version 4 migrations (Ensure acad_absensi exists)
+    if ($current_version < 4) {
+        try {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `acad_absensi` (
+                  `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+                  `student_id` INT(11) UNSIGNED NOT NULL,
+                  `kelas_id` INT(10) UNSIGNED NOT NULL,
+                  `academic_year_id` INT(11) UNSIGNED NOT NULL,
+                  `tanggal` DATE NOT NULL,
+                  `jam_ke` INT(11) NOT NULL DEFAULT 0,
+                  `status` ENUM('H','S','I','A') NOT NULL DEFAULT 'H',
+                  `keterangan` VARCHAR(255) DEFAULT '',
+                  `dicatat_oleh` INT(11) UNSIGNED DEFAULT NULL,
+                  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  PRIMARY KEY (`id`),
+                  UNIQUE KEY `uk_absensi` (`student_id`,`tanggal`,`jam_ke`),
+                  KEY `idx_absensi_tanggal` (`tanggal`),
+                  KEY `idx_absensi_kelas` (`kelas_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            ");
+        } catch (PDOException $e) {
+            // Table may already exist
+        }
     }
 
     // Update DB migration version to target_version

@@ -44,11 +44,92 @@ switch ($action) {
 }
 
 /**
+ * Helper to merge consecutive periods of the same class and subject into 1 slot
+ */
+function mergeConsecutiveScheduleSlots($rawSchedules, $filledJurnals = []) {
+    if (empty($rawSchedules)) return [];
+
+    $merged = [];
+    $current = null;
+
+    foreach ($rawSchedules as $slot) {
+        $jam = (int)$slot['jam_ke'];
+
+        if ($current === null) {
+            $current = $slot;
+            $current['jam_list'] = [$jam];
+            $current['jam_start'] = $jam;
+            $current['jam_end'] = $jam;
+            $current['total_jp'] = 1;
+        } else {
+            $isSameClass = ($current['kelas_id'] == $slot['kelas_id']);
+            $isSameMapel = ($current['mapel_id'] == $slot['mapel_id']);
+            $isConsecutive = ($jam == $current['jam_end'] + 1);
+
+            if ($isSameClass && $isSameMapel && $isConsecutive) {
+                $current['jam_list'][] = $jam;
+                $current['jam_end'] = $jam;
+                $current['total_jp'] += 1;
+            } else {
+                $merged[] = finalizeMergedScheduleSlot($current, $filledJurnals);
+                $current = $slot;
+                $current['jam_list'] = [$jam];
+                $current['jam_start'] = $jam;
+                $current['jam_end'] = $jam;
+                $current['total_jp'] = 1;
+            }
+        }
+    }
+
+    if ($current !== null) {
+        $merged[] = finalizeMergedScheduleSlot($current, $filledJurnals);
+    }
+
+    return $merged;
+}
+
+function finalizeMergedScheduleSlot($slot, $filledJurnals = []) {
+    if (count($slot['jam_list']) > 1) {
+        $slot['jam_ke'] = $slot['jam_start'] . '-' . $slot['jam_end'];
+        $slot['nama_jam'] = 'Jam ke ' . $slot['jam_start'] . ' - ' . $slot['jam_end'];
+    } else {
+        $slot['jam_ke'] = (string)$slot['jam_start'];
+        $slot['nama_jam'] = 'Jam ke ' . $slot['jam_start'];
+    }
+
+    $slot['jurnal_filled'] = false;
+    $slot['jurnal_id'] = null;
+
+    foreach ($filledJurnals as $jr) {
+        if ($jr['kelas_id'] == $slot['kelas_id'] && $jr['mapel_id'] == $slot['mapel_id']) {
+            $jrJam = trim((string)$jr['jam_ke']);
+            if ($jrJam === $slot['jam_ke'] || in_array((int)$jrJam, $slot['jam_list'])) {
+                $slot['jurnal_filled'] = true;
+                $slot['jurnal_id'] = (int)$jr['id'];
+                break;
+            }
+            if (preg_match('/(\d+)\s*-\s*(\d+)/', $jrJam, $m)) {
+                $start = (int)$m[1];
+                $end = (int)$m[2];
+                foreach ($slot['jam_list'] as $jVal) {
+                    if ($jVal >= $start && $jVal <= $end) {
+                        $slot['jurnal_filled'] = true;
+                        $slot['jurnal_id'] = (int)$jr['id'];
+                        break 2;
+                    }
+                }
+            }
+        }
+    }
+
+    return $slot;
+}
+
+/**
  * Get today's schedule for the logged-in teacher
  */
 function getJadwalToday($user) {
     try {
-        // Map PHP day of week to Indonesian day names
         $dayMap = [
             1 => 'Senin',
             2 => 'Selasa',
@@ -59,16 +140,14 @@ function getJadwalToday($user) {
             7 => 'Minggu'
         ];
         
-        // Allow overriding the day via query parameter (for testing or viewing other days)
         $hariParam = isset($_GET['hari']) ? $_GET['hari'] : '';
         if (!empty($hariParam) && in_array($hariParam, $dayMap)) {
             $hariIni = $hariParam;
         } else {
-            $dayOfWeek = (int)date('N'); // 1=Monday, 7=Sunday
+            $dayOfWeek = (int)date('N');
             $hariIni = $dayMap[$dayOfWeek] ?? 'Senin';
         }
 
-        // Find sch_guru.id by matching kode_guru = users.username
         $stmtGuru = db()->prepare("SELECT id FROM sch_guru WHERE kode_guru = ?");
         $stmtGuru->execute([$user['username']]);
         $guru = $stmtGuru->fetch();
@@ -97,7 +176,7 @@ function getJadwalToday($user) {
             ORDER BY jb.jam_ke ASC
         ");
         $stmt->execute([$guru['id'], $hariIni]);
-        $jadwal = $stmt->fetchAll();
+        $rawJadwal = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         // Check which slots already have jurnal entries for today
         $today = isset($_GET['tanggal']) ? $_GET['tanggal'] : date('Y-m-d');
@@ -105,27 +184,15 @@ function getJadwalToday($user) {
         $yearId = $activeYear['id'] ?? 0;
 
         $stmtJurnal = db()->prepare("
-            SELECT jam_ke, kelas_id, mapel_id, id as jurnal_id
+            SELECT id, id as jurnal_id, jam_ke, kelas_id, mapel_id
             FROM acad_jurnal
             WHERE guru_id = ? AND tanggal = ? AND academic_year_id = ?
         ");
         $stmtJurnal->execute([$user['user_id'], $today, $yearId]);
-        $jurnalList = $stmtJurnal->fetchAll();
+        $jurnalList = $stmtJurnal->fetchAll(PDO::FETCH_ASSOC);
 
-        // Create a lookup map for filled journals
-        $jurnalMap = [];
-        foreach ($jurnalList as $jr) {
-            $key = $jr['kelas_id'] . '-' . $jr['mapel_id'] . '-' . $jr['jam_ke'];
-            $jurnalMap[$key] = $jr['jurnal_id'];
-        }
-
-        // Annotate jadwal with jurnal status
-        foreach ($jadwal as &$j) {
-            $key = $j['kelas_id'] . '-' . $j['mapel_id'] . '-' . $j['jam_ke'];
-            $j['jurnal_id'] = $jurnalMap[$key] ?? null;
-            $j['jurnal_filled'] = isset($jurnalMap[$key]);
-        }
-        unset($j);
+        // Merge consecutive schedules of same class & subject
+        $jadwal = mergeConsecutiveScheduleSlots($rawJadwal, $jurnalList);
 
         json_response(200, true, 'Data jadwal dimuat.', [
             'hari' => $hariIni,
@@ -143,7 +210,6 @@ function getJadwalToday($user) {
  */
 function getJadwalWeekly($user) {
     try {
-        // Find sch_guru.id
         $stmtGuru = db()->prepare("SELECT id FROM sch_guru WHERE kode_guru = ?");
         $stmtGuru->execute([$user['username']]);
         $guru = $stmtGuru->fetch();
@@ -176,16 +242,24 @@ function getJadwalWeekly($user) {
                 jb.jam_ke ASC
         ");
         $stmt->execute([$guru['id']]);
-        $allJadwal = $stmt->fetchAll();
+        $allJadwal = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         // Group by hari
-        $grouped = [];
+        $rawGrouped = [];
         $hariOrder = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
         foreach ($hariOrder as $h) {
-            $grouped[$h] = [];
+            $rawGrouped[$h] = [];
         }
         foreach ($allJadwal as $j) {
-            $grouped[$j['hari']][] = $j;
+            if (isset($rawGrouped[$j['hari']])) {
+                $rawGrouped[$j['hari']][] = $j;
+            }
+        }
+
+        // Merge consecutive slots for each day
+        $grouped = [];
+        foreach ($rawGrouped as $h => $slots) {
+            $grouped[$h] = mergeConsecutiveScheduleSlots($slots, []);
         }
 
         // Get total JP

@@ -51,6 +51,18 @@ switch ($action) {
     case 'meta':
         getJurnalMeta($user);
         break;
+    case 'students':
+        getStudentsByKelas($user);
+        break;
+    case 'wali_kelas_list':
+        listJurnalWaliKelas($user);
+        break;
+    case 'wali_kelas_rekap':
+        rekapAbsensiWaliKelas($user);
+        break;
+    case 'dashboard_stats':
+        getDashboardStats($user);
+        break;
     default:
         json_response(400, false, 'Action tidak valid.');
 }
@@ -116,9 +128,24 @@ function getJurnal($user) {
             WHERE j.id = ? AND j.guru_id = ?
         ");
         $stmt->execute([$id, $user['user_id']]);
-        $data = $stmt->fetch();
+        $data = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$data) json_response(404, false, 'Jurnal tidak ditemukan.');
+
+        // Get matching attendance from acad_absensi
+        $jam_ke_int = 0;
+        if (preg_match('/(\d+)/', $data['jam_ke'], $matches)) {
+            $jam_ke_int = (int)$matches[1];
+        }
+
+        $stmtAbs = db()->prepare("
+            SELECT student_id, status, keterangan 
+            FROM acad_absensi 
+            WHERE tanggal = ? AND kelas_id = ? AND jam_ke = ?
+        ");
+        $stmtAbs->execute([$data['tanggal'], $data['kelas_id'], $jam_ke_int]);
+        $data['absensi'] = $stmtAbs->fetchAll(PDO::FETCH_ASSOC);
+
         json_response(200, true, 'Data jurnal.', $data);
     } catch (PDOException $e) {
         json_response(500, false, 'Server error: ' . $e->getMessage());
@@ -145,7 +172,7 @@ function createJurnal($user) {
     $tp = isset($input['tujuan_pembelajaran']) ? trim($input['tujuan_pembelajaran']) : '';
     $iptp = isset($input['indikator_tp']) ? trim($input['indikator_tp']) : '';
     $catatan = isset($input['catatan']) ? trim($input['catatan']) : '';
-    $siswa_tidak_hadir = isset($input['siswa_tidak_hadir']) ? $input['siswa_tidak_hadir'] : '';
+    $absensi = isset($input['absensi']) ? $input['absensi'] : [];
 
     $active_year = get_active_academic_year();
     $year_id = $active_year['id'] ?? 0;
@@ -165,17 +192,79 @@ function createJurnal($user) {
             json_response(409, false, 'Jurnal untuk jadwal ini sudah pernah diisi.');
         }
 
+        // Compile absent list dynamically
+        $absent_list = [];
+        if (is_array($absensi) && count($absensi) > 0) {
+            $student_ids = array_column($absensi, 'student_id');
+            if (count($student_ids) > 0) {
+                $placeholders = implode(',', array_fill(0, count($student_ids), '?'));
+                $stmtSt = db()->prepare("SELECT id, nama FROM students WHERE id IN ($placeholders)");
+                $stmtSt->execute($student_ids);
+                $students_lookup = [];
+                while ($row = $stmtSt->fetch()) {
+                    $students_lookup[$row['id']] = $row['nama'];
+                }
+                
+                foreach ($absensi as $a) {
+                    $status = $a['status'] ?? 'H';
+                    if ($status !== 'H') {
+                        $name = $students_lookup[$a['student_id']] ?? '';
+                        if ($name !== '') {
+                            $status_label = ($status === 'S') ? 'Sakit' : (($status === 'I') ? 'Izin' : 'Alpa');
+                            $absent_list[] = "$name ($status_label)";
+                        }
+                    }
+                }
+            }
+        }
+        $siswa_tidak_hadir = count($absent_list) > 0 ? implode("\n", $absent_list) : 'Semua Hadir';
+
+        db()->beginTransaction();
+
         $stmt = db()->prepare("
             INSERT INTO acad_jurnal (guru_id, kelas_id, mapel_id, academic_year_id, tanggal, jam_ke, tujuan_pembelajaran, indikator_tp, catatan, siswa_tidak_hadir)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmt->execute([
-            $user['user_id'], $kelas_id, $mapel_id, $year_id, $tanggal, $jam_ke, $tp, $iptp, $catatan,
-            is_array($siswa_tidak_hadir) ? json_encode($siswa_tidak_hadir) : $siswa_tidak_hadir
+            $user['user_id'], $kelas_id, $mapel_id, $year_id, $tanggal, $jam_ke, $tp, $iptp, $catatan, $siswa_tidak_hadir
         ]);
 
-        json_response(201, true, 'Jurnal mengajar berhasil disimpan.', ['id' => db()->lastInsertId()]);
+        $jurnal_id = db()->lastInsertId();
+
+        // Save to acad_absensi (supports merged jam_ke like "2-3" or "1,2,3")
+        if (is_array($absensi) && count($absensi) > 0) {
+            $jams = [];
+            if (preg_match('/(\d+)\s*-\s*(\d+)/', $jam_ke, $matches)) {
+                for ($j = (int)$matches[1]; $j <= (int)$matches[2]; $j++) {
+                    $jams[] = $j;
+                }
+            } elseif (preg_match('/(\d+)/', $jam_ke, $matches)) {
+                $jams[] = (int)$matches[1];
+            }
+            if (empty($jams)) $jams = [0];
+            
+            foreach ($absensi as $a) {
+                $student_id = (int)($a['student_id'] ?? 0);
+                $status = in_array($a['status'] ?? 'H', ['H','S','I','A']) ? $a['status'] : 'H';
+                $keterangan = isset($a['keterangan']) ? trim($a['keterangan']) : '';
+                
+                if ($student_id > 0) {
+                    foreach ($jams as $jam_int) {
+                        $stmtAbs = db()->prepare("
+                            INSERT INTO acad_absensi (student_id, kelas_id, academic_year_id, tanggal, jam_ke, status, keterangan, dicatat_oleh)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            ON DUPLICATE KEY UPDATE status = VALUES(status), keterangan = VALUES(keterangan), dicatat_oleh = VALUES(dicatat_oleh)
+                        ");
+                        $stmtAbs->execute([$student_id, $kelas_id, $year_id, $tanggal, $jam_int, $status, $keterangan, $user['user_id']]);
+                    }
+                }
+            }
+        }
+
+        db()->commit();
+        json_response(201, true, 'Jurnal mengajar berhasil disimpan.', ['id' => $jurnal_id]);
     } catch (PDOException $e) {
+        db()->rollBack();
         json_response(500, false, 'Server error: ' . $e->getMessage());
     }
 }
@@ -192,9 +281,9 @@ function updateJurnal($user) {
 
     // Strict restriction: Can only edit today's journal
     try {
-        $stmtCheckDate = db()->prepare("SELECT tanggal FROM acad_jurnal WHERE id = ? AND guru_id = ?");
+        $stmtCheckDate = db()->prepare("SELECT tanggal, kelas_id, jam_ke FROM acad_jurnal WHERE id = ? AND guru_id = ?");
         $stmtCheckDate->execute([$id, $user['user_id']]);
-        $existingJurnal = $stmtCheckDate->fetch();
+        $existingJurnal = $stmtCheckDate->fetch(PDO::FETCH_ASSOC);
         if (!$existingJurnal) {
             json_response(404, false, 'Jurnal tidak ditemukan.');
         }
@@ -208,21 +297,84 @@ function updateJurnal($user) {
     $tp = isset($input['tujuan_pembelajaran']) ? trim($input['tujuan_pembelajaran']) : '';
     $iptp = isset($input['indikator_tp']) ? trim($input['indikator_tp']) : '';
     $catatan = isset($input['catatan']) ? trim($input['catatan']) : '';
-    $siswa_tidak_hadir = isset($input['siswa_tidak_hadir']) ? $input['siswa_tidak_hadir'] : '';
+    $absensi = isset($input['absensi']) ? $input['absensi'] : [];
 
     try {
+        // Compile absent list dynamically
+        $absent_list = [];
+        if (is_array($absensi) && count($absensi) > 0) {
+            $student_ids = array_column($absensi, 'student_id');
+            if (count($student_ids) > 0) {
+                $placeholders = implode(',', array_fill(0, count($student_ids), '?'));
+                $stmtSt = db()->prepare("SELECT id, nama FROM students WHERE id IN ($placeholders)");
+                $stmtSt->execute($student_ids);
+                $students_lookup = [];
+                while ($row = $stmtSt->fetch()) {
+                    $students_lookup[$row['id']] = $row['nama'];
+                }
+                
+                foreach ($absensi as $a) {
+                    $status = $a['status'] ?? 'H';
+                    if ($status !== 'H') {
+                        $name = $students_lookup[$a['student_id']] ?? '';
+                        if ($name !== '') {
+                            $status_label = ($status === 'S') ? 'Sakit' : (($status === 'I') ? 'Izin' : 'Alpa');
+                            $absent_list[] = "$name ($status_label)";
+                        }
+                    }
+                }
+            }
+        }
+        $siswa_tidak_hadir = count($absent_list) > 0 ? implode("\n", $absent_list) : 'Semua Hadir';
+
+        db()->beginTransaction();
+
         $stmt = db()->prepare("
             UPDATE acad_jurnal SET tujuan_pembelajaran = ?, indikator_tp = ?, catatan = ?, siswa_tidak_hadir = ?
             WHERE id = ? AND guru_id = ?
         ");
         $stmt->execute([
-            $tp, $iptp, $catatan,
-            is_array($siswa_tidak_hadir) ? json_encode($siswa_tidak_hadir) : $siswa_tidak_hadir,
-            $id, $user['user_id']
+            $tp, $iptp, $catatan, $siswa_tidak_hadir, $id, $user['user_id']
         ]);
 
+        // Save to acad_absensi (supports merged jam_ke like "2-3")
+        if (is_array($absensi) && count($absensi) > 0) {
+            $jams = [];
+            $jam_str = $existingJurnal['jam_ke'] ?? '';
+            if (preg_match('/(\d+)\s*-\s*(\d+)/', $jam_str, $matches)) {
+                for ($j = (int)$matches[1]; $j <= (int)$matches[2]; $j++) {
+                    $jams[] = $j;
+                }
+            } elseif (preg_match('/(\d+)/', $jam_str, $matches)) {
+                $jams[] = (int)$matches[1];
+            }
+            if (empty($jams)) $jams = [0];
+            
+            $active_year = get_active_academic_year();
+            $year_id = $active_year['id'] ?? 0;
+            
+            foreach ($absensi as $a) {
+                $student_id = (int)($a['student_id'] ?? 0);
+                $status = in_array($a['status'] ?? 'H', ['H','S','I','A']) ? $a['status'] : 'H';
+                $keterangan = isset($a['keterangan']) ? trim($a['keterangan']) : '';
+                
+                if ($student_id > 0) {
+                    foreach ($jams as $jam_int) {
+                        $stmtAbs = db()->prepare("
+                            INSERT INTO acad_absensi (student_id, kelas_id, academic_year_id, tanggal, jam_ke, status, keterangan, dicatat_oleh)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            ON DUPLICATE KEY UPDATE status = VALUES(status), keterangan = VALUES(keterangan), dicatat_oleh = VALUES(dicatat_oleh)
+                        ");
+                        $stmtAbs->execute([$student_id, $existingJurnal['kelas_id'], $year_id, $existingJurnal['tanggal'], $jam_int, $status, $keterangan, $user['user_id']]);
+                    }
+                }
+            }
+        }
+
+        db()->commit();
         json_response(200, true, 'Jurnal berhasil diperbarui.');
     } catch (PDOException $e) {
+        db()->rollBack();
         json_response(500, false, 'Server error: ' . $e->getMessage());
     }
 }
@@ -305,6 +457,378 @@ function getJurnalMeta($user) {
             'classes' => $classes,
             'subjects' => $subjects,
             'students' => $students
+        ]);
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Get students list of a class (used inside mobile Jurnal form modal)
+ */
+function getStudentsByKelas($user) {
+    $kelas_id = isset($_GET['kelas_id']) ? (int)$_GET['kelas_id'] : 0;
+    if ($kelas_id <= 0) json_response(400, false, 'Kelas wajib dipilih.');
+
+    try {
+        // Resolve class name
+        $stmtK = db()->prepare("SELECT nama_kelas FROM sch_kelas WHERE id = ?");
+        $stmtK->execute([$kelas_id]);
+        $kelas = $stmtK->fetch(PDO::FETCH_ASSOC);
+        if (!$kelas) json_response(404, false, 'Kelas tidak ditemukan.');
+
+        $stmt = db()->prepare("SELECT id, nis, nama FROM students WHERE kelas = ? AND status = 1 ORDER BY nama");
+        $stmt->execute([$kelas['nama_kelas']]);
+        $students = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        json_response(200, true, 'Daftar siswa berhasil dimuat.', $students);
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
+/**
+ * List journals filled by teachers in the homeroom teacher's class
+ */
+function listJurnalWaliKelas($user) {
+    try {
+        // Find homeroom class reference
+        $stmtW = db()->prepare("SELECT id, tingkat, nama_kelas FROM ref_kelas WHERE wali_kelas_id = ? LIMIT 1");
+        $stmtW->execute([$user['user_id']]);
+        $wali = $stmtW->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$wali) {
+            json_response(403, false, 'Akses ditolak. Anda bukan wali kelas.');
+        }
+
+        // Resolve matching class ID inside sch_kelas (since journal references sch_kelas.id)
+        $stmtSK = db()->prepare("SELECT id FROM sch_kelas WHERE nama_kelas = ? LIMIT 1");
+        $stmtSK->execute([$wali['nama_kelas']]);
+        $sch_kelas = $stmtSK->fetch(PDO::FETCH_ASSOC);
+        $sch_kelas_id = $sch_kelas['id'] ?? 0;
+
+        if (!$sch_kelas_id) {
+            json_response(200, true, 'Data jurnal kosong (Kelas belum memiliki jadwal).', [
+                'class_name' => $wali['nama_kelas'],
+                'journals' => []
+            ]);
+            return;
+        }
+
+        $active_year = get_active_academic_year();
+        $year_id = $active_year['id'] ?? 0;
+        $tanggal = isset($_GET['tanggal']) ? $_GET['tanggal'] : date('Y-m-d');
+        $tanggal_akhir = isset($_GET['tanggal_akhir']) ? $_GET['tanggal_akhir'] : '';
+
+        $where = "j.academic_year_id = ? AND j.kelas_id = ?";
+        $params = [$year_id, $sch_kelas_id];
+
+        if (!empty($tanggal_akhir)) {
+            $where .= " AND j.tanggal BETWEEN ? AND ?";
+            $params[] = $tanggal;
+            $params[] = $tanggal_akhir;
+        } else {
+            $where .= " AND j.tanggal = ?";
+            $params[] = $tanggal;
+        }
+
+        $stmt = db()->prepare("
+            SELECT j.*, k.nama_kelas, m.nama_mapel, u.nama_lengkap as nama_guru
+            FROM acad_jurnal j
+            JOIN sch_kelas k ON j.kelas_id = k.id
+            JOIN sch_mapel m ON j.mapel_id = m.id
+            LEFT JOIN users u ON j.guru_id = u.id
+            WHERE $where
+            ORDER BY j.tanggal DESC, j.jam_ke ASC
+        ");
+        $stmt->execute($params);
+        $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        json_response(200, true, 'Jurnal kelas berhasil dimuat.', [
+            'class_name' => $wali['nama_kelas'],
+            'journals' => $data
+        ]);
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Fetch attendance stats percentage for homeroom class students
+ */
+function rekapAbsensiWaliKelas($user) {
+    try {
+        // Resolve homeroom class reference
+        $stmtW = db()->prepare("SELECT id, tingkat, nama_kelas FROM ref_kelas WHERE wali_kelas_id = ? LIMIT 1");
+        $stmtW->execute([$user['user_id']]);
+        $wali = $stmtW->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$wali) {
+            json_response(403, false, 'Akses ditolak. Anda bukan wali kelas.');
+        }
+
+        $className = $wali['nama_kelas'];
+        
+        // Find matching class ID in sch_kelas
+        $stmtSK = db()->prepare("SELECT id FROM sch_kelas WHERE nama_kelas = ? LIMIT 1");
+        $stmtSK->execute([$className]);
+        $sch_kelas = $stmtSK->fetch(PDO::FETCH_ASSOC);
+        $sch_kelas_id = $sch_kelas['id'] ?? 0;
+
+        $active_year = get_active_academic_year();
+        $year_id = $active_year['id'] ?? 0;
+
+        // Get all active students in this class
+        $stmtS = db()->prepare("SELECT id, nis, nama FROM students WHERE kelas = ? AND status = 1 ORDER BY nama");
+        $stmtS->execute([$className]);
+        $students = $stmtS->fetchAll(PDO::FETCH_ASSOC);
+
+        // Fetch attendance stats
+        $stats = [];
+        if ($sch_kelas_id > 0) {
+            $stmtA = db()->prepare("
+                SELECT student_id,
+                       SUM(CASE WHEN status = 'H' THEN 1 ELSE 0 END) as hadir,
+                       SUM(CASE WHEN status = 'S' THEN 1 ELSE 0 END) as sakit,
+                       SUM(CASE WHEN status = 'I' THEN 1 ELSE 0 END) as izin,
+                       SUM(CASE WHEN status = 'A' THEN 1 ELSE 0 END) as alpha,
+                       COUNT(*) as total
+                FROM acad_absensi
+                WHERE kelas_id = ? AND academic_year_id = ?
+                GROUP BY student_id
+            ");
+            $stmtA->execute([$sch_kelas_id, $year_id]);
+            while ($row = $stmtA->fetch(PDO::FETCH_ASSOC)) {
+                $stats[$row['student_id']] = $row;
+            }
+        }
+
+        // Merge and calculate percentage
+        $result = [];
+        foreach ($students as $s) {
+            $st = $stats[$s['id']] ?? ['hadir' => 0, 'sakit' => 0, 'izin' => 0, 'alpha' => 0, 'total' => 0];
+            
+            $hadir = (int)$st['hadir'];
+            $sakit = (int)$st['sakit'];
+            $izin = (int)$st['izin'];
+            $alpha = (int)$st['alpha'];
+            $total = (int)$st['total'];
+            
+            $persentase = ($total > 0) ? round(($hadir / $total) * 100, 1) : 100.0;
+            
+            $result[] = [
+                'student_id' => $s['id'],
+                'nis' => $s['nis'],
+                'nama' => $s['nama'],
+                'stats' => [
+                    'hadir' => $hadir,
+                    'sakit' => $sakit,
+                    'izin' => $izin,
+                    'alpha' => $alpha,
+                    'total' => $total,
+                    'persentase' => $persentase
+                ]
+            ];
+        }
+
+        json_response(200, true, 'Rekap absensi kelas berhasil dimuat.', [
+            'class_name' => $className,
+            'students' => $result
+        ]);
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Helper to merge consecutive periods of the same class and subject into 1 slot
+ */
+function mergeConsecutiveScheduleSlots($rawSchedules, $filledJurnals = []) {
+    if (empty($rawSchedules)) return [];
+
+    $merged = [];
+    $current = null;
+
+    foreach ($rawSchedules as $slot) {
+        $jam = (int)$slot['jam_ke'];
+
+        if ($current === null) {
+            $current = $slot;
+            $current['jam_list'] = [$jam];
+            $current['jam_start'] = $jam;
+            $current['jam_end'] = $jam;
+            $current['total_jp'] = 1;
+        } else {
+            $isSameClass = ($current['kelas_id'] == $slot['kelas_id']);
+            $isSameMapel = ($current['mapel_id'] == $slot['mapel_id']);
+            $isConsecutive = ($jam == $current['jam_end'] + 1);
+
+            if ($isSameClass && $isSameMapel && $isConsecutive) {
+                $current['jam_list'][] = $jam;
+                $current['jam_end'] = $jam;
+                $current['total_jp'] += 1;
+            } else {
+                $merged[] = finalizeMergedScheduleSlot($current, $filledJurnals);
+                $current = $slot;
+                $current['jam_list'] = [$jam];
+                $current['jam_start'] = $jam;
+                $current['jam_end'] = $jam;
+                $current['total_jp'] = 1;
+            }
+        }
+    }
+
+    if ($current !== null) {
+        $merged[] = finalizeMergedScheduleSlot($current, $filledJurnals);
+    }
+
+    return $merged;
+}
+
+function finalizeMergedScheduleSlot($slot, $filledJurnals = []) {
+    if (count($slot['jam_list']) > 1) {
+        $slot['jam_ke'] = $slot['jam_start'] . '-' . $slot['jam_end'];
+        $slot['nama_jam'] = 'Jam ke ' . $slot['jam_start'] . ' - ' . $slot['jam_end'];
+    } else {
+        $slot['jam_ke'] = (string)$slot['jam_start'];
+        $slot['nama_jam'] = 'Jam ke ' . $slot['jam_start'];
+    }
+
+    $slot['jurnal_filled'] = false;
+    $slot['jurnal_id'] = null;
+
+    foreach ($filledJurnals as $jr) {
+        if ($jr['kelas_id'] == $slot['kelas_id'] && $jr['mapel_id'] == $slot['mapel_id']) {
+            $jrJam = trim((string)$jr['jam_ke']);
+            if ($jrJam === $slot['jam_ke'] || in_array((int)$jrJam, $slot['jam_list'])) {
+                $slot['jurnal_filled'] = true;
+                $slot['jurnal_id'] = (int)$jr['id'];
+                break;
+            }
+            if (preg_match('/(\d+)\s*-\s*(\d+)/', $jrJam, $m)) {
+                $start = (int)$m[1];
+                $end = (int)$m[2];
+                foreach ($slot['jam_list'] as $jVal) {
+                    if ($jVal >= $start && $jVal <= $end) {
+                        $slot['jurnal_filled'] = true;
+                        $slot['jurnal_id'] = (int)$jr['id'];
+                        break 2;
+                    }
+                }
+            }
+        }
+    }
+
+    return $slot;
+}
+
+/**
+ * Fetch stats for the modern teacher dashboard
+ */
+function getDashboardStats($user) {
+    try {
+        $active_year = get_active_academic_year();
+        $year_id = $active_year['id'] ?? 0;
+        $tanggalIni = date('Y-m-d');
+
+        // 1. Get today's teaching schedules
+        $dayMap = [1 => 'Senin', 2 => 'Selasa', 3 => 'Rabu', 4 => 'Kamis', 5 => 'Jumat', 6 => 'Sabtu', 7 => 'Minggu'];
+        $dayOfWeek = (int)date('N'); // 1=Monday, 7=Sunday
+        $hariIni = $dayMap[$dayOfWeek] ?? 'Senin';
+
+        // Find sch_guru.id
+        $stmtGuru = db()->prepare("SELECT id FROM sch_guru WHERE kode_guru = ?");
+        $stmtGuru->execute([$user['username']]);
+        $guru = $stmtGuru->fetch();
+        $schedules = [];
+
+        if ($guru) {
+            $stmt = db()->prepare("
+                SELECT j.id as jadwal_id,
+                       k.id as kelas_id, k.nama_kelas,
+                       jb.hari, jb.jam_ke, jb.tipe, jb.nama_jam,
+                       m.id as mapel_id, m.nama_mapel, m.kode_mapel,
+                       d.jp
+                FROM sch_jadwal j
+                JOIN sch_kelas k ON j.kelas_id = k.id
+                JOIN sch_jam_belajar jb ON j.jam_belajar_id = jb.id
+                JOIN sch_distribusi d ON j.distribusi_id = d.id
+                JOIN sch_mapel m ON d.mapel_id = m.id
+                WHERE d.guru_id = ? AND jb.hari = ?
+                ORDER BY jb.jam_ke ASC
+            ");
+            $stmt->execute([$guru['id'], $hariIni]);
+            $rawSchedules = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Fetch today's journals
+            $stmtJurnal = db()->prepare("
+                SELECT jam_ke, kelas_id, mapel_id, id
+                FROM acad_jurnal
+                WHERE guru_id = ? AND tanggal = ? AND academic_year_id = ?
+            ");
+            $stmtJurnal->execute([$user['user_id'], $tanggalIni, $year_id]);
+            $filledJurnals = $stmtJurnal->fetchAll(PDO::FETCH_ASSOC);
+
+            $schedules = mergeConsecutiveScheduleSlots($rawSchedules, $filledJurnals);
+        }
+
+        // 2. Wali Kelas Stats
+        $waliStats = null;
+        $stmtW = db()->prepare("SELECT id, tingkat, nama_kelas FROM ref_kelas WHERE wali_kelas_id = ? LIMIT 1");
+        $stmtW->execute([$user['user_id']]);
+        $wali = $stmtW->fetch(PDO::FETCH_ASSOC);
+        
+        if ($wali) {
+            $className = $wali['nama_kelas'];
+            
+            // Get total active students in class
+            $stmtTotalS = db()->prepare("SELECT COUNT(*) FROM students WHERE kelas = ? AND status = 1");
+            $stmtTotalS->execute([$className]);
+            $totalStudents = (int)$stmtTotalS->fetchColumn();
+
+            // Resolve class ID
+            $stmtSK = db()->prepare("SELECT id FROM sch_kelas WHERE nama_kelas = ? LIMIT 1");
+            $stmtSK->execute([$className]);
+            $sch_kelas_id = (int)($stmtSK->fetchColumn() ?? 0);
+
+            // Get how many students are marked as absent today
+            $stmtAbsent = db()->prepare("
+                SELECT COUNT(*) 
+                FROM acad_absensi 
+                WHERE kelas_id = ? AND tanggal = ? AND status IN ('S', 'I', 'A')
+            ");
+            $stmtAbsent->execute([$sch_kelas_id, $tanggalIni]);
+            $absentCount = (int)$stmtAbsent->fetchColumn();
+            
+            $presentCount = max(0, $totalStudents - $absentCount);
+            $attendanceRate = ($totalStudents > 0) ? round(($presentCount / $totalStudents) * 100) : 100;
+
+            $waliStats = [
+                'class_name' => $className,
+                'total_students' => $totalStudents,
+                'present_students' => $presentCount,
+                'absent_students' => $absentCount,
+                'attendance_rate' => $attendanceRate
+            ];
+        }
+
+        // 3. Recent journals (last 3 entries)
+        $stmtRecent = db()->prepare("
+            SELECT j.*, k.nama_kelas, m.nama_mapel
+            FROM acad_jurnal j
+            JOIN sch_kelas k ON j.kelas_id = k.id
+            JOIN sch_mapel m ON j.mapel_id = m.id
+            WHERE j.guru_id = ?
+            ORDER BY j.tanggal DESC, j.jam_ke DESC
+            LIMIT 3
+        ");
+        $stmtRecent->execute([$user['user_id']]);
+        $recentJournals = $stmtRecent->fetchAll(PDO::FETCH_ASSOC);
+
+        json_response(200, true, 'Dashboard stats.', [
+            'schedules' => $schedules,
+            'wali_stats' => $waliStats,
+            'recent_journals' => $recentJournals
         ]);
     } catch (PDOException $e) {
         json_response(500, false, 'Server error: ' . $e->getMessage());

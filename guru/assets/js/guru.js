@@ -227,6 +227,12 @@
             const content = $('#appContent');
             if (!content) return;
 
+            // Header visibility: On home page, hide the top sticky header so there's no duplicate header
+            const header = $('.app-header');
+            if (header) {
+                header.style.display = (page === 'home' || !page) ? 'none' : 'flex';
+            }
+
             // Update bottom nav
             $$('.bottom-nav-item').forEach(btn => {
                 btn.classList.toggle('active', btn.dataset.page === page);
@@ -247,6 +253,9 @@
                     break;
                 case 'riwayat':
                     Pages.renderRiwayat();
+                    break;
+                case 'jurnal-kelas':
+                    Pages.renderJurnalKelas();
                     break;
                 case 'profil':
                     Pages.renderProfil();
@@ -303,6 +312,7 @@
                     if (loginPage) loginPage.style.display = 'none';
                     if (appShell) appShell.style.display = 'flex';
                     App.updateHeader();
+                    App.updateWaliNav();
                     Router.navigate('home');
                 } else {
                     errorEl.textContent = res.message || 'Login gagal.';
@@ -324,83 +334,170 @@
 
             content.innerHTML = `
                 <div class="page-enter">
+                    <!-- Curved Gradient Header Block (mimicking Reference Image) -->
+                    <div class="welcome-header-block" style="background: var(--primary-gradient); color: white; padding: 24px 20px 30px; border-radius: 0 0 28px 28px; margin: -20px -16px 20px; box-shadow: 0 10px 25px -5px rgba(21, 101, 192, 0.25); position: relative; overflow: hidden;">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <div style="display:flex; align-items:center; gap:12px;">
+                                <div class="welcome-avatar" style="width:48px; height:48px; border-radius:50%; border:2px solid white; background:#fff; color:var(--primary); display:flex; align-items:center; justify-content:center; font-family:var(--font-heading); font-size:1.15rem; font-weight:800; overflow:hidden; flex-shrink:0;">
+                                    ${Auth.user?.avatar 
+                                        ? `<img src="${BASE_URL}${Auth.user.avatar}" alt="Avatar" style="width:100%; height:100%; object-fit:cover;">` 
+                                        : getInitials(Auth.user?.nama_lengkap)
+                                    }
+                                </div>
+                                <div>
+                                    <div style="font-size:0.75rem; opacity:0.8; font-weight:500;">Assalamu'alaikum,</div>
+                                    <div style="font-family:var(--font-heading); font-size:1.05rem; font-weight:800; line-height:1.2;">${escapeHtml(Auth.user?.nama_lengkap || 'Guru')}</div>
+                                    <div style="font-size:0.7rem; opacity:0.75; font-weight:600; margin-top:2px;">
+                                        ${Auth.user?.wali_kelas ? `Wali Kelas ${escapeHtml(Auth.user.wali_kelas.nama_kelas)}` : 'Tenaga Pendidik'}
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="display:flex; gap:10px;">
+                                <div class="welcome-icon-btn" style="width:36px; height:36px; border-radius:50%; background:rgba(255,255,255,0.15); display:flex; align-items:center; justify-content:center; position:relative;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                                    <span style="position:absolute; top:8px; right:8px; width:7px; height:7px; background:#ef4444; border-radius:50%; border:1px solid white;"></span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Selamat Pagi Card banner -->
+                        <div class="welcome-banner-hero" style="background:rgba(255,255,255,0.08); border-radius:16px; margin-top:20px; padding:16px; display:flex; justify-content:space-between; align-items:center; border:1px solid rgba(255,255,255,0.12);">
+                            <div>
+                                <div style="font-size:0.75rem; font-weight:700; opacity:0.95; color:#fff;">${formatTanggal(tanggalIni)}</div>
+                                <div style="font-family:var(--font-heading); font-size:1.25rem; font-weight:800; margin-top:2px;">Selamat Hari Ini!</div>
+                                <div style="font-size:0.75rem; opacity:0.85; margin-top:2px;">Semangat menginspirasi hari ini ☀️</div>
+                            </div>
+                            <div style="font-size:2.2rem; opacity:0.95; padding-right:4px;">📚</div>
+                        </div>
+                        <div class="welcome-hero-decoration" style="position: absolute; right: -20px; bottom: -30px; width: 120px; height: 120px; border-radius: 50%; background: rgba(255, 255, 255, 0.04); pointer-events: none;"></div>
+                    </div>
+
+                    <!-- Menu Cepat (Quick Shortcuts) -->
                     <div class="section-title">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                        Hari Ini — ${hariIni}
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                        Menu Cepat
                     </div>
-                    <p class="section-subtitle">${formatTanggal(tanggalIni)}</p>
-
-                    <div class="stats-grid" id="homeStats">
-                        <div class="skeleton skeleton-stat"></div>
-                        <div class="skeleton skeleton-stat"></div>
-                        <div class="skeleton skeleton-stat"></div>
-                        <div class="skeleton skeleton-stat"></div>
+                    <div class="quick-shortcuts-grid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:20px;">
+                        <div class="shortcut-card" onclick="location.hash='#/jadwal'" style="background:white; border-radius:16px; padding:14px 10px; text-align:center; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px; transition:transform 0.2s ease;">
+                            <div style="width:40px; height:40px; border-radius:12px; background:rgba(59,130,246,0.1); color:#3b82f6; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                            </div>
+                            <span style="font-size:0.75rem; font-weight:700; color:var(--text-primary);">Jadwal</span>
+                        </div>
+                        <div class="shortcut-card" onclick="location.hash='#/riwayat'" style="background:white; border-radius:16px; padding:14px 10px; text-align:center; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px; transition:transform 0.2s ease;">
+                            <div style="width:40px; height:40px; border-radius:12px; background:rgba(16,185,129,0.1); color:#10b981; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            </div>
+                            <span style="font-size:0.75rem; font-weight:700; color:var(--text-primary);">Riwayat</span>
+                        </div>
+                        ${Auth.user?.wali_kelas ? `
+                            <div class="shortcut-card" onclick="location.hash='#/jurnal-kelas'" style="background:white; border-radius:16px; padding:14px 10px; text-align:center; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px; transition:transform 0.2s ease;">
+                                <div style="width:40px; height:40px; border-radius:12px; background:rgba(245,158,11,0.1); color:#f59e0b; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                                </div>
+                                <span style="font-size:0.75rem; font-weight:700; color:var(--text-primary);">Jurnal Kelas</span>
+                            </div>
+                        ` : `
+                            <div class="shortcut-card" onclick="location.hash='#/profil'" style="background:white; border-radius:16px; padding:14px 10px; text-align:center; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px; transition:transform 0.2s ease;">
+                                <div style="width:40px; height:40px; border-radius:12px; background:rgba(139,92,246,0.1); color:#8b5cf6; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                                </div>
+                                <span style="font-size:0.75rem; font-weight:700; color:var(--text-primary);">Profil</span>
+                            </div>
+                        `}
                     </div>
 
-                    <div class="section-title mt-2">
+                    <!-- Ringkasan Absensi Kelas (Mimicking Reference Image 2) -->
+                    <div id="homeWaliAbsenSummary"></div>
+
+                    <!-- Jadwal Mengajar Hari Ini -->
+                    <div class="section-title">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                         Jadwal Hari Ini
                     </div>
-                    <div id="homeTodaySchedule">
-                        <div class="skeleton skeleton-card"></div>
-                        <div class="skeleton skeleton-card"></div>
-                        <div class="skeleton skeleton-card"></div>
+                    <div id="homeTodaySchedule" style="margin-bottom:20px;">
+                        <div class="skeleton skeleton-card" style="height:60px; margin-bottom:8px;"></div>
+                        <div class="skeleton skeleton-card" style="height:60px; margin-bottom:8px;"></div>
+                    </div>
+
+                    <!-- Jurnal Terbaru -->
+                    <div class="section-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                        Jurnal Terbaru
+                    </div>
+                    <div id="homeRecentJournals">
+                        <div class="skeleton skeleton-card" style="height:70px; margin-bottom:8px;"></div>
                     </div>
                 </div>
             `;
 
             try {
-                const res = await API.get(`api/jadwal.php?action=today&tanggal=${tanggalIni}`);
+                const res = await API.get(`api/jurnal.php?action=dashboard_stats`);
                 if (res.success) {
-                    const jadwal = res.data.jadwal || [];
-                    const filled = jadwal.filter(j => j.jurnal_filled).length;
-                    const total = jadwal.length;
-                    const pending = total - filled;
+                    const schedules = res.data.schedules || [];
+                    const wali = res.data.wali_stats;
+                    const recents = res.data.recent_journals || [];
 
-                    $('#homeStats').innerHTML = `
-                        <div class="stat-card">
-                            <div class="stat-card-icon blue">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                            </div>
-                            <div class="stat-card-value">${total}</div>
-                            <div class="stat-card-label">Jadwal Hari Ini</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-card-icon green">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                            </div>
-                            <div class="stat-card-value">${filled}</div>
-                            <div class="stat-card-label">Jurnal Diisi</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-card-icon yellow">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                            </div>
-                            <div class="stat-card-value">${pending}</div>
-                            <div class="stat-card-label">Belum Diisi</div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-card-icon ${total > 0 ? (filled === total ? 'green' : 'red') : 'blue'}">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-                            </div>
-                            <div class="stat-card-value">${total > 0 ? Math.round((filled / total) * 100) : 0}%</div>
-                            <div class="stat-card-label">Progress</div>
-                        </div>
-                    `;
+                    // Render Wali Kelas stats if applicable
+                    const waliContainer = $('#homeWaliAbsenSummary');
+                    if (wali && waliContainer) {
+                        let color = '#10b981';
+                        if (wali.attendance_rate < 85) color = '#ef4444';
+                        else if (wali.attendance_rate < 95) color = '#f59e0b';
 
-                    this.renderScheduleSlots('#homeTodaySchedule', jadwal, true);
+                        waliContainer.innerHTML = `
+                            <div class="section-title">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                                Ringkasan Absensi Kelas
+                            </div>
+                            <div class="attendance-summary-card" style="background:white; border-radius:16px; padding:16px; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; position:relative; overflow:hidden;">
+                                <div style="flex:1; z-index:2;">
+                                    <div style="font-size:0.75rem; font-weight:700; color:var(--text-secondary); margin-bottom:2px;">Kelas ${escapeHtml(wali.class_name)}</div>
+                                    <div style="font-family:var(--font-heading); font-size:1.375rem; font-weight:800; color:var(--text-primary); margin-bottom:4px;">
+                                        ${wali.present_students} <span style="font-size:0.875rem; font-weight:600; color:var(--text-secondary);">/ ${wali.total_students} Siswa Hadir</span>
+                                    </div>
+                                    <div class="student-rekap-bar-bg" style="margin-bottom:6px; height:6px;">
+                                        <div class="student-rekap-bar-fill" style="width: ${wali.attendance_rate}%; background-color: ${color};"></div>
+                                    </div>
+                                    <div style="font-size:0.75rem; font-weight:700; color:${color};">${wali.attendance_rate}% Kehadiran</div>
+                                </div>
+                                <div style="font-size:2.5rem; opacity:0.85; margin-left:16px; z-index:2; filter:hue-rotate(200deg);">📋</div>
+                            </div>
+                        `;
+                    }
+
+                    // Render Schedule
+                    this.renderScheduleSlots('#homeTodaySchedule', schedules, true);
+
+                    // Render Recent Journals
+                    const recentContainer = $('#homeRecentJournals');
+                    if (recentContainer) {
+                        if (recents.length === 0) {
+                            recentContainer.innerHTML = '<div class="text-center text-muted text-sm py-3" style="background:white; border-radius:16px; border:1.5px solid #f1f5f9; padding:20px;">Belum ada jurnal yang diisi.</div>';
+                        } else {
+                            recentContainer.innerHTML = recents.map(r => `
+                                <div class="recent-jurnal-card" onclick="GuruApp.viewJurnal(${r.id})" style="background:white; border-radius:16px; padding:14px 16px; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; margin-bottom:10px; display:flex; flex-direction:column; gap:8px; cursor:pointer; position:relative; transition:all 0.2s ease;">
+                                    <div style="display:flex; justify-content:space-between; align-items:start;">
+                                        <div style="font-family:var(--font-heading); font-size:0.875rem; font-weight:800; color:var(--text-primary);">${escapeHtml(r.nama_mapel)}</div>
+                                        <span class="badge badge-primary">Jam ke-${escapeHtml(r.jam_ke)}</span>
+                                    </div>
+                                    <div style="font-size:0.75rem; color:var(--text-muted); font-weight:500; display:flex; align-items:center; gap:4px; margin-top:-4px;">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                        ${formatTanggal(r.tanggal)} — Kelas ${escapeHtml(r.nama_kelas)}
+                                    </div>
+                                    ${r.tujuan_pembelajaran ? `
+                                        <div style="background:var(--bg-light); padding:8px 10px; border-radius:8px; font-size:0.75rem; color:var(--text-secondary); white-space:nowrap; text-overflow:ellipsis; overflow:hidden;">
+                                            <strong>TP:</strong> ${escapeHtml(r.tujuan_pembelajaran)}
+                                        </div>
+                                    ` : ''}
+                                </div>
+                            `).join('');
+                        }
+                    }
                 }
             } catch(e) {
-                $('#homeTodaySchedule').innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                        </div>
-                        <div class="empty-state-title">Gagal Memuat</div>
-                        <div class="empty-state-desc">Tidak dapat terhubung ke server.</div>
-                    </div>
-                `;
-                $('#homeStats').innerHTML = '';
+                console.error(e);
+                $('#homeTodaySchedule').innerHTML = '<div class="text-center text-danger text-sm py-3">Gagal memuat dashboard.</div>';
             }
         },
 
@@ -632,9 +729,15 @@
                         </div>
 
                         <div class="form-group">
-                            <label class="form-label">Siswa Tidak Hadir</label>
-                            <textarea class="form-textarea" id="jurnalSiswaTidakHadir" placeholder="Nama siswa yang tidak hadir, pisahkan dengan baris baru..." style="min-height:70px;">${escapeHtml(existing?.siswa_tidak_hadir || '')}</textarea>
-                            <div class="form-hint">Satu nama per baris</div>
+                            <label class="form-label" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                <span>Absensi Siswa</span>
+                                <span class="text-xs text-muted" id="absentSummary" style="font-weight:700;">Semua Siswa Hadir</span>
+                            </label>
+                            <div class="student-abs-list" id="jurnalAbsensiSiswa">
+                                <div class="skeleton skeleton-card" style="height:50px; margin-bottom:8px;"></div>
+                                <div class="skeleton skeleton-card" style="height:50px; margin-bottom:8px;"></div>
+                                <div class="skeleton skeleton-card" style="height:50px; margin-bottom:8px;"></div>
+                            </div>
                         </div>
                     </div>
                     <div class="guru-modal-footer">
@@ -648,6 +751,99 @@
 
             document.body.appendChild(overlay);
 
+            // Fetch students list
+            try {
+                const res = await API.get(`api/jurnal.php?action=students&kelas_id=${jadwalData.kelas_id}`);
+                const listContainer = $('#jurnalAbsensiSiswa');
+                if (res.success && listContainer) {
+                    const students = res.data || [];
+                    if (students.length === 0) {
+                        listContainer.innerHTML = '<div class="text-center text-muted text-sm py-3">Tidak ada data siswa di kelas ini.</div>';
+                    } else {
+                        // Map existing absensi if editing
+                        const existingAbsMap = {};
+                        if (existing && existing.absensi) {
+                            existing.absensi.forEach(a => {
+                                existingAbsMap[a.student_id] = a.status;
+                            });
+                        }
+
+                        listContainer.innerHTML = students.map(s => {
+                            const curStatus = existingAbsMap[s.id] || 'H';
+                            const activeClass = curStatus !== 'H' ? 'has-absent' : '';
+                            return `
+                                <div class="student-abs-row ${activeClass}" data-student-id="${s.id}" id="studRow_${s.id}">
+                                    <div class="student-abs-info">
+                                        <div class="student-abs-name">${escapeHtml(s.nama)}</div>
+                                        <div class="student-abs-nis">NIS: ${escapeHtml(s.nis || '-')}</div>
+                                    </div>
+                                    <div class="abs-pills" data-student-id="${s.id}">
+                                        <span class="abs-pill ${curStatus === 'H' ? 'active' : ''}" data-status="H">H</span>
+                                        <span class="abs-pill ${curStatus === 'S' ? 'active' : ''}" data-status="S">S</span>
+                                        <span class="abs-pill ${curStatus === 'I' ? 'active' : ''}" data-status="I">I</span>
+                                        <span class="abs-pill ${curStatus === 'A' ? 'active' : ''}" data-status="A">A</span>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('');
+
+                        // Bind pill clicks
+                        listContainer.querySelectorAll('.abs-pill').forEach(pill => {
+                            pill.addEventListener('click', function() {
+                                const parent = this.parentElement;
+                                const studentId = parent.dataset.studentId;
+                                const status = this.dataset.status;
+                                
+                                parent.querySelectorAll('.abs-pill').forEach(p => p.classList.remove('active'));
+                                this.classList.add('active');
+                                
+                                const row = $(`#studRow_${studentId}`);
+                                if (row) {
+                                    row.classList.toggle('has-absent', status !== 'H');
+                                }
+                                
+                                updateAbsentSummary();
+                            });
+                        });
+                        
+                        updateAbsentSummary();
+                    }
+                } else if (listContainer) {
+                    listContainer.innerHTML = '<div class="text-center text-danger text-sm py-3">Gagal memuat siswa.</div>';
+                }
+            } catch(e) {
+                const listContainer = $('#jurnalAbsensiSiswa');
+                if (listContainer) listContainer.innerHTML = '<div class="text-center text-danger text-sm py-3">Gagal memuat siswa.</div>';
+            }
+
+            function updateAbsentSummary() {
+                const rows = $$('.student-abs-row');
+                let sakit = 0, izin = 0, alpa = 0;
+                rows.forEach(r => {
+                    const activePill = r.querySelector('.abs-pill.active');
+                    if (activePill) {
+                        const status = activePill.dataset.status;
+                        if (status === 'S') sakit++;
+                        else if (status === 'I') izin++;
+                        else if (status === 'A') alpa++;
+                    }
+                });
+                const summaryEl = $('#absentSummary');
+                if (summaryEl) {
+                    if (sakit === 0 && izin === 0 && alpa === 0) {
+                        summaryEl.textContent = 'Semua Siswa Hadir';
+                        summaryEl.style.color = '#10b981';
+                    } else {
+                        const parts = [];
+                        if (sakit > 0) parts.push(`Sakit: ${sakit}`);
+                        if (izin > 0) parts.push(`Izin: ${izin}`);
+                        if (alpa > 0) parts.push(`Alpa: ${alpa}`);
+                        summaryEl.textContent = parts.join(', ');
+                        summaryEl.style.color = '#ef4444';
+                    }
+                }
+            }
+
             // Clicking overlay closes modal
             overlay.addEventListener('click', (e) => {
                 if (e.target === overlay) GuruApp.closeModal('jurnalModal');
@@ -659,6 +855,19 @@
             if (!btn) return;
             btn.classList.add('loading');
 
+            // Gather student attendance data
+            const absensi = [];
+            $$('.student-abs-row').forEach(row => {
+                const studentId = parseInt(row.dataset.studentId);
+                const activePill = row.querySelector('.abs-pill.active');
+                if (studentId && activePill) {
+                    absensi.push({
+                        student_id: studentId,
+                        status: activePill.dataset.status
+                    });
+                }
+            });
+
             const payload = {
                 kelas_id,
                 mapel_id,
@@ -667,7 +876,7 @@
                 tujuan_pembelajaran: $('#jurnalTP')?.value || '',
                 indikator_tp: $('#jurnalIPTP')?.value || '',
                 catatan: $('#jurnalCatatan')?.value || '',
-                siswa_tidak_hadir: $('#jurnalSiswaTidakHadir')?.value || ''
+                absensi: absensi
             };
 
             if (id > 0) payload.id = id;
@@ -924,6 +1133,262 @@
             }
         },
 
+        // --- WALI KELAS MONITORING ---
+        async renderJurnalKelas() {
+            if (!Auth.user || !Auth.user.wali_kelas) {
+                Router.navigate('home');
+                return;
+            }
+
+            const content = $('#appContent');
+            const tanggalIni = getTanggalIni();
+
+            // Get first day of current month
+            const d = new Date();
+            const firstDay = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-01';
+
+            content.innerHTML = `
+                <div class="page-enter">
+                    <div class="section-title" style="margin-bottom:12px;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                        Jurnal & Rekap Kelas (${escapeHtml(Auth.user.wali_kelas.nama_kelas)})
+                    </div>
+
+                    <div class="tabs-segment">
+                        <button class="tab-segment-btn active" id="tabJurnalFeed" onclick="GuruApp.switchWaliTab('feed')">Jurnal Harian</button>
+                        <button class="tab-segment-btn" id="tabAbsenRekap" onclick="GuruApp.switchWaliTab('rekap')">Rekap Absensi</button>
+                    </div>
+
+                    <!-- Tab 1: Jurnal Feed -->
+                    <div id="waliFeedWrapper">
+                        <div class="date-picker-row">
+                            <input type="date" id="waliDateFrom" value="${firstDay}">
+                            <span class="text-muted text-sm">s/d</span>
+                            <input type="date" id="waliDateTo" value="${tanggalIni}">
+                            <button class="btn btn-sm btn-primary" onclick="GuruApp.loadWaliJurnal()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            </button>
+                        </div>
+                        <div id="waliJurnalList">
+                            <div class="skeleton skeleton-card" style="height:72px; margin-bottom:8px;"></div>
+                            <div class="skeleton skeleton-card" style="height:72px; margin-bottom:8px;"></div>
+                        </div>
+                    </div>
+
+                    <!-- Tab 2: Rekap Absensi -->
+                    <div id="waliRekapWrapper" style="display:none;">
+                        <div class="rekap-search-wrap">
+                            <input type="text" class="rekap-search-input" id="rekapSearchInput" placeholder="Cari nama siswa..." oninput="GuruApp.filterWaliRekap(this.value)">
+                            <svg class="rekap-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                            </svg>
+                        </div>
+                        <div id="waliRekapList">
+                            <div class="skeleton skeleton-card" style="height:90px; margin-bottom:10px;"></div>
+                            <div class="skeleton skeleton-card" style="height:90px; margin-bottom:10px;"></div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            this.loadWaliJurnal();
+        },
+
+        switchWaliTab(tab) {
+            const btnFeed = $('#tabJurnalFeed');
+            const btnRekap = $('#tabAbsenRekap');
+            const wrapFeed = $('#waliFeedWrapper');
+            const wrapRekap = $('#waliRekapWrapper');
+            
+            if (tab === 'feed') {
+                btnFeed?.classList.add('active');
+                btnRekap?.classList.remove('active');
+                if (wrapFeed) wrapFeed.style.display = 'block';
+                if (wrapRekap) wrapRekap.style.display = 'none';
+                this.loadWaliJurnal();
+            } else {
+                btnFeed?.classList.remove('active');
+                btnRekap?.classList.add('active');
+                if (wrapFeed) wrapFeed.style.display = 'none';
+                if (wrapRekap) wrapRekap.style.display = 'block';
+                this.loadWaliRekap();
+            }
+        },
+
+        async loadWaliJurnal() {
+            const from = $('#waliDateFrom')?.value || getTanggalIni();
+            const to = $('#waliDateTo')?.value || getTanggalIni();
+            const container = $('#waliJurnalList');
+            if (!container) return;
+
+            container.innerHTML = `
+                <div class="skeleton skeleton-card" style="height:72px; margin-bottom:8px;"></div>
+                <div class="skeleton skeleton-card" style="height:72px; margin-bottom:8px;"></div>
+            `;
+
+            try {
+                const res = await API.get(`api/jurnal.php?action=wali_kelas_list&tanggal=${from}&tanggal_akhir=${to}`);
+                if (res.success) {
+                    const journalsData = res.data.journals || [];
+                    if (journalsData.length === 0) {
+                        container.innerHTML = `
+                            <div class="empty-state" style="padding:40px 20px;">
+                                <div class="empty-state-title">Tidak Ada Jurnal</div>
+                                <div class="empty-state-desc">Belum ada jurnal yang diisi di kelas Anda untuk periode ini.</div>
+                            </div>
+                        `;
+                    } else {
+                        container.innerHTML = journalsData.map(j => {
+                            let absentHtml = '';
+                            if (j.siswa_tidak_hadir && j.siswa_tidak_hadir !== 'Semua Hadir') {
+                                const names = j.siswa_tidak_hadir.split('\n').filter(Boolean);
+                                absentHtml = `
+                                    <div class="wali-jurnal-absent">
+                                        <div class="wali-jurnal-absent-title">Siswa Absen / Tidak Hadir:</div>
+                                        <div>
+                                            ${names.map(n => `<span class="badge badge-danger" style="margin-right:4px; margin-bottom:4px; display:inline-block;">${escapeHtml(n)}</span>`).join('')}
+                                        </div>
+                                    </div>
+                                `;
+                            } else {
+                                absentHtml = `
+                                    <div class="wali-jurnal-absent">
+                                        <div class="wali-jurnal-absent-title">Kehadiran Siswa:</div>
+                                        <div>
+                                            <span class="badge badge-success">Semua Siswa Hadir ✅</span>
+                                        </div>
+                                    </div>
+                                `;
+                            }
+
+                            return `
+                                <div class="wali-jurnal-card page-enter" style="border-left-color: var(--primary);" onclick="GuruApp.viewJurnal(${j.id})">
+                                    <div class="wali-jurnal-header">
+                                        <div class="wali-jurnal-meta">
+                                            <div class="wali-jurnal-mapel">${escapeHtml(j.nama_mapel)}</div>
+                                            <div class="wali-jurnal-guru">Guru: <strong>${escapeHtml(j.nama_guru || 'Guru')}</strong></div>
+                                        </div>
+                                        <span class="badge badge-primary">Jam ke-${escapeHtml(j.jam_ke)}</span>
+                                    </div>
+                                    <div style="font-size:0.75rem; color:var(--text-muted); font-weight:600; display:flex; align-items:center; gap:4px; margin-top:-4px;">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                        ${formatTanggal(j.tanggal)}
+                                    </div>
+                                    ${j.tujuan_pembelajaran ? `
+                                        <div class="wali-jurnal-content">
+                                            <strong>TP:</strong> ${escapeHtml(j.tujuan_pembelajaran)}
+                                        </div>
+                                    ` : ''}
+                                    ${absentHtml}
+                                </div>
+                            `;
+                        }).join('');
+                    }
+                } else {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-title">Gagal Memuat</div>
+                            <div class="empty-state-desc">${escapeHtml(res.message || 'Gagal memuat jurnal kelas.')}</div>
+                        </div>
+                    `;
+                }
+            } catch(e) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-title">Gagal Memuat</div>
+                        <div class="empty-state-desc">Tidak dapat terhubung ke server.</div>
+                    </div>
+                `;
+            }
+        },
+
+        async loadWaliRekap() {
+            const container = $('#waliRekapList');
+            if (!container) return;
+
+            container.innerHTML = `
+                <div class="skeleton skeleton-card" style="height:90px; margin-bottom:10px;"></div>
+                <div class="skeleton skeleton-card" style="height:90px; margin-bottom:10px;"></div>
+                <div class="skeleton skeleton-card" style="height:90px; margin-bottom:10px;"></div>
+            `;
+
+            try {
+                const res = await API.get('api/jurnal.php?action=wali_kelas_rekap');
+                if (res.success) {
+                    const students = res.data.students || [];
+                    this._rekapStudents = students;
+                    this.renderWaliRekapList(students);
+                } else {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-title">Gagal Memuat</div>
+                            <div class="empty-state-desc">${escapeHtml(res.message || 'Gagal memuat rekap absensi.')}</div>
+                        </div>
+                    `;
+                }
+            } catch(e) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-title">Gagal Memuat</div>
+                        <div class="empty-state-desc">Tidak dapat terhubung ke server.</div>
+                    </div>
+                `;
+            }
+        },
+
+        renderWaliRekapList(students) {
+            const container = $('#waliRekapList');
+            if (!container) return;
+
+            if (students.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state" style="padding:30px 20px;">
+                        <div class="empty-state-title">Tidak Ada Siswa</div>
+                        <div class="empty-state-desc">Tidak ada data siswa ditemukan untuk kelas ini.</div>
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = students.map(s => {
+                const p = s.stats.persentase;
+                let color = '#10b981'; // Green
+                if (p < 85) color = '#ef4444'; // Red
+                else if (p < 95) color = '#f59e0b'; // Orange
+
+                return `
+                    <div class="student-rekap-card page-enter">
+                        <div class="student-rekap-info">
+                            <div class="student-abs-info">
+                                <span class="student-rekap-name">${escapeHtml(s.nama)}</span>
+                                <span class="student-abs-nis">NIS: ${escapeHtml(s.nis || '-')}</span>
+                            </div>
+                            <span class="student-rekap-percent" style="color: ${color}">${p}%</span>
+                        </div>
+                        <div class="student-rekap-bar-bg">
+                            <div class="student-rekap-bar-fill" style="width: ${p}%; background-color: ${color};"></div>
+                        </div>
+                        <div class="student-rekap-details">
+                            <span>Hadir <strong>${s.stats.hadir}</strong></span>
+                            <span>Sakit <strong style="color:#3b82f6;">${s.stats.sakit}</strong></span>
+                            <span>Izin <strong style="color:#f59e0b;">${s.stats.izin}</strong></span>
+                            <span>Alpa <strong style="color:#ef4444;">${s.stats.alpha}</strong></span>
+                            <span>Total JP <strong>${s.stats.total}</strong></span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        },
+
+        filterWaliRekap(query) {
+            if (!this._rekapStudents) return;
+            const filtered = this._rekapStudents.filter(s => 
+                s.nama.toLowerCase().includes(query.toLowerCase()) || 
+                (s.nis && s.nis.includes(query))
+            );
+            this.renderWaliRekapList(filtered);
+        },
+
         async editJurnal(id) {
             try {
                 const res = await API.get(`api/jurnal.php?action=get&id=${id}`);
@@ -968,6 +1433,7 @@
                 if (loginPage) loginPage.style.display = 'none';
                 if (appShell) appShell.style.display = 'flex';
                 this.updateHeader();
+                this.updateWaliNav();
             }
 
             // Bind login form
@@ -1009,6 +1475,16 @@
                         avatarEl.textContent = getInitials(Auth.user.nama_lengkap);
                     }
                 }
+            }
+        },
+
+        updateWaliNav() {
+            const nav = $('#navJurnalKelas');
+            if (!nav) return;
+            if (Auth.user && Auth.user.wali_kelas) {
+                nav.style.display = 'flex';
+            } else {
+                nav.style.display = 'none';
             }
         }
     };
@@ -1141,6 +1617,20 @@
             const appShell = $('#appShell');
             if (appShell) appShell.style.display = 'none';
             if (loginPage) loginPage.style.display = 'flex';
+            const nav = $('#navJurnalKelas');
+            if (nav) nav.style.display = 'none';
+        },
+
+        loadWaliJurnal() {
+            Pages.loadWaliJurnal();
+        },
+
+        switchWaliTab(tab) {
+            Pages.switchWaliTab(tab);
+        },
+
+        filterWaliRekap(query) {
+            Pages.filterWaliRekap(query);
         }
     };
 

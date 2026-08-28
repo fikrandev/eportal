@@ -504,20 +504,20 @@ ul, ol { list-style: none; }
     background: var(--bg-white);
     border-top: 1px solid var(--bg-dark);
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-around;
-    padding-top: 6px;
+    padding-top: 4px;
     padding-bottom: var(--safe-bottom);
     z-index: 100;
-    box-shadow: 0 -2px 12px rgba(0,0,0,0.04);
+    box-shadow: 0 -4px 16px rgba(0,0,0,0.06);
 }
 
 .bottom-nav-item {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 2px;
-    padding: 6px 16px;
+    gap: 4px;
+    padding: 6px 12px;
     border: none;
     background: none;
     cursor: pointer;
@@ -526,6 +526,7 @@ ul, ol { list-style: none; }
     position: relative;
     border-radius: var(--radius-sm);
     -webkit-tap-highlight-color: transparent;
+    flex: 1;
 }
 
 .bottom-nav-item svg {
@@ -552,13 +553,51 @@ ul, ol { list-style: none; }
 .bottom-nav-item.active::before {
     content: '';
     position: absolute;
-    top: 0;
+    top: -4px;
     left: 50%;
     transform: translateX(-50%);
     width: 24px;
     height: 3px;
     background: var(--primary);
     border-radius: 0 0 3px 3px;
+}
+
+.bottom-nav-item.center-fab.active::before {
+    display: none; /* Hide top line for center FAB */
+}
+
+/* Floating Action Button (FAB) inside Bottom Nav */
+.bottom-nav-item.center-fab {
+    overflow: visible;
+    position: relative;
+    top: -12px; /* Pull it slightly upwards */
+}
+
+.bottom-nav-item.center-fab span {
+    margin-top: 2px;
+}
+
+.fab-circle {
+    width: 48px;
+    height: 48px;
+    background: var(--primary-gradient);
+    color: white;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 20px rgba(21, 101, 192, 0.35);
+    transition: all var(--transition-spring);
+}
+
+.bottom-nav-item.center-fab:active .fab-circle {
+    transform: scale(0.9) translateY(4px);
+    box-shadow: 0 4px 10px rgba(21, 101, 192, 0.2);
+}
+
+.bottom-nav-item.center-fab.active .fab-circle {
+    background: linear-gradient(135deg, #FFB300 0%, #FF8F00 100%);
+    box-shadow: 0 8px 20px rgba(255, 179, 0, 0.35);
 }
 
 /* =============================================
@@ -1268,25 +1307,49 @@ ul, ol { list-style: none; }
 .date-picker-row {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 6px;
     margin-bottom: 16px;
+    width: 100%;
+    box-sizing: border-box;
 }
 
 .date-picker-row input[type="date"] {
     flex: 1;
-    padding: 10px 14px;
-    font-size: 0.875rem;
+    min-width: 0;
+    width: 100%;
+    padding: 8px 8px;
+    font-size: 0.8125rem;
     background: var(--bg-white);
-    border: 2px solid var(--bg-dark);
+    border: 1.5px solid #cbd5e1;
     border-radius: var(--radius-md);
     color: var(--text-primary);
     font-family: var(--font-body);
     transition: all var(--transition-base);
+    box-sizing: border-box;
 }
 
 .date-picker-row input[type="date"]:focus {
     border-color: var(--primary);
     box-shadow: 0 0 0 3px rgba(21, 101, 192, 0.1);
+    outline: none;
+}
+
+.date-picker-row span {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    flex-shrink: 0;
+}
+
+.date-picker-row .btn {
+    flex-shrink: 0;
+    width: 38px;
+    height: 38px;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-md);
 }
 
 /* =============================================
@@ -1578,6 +1641,322 @@ ul, ol { list-style: none; }
 @keyframes pageEnter {
     from { opacity: 0; transform: translateY(12px); }
     to { opacity: 1; transform: translateY(0); }
+}
+
+/* =============================================
+   ATTENDANCE & WALI KELAS UPGRADES
+   ============================================= */
+.student-abs-list {
+    margin-top: 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: 280px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+.student-abs-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 14px;
+    background: var(--bg-light);
+    border-radius: var(--radius-md);
+    border: 1.5px solid transparent;
+    transition: all 0.25s ease;
+}
+.student-abs-row:focus-within,
+.student-abs-row.has-absent {
+    background: var(--bg-white);
+    border-color: #cbd5e1;
+}
+.student-abs-row.has-absent {
+    border-color: rgba(239, 68, 68, 0.2);
+    background: rgba(239, 68, 68, 0.02);
+}
+.student-abs-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+.student-abs-name {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.student-abs-nis {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+}
+.abs-pills {
+    display: flex;
+    background: #e2e8f0;
+    padding: 3px;
+    border-radius: 30px;
+    gap: 2px;
+    user-select: none;
+}
+.abs-pill {
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    font-size: 0.75rem;
+    font-weight: 800;
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.abs-pill:hover {
+    background: rgba(255, 255, 255, 0.5);
+}
+.abs-pill.active[data-status="H"] { background: #10b981; color: white; box-shadow: 0 2px 5px rgba(16, 185, 129, 0.3); }
+.abs-pill.active[data-status="S"] { background: #3b82f6; color: white; box-shadow: 0 2px 5px rgba(59, 130, 246, 0.3); }
+.abs-pill.active[data-status="I"] { background: #f59e0b; color: white; box-shadow: 0 2px 5px rgba(245, 158, 11, 0.3); }
+.abs-pill.active[data-status="A"] { background: #ef4444; color: white; box-shadow: 0 2px 5px rgba(239, 68, 68, 0.3); }
+
+/* Wali Kelas Monitoring cards */
+.wali-jurnal-card {
+    background: var(--bg-white);
+    border-radius: var(--radius-lg);
+    border-left: 5px solid var(--primary);
+    padding: 16px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.wali-jurnal-card:active {
+    transform: scale(0.98);
+}
+.wali-jurnal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: start;
+}
+.wali-jurnal-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+.wali-jurnal-mapel {
+    font-family: var(--font-heading);
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.wali-jurnal-guru {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+.wali-jurnal-content {
+    background: var(--bg-light);
+    padding: 10px 12px;
+    border-radius: var(--radius-md);
+    font-size: 0.825rem;
+    color: var(--text-secondary);
+    line-height: 1.5;
+}
+.wali-jurnal-absent {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    border-top: 1px dashed #e2e8f0;
+    padding-top: 8px;
+    margin-top: 4px;
+}
+.wali-jurnal-absent-title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    color: var(--text-primary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* =============================================
+   UPGRADED HERO CARD & TABS SEGMENT
+   ============================================= */
+.welcome-hero-card {
+    background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+    color: white;
+    padding: 22px 20px;
+    border-radius: var(--radius-lg);
+    margin-bottom: 20px;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 10px 25px -5px rgba(59, 130, 246, 0.4);
+}
+.welcome-hero-title {
+    font-family: var(--font-heading);
+    font-size: 1.25rem;
+    font-weight: 800;
+    margin-bottom: 6px;
+    position: relative;
+    z-index: 2;
+}
+.welcome-hero-subtitle {
+    font-size: 0.8rem;
+    line-height: 1.5;
+    opacity: 0.9;
+    position: relative;
+    z-index: 2;
+    max-width: 85%;
+}
+.welcome-hero-decoration {
+    position: absolute;
+    right: -20px;
+    bottom: -30px;
+    width: 120px;
+    height: 120px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.08);
+    pointer-events: none;
+}
+.welcome-hero-decoration::after {
+    content: '';
+    position: absolute;
+    right: 40px;
+    bottom: 40px;
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: rgba(255, 179, 0, 0.15);
+}
+
+.tabs-segment {
+    display: flex;
+    background: #e2e8f0;
+    padding: 4px;
+    border-radius: var(--radius-md);
+    gap: 4px;
+    margin-bottom: 16px;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+}
+.tab-segment-btn {
+    flex: 1;
+    text-align: center;
+    padding: 10px 12px;
+    font-family: var(--font-heading);
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: #64748b;
+    background: transparent;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: none;
+    outline: none;
+}
+.tab-segment-btn.active {
+    background: var(--bg-white);
+    color: var(--primary);
+    box-shadow: 0 4px 10px rgba(0,0,0,0.06);
+}
+
+/* Student Rekap Cards */
+.student-rekap-card {
+    background: var(--bg-white);
+    border-radius: var(--radius-lg);
+    padding: 16px;
+    margin-bottom: 12px;
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    border: 1.5px solid #f1f5f9;
+    transition: all 0.2s ease;
+}
+.student-rekap-card:active {
+    transform: scale(0.99);
+}
+.student-rekap-info {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+.student-rekap-name {
+    font-family: var(--font-heading);
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.student-rekap-percent {
+    font-family: var(--font-heading);
+    font-size: 1.125rem;
+    font-weight: 800;
+}
+.student-rekap-bar-bg {
+    width: 100%;
+    height: 8px;
+    background: #e2e8f0;
+    border-radius: 4px;
+    overflow: hidden;
+}
+.student-rekap-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.student-rekap-details {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    border-top: 1px solid #f1f5f9;
+    padding-top: 8px;
+    margin-top: 2px;
+}
+.student-rekap-details span {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+}
+
+/* Student Search Wrap */
+.rekap-search-wrap {
+    position: relative;
+    margin-bottom: 16px;
+}
+.rekap-search-input {
+    width: 100%;
+    padding: 12px 14px 12px 40px;
+    font-size: 0.875rem;
+    color: var(--text-primary);
+    background: var(--bg-white);
+    border: 1.5px solid #cbd5e1;
+    border-radius: var(--radius-md);
+    transition: all var(--transition-base);
+}
+.rekap-search-input:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(21, 101, 192, 0.1);
+    outline: none;
+}
+.rekap-search-icon {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    color: var(--text-muted);
+    pointer-events: none;
+}
+
+.shortcut-card:active {
+    transform: scale(0.95);
+    background: #f8fafc !important;
+}
+
+.recent-jurnal-card:active {
+    transform: scale(0.98);
+    background: #f8fafc !important;
 }
 
 /* =============================================

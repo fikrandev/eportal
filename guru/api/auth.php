@@ -80,6 +80,11 @@ function handleGuruLogin() {
         $iconSekolah = get_setting('icon_sekolah', '');
         $activeAcademicYear = get_active_academic_year();
 
+        // Check if teacher is a wali kelas
+        $stmtWali = db()->prepare("SELECT id, tingkat, nama_kelas FROM ref_kelas WHERE wali_kelas_id = ? LIMIT 1");
+        $stmtWali->execute([$user['id']]);
+        $waliKelas = $stmtWali->fetch(PDO::FETCH_ASSOC) ?: null;
+
         json_response(200, true, 'Login berhasil!', [
             'token' => $token,
             'user' => [
@@ -87,7 +92,8 @@ function handleGuruLogin() {
                 'username'      => $user['username'],
                 'nama_lengkap'  => $user['nama_lengkap'],
                 'role'          => $user['role'],
-                'avatar'        => $user['avatar']
+                'avatar'        => $user['avatar'],
+                'wali_kelas'    => $waliKelas
             ],
             'school' => [
                 'nama' => $namaSekolah,
@@ -119,11 +125,17 @@ function handleGuruCheck() {
             WHERE s.token = ? AND s.expired_at > NOW() AND u.status = 1 AND u.role = 'guru'
         ");
         $stmt->execute([$token]);
-        $user = $stmt->fetch();
+        $user = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$user) {
             json_response(401, false, 'Sesi tidak valid atau telah berakhir.');
         }
+
+        // Check if teacher is a wali kelas
+        $stmtWali = db()->prepare("SELECT id, tingkat, nama_kelas FROM ref_kelas WHERE wali_kelas_id = ? LIMIT 1");
+        $stmtWali->execute([$user['user_id']]);
+        $waliKelas = $stmtWali->fetch(PDO::FETCH_ASSOC) ?: null;
+        $user['wali_kelas'] = $waliKelas;
 
         // Get school settings
         $namaSekolah = get_setting('nama_sekolah', 'E-Portal Sekolah');
