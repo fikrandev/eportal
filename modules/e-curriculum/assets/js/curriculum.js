@@ -935,84 +935,381 @@ const Curriculum = {
                 $('#jurnalTableWrapper').html(`<div class="acad-empty"><h3>Belum Ada Jurnal</h3><p>Belum ada jurnal untuk tanggal ini. Klik Tambah Jurnal untuk memulai.</p></div>`);
                 return;
             }
-            const rows = data.map((j, idx) => `
-                <tr class="fade-in" style="animation-delay:${idx*0.03}s">
-                    <td><span class="badge badge-info">Jam ${this.escapeHtml(j.jam_ke)}</span></td>
-                    <td><strong>${this.escapeHtml(j.nama_kelas)}</strong></td>
-                    <td>${this.escapeHtml(j.nama_mapel)}</td>
-                    <td style="max-width:200px;"><div class="text-truncate">${this.escapeHtml(j.tujuan_pembelajaran || '-')}</div></td>
-                    <td style="max-width:150px;"><div class="text-truncate">${this.escapeHtml(j.catatan || '-')}</div></td>
-                    <td>
-                        <div style="display:flex; gap:6px;">
-                            <button class="btn-icon" title="Edit" onclick="Curriculum.showJurnalEditForm(${j.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-                            <button class="btn-icon danger" title="Hapus" onclick="Curriculum.deleteJurnal(${j.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
-                        </div>
-                    </td>
-                </tr>
-            `).join('');
+            const rows = data.map((j, idx) => {
+                const createdDate = j.created_at ? j.created_at.split(' ')[0] : '';
+                const classDate = j.tanggal;
+                const isLate = createdDate && createdDate > classDate;
+                const lateBadge = isLate ? `<span class="badge badge-danger" style="margin-left:6px; font-size:10px; background:#ef4444; color:white; padding:2px 6px; border-radius:4px;" title="Diisi terlambat pada ${createdDate}">Terlambat</span>` : '';
+                
+                return `
+                    <tr class="fade-in" style="animation-delay:${idx*0.03}s">
+                        <td><span class="badge badge-info">Jam ${this.escapeHtml(j.jam_ke)}</span></td>
+                        <td><strong>${this.escapeHtml(j.nama_kelas)}</strong></td>
+                        <td>
+                            ${this.escapeHtml(j.nama_mapel)}
+                            ${lateBadge}
+                        </td>
+                        <td style="max-width:200px;"><div class="text-truncate">${this.escapeHtml(j.tujuan_pembelajaran || '-')}</div></td>
+                        <td style="max-width:150px;"><div class="text-truncate">${this.escapeHtml(j.catatan || '-')}</div></td>
+                        <td>
+                            <div style="display:flex; gap:6px;">
+                                <button class="btn-icon" title="Edit" onclick="Curriculum.showJurnalEditForm(${j.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                                <button class="btn-icon danger" title="Hapus" onclick="Curriculum.deleteJurnal(${j.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
             $('#jurnalTableWrapper').html(`<div class="data-table-wrapper"><table class="data-table"><thead><tr><th>Jam</th><th>Kelas</th><th>Mapel</th><th>Tujuan Pembelajaran</th><th>Catatan</th><th style="width:100px;">Aksi</th></tr></thead><tbody>${rows}</tbody></table></div>`);
         });
     },
 
     showJurnalForm() {
         const today = new Date().toISOString().split('T')[0];
-        this.api('jurnal.php?action=meta').done(res => {
+        
+        // Fetch teachers list first
+        this.api('jurnal.php?action=teachers').done(res => {
             if (!res.success) return;
-            const { classes, subjects } = res.data;
-            const cOpts = classes.map(c => `<option value="${c.id}">${this.escapeHtml(c.nama_kelas)}</option>`).join('');
-            const sOpts = subjects.map(s => `<option value="${s.id}">${this.escapeHtml(s.nama_mapel)}</option>`).join('');
-
-            EModal.form({
-                title: 'Tambah Jurnal Mengajar', size: 'lg',
-                form: `
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-                        <div class="form-group-acad"><label class="form-label-acad">Tanggal</label><input type="date" class="form-input-acad" id="fJurnalTgl" value="${today}"></div>
-                        <div class="form-group-acad"><label class="form-label-acad">Jam Ke</label><input class="form-input-acad" id="fJurnalJam" placeholder="contoh: 1-2"></div>
-                    </div>
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
-                        <div class="form-group-acad"><label class="form-label-acad">Kelas</label><select class="form-select-acad" id="fJurnalKelas"><option value="">Pilih...</option>${cOpts}</select></div>
-                        <div class="form-group-acad"><label class="form-label-acad">Mata Pelajaran</label><select class="form-select-acad" id="fJurnalMapel"><option value="">Pilih...</option>${sOpts}</select></div>
-                    </div>
-                    <div class="form-group-acad"><label class="form-label-acad">Tujuan Pembelajaran (TP)</label><textarea class="form-input-acad" id="fJurnalTP" rows="2" placeholder="Tulis singkat TP hari ini..."></textarea></div>
-                    <div class="form-group-acad"><label class="form-label-acad">Indikator Pencapaian TP (IPTP)</label><textarea class="form-input-acad" id="fJurnalIPTP" rows="2" placeholder="Tulis singkat IPTP..."></textarea></div>
-                    <div class="form-group-acad"><label class="form-label-acad">Catatan Pembelajaran</label><textarea class="form-input-acad" id="fJurnalCatatan" rows="2" placeholder="Catatan tambahan..."></textarea></div>
-                `,
-                confirmText: 'Simpan Jurnal',
-                onConfirm: () => {
-                    const kelas = $('#fJurnalKelas').val(), mapel = $('#fJurnalMapel').val(), jam = $('#fJurnalJam').val();
-                    if (!kelas || !mapel || !jam) { EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Kelas, Mapel, dan Jam wajib diisi.' }); return false; }
-                    this.api('jurnal.php?action=create', { method: 'POST', data: {
-                        tanggal: $('#fJurnalTgl').val(), jam_ke: jam, kelas_id: +kelas, mapel_id: +mapel,
-                        tujuan_pembelajaran: $('#fJurnalTP').val(), indikator_tp: $('#fJurnalIPTP').val(), catatan: $('#fJurnalCatatan').val()
-                    }}).done(res => {
-                        EModal.closeAll(); EModal.toast({ type: 'success', title: 'Berhasil', message: res.message }); this.loadJurnalTable();
-                    }).fail(xhr => { EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal.' }); });
-                    return false;
-                }
+            const teachers = res.data || [];
+            
+            const tOpts = teachers.map(t => `<option value="${t.id}">${this.escapeHtml(t.nama_lengkap)}</option>`).join('');
+            
+            this.loadSelect2(() => {
+                EModal.form({
+                    title: 'Tambah Jurnal Mengajar (Manual)', size: 'lg',
+                    form: `
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                            <div class="form-group-acad">
+                                <label class="form-label-acad">Pilih Guru</label>
+                                <select class="form-select-acad" id="fJurnalGuru" style="width:100%;">
+                                    <option value="">Pilih Guru...</option>
+                                    ${tOpts}
+                                </select>
+                            </div>
+                            <div class="form-group-acad">
+                                <label class="form-label-acad">Tanggal</label>
+                                <input type="date" class="form-input-acad" id="fJurnalTgl" value="${today}">
+                            </div>
+                        </div>
+                        
+                        <div id="lateWarningNotice" style="display:none; margin-top:8px; padding:10px 14px; background:#fffbeb; border:1px solid #fef3c7; border-radius:6px; color:#b45309; font-size:12.5px; font-weight:600;">
+                            ⚠️ Pengisian jurnal ini melewati tanggal KBM (Terlambat Mengisi).
+                        </div>
+                        
+                        <div class="form-group-acad" style="margin-top: 12px;">
+                            <label class="form-label-acad">Pilih Jadwal Mengajar</label>
+                            <select class="form-select-acad" id="fJurnalJadwalSelect" onchange="Curriculum.onJurnalJadwalChange()" disabled>
+                                <option value="">Pilih guru dan tanggal terlebih dahulu...</option>
+                            </select>
+                        </div>
+    
+                        <div id="fJurnalFormFields" style="display:none; margin-top:16px;">
+                            <div class="form-group-acad"><label class="form-label-acad">Tujuan Pembelajaran (TP)</label><textarea class="form-input-acad" id="fJurnalTP" rows="2" placeholder="Tulis singkat TP hari ini..."></textarea></div>
+                            <div class="form-group-acad"><label class="form-label-acad">Indikator Pencapaian TP (IPTP)</label><textarea class="form-input-acad" id="fJurnalIPTP" rows="2" placeholder="Tulis singkat IPTP..."></textarea></div>
+                            <div class="form-group-acad"><label class="form-label-acad">Catatan Pembelajaran</label><textarea class="form-input-acad" id="fJurnalCatatan" rows="2" placeholder="Catatan tambahan..."></textarea></div>
+                            
+                            <div class="form-group-acad" style="margin-top:16px;">
+                                <label class="form-label-acad" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                    <span>Absensi Siswa</span>
+                                    <span class="badge badge-info" id="absSummary" style="font-weight:700;">Semua Hadir</span>
+                                </label>
+                                <div id="fJurnalAbsensiContainer" style="max-height: 250px; overflow-y: auto; border: 1px solid #e2e8f0; padding: 10px; border-radius: 6px; background: #f8fafc;">
+                                    <div class="text-center text-muted text-sm py-3">Memuat data siswa...</div>
+                                </div>
+                            </div>
+                        </div>
+                    `,
+                    confirmText: 'Simpan Jurnal',
+                    onConfirm: () => {
+                        const guruId = $('#fJurnalGuru').val();
+                        const tanggal = $('#fJurnalTgl').val();
+                        const scheduleSelect = $('#fJurnalJadwalSelect');
+                        const selectedVal = scheduleSelect.val();
+                        if (!guruId) { EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Silakan pilih guru.' }); return false; }
+                        if (selectedVal === '' || selectedVal === null) { EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Silakan pilih jadwal mengajar.' }); return false; }
+                        
+                        const jadwal = this.state.currentTeacherSchedules[parseInt(selectedVal)];
+                        if (!jadwal) { EModal.toast({ type: 'error', title: 'Error', message: 'Jadwal tidak ditemukan.' }); return false; }
+                        
+                        // Gather student absensi
+                        const absensi = [];
+                        $('.admin-student-abs-row').each(function() {
+                            const studentId = parseInt($(this).attr('data-student-id'));
+                            const activePill = $(this).find('.abs-pill.active');
+                            if (studentId && activePill.length) {
+                                absensi.push({
+                                    student_id: studentId,
+                                    status: activePill.attr('data-status')
+                                });
+                            }
+                        });
+                        
+                        this.api('jurnal.php?action=create', {
+                            method: 'POST',
+                            data: {
+                                guru_id: +guruId,
+                                tanggal: tanggal,
+                                kelas_id: +jadwal.kelas_id,
+                                mapel_id: +jadwal.mapel_id,
+                                jam_ke: jadwal.jam_ke,
+                                tujuan_pembelajaran: $('#fJurnalTP').val(),
+                                indikator_tp: $('#fJurnalIPTP').val(),
+                                catatan: $('#fJurnalCatatan').val(),
+                                absensi: absensi
+                            }
+                        }).done(res => {
+                            EModal.closeAll();
+                            EModal.toast({ type: 'success', title: 'Berhasil', message: res.message });
+                            this.loadJurnalTable();
+                        }).fail(xhr => {
+                            EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menyimpan.' });
+                        });
+                        return false;
+                    }
+                });
+                
+                // Initialize Select2 dropdown search
+                $('#fJurnalGuru').select2({
+                    placeholder: 'Cari Guru...',
+                    width: '100%'
+                }).on('change', () => {
+                    this.onJurnalGuruOrDateChange();
+                });
+                
+                // Listen to Date changes programmatically to update late notice and refresh schedule list
+                $('#fJurnalTgl').on('change', () => {
+                    this.onJurnalGuruOrDateChange();
+                });
             });
         });
+    },
+    
+    onJurnalGuruOrDateChange() {
+        const guruId = $('#fJurnalGuru').val();
+        const tanggal = $('#fJurnalTgl').val();
+        const scheduleSelect = $('#fJurnalJadwalSelect');
+        const formFields = $('#fJurnalFormFields');
+        const warningNotice = $('#lateWarningNotice');
+        
+        formFields.hide();
+        scheduleSelect.val('');
+        scheduleSelect.prop('disabled', true);
+        scheduleSelect.html('<option value="">Memuat jadwal...</option>');
+        this.state.currentTeacherSchedules = [];
+        
+        // Show/hide late warning notice dynamically
+        const todayStr = new Date().toISOString().split('T')[0];
+        if (tanggal && tanggal < todayStr) {
+            warningNotice.show();
+        } else {
+            warningNotice.hide();
+        }
+        
+        if (!guruId || !tanggal) {
+            scheduleSelect.html('<option value="">Pilih guru dan tanggal terlebih dahulu...</option>');
+            return;
+        }
+        
+        this.api(`jurnal.php?action=teacher_schedules&guru_id=${guruId}&tanggal=${tanggal}`).done(res => {
+            if (!res.success) {
+                scheduleSelect.html('<option value="">Gagal memuat jadwal</option>');
+                return;
+            }
+            const schedules = res.data.jadwal || [];
+            this.state.currentTeacherSchedules = schedules;
+            if (schedules.length === 0) {
+                scheduleSelect.html('<option value="">Tidak ada jadwal mengajar pada hari ini</option>');
+                return;
+            }
+            
+            let opts = '<option value="">Pilih Jadwal Mengajar...</option>';
+            schedules.forEach((s, idx) => {
+                const text = `${s.nama_jam} - ${s.nama_mapel} (Kelas ${s.nama_kelas})${s.jurnal_filled ? ' [SUDAH DIISI]' : ''}`;
+                opts += `<option value="${idx}" ${s.jurnal_filled ? 'disabled' : ''}>${text}</option>`;
+            });
+            scheduleSelect.html(opts);
+            scheduleSelect.prop('disabled', false);
+        }).fail(() => {
+            scheduleSelect.html('<option value="">Gagal memuat jadwal</option>');
+        });
+    },
+
+    onJurnalJadwalChange() {
+        const scheduleSelect = $('#fJurnalJadwalSelect');
+        const formFields = $('#fJurnalFormFields');
+        const absContainer = $('#fJurnalAbsensiContainer');
+        const selectedVal = scheduleSelect.val();
+        
+        if (selectedVal === '' || selectedVal === null) {
+            formFields.hide();
+            return;
+        }
+        
+        const jadwal = this.state.currentTeacherSchedules[parseInt(selectedVal)];
+        if (!jadwal) return;
+        
+        formFields.show();
+        absContainer.html('<div class="text-center text-muted text-sm py-3">Memuat data siswa...</div>');
+        
+        this.api(`jurnal.php?action=students&kelas_id=${jadwal.kelas_id}`).done(res => {
+            if (!res.success) {
+                absContainer.html('<div class="text-center text-danger text-sm py-3">Gagal memuat data siswa.</div>');
+                return;
+            }
+            const students = res.data || [];
+            if (students.length === 0) {
+                absContainer.html('<div class="text-center text-muted text-sm py-3">Tidak ada data siswa di kelas ini.</div>');
+                return;
+            }
+            
+            let studentRows = students.map(s => {
+                return `
+                    <div class="admin-student-abs-row" data-student-id="${s.id}" style="display:flex; justify-content:space-between; align-items:center; padding:8px; border-bottom:1px solid #e2e8f0;">
+                        <div>
+                            <div style="font-weight:600; font-size:13px; color:#1e293b;">${this.escapeHtml(s.nama)}</div>
+                            <div style="font-size:11px; color:#64748b;">NIS: ${this.escapeHtml(s.nis || '-')}</div>
+                        </div>
+                        <div class="abs-pills" style="display:flex; gap:6px;">
+                            <span class="abs-pill active" data-status="H" onclick="Curriculum.setAbsPill(this, 'H')">H</span>
+                            <span class="abs-pill" data-status="S" onclick="Curriculum.setAbsPill(this, 'S')">S</span>
+                            <span class="abs-pill" data-status="I" onclick="Curriculum.setAbsPill(this, 'I')">I</span>
+                            <span class="abs-pill" data-status="A" onclick="Curriculum.setAbsPill(this, 'A')">A</span>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            absContainer.html(studentRows);
+            this.updateAbsSummary();
+        }).fail(() => {
+            absContainer.html('<div class="text-center text-danger text-sm py-3">Gagal terhubung ke server.</div>');
+        });
+    },
+
+    setAbsPill(el, status) {
+        const $el = $(el);
+        const row = $el.closest('.admin-student-abs-row');
+        row.find('.abs-pill').removeClass('active');
+        $el.addClass('active');
+        
+        if (status !== 'H') {
+            row.css('background-color', '#fff5f5');
+        } else {
+            row.css('background-color', 'transparent');
+        }
+        this.updateAbsSummary();
+    },
+
+    updateAbsSummary() {
+        let hCount = 0, sCount = 0, iCount = 0, aCount = 0;
+        $('.admin-student-abs-row').each(function() {
+            const activePill = $(this).find('.abs-pill.active');
+            if (activePill.length) {
+                const status = activePill.attr('data-status');
+                if (status === 'H') hCount++;
+                else if (status === 'S') sCount++;
+                else if (status === 'I') iCount++;
+                else if (status === 'A') aCount++;
+            }
+        });
+        
+        let summaryText = 'Semua Hadir';
+        if (sCount > 0 || iCount > 0 || aCount > 0) {
+            summaryText = `${hCount} Hadir`;
+            if (sCount > 0) summaryText += `, ${sCount} Sakit`;
+            if (iCount > 0) summaryText += `, ${iCount} Izin`;
+            if (aCount > 0) summaryText += `, ${aCount} Alpa`;
+        }
+        $('#absSummary').text(summaryText);
     },
 
     showJurnalEditForm(id) {
         this.api(`jurnal.php?action=get&id=${id}`).done(res => {
             if (!res.success) return;
             const j = res.data;
-            EModal.form({
-                title: `Edit Jurnal — ${j.nama_kelas} / ${j.nama_mapel}`, size: 'lg',
-                form: `
-                    <div class="form-group-acad"><label class="form-label-acad">Tujuan Pembelajaran (TP)</label><textarea class="form-input-acad" id="fJurnalTP" rows="3">${this.escapeHtml(j.tujuan_pembelajaran || '')}</textarea></div>
-                    <div class="form-group-acad"><label class="form-label-acad">Indikator Pencapaian TP (IPTP)</label><textarea class="form-input-acad" id="fJurnalIPTP" rows="3">${this.escapeHtml(j.indikator_tp || '')}</textarea></div>
-                    <div class="form-group-acad"><label class="form-label-acad">Catatan</label><textarea class="form-input-acad" id="fJurnalCatatan" rows="3">${this.escapeHtml(j.catatan || '')}</textarea></div>
-                `,
-                confirmText: 'Simpan Perubahan',
-                onConfirm: () => {
-                    this.api('jurnal.php?action=update', { method: 'POST', data: {
-                        id: j.id, tujuan_pembelajaran: $('#fJurnalTP').val(), indikator_tp: $('#fJurnalIPTP').val(), catatan: $('#fJurnalCatatan').val()
-                    }}).done(res => {
-                        EModal.closeAll(); EModal.toast({ type: 'success', title: 'Berhasil', message: res.message }); this.loadJurnalTable();
-                    }).fail(xhr => { EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal.' }); });
-                    return false;
+            
+            // Fetch students list for the class
+            this.api(`jurnal.php?action=students&kelas_id=${j.kelas_id}`).done(sRes => {
+                const students = sRes.data || [];
+                
+                // Map existing absensi status
+                const existingAbsMap = {};
+                if (j.absensi) {
+                    j.absensi.forEach(a => {
+                        existingAbsMap[a.student_id] = a.status;
+                    });
                 }
+                
+                let studentRows = students.map(s => {
+                    const curStatus = existingAbsMap[s.id] || 'H';
+                    return `
+                        <div class="admin-student-abs-row" data-student-id="${s.id}" style="display:flex; justify-content:space-between; align-items:center; padding:8px; border-bottom:1px solid #e2e8f0; ${curStatus !== 'H' ? 'background-color:#fff5f5;' : ''}">
+                            <div>
+                                <div style="font-weight:600; font-size:13px; color:#1e293b;">${this.escapeHtml(s.nama)}</div>
+                                <div style="font-size:11px; color:#64748b;">NIS: ${this.escapeHtml(s.nis || '-')}</div>
+                            </div>
+                            <div class="abs-pills" style="display:flex; gap:6px;">
+                                <span class="abs-pill ${curStatus === 'H' ? 'active' : ''}" data-status="H" onclick="Curriculum.setAbsPill(this, 'H')">H</span>
+                                <span class="abs-pill ${curStatus === 'S' ? 'active' : ''}" data-status="S" onclick="Curriculum.setAbsPill(this, 'S')">S</span>
+                                <span class="abs-pill ${curStatus === 'I' ? 'active' : ''}" data-status="I" onclick="Curriculum.setAbsPill(this, 'I')">I</span>
+                                <span class="abs-pill ${curStatus === 'A' ? 'active' : ''}" data-status="A" onclick="Curriculum.setAbsPill(this, 'A')">A</span>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                
+                if (students.length === 0) {
+                    studentRows = '<div class="text-center text-muted text-sm py-3">Tidak ada data siswa di kelas ini.</div>';
+                }
+                
+                EModal.form({
+                    title: `Edit Jurnal — ${j.nama_kelas} / ${j.nama_mapel}`, size: 'lg',
+                    form: `
+                        <div class="form-group-acad"><label class="form-label-acad">Tujuan Pembelajaran (TP)</label><textarea class="form-input-acad" id="fJurnalTP" rows="3">${this.escapeHtml(j.tujuan_pembelajaran || '')}</textarea></div>
+                        <div class="form-group-acad"><label class="form-label-acad">Indikator Pencapaian TP (IPTP)</label><textarea class="form-input-acad" id="fJurnalIPTP" rows="3">${this.escapeHtml(j.indikator_tp || '')}</textarea></div>
+                        <div class="form-group-acad"><label class="form-label-acad">Catatan</label><textarea class="form-input-acad" id="fJurnalCatatan" rows="3">${this.escapeHtml(j.catatan || '')}</textarea></div>
+                        
+                        <div class="form-group-acad" style="margin-top:16px;">
+                            <label class="form-label-acad" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                <span>Absensi Siswa</span>
+                                <span class="badge badge-info" id="absSummary" style="font-weight:700;">Semua Hadir</span>
+                            </label>
+                            <div id="fJurnalAbsensiContainer" style="max-height: 250px; overflow-y: auto; border: 1px solid #e2e8f0; padding: 10px; border-radius: 6px; background: #f8fafc;">
+                                ${studentRows}
+                            </div>
+                        </div>
+                    `,
+                    confirmText: 'Simpan Perubahan',
+                    onConfirm: () => {
+                        const absensi = [];
+                        $('.admin-student-abs-row').each(function() {
+                            const studentId = parseInt($(this).attr('data-student-id'));
+                            const activePill = $(this).find('.abs-pill.active');
+                            if (studentId && activePill.length) {
+                                absensi.push({
+                                    student_id: studentId,
+                                    status: activePill.attr('data-status')
+                                });
+                            }
+                        });
+                        
+                        this.api('jurnal.php?action=update', { method: 'POST', data: {
+                            id: j.id, 
+                            tujuan_pembelajaran: $('#fJurnalTP').val(), 
+                            indikator_tp: $('#fJurnalIPTP').val(), 
+                            catatan: $('#fJurnalCatatan').val(),
+                            absensi: absensi
+                        }}).done(res => {
+                            EModal.closeAll(); 
+                            EModal.toast({ type: 'success', title: 'Berhasil', message: res.message }); 
+                            this.loadJurnalTable();
+                        }).fail(xhr => { 
+                            EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal.' }); 
+                        });
+                        return false;
+                    }
+                });
+                
+                this.updateAbsSummary();
             });
         });
     },
@@ -1159,16 +1456,45 @@ const Curriculum = {
                 $('#ketidakhadiranTableWrapper').html(`<div class="acad-empty"><h3>Tidak Ada Data</h3><p>Belum ada catatan ketidakhadiran pada tanggal ini.</p></div>`);
                 return;
             }
-            const rows = data.map((k, idx) => `
+            const rows = data.map((k, idx) => {
+                const status = k.status || 'Pending';
+                let statusBadge = '';
+                if (status === 'Approved') {
+                    statusBadge = '<span class="badge badge-success">Approved</span>';
+                } else if (status === 'Rejected') {
+                    statusBadge = '<span class="badge badge-danger">Rejected</span>';
+                } else {
+                    statusBadge = '<span class="badge badge-warning">Pending</span>';
+                }
+
+                let actionBtns = '';
+                if (status === 'Pending') {
+                    actionBtns = `
+                        <button class="btn-icon success" title="Approve" onclick="Curriculum.updateKetidakhadiranStatus(${k.id}, 'Approved')" style="margin-right:4px;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg>
+                        </button>
+                        <button class="btn-icon danger" title="Reject" onclick="Curriculum.updateKetidakhadiranStatus(${k.id}, 'Rejected')" style="margin-right:4px;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>`;
+                } else {
+                    actionBtns = `
+                        <button class="btn-icon" title="Reset ke Pending" onclick="Curriculum.updateKetidakhadiranStatus(${k.id}, 'Pending')" style="margin-right:4px; color:#6366f1;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                        </button>`;
+                }
+                actionBtns += `<button class="btn-icon danger" title="Hapus" onclick="Curriculum.deleteKetidakhadiran(${k.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>`;
+
+                return `
                 <tr class="fade-in" style="animation-delay:${idx*0.03}s">
                     <td>${this.escapeHtml(k.tanggal)}</td>
                     <td><strong>${this.escapeHtml(k.guru_nama)}</strong></td>
-                    <td><span class="badge ${k.jenis === 'Sakit' ? 'badge-danger' : 'badge-warning'}">${this.escapeHtml(k.jenis)}</span></td>
+                    <td><span class="badge ${k.jenis === 'Sakit' ? 'badge-danger' : k.jenis === 'Cuti' ? 'badge-info' : 'badge-warning'}">${this.escapeHtml(k.jenis)}</span></td>
                     <td>${this.escapeHtml(k.catatan || '-')}</td>
-                    <td><button class="btn-icon danger" onclick="Curriculum.deleteKetidakhadiran(${k.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button></td>
-                </tr>
-            `).join('');
-            $('#ketidakhadiranTableWrapper').html(`<div class="data-table-wrapper"><table class="data-table"><thead><tr><th>Tanggal</th><th>Guru</th><th>Jenis</th><th>Catatan</th><th style="width:80px;">Aksi</th></tr></thead><tbody>${rows}</tbody></table></div>`);
+                    <td>${statusBadge}</td>
+                    <td style="white-space:nowrap;">${actionBtns}</td>
+                </tr>`;
+            }).join('');
+            $('#ketidakhadiranTableWrapper').html(`<div class="data-table-wrapper"><table class="data-table"><thead><tr><th>Tanggal</th><th>Guru</th><th>Jenis</th><th>Catatan</th><th>Status</th><th style="width:130px;">Aksi</th></tr></thead><tbody>${rows}</tbody></table></div>`);
         });
     },
 
@@ -1199,6 +1525,27 @@ const Curriculum = {
                 this.api('ketidakhadiran.php?action=delete', { method: 'POST', data: { id } }).done(res => {
                     EModal.toast({ type: 'success', title: 'Terhapus', message: res.message }); this.loadKetidakhadiranTable();
                 });
+            }
+        });
+    },
+
+    updateKetidakhadiranStatus(id, status) {
+        const labels = { 'Approved': 'menyetujui', 'Rejected': 'menolak', 'Pending': 'mengembalikan ke pending' };
+        const types = { 'Approved': 'success', 'Rejected': 'danger', 'Pending': 'warning' };
+        EModal.confirm({
+            title: status === 'Approved' ? 'Setujui Izin' : status === 'Rejected' ? 'Tolak Izin' : 'Reset Status',
+            message: `Apakah Anda yakin ingin <strong>${labels[status]}</strong> pengajuan izin ini?`,
+            type: types[status] || 'warning',
+            confirmText: status === 'Approved' ? 'Ya, Setujui' : status === 'Rejected' ? 'Ya, Tolak' : 'Ya, Reset',
+            onConfirm: () => {
+                this.api('ketidakhadiran.php?action=update_status', { method: 'POST', data: { id, status } }).done(res => {
+                    EModal.closeAll();
+                    EModal.toast({ type: 'success', title: 'Berhasil', message: res.message });
+                    this.loadKetidakhadiranTable();
+                }).fail(xhr => {
+                    EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal mengubah status.' });
+                });
+                return false;
             }
         });
     },
@@ -1465,6 +1812,7 @@ const Curriculum = {
                 $('#lapJurnalWrapper').html(`<div class="acad-empty"><h3>Tidak Ada Data</h3><p>Belum ada jurnal dalam rentang tanggal ini.</p></div>`);
                 return;
             }
+            this.state.laporanJurnalData = res.data;
             const rows = data.map((j, idx) => `
                 <tr class="fade-in" style="animation-delay:${idx*0.02}s">
                     <td>${this.escapeHtml(j.tanggal)}</td>
@@ -1477,10 +1825,159 @@ const Curriculum = {
                 </tr>
             `).join('');
             $('#lapJurnalWrapper').html(`
-                <div style="margin-bottom:12px; text-align:right;"><button class="btn-acad btn-acad-outline" onclick="Curriculum.printTable('lapJurnalTable')">🖨️ Cetak</button></div>
+                <div style="margin-bottom:12px; text-align:right;"><button class="btn-acad btn-acad-outline" onclick="Curriculum.printJurnalReport()">🖨️ Cetak</button></div>
                 <div class="data-table-wrapper"><table class="data-table" id="lapJurnalTable"><thead><tr><th>Tanggal</th><th>Kelas</th><th>Jam</th><th>Mapel</th><th>Guru</th><th>TP</th><th>Catatan</th></tr></thead><tbody>${rows}</tbody></table></div>
             `);
         });
+    },
+
+    printJurnalReport() {
+        const data = this.state.laporanJurnalData;
+        const dari = $('#lapJurnalDari').val();
+        const sampai = $('#lapJurnalSampai').val();
+        if (!data || !data.length) return;
+        
+        // Group data by tanggal (date)
+        const groups = {};
+        data.forEach(j => {
+            if (!groups[j.tanggal]) groups[j.tanggal] = [];
+            groups[j.tanggal].push(j);
+        });
+        
+        // Sort dates in ascending order
+        const dates = Object.keys(groups).sort();
+        
+        // Determine the signer (teacher name)
+        // If there is only one unique teacher in the data, use their name
+        const uniqueTeachers = [...new Set(data.map(j => j.guru_nama))];
+        const signerName = uniqueTeachers.length === 1 ? uniqueTeachers[0] : (App.state.user ? App.state.user.nama_lengkap : 'Guru Mata Pelajaran');
+        const signerId = uniqueTeachers.length === 1 ? data[0].guru_id : (App.state.user ? App.state.user.id : 0);
+        
+        // Build the HTML for the print window
+        let contentHtml = '';
+        
+        dates.forEach(date => {
+            const formattedDate = this.formatDate(date);
+            const entries = groups[date];
+            
+            let tableRows = entries.map((j, idx) => {
+                let absentText = j.siswa_tidak_hadir || 'Semua Hadir';
+                // replace newline with break tags
+                absentText = this.escapeHtml(absentText).replace(/\n/g, '<br>');
+                
+                return `
+                    <tr>
+                        <td style="text-align: center; border: 1px solid #1a202c; padding: 6px;">${idx + 1}</td>
+                        <td style="text-align: center; border: 1px solid #1a202c; padding: 6px;">${this.escapeHtml(j.nama_kelas)}</td>
+                        <td style="text-align: center; border: 1px solid #1a202c; padding: 6px;">${this.escapeHtml(j.jam_ke)}</td>
+                        <td style="border: 1px solid #1a202c; padding: 6px;">${this.escapeHtml(j.nama_mapel)}</td>
+                        <td style="border: 1px solid #1a202c; padding: 6px;">${this.escapeHtml(j.tujuan_pembelajaran || '-')}</td>
+                        <td style="border: 1px solid #1a202c; padding: 6px;">${this.escapeHtml(j.indikator_tp || '-')}</td>
+                        <td style="border: 1px solid #1a202c; padding: 6px;">${this.escapeHtml(j.catatan || '-')}</td>
+                        <td style="font-size: 11px; color: #b91c1c; border: 1px solid #1a202c; padding: 6px;">${absentText}</td>
+                    </tr>
+                `;
+            }).join('');
+            
+            contentHtml += `
+                <div class="jurnal-group" style="page-break-inside: avoid; margin-bottom: 30px;">
+                    <div style="font-weight: bold; font-size: 14px; margin-bottom: 8px; font-family: Arial, sans-serif;">
+                        Jurnal Tanggal : ${formattedDate}
+                    </div>
+                    <table class="report-table" style="width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 12px; font-family: Arial, sans-serif;">
+                        <thead>
+                            <tr>
+                                <th style="width: 40px; text-align: center; border: 1px solid #1a202c; padding: 8px; background-color: #f7fafc;">No</th>
+                                <th style="width: 80px; text-align: center; border: 1px solid #1a202c; padding: 8px; background-color: #f7fafc;">Kelas</th>
+                                <th style="width: 70px; text-align: center; border: 1px solid #1a202c; padding: 8px; background-color: #f7fafc;">Jam Ke-</th>
+                                <th style="width: 150px; border: 1px solid #1a202c; padding: 8px; background-color: #f7fafc;">Mata Pelajaran</th>
+                                <th style="border: 1px solid #1a202c; padding: 8px; background-color: #f7fafc;">TP</th>
+                                <th style="border: 1px solid #1a202c; padding: 8px; background-color: #f7fafc;">IPTP</th>
+                                <th style="border: 1px solid #1a202c; padding: 8px; background-color: #f7fafc;">Catatan</th>
+                                <th style="width: 150px; border: 1px solid #1a202c; padding: 8px; background-color: #f7fafc;">Siswa tidak hadir</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${tableRows}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        });
+        
+        // Format the end date for Surabaya, [tgl akhir]
+        const formattedEndDate = this.formatDate(sampai);
+        
+        // Generate QR code url for verification
+        const verifyLink = `${window.location.origin}${App.baseUrl}modules/e-curriculum/verify_jurnal.php?guru_id=${signerId}&dari=${dari}&sampai=${sampai}`;
+        const qrUrl = `${window.location.origin}${App.baseUrl}modules/e-xam-card/api/qr.php?size=3&data=${encodeURIComponent(verifyLink)}`;
+        
+        const printWin = window.open('', '_blank');
+        printWin.document.write(`
+            <html>
+            <head>
+                <title>Laporan Jurnal Mengajar</title>
+                <style>
+                    body {
+                        font-family: Arial, sans-serif;
+                        color: #1a202c;
+                        padding: 30px;
+                        margin: 0;
+                    }
+                    .header-title {
+                        font-size: 18px;
+                        font-weight: bold;
+                        text-align: center;
+                        margin-bottom: 25px;
+                        text-transform: uppercase;
+                        letter-spacing: 0.5px;
+                    }
+                    .signature-section {
+                        margin-top: 40px;
+                        float: right;
+                        text-align: left;
+                        width: 250px;
+                        font-family: Arial, sans-serif;
+                        font-size: 13px;
+                        page-break-inside: avoid;
+                    }
+                    .signature-qr {
+                        margin: 10px 0;
+                    }
+                    .signature-name {
+                        font-weight: bold;
+                        text-decoration: underline;
+                        margin-top: 5px;
+                    }
+                    .clear-fix {
+                        clear: both;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header-title">Laporan Jurnal Kelas</div>
+                
+                ${contentHtml}
+                
+                <div class="signature-section">
+                    <div>Surabaya, ${formattedEndDate}</div>
+                    <div style="margin-top: 4px;">Guru Mata Pelajaran,</div>
+                    <div class="signature-qr">
+                        <img src="${qrUrl}" alt="QR Code TTD" style="width: 90px; height: 90px; display: block; border: 1px solid #cbd5e0; padding: 4px; background: white;" />
+                    </div>
+                    <div class="signature-name">${this.escapeHtml(signerName)}</div>
+                </div>
+                <div class="clear-fix"></div>
+                
+                <script>
+                    window.onload = function() {
+                        window.print();
+                    }
+                <\/script>
+            </body>
+            </html>
+        `);
+        printWin.document.close();
     },
 
     // ==================== LAPORAN KEHADIRAN VIEW ====================
@@ -2285,6 +2782,8 @@ const Curriculum = {
                 .sp-cs-dropdown { display:none; position:absolute; top:calc(100% + 5px); left:0; right:0; background:#fff; border:1px solid #cbd5e1; border-radius:8px; box-shadow:0 10px 25px rgba(0,0,0,0.1); z-index:999999; overflow:hidden; }
                 .sp-cs-option { padding: 10px 14px; cursor: pointer; border-bottom: 1px solid #f1f5f9; transition: background 0.2s; font-size: 0.9rem; line-height:1.2; }
                 .sp-cs-option:hover { background: #f1f5f9; }
+                .sp-cs-option.selected { background: #e0f2fe; color: #0369a1; font-weight: 600; position: relative; }
+                .sp-cs-option.selected::after { content: '✓'; position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; color: #0284c7; }
             </style>`;
 
             results[2].data.forEach(x => {
@@ -2341,7 +2840,7 @@ const Curriculum = {
                     </div>
                 `,
                 onOpen: () => {
-                    const bindCustomSelect = (idPrefix, hiddenInputId) => {
+                    const bindCustomSelect = (idPrefix, hiddenInputId, isMultiple = false) => {
                         $(`#csBtn${idPrefix}`).on('click', function(e) {
                             e.stopPropagation();
                             const isActive = $(this).hasClass('active');
@@ -2365,17 +2864,41 @@ const Curriculum = {
 
                         $(`#csList${idPrefix}`).on('click', '.sp-cs-option', function(e) {
                             e.stopPropagation();
-                            const val = $(this).data('id');
-                            const text = $(this).data('text');
-                            $(`#${hiddenInputId}`).val(val);
-                            $(`#csText${idPrefix}`).html(text).css('color', '#1e293b');
-                            $(`#csDrop${idPrefix}`).hide();
-                            $(`#csBtn${idPrefix}`).removeClass('active');
+                            if (isMultiple) {
+                                $(this).toggleClass('selected');
+                                let selectedIds = [];
+                                let selectedTexts = [];
+                                $(`#csList${idPrefix} .sp-cs-option.selected`).each(function() {
+                                    selectedIds.push($(this).data('id'));
+                                    const rawText = $(this).data('text');
+                                    const shortName = rawText.includes(' - ') ? rawText.split(' - ')[1] : rawText;
+                                    selectedTexts.push(shortName);
+                                });
+                                $(`#${hiddenInputId}`).val(selectedIds.join(','));
+                                if (selectedIds.length === 0) {
+                                    $(`#csText${idPrefix}`).html(`-- Pilih ${idPrefix === 'G' ? 'Guru' : 'Mapel'} --`).css('color', '#64748b');
+                                } else {
+                                    let textToShow = selectedTexts.join(', ');
+                                    if (textToShow.length > 25) {
+                                        textToShow = `${selectedIds.length} Guru Terpilih`;
+                                    }
+                                    $(`#csText${idPrefix}`).html(textToShow).css('color', '#1e293b');
+                                }
+                            } else {
+                                $(`#csList${idPrefix} .sp-cs-option`).removeClass('selected');
+                                $(this).addClass('selected');
+                                const val = $(this).data('id');
+                                const text = $(this).data('text');
+                                $(`#${hiddenInputId}`).val(val);
+                                $(`#csText${idPrefix}`).html(text).css('color', '#1e293b');
+                                $(`#csDrop${idPrefix}`).hide();
+                                $(`#csBtn${idPrefix}`).removeClass('active');
+                            }
                         });
                     };
 
-                    bindCustomSelect('G', 'fG');
-                    bindCustomSelect('M', 'fM');
+                    bindCustomSelect('G', 'fG', !id);
+                    bindCustomSelect('M', 'fM', false);
 
                     $(document).on('click.csDropdown', function(e) {
                         if (!$(e.target).closest('.sp-cs-container').length) {
@@ -2388,10 +2911,21 @@ const Curriculum = {
                         const row = this.state.distData.find(x => x.id == id);
                         if(row) { 
                             $('#fG').val(row.guru_id); 
+                            $(`#csListG .sp-cs-option`).removeClass('selected');
                             const optG = $(`#csListG .sp-cs-option[data-id="${row.guru_id}"]`);
-                            if(optG.length) $('#csTextG').html(optG.data('text')).css('color', '#1e293b');
+                            if(optG.length) {
+                                optG.addClass('selected');
+                                $('#csTextG').html(optG.data('text')).css('color', '#1e293b');
+                            }
                             
                             $('#ck_'+row.kelas_id).prop('checked', true);
+                            
+                            // Restrict to single class selection when editing
+                            $('.kIdCheckbox').on('change', function() {
+                                if ($(this).is(':checked')) {
+                                    $('.kIdCheckbox').not(this).prop('checked', false);
+                                }
+                            });
                             
                             $('#fM').val(row.mapel_id); 
                             const optM = $(`#csListM .sp-cs-option[data-id="${row.mapel_id}"]`);
@@ -2402,27 +2936,39 @@ const Curriculum = {
                     }
                 },
                 onConfirm: () => {
-                    const gId = $('#fG').val(), mId = $('#fM').val(), jp = $('#fJp').val();
+                    const gIdVal = $('#fG').val(), mId = $('#fM').val(), jp = $('#fJp').val();
                     const kIds = [];
                     $('.kIdCheckbox:checked').each(function(){ kIds.push($(this).val()); });
-                    if(!gId || !mId || !kIds || kIds.length===0) {
+                    if(!gIdVal || !mId || !kIds || kIds.length===0) {
                         EModal.toast({type: 'error', title: 'Perhatian', message: 'Silakan isi Guru, Mapel, dan minimal satu Kelas!'});
                         return false;
                     }
 
-                    // If multiple inserts, recursive or Promise.all. Simpler: loop.
+                    const gIds = gIdVal.split(',').map(x => x.trim()).filter(x => x !== '');
                     let targetAction = id ? 'update' : 'create';
                     
-                    let requests = kIds.map(kId => {
-                        let data = { guru_id: gId, kelas_id: kId, mapel_id: mId, jp: jp };
-                        if(id) data.id = id;
-                        return this.api('sch_distribusi.php?action='+targetAction, {method:'POST', data});
-                    });
+                    if (id) {
+                        // Update: single teacher and class
+                        let data = { id: id, guru_id: gIds[0], kelas_id: kIds[0], mapel_id: mId, jp: jp };
+                        this.api('sch_distribusi.php?action=update', {method:'POST', data}).done(() => {
+                            EModal.closeAll(); this.reloadCurrentPage();
+                            EModal.toast({ type: 'success', title: 'Berhasil', message: 'Distribusi diperbarui.' });
+                        });
+                    } else {
+                        // Create: combination of multiple teachers and multiple classes
+                        let requests = [];
+                        gIds.forEach(gId => {
+                            kIds.forEach(kId => {
+                                let data = { guru_id: gId, kelas_id: kId, mapel_id: mId, jp: jp };
+                                requests.push(this.api('sch_distribusi.php?action=create', {method:'POST', data}));
+                            });
+                        });
 
-                    Promise.all(requests).then(() => {
-                        EModal.closeAll(); this.reloadCurrentPage();
-                        EModal.toast({ type: 'success', title: 'Berhasil', message: id ? 'Distribusi diperbarui.' : 'Distribusi berhasil ditambahkan.' });
-                    });
+                        Promise.all(requests).then(() => {
+                            EModal.closeAll(); this.reloadCurrentPage();
+                            EModal.toast({ type: 'success', title: 'Berhasil', message: 'Distribusi berhasil ditambahkan.' });
+                        });
+                    }
                     return false;
                 }
             });

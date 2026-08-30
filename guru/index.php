@@ -5,6 +5,10 @@
  * Schedule viewing & journal management
  */
 require_once __DIR__ . '/../api/config.php';
+require_once __DIR__ . '/../api/migration_helper.php';
+
+// Jalankan auto-migration jika ada versi baru
+run_auto_migrations();
 
 $school_name = get_setting('nama_sekolah', 'E-Portal');
 $school_icon = get_setting('icon_sekolah', '');

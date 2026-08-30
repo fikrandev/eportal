@@ -36,6 +36,12 @@ switch ($action) {
     case 'list':
         listJurnal($user);
         break;
+    case 'list_izin':
+        listIzin($user);
+        break;
+    case 'create_izin':
+        createIzin($user);
+        break;
     case 'get':
         getJurnal($user);
         break;
@@ -59,6 +65,9 @@ switch ($action) {
         break;
     case 'wali_kelas_rekap':
         rekapAbsensiWaliKelas($user);
+        break;
+    case 'wali_kelas_daily_absen':
+        dailyAbsenWaliKelas($user);
         break;
     case 'dashboard_stats':
         getDashboardStats($user);
@@ -726,6 +735,77 @@ function rekapAbsensiWaliKelas($user) {
     }
 }
 
+function dailyAbsenWaliKelas($user) {
+    try {
+        $tanggal = isset($_GET['tanggal']) ? trim($_GET['tanggal']) : date('Y-m-d');
+        
+        // Resolve homeroom class reference
+        $stmtW = db()->prepare("SELECT id, tingkat, nama_kelas FROM ref_kelas WHERE wali_kelas_id = ? LIMIT 1");
+        $stmtW->execute([$user['user_id']]);
+        $wali = $stmtW->fetch(PDO::FETCH_ASSOC);
+        
+        if (!$wali) {
+            json_response(403, false, 'Akses ditolak. Anda bukan wali kelas.');
+        }
+
+        $className = $wali['nama_kelas'];
+        
+        // Find matching class ID in sch_kelas
+        $stmtSK = db()->prepare("SELECT id FROM sch_kelas WHERE nama_kelas = ? LIMIT 1");
+        $stmtSK->execute([$className]);
+        $sch_kelas = $stmtSK->fetch(PDO::FETCH_ASSOC);
+        $sch_kelas_id = $sch_kelas['id'] ?? 0;
+
+        // Get all active students in this class
+        $stmtS = db()->prepare("SELECT id, nis, nama FROM students WHERE kelas = ? AND status = 1 ORDER BY nama");
+        $stmtS->execute([$className]);
+        $students = $stmtS->fetchAll(PDO::FETCH_ASSOC);
+
+        // Fetch daily attendance records from acad_absensi for this class, date and jam_ke 1-10
+        $attendance = [];
+        if ($sch_kelas_id > 0) {
+            $stmtA = db()->prepare("
+                SELECT student_id, jam_ke, status
+                FROM acad_absensi
+                WHERE kelas_id = ? AND tanggal = ? AND jam_ke BETWEEN 1 AND 10
+            ");
+            $stmtA->execute([$sch_kelas_id, $tanggal]);
+            $rawAbsen = $stmtA->fetchAll(PDO::FETCH_ASSOC);
+            
+            // Group by student_id
+            foreach ($rawAbsen as $row) {
+                $student_id = (int)$row['student_id'];
+                $jam = (int)$row['jam_ke'];
+                $attendance[$student_id][$jam] = $row['status'];
+            }
+        }
+
+        // Combine student details and attendance
+        $result = [];
+        foreach ($students as $student) {
+            $sId = (int)$student['id'];
+            $jams = [];
+            for ($i = 1; $i <= 10; $i++) {
+                $jams[$i] = $attendance[$sId][$i] ?? '.'; // default present is '.'
+            }
+            $result[] = [
+                'id' => $sId,
+                'nis' => $student['nis'],
+                'nama' => $student['nama'],
+                'jams' => $jams
+            ];
+        }
+
+        json_response(200, true, 'Daily attendance data.', [
+            'kelas_name' => $className,
+            'tanggal' => $tanggal,
+            'students' => $result
+        ]);
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
 /**
  * Helper to merge consecutive periods of the same class and subject into 1 slot
  */
@@ -920,3 +1000,56 @@ function getDashboardStats($user) {
         json_response(500, false, 'Server error: ' . $e->getMessage());
     }
 }
+
+function listIzin($user) {
+    try {
+        $stmt = db()->prepare("
+            SELECT id, tanggal, jenis, catatan, status, created_at
+            FROM acad_ketidakhadiran
+            WHERE guru_id = ?
+            ORDER BY tanggal DESC
+        ");
+        $stmt->execute([$user['user_id']]);
+        $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        json_response(200, true, 'Data izin berhasil dimuat.', $data);
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
+function createIzin($user) {
+    $input = json_decode(file_get_contents('php://input'), true);
+    if (!$input) {
+        $input = $_POST;
+    }
+    
+    $tanggal = isset($input['tanggal']) ? trim($input['tanggal']) : '';
+    $jenis = isset($input['jenis']) ? trim($input['jenis']) : '';
+    $catatan = isset($input['catatan']) ? trim($input['catatan']) : '';
+    
+    if (empty($tanggal)) json_response(400, false, 'Tanggal wajib diisi.');
+    if (empty($jenis)) json_response(400, false, 'Jenis izin wajib dipilih.');
+    if (!in_array($jenis, ['Sakit', 'Cuti', 'Tugas', 'Izin', 'Lainnya'])) {
+        json_response(400, false, 'Jenis izin tidak valid.');
+    }
+    
+    try {
+        // Check if there is already an entry for this guru on this date
+        $stmtCheck = db()->prepare("SELECT id FROM acad_ketidakhadiran WHERE guru_id = ? AND tanggal = ?");
+        $stmtCheck->execute([$user['user_id'], $tanggal]);
+        if ($stmtCheck->fetch()) {
+            json_response(400, false, 'Anda sudah mengajukan izin pada tanggal tersebut.');
+        }
+        
+        $stmt = db()->prepare("
+            INSERT INTO acad_ketidakhadiran (guru_id, tanggal, jenis, catatan, status)
+            VALUES (?, ?, ?, ?, 'Pending')
+        ");
+        $stmt->execute([$user['user_id'], $tanggal, $jenis, $catatan]);
+        
+        json_response(200, true, 'Pengajuan izin berhasil disimpan.');
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+

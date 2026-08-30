@@ -20,6 +20,9 @@ switch ($action) {
     case 'rekap':
         rekapKetidakhadiran($user);
         break;
+    case 'update_status':
+        updateStatusKetidakhadiran($user);
+        break;
     default:
         json_response(400, false, 'Action tidak valid.');
 }
@@ -67,7 +70,7 @@ function createKetidakhadiran($user) {
     $input = get_input();
     $guru_id = ($user['role'] === 'superadmin' && isset($input['guru_id'])) ? (int)$input['guru_id'] : $user['user_id'];
     $tanggal = isset($input['tanggal']) ? $input['tanggal'] : date('Y-m-d');
-    $jenis = isset($input['jenis']) && in_array($input['jenis'], ['Izin', 'Sakit']) ? $input['jenis'] : 'Izin';
+    $jenis = isset($input['jenis']) && in_array($input['jenis'], ['Izin', 'Sakit', 'Cuti', 'Tugas', 'Lainnya']) ? $input['jenis'] : 'Izin';
     $catatan = isset($input['catatan']) ? trim($input['catatan']) : '';
 
     try {
@@ -120,3 +123,32 @@ function rekapKetidakhadiran($user) {
         json_response(500, false, 'Server error: ' . $e->getMessage());
     }
 }
+
+function updateStatusKetidakhadiran($user) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed.');
+    acad_require_admin($user);
+
+    $input = get_input();
+    $id = isset($input['id']) ? (int)$input['id'] : 0;
+    $status = isset($input['status']) ? $input['status'] : '';
+
+    if ($id <= 0) json_response(400, false, 'ID tidak valid.');
+    if (!in_array($status, ['Approved', 'Rejected', 'Pending'])) {
+        json_response(400, false, 'Status tidak valid. Gunakan: Approved, Rejected, atau Pending.');
+    }
+
+    try {
+        $stmt = db()->prepare("UPDATE acad_ketidakhadiran SET status = ? WHERE id = ?");
+        $stmt->execute([$status, $id]);
+
+        if ($stmt->rowCount() === 0) {
+            json_response(404, false, 'Data ketidakhadiran tidak ditemukan.');
+        }
+
+        $label = $status === 'Approved' ? 'disetujui' : ($status === 'Rejected' ? 'ditolak' : 'dikembalikan ke pending');
+        json_response(200, true, "Pengajuan izin berhasil {$label}.");
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+

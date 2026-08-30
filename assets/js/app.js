@@ -273,5 +273,168 @@ const App = {
     }
 };
 
+// ==========================================
+// GLOBAL TABLE PAGINATION SYSTEM
+// ==========================================
+function applyTablePagination(table) {
+    const $table = $(table);
+    // Exclude special tables that shouldn't be paginated (e.g., calendar, details, or very small tables)
+    if ($table.hasClass('no-pagination') || $table.parents('.calendar, .no-pagination-container').length > 0) {
+        return;
+    }
+
+    const $tbody = $table.find('tbody');
+    if ($tbody.length === 0) return;
+
+    // Get all valid rows (exclude header rows, empty indicator rows, etc.)
+    const $rows = $tbody.find('> tr').not('.no-row-data, .empty-row, .no-paginate');
+    const totalRows = $rows.length;
+    
+    // Get target insertion point (after the horizontal scroll wrapper if exists)
+    let $targetInsert = $table;
+    if ($table.parent().hasClass('table-responsive')) {
+        $targetInsert = $table.parent();
+    }
+    let $wrapper = $targetInsert.next('.table-pagination-wrapper');
+    
+    if (totalRows === 0) {
+        if ($wrapper.length) $wrapper.remove();
+        return;
+    }
+    
+    // Read or set default page size & current page
+    let pageSize = parseInt($table.attr('data-page-size')) || 20;
+    let currentPage = parseInt($table.attr('data-current-page')) || 1;
+    
+    // If total rows <= 5, hide pagination controls and show all rows
+    if (totalRows <= 5) {
+        $rows.show();
+        if ($wrapper.length) $wrapper.remove();
+        $table.removeAttr('data-paginated');
+        return;
+    }
+    
+    // Calculate total pages
+    let totalPages = Math.ceil(totalRows / pageSize);
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+    
+    // Save state on the table element
+    $table.attr('data-page-size', pageSize);
+    $table.attr('data-current-page', currentPage);
+    $table.attr('data-row-count', totalRows);
+    $table.attr('data-paginated', 'true');
+    
+    // Hide/show rows based on page
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    
+    $rows.each(function(index) {
+        if (index >= startIndex && index < endIndex) {
+            $(this).show();
+        } else {
+            $(this).hide();
+        }
+    });
+    
+    // Render pagination controls
+    if ($wrapper.length === 0) {
+        $wrapper = $('<div class="table-pagination-wrapper"></div>');
+        $targetInsert.after($wrapper);
+    }
+    
+    $wrapper.html(`
+        <div class="table-pagination-left">
+            <span>Tampilkan</span>
+            <select class="table-page-size-select">
+                <option value="20" ${pageSize === 20 ? 'selected' : ''}>20</option>
+                <option value="60" ${pageSize === 60 ? 'selected' : ''}>60</option>
+                <option value="80" ${pageSize === 80 ? 'selected' : ''}>80</option>
+                <option value="100" ${pageSize === 100 ? 'selected' : ''}>100</option>
+            </select>
+            <span>baris per halaman (Total <strong>${totalRows}</strong> data)</span>
+        </div>
+        <div class="table-pagination-right">
+            <button class="table-page-btn btn-prev" ${currentPage === 1 ? 'disabled' : ''}>Sebelumnya</button>
+            <span class="table-page-info">Halaman ${currentPage} dari ${totalPages}</span>
+            <button class="table-page-btn btn-next" ${currentPage === totalPages ? 'disabled' : ''}>Berikutnya</button>
+        </div>
+    `);
+    
+    // Bind events
+    $wrapper.find('.table-page-size-select').off('change').on('change', function() {
+        const newSize = parseInt($(this).val());
+        $table.attr('data-page-size', newSize);
+        $table.attr('data-current-page', 1);
+        applyTablePagination(table);
+    });
+    
+    $wrapper.find('.btn-prev').off('click').on('click', function() {
+        if (currentPage > 1) {
+            $table.attr('data-current-page', currentPage - 1);
+            applyTablePagination(table);
+        }
+    });
+    
+    $wrapper.find('.btn-next').off('click').on('click', function() {
+        if (currentPage < totalPages) {
+            $table.attr('data-current-page', currentPage + 1);
+            applyTablePagination(table);
+        }
+    });
+}
+
+// Global Mutation Observer to automatically paginate any table added or modified in the DOM
+function initGlobalTablePagination() {
+    const observer = new MutationObserver((mutations) => {
+        let needsPaginationCheck = false;
+        
+        for (let mutation of mutations) {
+            if (mutation.addedNodes.length || mutation.removedNodes.length) {
+                needsPaginationCheck = true;
+                break;
+            }
+        }
+        
+        if (needsPaginationCheck) {
+            $('table:not(.no-pagination)').each(function() {
+                const table = this;
+                const $table = $(table);
+                
+                if ($table.parents('.calendar, .no-pagination-container').length > 0) {
+                    return;
+                }
+                
+                const $tbody = $table.find('tbody');
+                if ($tbody.length === 0) return;
+                
+                const currentCount = $tbody.find('> tr').not('.no-row-data, .empty-row, .no-paginate').length;
+                const lastCount = parseInt($table.attr('data-row-count')) || 0;
+                const isPaginated = $table.attr('data-paginated') === 'true';
+                
+                if (!isPaginated || currentCount !== lastCount) {
+                    if (isPaginated && currentCount !== lastCount) {
+                        $table.attr('data-current-page', 1);
+                    }
+                    applyTablePagination(table);
+                }
+            });
+        }
+    });
+    
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+    
+    // Initial run on page load
+    $('table:not(.no-pagination)').each(function() {
+        applyTablePagination(this);
+    });
+}
+
 // Initialize when DOM ready
-$(document).ready(() => App.init());
+$(document).ready(() => {
+    App.init();
+    initGlobalTablePagination();
+});

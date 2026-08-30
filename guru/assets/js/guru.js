@@ -206,7 +206,7 @@
         },
 
         resolve() {
-            const hash = window.location.hash.replace('#/', '') || '';
+            const hash = decodeURIComponent(window.location.hash).replace('#/', '') || '';
             const [page, ...params] = hash.split('/');
 
             if (!Auth.isLoggedIn() && page !== 'login') {
@@ -226,6 +226,9 @@
         render(page, params = []) {
             const content = $('#appContent');
             if (!content) return;
+
+            // Scroll to top on page navigation
+            window.scrollTo(0, 0);
 
             // Header visibility: On home page, hide the top sticky header so there's no duplicate header
             const header = $('.app-header');
@@ -259,6 +262,9 @@
                     break;
                 case 'profil':
                     Pages.renderProfil();
+                    break;
+                case 'izin':
+                    Pages.renderIzin();
                     break;
                 default:
                     Pages.renderHome();
@@ -386,7 +392,7 @@
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
                         Menu Cepat
                     </div>
-                    <div class="quick-shortcuts-grid" style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-bottom:20px;">
+                    <div class="quick-shortcuts-grid" style="display:grid; grid-template-columns:repeat(2,1fr); gap:12px; margin-bottom:20px;">
                         ${hasMapel ? `
                             <div class="shortcut-card" onclick="location.hash='#/jadwal'" style="background:white; border-radius:16px; padding:14px 10px; text-align:center; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px; transition:transform 0.2s ease;">
                                 <div style="width:40px; height:40px; border-radius:12px; background:rgba(59,130,246,0.1); color:#3b82f6; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
@@ -406,7 +412,13 @@
                             <div style="width:40px; height:40px; border-radius:12px; background:rgba(16,185,129,0.1); color:#10b981; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                             </div>
-                            <span style="font-size:0.75rem; font-weight:700; color:var(--text-primary);">Riwayat</span>
+                            <span style="font-size:0.75rem; font-weight:700; color:var(--text-primary);">Riwayat Jurnal</span>
+                        </div>
+                        <div class="shortcut-card" onclick="location.hash='#/izin'" style="background:white; border-radius:16px; padding:14px 10px; text-align:center; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px; transition:transform 0.2s ease;">
+                            <div style="width:40px; height:40px; border-radius:12px; background:rgba(239,68,68,0.1); color:#ef4444; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/><line x1="12" y1="12" x2="12" y2="18"/></svg>
+                            </div>
+                            <span style="font-size:0.75rem; font-weight:700; color:var(--text-primary);">Izin Guru</span>
                         </div>
                         ${isWali ? `
                             <div class="shortcut-card" onclick="location.hash='#/jurnal-kelas'" style="background:white; border-radius:16px; padding:14px 10px; text-align:center; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px; transition:transform 0.2s ease;">
@@ -494,7 +506,7 @@
                                     <div style="margin-bottom:12px;">
                                         <button class="btn btn-sm" onclick="GuruApp.openKegiatanModal('wali_kelas')" style="width:100%; background:#eff6ff; color:#2563eb; border:1.5px dashed #93c5fd; border-radius:12px; padding:10px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px;">
                                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                                            <span>+ Isi Jurnal Wali Kelas (${escapeHtml(Auth.user.wali_kelas.nama_kelas)})</span>
+                                            <span>+ Isi Jurnal Guru Wali (${escapeHtml(Auth.user.wali_kelas.nama_kelas)})</span>
                                         </button>
                                     </div>
                                 `;
@@ -543,7 +555,7 @@
                                     cardSubtitle = `${formatTanggal(r.tanggal)} — Tenaga Pendidik`;
                                     noteSnippet = escapeHtml(r.catatan || 'Tidak ada catatan.');
                                 } else if (r.jenis_jurnal === 'wali_kelas') {
-                                    cardTitle = 'Jurnal Wali Kelas';
+                                    cardTitle = 'Jurnal Guru Wali';
                                     cardBadge = `Kelas ${escapeHtml(r.nama_kelas || '')}`;
                                     cardBadgeClass = 'badge-warning';
                                     cardSubtitle = `${formatTanggal(r.tanggal)} — Aktivitas Wali Kelas`;
@@ -748,7 +760,7 @@
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
                                 </div>
                                 <div>
-                                    <div style="font-family:var(--font-heading); font-size:0.875rem; font-weight:800; color:#1e40af;">Jurnal Wali Kelas (${escapeHtml(Auth.user.wali_kelas.nama_kelas)})</div>
+                                    <div style="font-family:var(--font-heading); font-size:0.875rem; font-weight:800; color:#1e40af;">Jurnal Guru Wali (${escapeHtml(Auth.user.wali_kelas.nama_kelas)})</div>
                                     <div style="font-size:0.75rem; color:#3b82f6; font-weight:600;">Klik untuk catat kegiatan & pembinaan kelas</div>
                                 </div>
                             </div>
@@ -793,8 +805,8 @@
                         container.innerHTML = list.map(item => `
                             <div class="jurnal-item" onclick="GuruApp.viewJurnal(${item.id})">
                                 <div class="jurnal-item-header">
-                                    <div class="jurnal-item-mapel">${item.jenis_jurnal === 'wali_kelas' ? 'Jurnal Wali Kelas' : 'Jurnal Kegiatan'}</div>
-                                    <span class="badge ${item.jenis_jurnal === 'wali_kelas' ? 'badge-warning' : 'badge-info'}">${item.jenis_jurnal === 'wali_kelas' ? 'Wali Kelas' : 'Non-KBM'}</span>
+                                    <div class="jurnal-item-mapel">${item.jenis_jurnal === 'wali_kelas' ? 'Jurnal Guru Wali' : 'Jurnal Kegiatan'}</div>
+                                    <span class="badge ${item.jenis_jurnal === 'wali_kelas' ? 'badge-warning' : 'badge-info'}">${item.jenis_jurnal === 'wali_kelas' ? 'Guru Wali' : 'Non-KBM'}</span>
                                 </div>
                                 <div class="jurnal-item-tp" style="margin-top:6px; font-size:0.85rem; color:var(--text-primary); line-height:1.5;">${escapeHtml(item.catatan || '-')}</div>
                                 <div class="jurnal-item-footer" style="margin-top:10px;">
@@ -863,7 +875,7 @@
 
             const tanggal = getTanggalIni();
             const isWali = jenis === 'wali_kelas';
-            const title = existing ? (isWali ? 'Edit Jurnal Wali Kelas' : 'Edit Jurnal Kegiatan') : (isWali ? 'Isi Jurnal Wali Kelas' : 'Isi Jurnal Kegiatan');
+            const title = existing ? (isWali ? 'Edit Jurnal Guru Wali' : 'Edit Jurnal Kegiatan') : (isWali ? 'Isi Jurnal Guru Wali' : 'Isi Jurnal Kegiatan');
             const placeholder = isWali 
                 ? 'Tuliskan catatan pembinaan siswa, koordinasi wali murid, atau kejadian di kelas hari ini...'
                 : 'Tuliskan uraian kegiatan harian kerja Anda hari ini...';
@@ -1285,7 +1297,7 @@
                                 subtitle = 'Tenaga Pendidik / Non-Mapel';
                                 snippet = escapeHtml(j.catatan || 'Tidak ada catatan.');
                             } else if (j.jenis_jurnal === 'wali_kelas') {
-                                title = 'Jurnal Wali Kelas';
+                                title = 'Jurnal Guru Wali';
                                 badgeText = `Kelas ${escapeHtml(j.nama_kelas || '')}`;
                                 badgeClass = 'badge-warning';
                                 subtitle = 'Aktivitas & Pembinaan Siswa';
@@ -1413,11 +1425,11 @@
                         </div>
                     `;
                 } else if (j.jenis_jurnal === 'wali_kelas') {
-                    modalTitle = 'Detail Jurnal Wali Kelas';
+                    modalTitle = 'Detail Jurnal Guru Wali';
                     headerMetaHtml = `
                         <div class="form-info-row">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                            <span><strong>${formatTanggal(j.tanggal)}</strong> — Jurnal Wali Kelas</span>
+                            <span><strong>${formatTanggal(j.tanggal)}</strong> — Jurnal Guru Wali</span>
                         </div>
                         ${j.nama_kelas ? `
                             <div class="form-info-row">
@@ -1428,7 +1440,7 @@
                     `;
                     bodyContentHtml = `
                         <div class="form-group mt-2">
-                            <label class="form-label">Catatan Kegiatan Wali Kelas</label>
+                            <label class="form-label">Catatan Kegiatan Guru Wali</label>
                             <div style="padding:12px 14px;background:var(--bg-light);border-radius:var(--radius-md);font-size:0.875rem;line-height:1.6;white-space:pre-wrap;">${escapeHtml(j.catatan || '-')}</div>
                         </div>
                     `;
@@ -1551,11 +1563,21 @@
 
                     <!-- Tab 2: Rekap Absensi -->
                     <div id="waliRekapWrapper" style="display:none;">
-                        <div class="rekap-search-wrap">
-                            <input type="text" class="rekap-search-input" id="rekapSearchInput" placeholder="Cari nama siswa..." oninput="GuruApp.filterWaliRekap(this.value)">
-                            <svg class="rekap-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                            </svg>
+                        <div style="display:flex; flex-direction:column; gap:10px; margin-bottom:16px;">
+                            <div class="rekap-search-wrap" style="margin-bottom:0;">
+                                <input type="text" class="rekap-search-input" id="rekapSearchInput" placeholder="Cari nama siswa..." oninput="GuruApp.filterWaliRekap(this.value)">
+                                <svg class="rekap-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                                </svg>
+                            </div>
+                            
+                            <div style="display:flex; gap:8px; align-items:center; background:white; padding:10px 12px; border-radius:12px; border:1px solid #f1f5f9; box-shadow:var(--shadow-sm);">
+                                <input type="date" id="printAbsenTanggal" value="${tanggalIni}" style="border:1px solid #cbd5e1; border-radius:8px; padding:8px; font-size:0.8rem; width:135px; flex-shrink:0; font-family:inherit; outline:none;">
+                                <button class="btn btn-sm btn-primary" onclick="GuruApp.printDailyAbsen()" style="padding:8px 14px; border-radius:8px; font-size:0.75rem; font-weight:700; display:flex; align-items:center; gap:6px; white-space:nowrap; flex:1; justify-content:center;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                                    Cetak Absensi Harian
+                                </button>
+                            </div>
                         </div>
                         <div id="waliRekapList">
                             <div class="skeleton skeleton-card" style="height:90px; margin-bottom:10px;"></div>
@@ -1763,6 +1785,163 @@
             this.renderWaliRekapList(filtered);
         },
 
+        async printDailyAbsen() {
+            const tanggal = $('#printAbsenTanggal')?.value || getTanggalIni();
+            const loader = Toast.show('Menyiapkan laporan...', 'info');
+            
+            try {
+                const res = await API.get(`api/jurnal.php?action=wali_kelas_daily_absen&tanggal=${tanggal}`);
+                Toast.close(loader);
+                if (!res.success) {
+                    Toast.show(res.message || 'Gagal memuat data.', 'error');
+                    return;
+                }
+                
+                const data = res.data;
+                const formattedDate = formatTanggal(data.tanggal);
+                
+                const printWin = window.open('', '_blank');
+                if (!printWin) {
+                    Toast.show('Pop-up terblokir! Izinkan pop-up untuk mencetak.', 'error');
+                    return;
+                }
+                
+                let rowsHtml = '';
+                data.students.forEach((s, idx) => {
+                    let cellsHtml = '';
+                    for (let j = 1; j <= 10; j++) {
+                        const val = s.jams[j] || '.';
+                        cellsHtml += `<td style="text-align:center; font-family:monospace; font-weight:bold; font-size:10pt;">${val}</td>`;
+                    }
+                    rowsHtml += `
+                        <tr>
+                            <td style="text-align:center; font-size:9.5pt;">${idx + 1}</td>
+                            <td style="text-align:center; font-size:9.5pt;">${escapeHtml(s.nis || '-')}</td>
+                            <td style="font-size:9.5pt;">${escapeHtml(s.nama)}</td>
+                            ${cellsHtml}
+                        </tr>
+                    `;
+                });
+                
+                const htmlContent = `
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset="UTF-8">
+                        <title>Cetak Laporan Absensi - ${escapeHtml(data.kelas_name)}</title>
+                        <style>
+                            @page {
+                                size: A4 landscape;
+                                margin: 15mm;
+                            }
+                            body {
+                                font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+                                margin: 0;
+                                padding: 0;
+                                color: #1e293b;
+                                font-size: 11pt;
+                                line-height: 1.4;
+                            }
+                            .title-block {
+                                text-align: center;
+                                margin-bottom: 20px;
+                            }
+                            .title-main {
+                                font-size: 14pt;
+                                font-weight: 700;
+                                letter-spacing: 0.5px;
+                                margin-bottom: 4px;
+                                text-transform: uppercase;
+                            }
+                            .title-sub {
+                                font-size: 11pt;
+                                color: #475569;
+                            }
+                            table {
+                                width: 100%;
+                                border-collapse: collapse;
+                                margin-top: 15px;
+                            }
+                            th, td {
+                                border: 1px solid #000;
+                                padding: 8px 10px;
+                                font-size: 9.5pt;
+                            }
+                            th {
+                                background-color: #f1f5f9;
+                                font-weight: 700;
+                                text-transform: uppercase;
+                                font-size: 9pt;
+                            }
+                            .jam-col {
+                                width: 40px;
+                            }
+                            @media print {
+                                button { display: none; }
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="title-block">
+                            <div class="title-main">Daftar Hadir Siswa dalam Pembelajaran</div>
+                            <div class="title-sub">Tanggal: <strong>${formattedDate}</strong> &nbsp;|&nbsp; Kelas: <strong>${escapeHtml(data.kelas_name)}</strong></div>
+                        </div>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th rowspan="2" style="width:40px; text-align:center; vertical-align:middle;">No</th>
+                                    <th rowspan="2" style="width:100px; text-align:center; vertical-align:middle;">NIS</th>
+                                    <th rowspan="2" style="vertical-align:middle; text-align:left;">Nama Siswa</th>
+                                    <th colspan="10" style="text-align:center;">Jam Ke-</th>
+                                </tr>
+                                <tr>
+                                    <th class="jam-col" style="text-align:center;">1</th>
+                                    <th class="jam-col" style="text-align:center;">2</th>
+                                    <th class="jam-col" style="text-align:center;">3</th>
+                                    <th class="jam-col" style="text-align:center;">4</th>
+                                    <th class="jam-col" style="text-align:center;">5</th>
+                                    <th class="jam-col" style="text-align:center;">6</th>
+                                    <th class="jam-col" style="text-align:center;">7</th>
+                                    <th class="jam-col" style="text-align:center;">8</th>
+                                    <th class="jam-col" style="text-align:center;">9</th>
+                                    <th class="jam-col" style="text-align:center;">10</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rowsHtml}
+                            </tbody>
+                        </table>
+                        
+                        <div style="margin-top:40px; display:flex; justify-content:flex-end;">
+                            <div style="text-align:center; width:220px; font-size:10pt;">
+                                <div>Mengetahui,</div>
+                                <div style="font-weight:700; margin-top:5px;">Wali Kelas</div>
+                                <div style="margin-top:55px; font-weight:700; text-decoration:underline;">${escapeHtml(Auth.user.nama_lengkap)}</div>
+                                <div>NIP/Username: ${escapeHtml(Auth.user.username)}</div>
+                            </div>
+                        </div>
+                        
+                        <script>
+                            window.onload = function() {
+                                setTimeout(function() {
+                                    window.print();
+                                    window.close();
+                                }, 500);
+                            };
+                        </script>
+                    </body>
+                    </html>
+                `;
+                
+                printWin.document.open();
+                printWin.document.write(htmlContent);
+                printWin.document.close();
+            } catch(e) {
+                Toast.close(loader);
+                Toast.show('Gagal menghubungi server.', 'error');
+            }
+        },
+
         async editJurnal(id) {
             try {
                 const res = await API.get(`api/jurnal.php?action=get&id=${id}`);
@@ -1782,6 +1961,170 @@
                 }
             } catch(e) {
                 Toast.show('Gagal memuat data jurnal.', 'error');
+            }
+        },
+
+        async renderIzin() {
+            const content = $('#appContent');
+            
+            content.innerHTML = `
+                <div class="page-enter">
+                    <div class="section-title" style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                        <span style="display:flex; align-items:center; gap:8px;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/><line x1="12" y1="12" x2="12" y2="18"/></svg>
+                            Pengajuan Izin Guru
+                        </span>
+                        <button class="btn btn-sm btn-primary" onclick="GuruApp.openIzinModal()" style="border-radius:10px; padding:6px 12px; font-size:0.75rem; font-weight:700;">
+                            + Buat Izin
+                        </button>
+                    </div>
+
+                    <div id="izinList" style="margin-top: 16px;">
+                        <div class="skeleton skeleton-card"></div>
+                        <div class="skeleton skeleton-card"></div>
+                    </div>
+                </div>
+            `;
+            
+            Pages.loadIzinList();
+        },
+
+        async loadIzinList() {
+            const container = $('#izinList');
+            if (!container) return;
+            
+            try {
+                const res = await API.get('api/jurnal.php?action=list_izin');
+                if (!res.success) {
+                    container.innerHTML = `<div class="empty-state"><div class="empty-state-title">Gagal Memuat</div></div>`;
+                    return;
+                }
+                
+                const data = res.data || [];
+                if (data.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state" style="background:white; border-radius:16px; padding:32px 16px; text-align:center; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9;">
+                            <div style="font-size:2rem; margin-bottom:8px;">📝</div>
+                            <div class="empty-state-title" style="font-weight:700; color:var(--text-primary); font-size:0.95rem;">Belum Ada Pengajuan</div>
+                            <div class="empty-state-desc" style="font-size:0.75rem; color:var(--text-secondary); margin-top:4px;">Klik "+ Buat Izin" di atas untuk mengajukan izin.</div>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                let html = '';
+                data.forEach(item => {
+                    let badgeColor = '#f59e0b'; // pending
+                    let badgeBg = 'rgba(245,158,11,0.1)';
+                    if (item.status === 'Approved') {
+                        badgeColor = '#10b981';
+                        badgeBg = 'rgba(16,185,129,0.1)';
+                    } else if (item.status === 'Rejected') {
+                        badgeColor = '#ef4444';
+                        badgeBg = 'rgba(239,68,68,0.1)';
+                    }
+                    
+                    html += `
+                        <div class="riwayat-card" style="background:white; border-radius:16px; padding:16px; margin-bottom:12px; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; display:flex; flex-direction:column; gap:8px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center;">
+                                <span style="font-weight:800; font-family:var(--font-heading); color:var(--text-primary); font-size:0.95rem;">${escapeHtml(item.jenis)}</span>
+                                <span style="font-size:0.7rem; font-weight:700; color:${badgeColor}; background:${badgeBg}; padding:4px 8px; border-radius:8px;">${item.status}</span>
+                            </div>
+                            <div style="font-size:0.75rem; color:var(--text-secondary); display:flex; align-items:center; gap:6px;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                Tanggal Izin: <strong>${formatTanggal(item.tanggal)}</strong>
+                            </div>
+                            ${item.catatan ? `
+                                <div style="font-size:0.75rem; background:#f8fafc; border-radius:8px; padding:8px 10px; color:var(--text-primary); border-left:3px solid var(--primary);">
+                                    ${escapeHtml(item.catatan)}
+                                </div>
+                            ` : ''}
+                        </div>
+                    `;
+                });
+                
+                container.innerHTML = html;
+            } catch(e) {
+                container.innerHTML = `<div class="empty-state"><div class="empty-state-title">Gagal Memuat</div></div>`;
+            }
+        },
+
+        openIzinModal() {
+            const today = getTanggalIni();
+            
+            const overlay = document.createElement('div');
+            overlay.className = 'guru-modal-overlay';
+            overlay.id = 'izinModal';
+            overlay.innerHTML = `
+                <div class="guru-modal" style="animation:slideUp 0.3s ease-out;">
+                    <div class="guru-modal-header">
+                        <h4>Pengajuan Izin Baru</h4>
+                        <button class="guru-modal-close" onclick="GuruApp.closeModal('izinModal')">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="20" height="20"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
+                    <div class="guru-modal-body" style="padding: 20px;">
+                        <form id="fIzinForm" onsubmit="return false;">
+                            <div class="jurnal-form-group">
+                                <label class="jurnal-form-label">Tanggal Izin</label>
+                                <input type="date" class="jurnal-form-input" id="fIzinTanggal" value="${today}" required>
+                            </div>
+                            
+                            <div class="jurnal-form-group" style="margin-top:12px;">
+                                <label class="jurnal-form-label">Jenis Izin</label>
+                                <select class="jurnal-form-input" id="fIzinJenis" style="width:100%; border:1px solid #cbd5e1; border-radius:8px; padding:10px; background:white; font-size:0.875rem;" required>
+                                    <option value="">Pilih Jenis Izin...</option>
+                                    <option value="Sakit">Sakit</option>
+                                    <option value="Cuti">Cuti</option>
+                                    <option value="Tugas">Tugas</option>
+                                    <option value="Izin">Izin (Lainnya)</option>
+                                    <option value="Lainnya">Lainnya</option>
+                                </select>
+                            </div>
+                            
+                            <div class="jurnal-form-group" style="margin-top:12px;">
+                                <label class="jurnal-form-label">Keterangan / Catatan</label>
+                                <textarea class="jurnal-form-input" id="fIzinCatatan" rows="3" placeholder="Masukkan alasan pengajuan izin secara detail..." required></textarea>
+                            </div>
+                            
+                            <button type="button" class="btn btn-primary btn-block" id="btnSaveIzin" onclick="GuruApp.saveIzin()" style="margin-top: 20px; border-radius:10px; padding:12px; font-weight:700;">
+                                <span class="btn-label">Kirim Pengajuan</span>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(overlay);
+        },
+
+        async saveIzin() {
+            const tanggal = $('#fIzinTanggal').value;
+            const jenis = $('#fIzinJenis').value;
+            const catatan = $('#fIzinCatatan').value.trim();
+            const btn = $('#btnSaveIzin');
+            
+            if (!tanggal) { Toast.show('Pilih tanggal izin.', 'error'); return; }
+            if (!jenis) { Toast.show('Pilih jenis izin.', 'error'); return; }
+            if (!catatan) { Toast.show('Masukkan keterangan / alasan.', 'error'); return; }
+            
+            btn.classList.add('loading');
+            try {
+                const res = await API.post('api/jurnal.php?action=create_izin', {
+                    tanggal, jenis, catatan
+                });
+                
+                if (res.success) {
+                    Toast.show(res.message || 'Pengajuan izin berhasil dikirim.');
+                    GuruApp.closeModal('izinModal');
+                    Pages.loadIzinList();
+                } else {
+                    Toast.show(res.message || 'Gagal mengirim pengajuan.', 'error');
+                }
+            } catch(e) {
+                Toast.show('Gagal terhubung ke server.', 'error');
+            } finally {
+                btn.classList.remove('loading');
             }
         }
     };
@@ -2021,6 +2364,18 @@
 
         filterWaliRekap(query) {
             Pages.filterWaliRekap(query);
+        },
+
+        openIzinModal() {
+            Pages.openIzinModal();
+        },
+
+        async saveIzin() {
+            await Pages.saveIzin();
+        },
+
+        async printDailyAbsen() {
+            await Pages.printDailyAbsen();
         }
     };
 

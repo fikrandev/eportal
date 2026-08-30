@@ -7,9 +7,8 @@ RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 # Fix Authorization header for shared hosting (CGI/FastCGI)
 SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
 
-# ADMS ZKTeco Routes
-RewriteRule ^iclock/cdata$ modules/e-absen/api/adms.php [L,QSA]
-RewriteRule ^iclock/getrequest$ modules/e-absen/api/adms.php [L,QSA]
+# ADMS ZKTeco / Interactive Routes
+RewriteRule ^iclock/([a-zA-Z0-9_-]+)/?$ modules/e-absen/api/adms.php [L,QSA]
 
 # Security: Deny access to sensitive files
 <FilesMatch "\.(sql|md|env|log)$">

@@ -54,8 +54,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && strpos($_SERVER['REQUEST_URI'], '/ic
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && strpos($_SERVER['REQUEST_URI'], '/iclock/cdata') !== false) {
     header("Content-Type: text/plain");
     
-    $sn = isset($_GET['SN']) ? trim($_GET['SN']) : '';
-    $table = isset($_GET['table']) ? trim($_GET['table']) : '';
+    // Case-insensitive SN query parameter
+    $sn = '';
+    foreach ($_GET as $key => $val) {
+        if (strtolower($key) === 'sn') {
+            $sn = trim($val);
+            break;
+        }
+    }
+    
+    // Case-insensitive table query parameter
+    $table = '';
+    foreach ($_GET as $key => $val) {
+        if (strtolower($key) === 'table') {
+            $table = strtoupper(trim($val));
+            break;
+        }
+    }
+    
     $body = file_get_contents("php://input");
     
     if (empty($sn)) {
@@ -87,16 +103,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && strpos($_SERVER['REQUEST_URI'], '/i
         $waTemplateStmt = db()->query("SELECT setting_value FROM settings WHERE setting_key = 'wa_message_template'");
         $waTemplate = $waTemplateStmt->fetchColumn();
         
+        $active_year = get_active_academic_year();
+        $year_id = $active_year['id'] ?? 0;
+        
         foreach ($lines as $line) {
             $line = trim($line);
             if (empty($line)) continue;
             
             $cols = explode("\t", $line);
             if (count($cols) >= 4) {
-                $pin = $cols[0];
-                $timestamp = $cols[1];
-                $state = $cols[2];
-                $verifyType = $cols[3];
+                $pin = trim($cols[0]);
+                $timestamp = trim($cols[1]);
+                $state = trim($cols[2]);
+                $verifyType = trim($cols[3]);
                 $mesinId = $mesin ? $mesin['id'] : 0;
                 
                 try {
@@ -106,13 +125,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && strpos($_SERVER['REQUEST_URI'], '/i
                     ");
                     $stmtInsert->execute([$mesinId, $pin, $timestamp, $state, $verifyType]);
                     
-                    if ($stmtInsert->rowCount() > 0 && $waTemplate) {
-                        // Send WA if new log & student found
-                        $stmtSiswa = db()->prepare("SELECT nama, no_hp_ortu FROM students WHERE nis = ? AND no_hp_ortu IS NOT NULL AND no_hp_ortu != ''");
-                        $stmtSiswa->execute([$pin]);
-                        $siswa = $stmtSiswa->fetch();
+                    // Look up student by NIS, stripping leading zeros for robust matching
+                    $stmtSiswa = db()->prepare("
+                        SELECT id, nama, no_hp_ortu, kelas 
+                        FROM students 
+                        WHERE TRIM(LEADING '0' FROM nis) = TRIM(LEADING '0' FROM ?) AND status = 1 
+                        LIMIT 1
+                    ");
+                    $stmtSiswa->execute([$pin]);
+                    $siswa = $stmtSiswa->fetch();
+                    
+                    if ($siswa) {
+                        // 1. Automatically register student attendance in acad_absensi (jam_ke = 0 for daily attendance)
+                        try {
+                            $stmtKelas = db()->prepare("SELECT id FROM sch_kelas WHERE nama_kelas = ? LIMIT 1");
+                            $stmtKelas->execute([$siswa['kelas']]);
+                            $kelasId = $stmtKelas->fetchColumn() ?: 0;
+                            
+                            if ($kelasId > 0 && $year_id > 0) {
+                                $tanggal_absen = date('Y-m-d', strtotime($timestamp));
+                                
+                                $stmtAbsensi = db()->prepare("
+                                    INSERT INTO acad_absensi (student_id, kelas_id, academic_year_id, tanggal, jam_ke, status, keterangan, dicatat_oleh)
+                                    VALUES (?, ?, ?, ?, 0, 'H', 'Hadir via Fingerprint', NULL)
+                                    ON DUPLICATE KEY UPDATE status = 'H', keterangan = 'Hadir via Fingerprint'
+                                ");
+                                $stmtAbsensi->execute([$siswa['id'], $kelasId, $year_id, $tanggal_absen]);
+                            }
+                        } catch (Exception $ex) {
+                            // Don't let class attendance insertion fail the rest of the flow
+                        }
                         
-                        if ($siswa) {
+                        // 2. Trigger WA Gateway for parents if new log & parents phone number is set
+                        if ($stmtInsert->rowCount() > 0 && $waTemplate && !empty($siswa['no_hp_ortu'])) {
                             $statusText = $state == 0 ? 'Hadir (Masuk)' : 'Pulang';
                             $msg = str_replace(
                                 ['{nama}', '{status_absen}', '{waktu}'], 

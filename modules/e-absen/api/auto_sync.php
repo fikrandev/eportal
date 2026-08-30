@@ -40,6 +40,9 @@ try {
     $waTemplateStmt = db()->query("SELECT setting_value FROM settings WHERE setting_key = 'wa_message_template'");
     $waTemplate = $waTemplateStmt->fetchColumn();
 
+    $active_year = get_active_academic_year();
+    $year_id = $active_year['id'] ?? 0;
+
     $newLogsCount = 0;
     
     foreach ($mesins as $mesin) {
@@ -68,24 +71,50 @@ try {
                 $log['type']
             ]);
             
+            // Cek apakah ini milik siswa (PIN = NIS)
+            $stmtSiswa = db()->prepare("
+                SELECT id, nama, no_hp_ortu, kelas 
+                FROM students 
+                WHERE TRIM(LEADING '0' FROM nis) = TRIM(LEADING '0' FROM ?) AND status = 1 
+                LIMIT 1
+            ");
+            $stmtSiswa->execute([$log['uid']]);
+            $siswa = $stmtSiswa->fetch();
+
+            if ($siswa) {
+                // 1. Automatically register student attendance in acad_absensi (jam_ke = 0 for daily attendance)
+                try {
+                    $stmtKelas = db()->prepare("SELECT id FROM sch_kelas WHERE nama_kelas = ? LIMIT 1");
+                    $stmtKelas->execute([$siswa['kelas']]);
+                    $kelasId = $stmtKelas->fetchColumn() ?: 0;
+                    
+                    if ($kelasId > 0 && $year_id > 0) {
+                        $tanggal_absen = date('Y-m-d', strtotime($log['timestamp']));
+                        
+                        $stmtAbsensi = db()->prepare("
+                            INSERT INTO acad_absensi (student_id, kelas_id, academic_year_id, tanggal, jam_ke, status, keterangan, dicatat_oleh)
+                            VALUES (?, ?, ?, ?, 0, 'H', 'Hadir via Fingerprint', NULL)
+                            ON DUPLICATE KEY UPDATE status = 'H', keterangan = 'Hadir via Fingerprint'
+                        ");
+                        $stmtAbsensi->execute([$siswa['id'], $kelasId, $year_id, $tanggal_absen]);
+                    }
+                } catch (Exception $ex) {
+                    // Ignore
+                }
+            }
+
             if ($stmtInsert->rowCount() > 0) {
                 $newLogsCount++;
 
-                // Trigger WA jika milik siswa
-                if ($waTemplate) {
-                    $stmtSiswa = db()->prepare("SELECT nama, no_hp_ortu FROM students WHERE nis = ? AND no_hp_ortu IS NOT NULL AND no_hp_ortu != ''");
-                    $stmtSiswa->execute([$log['uid']]);
-                    $siswa = $stmtSiswa->fetch();
-
-                    if ($siswa) {
-                        $statusText = $log['state'] == 0 ? 'Hadir (Masuk)' : 'Pulang';
-                        $msg = str_replace(
-                            ['{nama}', '{status_absen}', '{waktu}'], 
-                            [$siswa['nama'], $statusText, $log['timestamp']], 
-                            $waTemplate
-                        );
-                        triggerWAGateway($siswa['no_hp_ortu'], $msg);
-                    }
+                // 2. Trigger WA Gateway for parents if new log & parents phone number is set
+                if ($siswa && $waTemplate && !empty($siswa['no_hp_ortu'])) {
+                    $statusText = $log['state'] == 0 ? 'Hadir (Masuk)' : 'Pulang';
+                    $msg = str_replace(
+                        ['{nama}', '{status_absen}', '{waktu}'], 
+                        [$siswa['nama'], $statusText, $log['timestamp']], 
+                        $waTemplate
+                    );
+                    triggerWAGateway($siswa['no_hp_ortu'], $msg);
                 }
             }
         }

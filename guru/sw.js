@@ -2,7 +2,7 @@
  * Service Worker for Guru App PWA
  * Caches app shell for offline access
  */
-const CACHE_NAME = 'guru-app-v1';
+const CACHE_NAME = 'guru-app-v5';
 const SHELL_ASSETS = [
     './',
     './assets/css/guru.css',

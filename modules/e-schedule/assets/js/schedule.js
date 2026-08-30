@@ -625,7 +625,7 @@ const Schedule = {
                 title: id ? 'Edit Distribusi' : 'Tambah Distribusi Mengajar',
                 form: `
                     <input type="hidden" id="fId" value="${id || ''}">
-                    <div class="form-group"><label>Pilih Guru</label><select class="form-select" id="fG" required>${optG}</select></div>
+                    <div class="form-group"><label>Pilih Guru</label><select class="form-select" id="fG" required multiple style="height:100px">${optG}</select><p style="font-size:0.75rem;color:gray;margin-top:4px">Bisa pilih lebih dari 1 guru sekaligus (Ctrl+Click)</p></div>
                     <div class="form-group"><label>Pilih Kelas</label><select class="form-select" id="fK" required multiple style="height:100px">${optK}</select><p style="font-size:0.75rem;color:gray;margin-top:4px">Bisa pilih lebih dari 1 kelas sekaligus (Ctrl+Click)</p></div>
                     <div class="sch-form-row">
                         <div class="form-group"><label>Mata Pelajaran</label><select class="form-select" id="fM" required>${optM}</select></div>
@@ -635,27 +635,46 @@ const Schedule = {
                 onOpen: () => {
                     if (id) {
                         const row = this.state.distData.find(x => x.id == id);
-                        if(row) { $('#fG').val(row.guru_id); $('#fK').val([row.kelas_id]).prop('multiple', false).css('height','auto'); $('#fM').val(row.mapel_id); $('#fJp').val(row.jp); }
+                        if(row) { 
+                            $('#fG').val(row.guru_id).prop('multiple', false).css('height','auto'); 
+                            $('#fK').val([row.kelas_id]).prop('multiple', false).css('height','auto'); 
+                            $('#fM').val(row.mapel_id); 
+                            $('#fJp').val(row.jp); 
+                        }
                     }
                 },
                 onConfirm: () => {
-                    const gId = $('#fG').val(), mId = $('#fM').val(), jp = $('#fJp').val();
-                    const kIds = $('#fK').val(); // array multiple
-                    if(!gId || !mId || !kIds || kIds.length===0) return false;
+                    const gIdVal = $('#fG').val(), mId = $('#fM').val(), jp = $('#fJp').val();
+                    const kIdsVal = $('#fK').val();
+                    if(!gIdVal || !mId || !kIdsVal || (Array.isArray(kIdsVal) && kIdsVal.length===0) || (Array.isArray(gIdVal) && gIdVal.length===0)) return false;
 
-                    // If multiple inserts, recursive or Promise.all. Simpler: loop.
                     let targetAction = id ? 'update' : 'create';
                     
-                    let requests = kIds.map(kId => {
-                        let data = { guru_id: gId, kelas_id: kId, mapel_id: mId, jp: jp };
-                        if(id) data.id = id;
-                        return this.api('distribusi.php?action='+targetAction, {method:'POST', data});
-                    });
+                    if (id) {
+                        let gId = Array.isArray(gIdVal) ? gIdVal[0] : gIdVal;
+                        let kId = Array.isArray(kIdsVal) ? kIdsVal[0] : kIdsVal;
+                        let data = { id: id, guru_id: gId, kelas_id: kId, mapel_id: mId, jp: jp };
+                        this.api('distribusi.php?action=update', {method:'POST', data}).done(() => {
+                            EModal.closeAll(); this.reloadCurrentPage();
+                            EModal.toast({ type: 'success', title: 'Berhasil', message: 'Distribusi diperbarui.' });
+                        });
+                    } else {
+                        const gIds = Array.isArray(gIdVal) ? gIdVal : [gIdVal];
+                        const kIds = Array.isArray(kIdsVal) ? kIdsVal : [kIdsVal];
+                        
+                        let requests = [];
+                        gIds.forEach(gId => {
+                            kIds.forEach(kId => {
+                                let data = { guru_id: gId, kelas_id: kId, mapel_id: mId, jp: jp };
+                                requests.push(this.api('distribusi.php?action=create', {method:'POST', data}));
+                            });
+                        });
 
-                    Promise.all(requests).then(() => {
-                        EModal.closeAll(); this.reloadCurrentPage();
-                        EModal.toast({ type: 'success', title: 'Berhasil', message: id ? 'Distribusi diperbarui.' : 'Distribusi berhasil ditambahkan.' });
-                    });
+                        Promise.all(requests).then(() => {
+                            EModal.closeAll(); this.reloadCurrentPage();
+                            EModal.toast({ type: 'success', title: 'Berhasil', message: 'Distribusi berhasil ditambahkan.' });
+                        });
+                    }
                     return false;
                 }
             });
