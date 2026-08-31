@@ -6,6 +6,12 @@
 
 require_once __DIR__ . '/../../../api/config.php';
 
+// DEBUG LOG — Catat semua request dari mesin absen
+$RAW_BODY = file_get_contents("php://input");
+$debugLog = __DIR__ . '/adms_debug.log';
+$logEntry = date('Y-m-d H:i:s') . " | " . $_SERVER['REQUEST_METHOD'] . " | " . $_SERVER['REQUEST_URI'] . " | GET: " . json_encode($_GET) . " | BODY: " . substr($RAW_BODY, 0, 500) . "\n";
+file_put_contents($debugLog, $logEntry, FILE_APPEND);
+
 // Fungsi helper untuk WA Gateway asinkron
 function triggerWAGateway($phone, $message) {
     $stmt = db()->query("SELECT setting_value FROM settings WHERE setting_key = 'wa_gateway_url'");
@@ -23,13 +29,28 @@ function triggerWAGateway($phone, $message) {
     curl_close($ch);
 }
 
+// Detect route — support both .htaccess rewrite and direct folder access
+$requestUri = $_SERVER['REQUEST_URI'];
+$scriptName = isset($_SERVER['SCRIPT_NAME']) ? $_SERVER['SCRIPT_NAME'] : '';
+$isCdata = (strpos($requestUri, '/iclock/cdata') !== false) || (strpos($scriptName, '/iclock/cdata') !== false);
+$isGetrequest = (strpos($requestUri, '/iclock/getrequest') !== false) || (strpos($scriptName, '/iclock/getrequest') !== false);
+
+// Fallback: jika tidak terdeteksi sama sekali, cek dari SCRIPT_FILENAME (direct include)
+if (!$isCdata && !$isGetrequest) {
+    $scriptFile = isset($_SERVER['SCRIPT_FILENAME']) ? $_SERVER['SCRIPT_FILENAME'] : '';
+    if (strpos($scriptFile, 'iclock') !== false) {
+        if (strpos($scriptFile, 'cdata') !== false) $isCdata = true;
+        if (strpos($scriptFile, 'getrequest') !== false) $isGetrequest = true;
+    }
+}
+
 // 1. GET /iclock/cdata - Initialization (Handshake)
 // Query params: SN=...&options=all&pushver=...
-if ($_SERVER['REQUEST_METHOD'] === 'GET' && strpos($_SERVER['REQUEST_URI'], '/iclock/cdata') !== false) {
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && $isCdata) {
     header("Content-Type: text/plain");
     echo "GET OPTION FROM: " . (isset($_GET['SN']) ? $_GET['SN'] : 'UNKNOWN') . "\n";
-    echo "Stamp=9999\n";
-    echo "OpStamp=9999\n";
+    echo "Stamp=0\n";
+    echo "OpStamp=0\n";
     echo "ErrorDelay=60\n";
     echo "Delay=30\n";
     echo "TransTimes=00:00;14:00\n";
@@ -42,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && strpos($_SERVER['REQUEST_URI'], '/ic
 
 // 2. GET /iclock/getrequest - Get command from Server
 // Query params: SN=...
-if ($_SERVER['REQUEST_METHOD'] === 'GET' && strpos($_SERVER['REQUEST_URI'], '/iclock/getrequest') !== false) {
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && $isGetrequest) {
     header("Content-Type: text/plain");
     // Karena kita tidak akan push command balik ke mesin, kembalikan OK
     echo "OK";
@@ -51,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && strpos($_SERVER['REQUEST_URI'], '/ic
 
 // 3. POST /iclock/cdata - Push Data
 // Query params: SN=...&table=ATTLOG / OPERLOG
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && strpos($_SERVER['REQUEST_URI'], '/iclock/cdata') !== false) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isCdata) {
     header("Content-Type: text/plain");
     
     // Case-insensitive SN query parameter
@@ -72,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && strpos($_SERVER['REQUEST_URI'], '/i
         }
     }
     
-    $body = file_get_contents("php://input");
+    $body = $RAW_BODY;
     
     if (empty($sn)) {
         echo "OK"; // Ignore if no SN

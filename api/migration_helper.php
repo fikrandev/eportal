@@ -6,7 +6,7 @@
 require_once __DIR__ . '/config.php';
 
 function run_auto_migrations() {
-    $target_version = 6;
+    $target_version = 7;
     
     // 1. Get current version (default to 0 if not set or if table settings doesn't exist yet)
     $current_version = 0;
@@ -202,6 +202,24 @@ function run_auto_migrations() {
             ");
         } catch (PDOException $e) {
             // Ignore if table already exists
+        }
+    }
+
+    // Version 7 migrations (Update existing acad_ketidakhadiran)
+    if ($current_version < 7) {
+        try {
+            // Check if status column exists
+            $columns = $pdo->query("SHOW COLUMNS FROM acad_ketidakhadiran")->fetchAll(PDO::FETCH_COLUMN);
+            
+            // 1. Modify jenis column
+            $pdo->exec("ALTER TABLE acad_ketidakhadiran MODIFY COLUMN jenis ENUM('Sakit', 'Cuti', 'Tugas', 'Izin', 'Lainnya') NOT NULL DEFAULT 'Izin'");
+            
+            // 2. Add status column if it does not exist
+            if (!in_array('status', $columns)) {
+                $pdo->exec("ALTER TABLE acad_ketidakhadiran ADD COLUMN status ENUM('Pending', 'Approved', 'Rejected') NOT NULL DEFAULT 'Pending' AFTER catatan");
+            }
+        } catch (Exception $e) {
+            // Ignore errors if table doesn't exist yet
         }
     }
 
