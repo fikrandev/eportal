@@ -1,3 +1,10 @@
+<?php
+require_once __DIR__ . '/api/config.php';
+require_once __DIR__ . '/api/migration_helper.php';
+
+// Jalankan auto-migration jika ada versi baru database/tabel
+run_auto_migrations();
+?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
@@ -15,12 +22,6 @@
     <link rel="manifest" href="manifest.json">
     <!-- Dynamic Favicon & Icons -->
     <?php
-    require_once __DIR__ . '/api/config.php';
-    require_once __DIR__ . '/api/migration_helper.php';
-    
-    // Jalankan auto-migration jika ada versi baru database/tabel
-    run_auto_migrations();
-
     $school_icon = get_setting('icon_sekolah', 'assets/icons/icon-192.png');
     $school_name = get_setting('nama_sekolah', 'E-Portal');
     $active_academic_year = get_active_academic_year();

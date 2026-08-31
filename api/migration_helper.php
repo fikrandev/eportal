@@ -6,7 +6,7 @@
 require_once __DIR__ . '/config.php';
 
 function run_auto_migrations() {
-    $target_version = 5;
+    $target_version = 6;
     
     // 1. Get current version (default to 0 if not set or if table settings doesn't exist yet)
     $current_version = 0;
@@ -180,6 +180,29 @@ function run_auto_migrations() {
         try {
             $pdo->exec("ALTER TABLE `acad_jurnal` ADD INDEX `idx_jurnal_jenis` (`guru_id`, `jenis_jurnal`, `tanggal`)");
         } catch (PDOException $e) {}
+    }
+
+    // Version 6 migrations (Ketidakhadiran Guru / Izin)
+    if ($current_version < 6) {
+        try {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `acad_ketidakhadiran` (
+                  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+                  `guru_id` int(11) unsigned NOT NULL COMMENT 'References users.id',
+                  `tanggal` date NOT NULL,
+                  `jenis` enum('Sakit','Cuti','Tugas','Izin','Lainnya') NOT NULL DEFAULT 'Izin',
+                  `catatan` text DEFAULT NULL,
+                  `status` enum('Pending','Approved','Rejected') NOT NULL DEFAULT 'Pending',
+                  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+                  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+                  PRIMARY KEY (`id`),
+                  UNIQUE KEY `uk_ketidakhadiran` (`guru_id`,`tanggal`),
+                  KEY `idx_ketidakhadiran_tanggal` (`tanggal`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            ");
+        } catch (PDOException $e) {
+            // Ignore if table already exists
+        }
     }
 
     // Update DB migration version to target_version
