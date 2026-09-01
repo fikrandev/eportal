@@ -125,7 +125,7 @@ if ($action === 'generate') {
         if ($isAdmin) {
             $stmtSiswa = db()->prepare("
                 SELECT s.nama as nama_lengkap, s.nis as nik, s.kelas as jabatan, 
-                       a.status, a.jam_masuk, a.jam_pulang
+                       a.status, '-' as jam_masuk, '-' as jam_pulang
                 FROM acad_absensi a
                 JOIN students s ON a.student_id = s.id
                 WHERE a.tanggal = ?

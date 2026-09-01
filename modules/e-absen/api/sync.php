@@ -106,7 +106,7 @@ if ($action === 'pull') {
                             $stmtKelas->execute([$siswa['kelas']]);
                             $kelasId = $stmtKelas->fetchColumn() ?: 0;
                             
-                            if ($kelasId > 0 && $year_id > 0) {
+                            if ($year_id > 0) {
                                 $tanggal_absen = date('Y-m-d', strtotime($log['timestamp']));
                                 
                                 $stmtAbsensi = db()->prepare("

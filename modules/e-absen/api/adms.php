@@ -97,6 +97,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $isGetrequest) {
             // Jika kolom force_sync belum ada, paksa sync
             $needSync = true;
         }
+        
+        // Selalu update last_sync saat menerima heartbeat (getrequest) dari mesin agar status di web terlihat aktif
+        try {
+            db()->prepare("UPDATE absen_mesin SET last_sync = NOW() WHERE sn = ?")->execute([$grSn]);
+        } catch (Exception $e) {}
     }
     
     if ($needSync) {
@@ -217,7 +222,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isCdata) {
                             $stmtKelas->execute([$siswa['kelas']]);
                             $kelasId = $stmtKelas->fetchColumn() ?: 0;
                             
-                            if ($kelasId > 0 && $year_id > 0) {
+                            if ($year_id > 0) {
                                 $tanggal_absen = date('Y-m-d', strtotime($timestamp));
                                 
                                 $stmtAbsensi = db()->prepare("
