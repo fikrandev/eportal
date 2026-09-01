@@ -65,8 +65,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $isCdata) {
 // Query params: SN=...
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && $isGetrequest) {
     header("Content-Type: text/plain");
-    // Karena kita tidak akan push command balik ke mesin, kembalikan OK
-    echo "OK";
+    
+    // Cek SN mesin
+    $grSn = '';
+    foreach ($_GET as $key => $val) {
+        if (strtolower($key) === 'sn') { $grSn = trim($val); break; }
+    }
+    
+    // Cek apakah mesin ini sudah pernah kirim data
+    $needSync = false;
+    if ($grSn) {
+        try {
+            $stmtCheck = db()->prepare("SELECT id FROM absen_mesin WHERE sn = ? AND (force_sync = 1 OR last_sync IS NULL)");
+            $stmtCheck->execute([$grSn]);
+            if ($stmtCheck->fetch()) {
+                $needSync = true;
+            }
+            
+            // Juga cek apakah ada log sama sekali dari mesin ini
+            $stmtMesin = db()->prepare("SELECT id FROM absen_mesin WHERE sn = ?");
+            $stmtMesin->execute([$grSn]);
+            $mesinRow = $stmtMesin->fetch();
+            if ($mesinRow) {
+                $stmtLogs = db()->prepare("SELECT COUNT(*) FROM absen_logs WHERE mesin_id = ?");
+                $stmtLogs->execute([$mesinRow['id']]);
+                if ((int)$stmtLogs->fetchColumn() === 0) {
+                    $needSync = true;
+                }
+            }
+        } catch (Exception $e) {
+            // Jika kolom force_sync belum ada, paksa sync
+            $needSync = true;
+        }
+    }
+    
+    if ($needSync) {
+        // Kirim perintah ke mesin untuk push semua data ATTLOG
+        echo "C:1:DATA UPDATE ATTLOG\n";
+        
+        // Log perintah yang dikirim
+        file_put_contents($debugLog, date('Y-m-d H:i:s') . " | COMMAND SENT | DATA UPDATE ATTLOG to SN=$grSn\n", FILE_APPEND);
+    } else {
+        echo "OK";
+    }
     exit;
 }
 
@@ -120,6 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isCdata) {
         
         $lines = explode("\n", $body);
         $insertedCount = 0;
+        $parseErrors = 0;
         
         $waTemplateStmt = db()->query("SELECT setting_value FROM settings WHERE setting_key = 'wa_message_template'");
         $waTemplate = $waTemplateStmt->fetchColumn();
@@ -131,7 +173,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isCdata) {
             $line = trim($line);
             if (empty($line)) continue;
             
-            $cols = explode("\t", $line);
+            // Support multiple separators: TAB, multiple spaces, or mixed
+            $cols = preg_split('/\t+/', $line);
+            if (count($cols) < 4) {
+                // Fallback: coba split dengan spasi (beberapa mesin pakai spasi)
+                $cols = preg_split('/\s+/', $line, 6);
+                // Jika split spasi menghasilkan timestamp terpisah (tanggal dan jam), gabungkan kembali
+                if (count($cols) >= 5 && preg_match('/^\d{4}-\d{2}-\d{2}$/', $cols[1]) && preg_match('/^\d{2}:\d{2}:\d{2}$/', $cols[2])) {
+                    // Format: PIN YYYY-MM-DD HH:MM:SS State VerifyType
+                    $cols = [$cols[0], $cols[1] . ' ' . $cols[2], $cols[3], $cols[4], isset($cols[5]) ? $cols[5] : '0'];
+                }
+            }
+            
             if (count($cols) >= 4) {
                 $pin = trim($cols[0]);
                 $timestamp = trim($cols[1]);
@@ -145,6 +198,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isCdata) {
                         VALUES (?, ?, ?, ?, ?)
                     ");
                     $stmtInsert->execute([$mesinId, $pin, $timestamp, $state, $verifyType]);
+                    if ($stmtInsert->rowCount() > 0) $insertedCount++;
                     
                     // Look up student by NIS, stripping leading zeros for robust matching
                     $stmtSiswa = db()->prepare("

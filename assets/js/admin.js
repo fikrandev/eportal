@@ -1340,6 +1340,10 @@ const Admin = {
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                             Set Guru Wali
                         </button>
+                        <button class="btn btn-success btn-sm" onclick="Admin.showPromoteClassModal()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="13 17 18 12 13 7"></polyline><polyline points="6 17 11 12 6 7"></polyline></svg>
+                            Naik Kelas
+                        </button>
                         <button class="btn btn-primary btn-sm" onclick="Admin.showStudentForm()">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             Tambah Siswa
@@ -1765,6 +1769,188 @@ const Admin = {
         }).done(res => {
             if (res.success) {
                 this.closeFormModal('setGuruWaliModal');
+                EModal.info({ type: 'success', title: 'Berhasil!', message: res.message });
+                this.loadStudentsTable();
+            }
+        }).fail(xhr => {
+            EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Terjadi kesalahan.' });
+        }).always(() => EModal.btnLoading(btn, false));
+    },
+    showPromoteClassModal() {
+        const activeYear = App.state.academicYear;
+        if (!activeYear || !activeYear.id) {
+            EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Tidak ada Tahun Ajaran aktif. Silakan aktifkan terlebih dahulu di menu Tahun Ajaran.' });
+            return;
+        }
+
+        const modal = `
+        <div class="admin-form-modal show" id="promoteClassModal" onclick="if(event.target===this)Admin.closeFormModal('promoteClassModal')">
+            <div class="admin-form-panel" style="max-width: 650px;">
+                <div class="panel-header"><h3>Proses Naik Kelas</h3>
+                    <button class="panel-close" onclick="Admin.closeFormModal('promoteClassModal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                </div>
+                <div class="panel-body">
+                    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">Pilih siswa dari kelas di tahun ajaran sebelumnya, dan pindahkan (naikkan) ke kelas baru pada Tahun Ajaran yang aktif saat ini.</p>
+                    
+                    <div style="background:var(--bg-body, #f8fafc); border:1px solid var(--border-color, #e2e8f0); border-radius:8px; padding:16px; margin-bottom:16px;">
+                        <h4 style="margin:0 0 12px 0; font-size:14px; font-weight:600;">Sumber Data (Kelas Lama)</h4>
+                        <div class="form-row">
+                            <div class="form-group"><label class="form-label">Tahun Ajaran Sumber</label><select class="form-select" id="promoteSourceYear" onchange="Admin.loadPromoteSourceClasses(this.value)"><option value="">Memuat...</option></select></div>
+                            <div class="form-group"><label class="form-label">Kelas Sumber</label><select class="form-select" id="promoteSourceClass" onchange="Admin.loadPromoteStudents()"><option value="">-- Pilih Tahun Ajaran Dulu --</option></select></div>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Pilih Siswa yang Naik Kelas</label>
+                        <div class="data-table-wrapper" style="max-height: 250px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px;">
+                            <table class="data-table" style="margin: 0;">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 40px; text-align: center;"><input type="checkbox" id="selectAllPromoteStudents" onclick="Admin.toggleSelectAllPromoteStudents(this)"></th>
+                                        <th>Nama Siswa</th>
+                                        <th>NIS</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="promoteStudentsList">
+                                    <tr><td colspan="3" style="text-align:center; padding: 20px;" class="text-muted">Silakan pilih kelas sumber terlebih dahulu</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div style="background:var(--bg-body, #f8fafc); border:1px solid var(--border-color, #e2e8f0); border-radius:8px; padding:16px; margin-top:16px;">
+                        <h4 style="margin:0 0 12px 0; font-size:14px; font-weight:600;">Tujuan (Kelas Baru)</h4>
+                        <div class="form-row">
+                            <div class="form-group"><label class="form-label">Tahun Ajaran Tujuan</label><input type="text" class="form-input" value="${App.escapeHtml(activeYear.tahun_ajaran + ' Semester ' + activeYear.semester)}" readonly style="opacity:0.7"></div>
+                            <div class="form-group"><label class="form-label">Nama Kelas Baru</label><select class="form-select" id="promoteTargetClass"><option value="">Memuat...</option></select></div>
+                        </div>
+                    </div>
+
+                </div>
+                <div class="panel-footer">
+                    <button class="btn btn-ghost" onclick="Admin.closeFormModal('promoteClassModal')">Batal</button>
+                    <button class="btn btn-success" id="savePromoteBtn" onclick="Admin.savePromoteClass()"><span class="btn-text">Proses Naik Kelas</span></button>
+                </div>
+            </div>
+        </div>`;
+        $('body').append(modal);
+
+        // Load Academic Years
+        App.api('api/academic_years.php?action=list').done(res => {
+            if (res.success && res.data) {
+                let options = '<option value="">-- Pilih Tahun Ajaran Lama --</option>';
+                res.data.forEach(y => {
+                    if (y.id !== activeYear.id) {
+                        options += `<option value="${y.id}">${App.escapeHtml(y.tahun_ajaran)} Semester ${App.escapeHtml(y.semester)}</option>`;
+                    }
+                });
+                $('#promoteSourceYear').html(options);
+            }
+        });
+
+        // Load Target Classes
+        App.api('api/ref_kelas.php?action=list').done(res => {
+            if (res.success && res.data) {
+                let options = '<option value="">-- Pilih Kelas --</option>';
+                res.data.forEach(c => {
+                    options += `<option value="${App.escapeHtml(c.nama_kelas)}">${App.escapeHtml(c.nama_kelas)}</option>`;
+                });
+                $('#promoteTargetClass').html(options);
+            } else {
+                $('#promoteTargetClass').html('<option value="">-- Tidak ada data kelas --</option>');
+            }
+        }).fail(() => {
+            $('#promoteTargetClass').html('<option value="">-- Gagal memuat kelas --</option>');
+        });
+    },
+
+    loadPromoteSourceClasses(yearId) {
+        $('#promoteSourceClass').html('<option value="">Memuat...</option>');
+        $('#promoteStudentsList').html('<tr><td colspan="3" style="text-align:center; padding: 20px;" class="text-muted">Silakan pilih kelas sumber terlebih dahulu</td></tr>');
+        
+        if (!yearId) {
+            $('#promoteSourceClass').html('<option value="">-- Pilih Tahun Ajaran Dulu --</option>');
+            return;
+        }
+
+        App.api(`api/students.php?action=get_classes&academic_year_id=${yearId}`).done(res => {
+            if (res.success && res.data) {
+                let options = '<option value="">-- Pilih Kelas Lama --</option>';
+                res.data.forEach(c => {
+                    options += `<option value="${App.escapeHtml(c)}">${App.escapeHtml(c)}</option>`;
+                });
+                $('#promoteSourceClass').html(options);
+            }
+        });
+    },
+
+    loadPromoteStudents() {
+        const yearId = $('#promoteSourceYear').val();
+        const kelas = $('#promoteSourceClass').val();
+
+        if (!yearId || !kelas) {
+            $('#promoteStudentsList').html('<tr><td colspan="3" style="text-align:center; padding: 20px;" class="text-muted">Silakan pilih kelas sumber terlebih dahulu</td></tr>');
+            return;
+        }
+
+        $('#promoteStudentsList').html('<tr><td colspan="3" style="text-align:center; padding: 20px;">Memuat data siswa...</td></tr>');
+        
+        App.api(`api/students.php?action=list&kelas=${encodeURIComponent(kelas)}&academic_year_id=${yearId}&per_page=1000`).done(res => {
+            if (res.success && res.data && res.data.data) {
+                const students = res.data.data;
+                if (students.length === 0) {
+                    $('#promoteStudentsList').html('<tr><td colspan="3" style="text-align:center; padding: 20px;" class="text-muted">Tidak ada siswa di kelas ini</td></tr>');
+                    return;
+                }
+                const rows = students.map(s => `
+                    <tr>
+                        <td style="text-align: center;"><input type="checkbox" checked class="promote-student-checkbox" value="${s.id}"></td>
+                        <td><strong>${App.escapeHtml(s.nama)}</strong></td>
+                        <td>${App.escapeHtml(s.nis || '-')}</td>
+                    </tr>
+                `).join('');
+                $('#promoteStudentsList').html(rows);
+                $('#selectAllPromoteStudents').prop('checked', true);
+            }
+        });
+    },
+
+    toggleSelectAllPromoteStudents(checkbox) {
+        $('.promote-student-checkbox').prop('checked', checkbox.checked);
+    },
+
+    savePromoteClass() {
+        const targetClass = $('#promoteTargetClass').val().trim();
+        if (!targetClass) {
+            EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Nama Kelas Baru harus diisi.' });
+            return;
+        }
+
+        const selectedIds = [];
+        $('.promote-student-checkbox:checked').each(function() {
+            selectedIds.push($(this).val());
+        });
+
+        if (selectedIds.length === 0) {
+            EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Pilih setidaknya satu siswa.' });
+            return;
+        }
+
+        const btn = document.getElementById('savePromoteBtn');
+        EModal.btnLoading(btn, true);
+
+        const activeYear = App.state.academicYear;
+
+        App.api('api/students.php?action=promote_students', {
+            method: 'POST',
+            data: {
+                source_student_ids: selectedIds,
+                target_academic_year_id: activeYear.id,
+                target_kelas: targetClass
+            }
+        }).done(res => {
+            if (res.success) {
+                this.closeFormModal('promoteClassModal');
                 EModal.info({ type: 'success', title: 'Berhasil!', message: res.message });
                 this.loadStudentsTable();
             }

@@ -101,24 +101,46 @@ if ($action === 'generate') {
     try {
         $tanggal = isset($_GET['tanggal']) ? $_GET['tanggal'] : date('Y-m-d');
         
-        $where = "r.tanggal = ?";
-        $params = [$tanggal];
+        // 1. Data Guru/Pegawai
+        $whereGuru = "r.tanggal = ?";
+        $paramsGuru = [$tanggal];
         
         if (!$isAdmin) {
-            $where .= " AND r.user_id = ?";
-            $params[] = $user['user_id'];
+            $whereGuru .= " AND r.user_id = ?";
+            $paramsGuru[] = $user['user_id'];
         }
         
-        $stmt = db()->prepare("
+        $stmtGuru = db()->prepare("
             SELECT u.nama_lengkap, u.username as nik, u.jabatan, r.*
             FROM absen_rekap r
             JOIN users u ON r.user_id = u.id
-            WHERE $where
+            WHERE $whereGuru
             ORDER BY u.nama_lengkap ASC
         ");
-        $stmt->execute($params);
+        $stmtGuru->execute($paramsGuru);
+        $guruData = $stmtGuru->fetchAll();
+
+        // 2. Data Siswa
+        $siswaData = [];
+        if ($isAdmin) {
+            $stmtSiswa = db()->prepare("
+                SELECT s.nama as nama_lengkap, s.nis as nik, s.kelas as jabatan, 
+                       a.status, a.jam_masuk, a.jam_pulang
+                FROM acad_absensi a
+                JOIN students s ON a.student_id = s.id
+                WHERE a.tanggal = ?
+                ORDER BY s.kelas ASC, s.nama ASC
+            ");
+            $stmtSiswa->execute([$tanggal]);
+            $siswaData = $stmtSiswa->fetchAll();
+        }
+
+        $result = [
+            'guru' => $guruData,
+            'siswa' => $siswaData
+        ];
         
-        json_response(200, true, 'Data rekap dimuat.', $stmt->fetchAll());
+        json_response(200, true, 'Data rekap dimuat.', $result);
     } catch (PDOException $e) {
         json_response(500, false, 'Database error: ' . $e->getMessage());
     }

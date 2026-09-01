@@ -163,7 +163,7 @@ if ($action === 'pull') {
             LEFT JOIN absen_mesin m ON l.mesin_id = m.id
             LEFT JOIN absen_user_map map ON l.mesin_pin = map.mesin_pin
             LEFT JOIN users u ON map.user_id = u.id
-            LEFT JOIN students s ON TRIM(LEADING '0' FROM l.mesin_pin) = TRIM(LEADING '0' FROM s.nis)
+            LEFT JOIN students s ON TRIM(LEADING '0' FROM l.mesin_pin) COLLATE utf8mb4_unicode_ci = TRIM(LEADING '0' FROM s.nis) COLLATE utf8mb4_unicode_ci
             WHERE DATE(l.waktu_absen) = ?
             ORDER BY l.waktu_absen DESC
         ");

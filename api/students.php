@@ -41,6 +41,9 @@ switch ($action) {
     case 'template-csv':
         templateCsv();
         break;
+    case 'promote_students':
+        promoteStudents();
+        break;
     default:
         json_response(400, false, 'Action tidak valid.');
 }
@@ -613,4 +616,97 @@ function readCsvRows($path)
     }
     fclose($handle);
     return $rows;
+}
+
+function promoteStudents()
+{
+    require_superadmin();
+
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        json_response(405, false, 'Method not allowed.');
+    }
+
+    $input = get_input();
+    $sourceStudentIds = isset($input['source_student_ids']) && is_array($input['source_student_ids']) ? $input['source_student_ids'] : [];
+    $targetAcademicYearId = isset($input['target_academic_year_id']) ? (int) $input['target_academic_year_id'] : 0;
+    $targetKelas = isset($input['target_kelas']) ? sanitize($input['target_kelas']) : '';
+
+    if (empty($sourceStudentIds)) {
+        json_response(400, false, 'Pilih setidaknya satu siswa.');
+    }
+    if ($targetAcademicYearId <= 0) {
+        json_response(400, false, 'Tahun ajaran tujuan tidak valid.');
+    }
+    if (empty($targetKelas)) {
+        json_response(400, false, 'Kelas tujuan tidak valid.');
+    }
+
+    $inserted = 0;
+    $updated = 0;
+
+    try {
+        db()->beginTransaction();
+
+        $check = db()->prepare("SELECT id FROM students WHERE academic_year_id = ? AND nis = ?");
+        $update = db()->prepare("UPDATE students SET kelas = ? WHERE id = ?");
+        $insert = db()->prepare("
+            INSERT INTO students (academic_year_id, no_urut, nis, nisn, nama, email, no_hp_ortu, no_hp_siswa, tempat_lahir, jenis_kelamin, tanggal_lahir, kelas, guru_wali, foto_path)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ");
+        
+        $placeholders = implode(',', array_fill(0, count($sourceStudentIds), '?'));
+        $stmt = db()->prepare("SELECT * FROM students WHERE id IN ($placeholders)");
+        $stmt->execute($sourceStudentIds);
+        $sourceStudents = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        foreach ($sourceStudents as $student) {
+            $check->execute([$targetAcademicYearId, $student['nis']]);
+            $existingId = $check->fetchColumn();
+
+            if ($existingId) {
+                // Already exists in target year, just update the class
+                $update->execute([$targetKelas, $existingId]);
+                $updated++;
+            } else {
+                // Insert as new record for the target year
+                $newFotoPath = $student['foto_path'];
+                
+                // Copy photo to avoid breaking references if one is deleted
+                if ($newFotoPath && file_exists(__DIR__ . '/../' . $newFotoPath)) {
+                    $ext = pathinfo($newFotoPath, PATHINFO_EXTENSION);
+                    $newFileName = 'uploads/students/' . uniqid('promo_') . '.' . $ext;
+                    if (copy(__DIR__ . '/../' . $newFotoPath, __DIR__ . '/../' . $newFileName)) {
+                        $newFotoPath = $newFileName;
+                    }
+                }
+
+                $insert->execute([
+                    $targetAcademicYearId,
+                    $student['no_urut'],
+                    $student['nis'],
+                    $student['nisn'],
+                    $student['nama'],
+                    $student['email'],
+                    $student['no_hp_ortu'],
+                    $student['no_hp_siswa'],
+                    $student['tempat_lahir'],
+                    $student['jenis_kelamin'],
+                    $student['tanggal_lahir'],
+                    $targetKelas,
+                    $student['guru_wali'],
+                    $newFotoPath
+                ]);
+                $inserted++;
+            }
+        }
+
+        db()->commit();
+        json_response(200, true, "Proses naik kelas selesai. {$inserted} siswa baru ditambahkan, {$updated} siswa diperbarui.");
+
+    } catch (PDOException $e) {
+        if (db()->inTransaction()) {
+            db()->rollBack();
+        }
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
 }

@@ -6,7 +6,7 @@
 require_once __DIR__ . '/config.php';
 
 function run_auto_migrations() {
-    $target_version = 7;
+    $target_version = 8;
     
     // 1. Get current version (default to 0 if not set or if table settings doesn't exist yet)
     $current_version = 0;
@@ -220,6 +220,29 @@ function run_auto_migrations() {
             }
         } catch (Exception $e) {
             // Ignore errors if table doesn't exist yet
+        }
+    }
+
+    // Version 8 migrations (Izin Siswa App)
+    if ($current_version < 8) {
+        try {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `acad_izin_siswa` (
+                  `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
+                  `student_id` int(11) unsigned NOT NULL,
+                  `tanggal` date NOT NULL,
+                  `jenis` enum('Sakit','Izin','Lainnya') NOT NULL DEFAULT 'Izin',
+                  `keterangan` text DEFAULT NULL,
+                  `status` enum('Pending','Approved','Rejected') NOT NULL DEFAULT 'Pending',
+                  `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
+                  `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+                  PRIMARY KEY (`id`),
+                  KEY `idx_izin_siswa_tanggal` (`tanggal`),
+                  KEY `idx_izin_siswa_student` (`student_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+            ");
+        } catch (PDOException $e) {
+            // Ignore if table already exists
         }
     }
 

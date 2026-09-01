@@ -705,11 +705,32 @@ const Absen = {
                             </button>
                         </div>
                     </div>
-                    <div id="rekapTableWrapper"><div class="skeleton-card" style="height:200px;"></div></div>
+                    
+                    ${isAdmin ? `
+                    <div style="margin-bottom: 16px; border-bottom: 1px solid var(--border-color); display: flex; gap: 16px;">
+                        <button class="rekap-tab-btn active" data-tab="guru" onclick="Absen.switchRekapTab('guru')" style="background: none; border: none; padding: 8px 16px; cursor: pointer; border-bottom: 2px solid var(--primary-color); font-weight: 600; color: var(--primary-color);">Guru / Pegawai</button>
+                        <button class="rekap-tab-btn" data-tab="siswa" onclick="Absen.switchRekapTab('siswa')" style="background: none; border: none; padding: 8px 16px; cursor: pointer; border-bottom: 2px solid transparent; color: var(--text-muted);">Siswa</button>
+                    </div>
+                    <div id="rekapTableWrapperGuru" class="rekap-tab-content active"><div class="skeleton-card" style="height:200px;"></div></div>
+                    <div id="rekapTableWrapperSiswa" class="rekap-tab-content" style="display:none;"><div class="skeleton-card" style="height:200px;"></div></div>
+                    <input type="hidden" id="activeRekapTab" value="guru">
+                    ` : `
+                    <div id="rekapTableWrapperGuru" class="rekap-tab-content active"><div class="skeleton-card" style="height:200px;"></div></div>
+                    <input type="hidden" id="activeRekapTab" value="guru">
+                    `}
                 </div>
             </div>
         `);
         this.loadRekap();
+    },
+
+    switchRekapTab(tab) {
+        $('.rekap-tab-btn').css({ 'border-bottom': '2px solid transparent', 'color': 'var(--text-muted)', 'font-weight': 'normal' });
+        $(`.rekap-tab-btn[data-tab="${tab}"]`).css({ 'border-bottom': '2px solid var(--primary-color)', 'color': 'var(--primary-color)', 'font-weight': '600' });
+        
+        $('.rekap-tab-content').hide();
+        $(`#rekapTableWrapper${tab === 'guru' ? 'Guru' : 'Siswa'}`).fadeIn(200);
+        $('#activeRekapTab').val(tab);
     },
 
     generateRekap() {
@@ -729,48 +750,74 @@ const Absen = {
     loadRekap() {
         const tgl = $('#rekapTanggal').val();
         this.api(`rekap.php?action=report&tanggal=${tgl}`).done(res => {
-            const data = res.data || [];
-            if (!data.length) {
-                $('#rekapTableWrapper').html(`<div class="empty-state"><h3>Belum Ada Data Rekap</h3><p>Pilih tanggal lalu klik Generate Rekap.</p></div>`);
-                return;
-            }
+            const data = res.data || { guru: [], siswa: [] };
             
             const badgeMap = { 'Hadir': 'badge-success', 'Terlambat': 'badge-warning', 'Alpha': 'badge-danger', 'Izin': 'badge-info', 'Sakit': 'badge-info' };
             
-            const rows = data.map((r, idx) => `
-                <tr>
-                    <td>${idx + 1}</td>
-                    <td><strong>${this.escapeHtml(r.nama_lengkap)}</strong></td>
-                    <td><span class="badge ${badgeMap[r.status] || 'badge-info'}">${this.escapeHtml(r.status)}</span></td>
-                    <td><strong>${r.jam_masuk || '-'}</strong></td>
-                    <td><strong>${r.jam_pulang || '-'}</strong></td>
-                </tr>
-            `).join('');
-            
-            $('#rekapTableWrapper').html(`
-                <div class="data-table-wrapper">
-                    <table class="data-table" id="rekapTableExport">
-                        <thead><tr><th width="50">No</th><th>Nama Pegawai</th><th>Status</th><th>Jam Masuk</th><th>Jam Pulang</th></tr></thead>
-                        <tbody>${rows}</tbody>
-                    </table>
-                </div>
-            `);
+            // 1. Render Guru Table
+            if (!data.guru || !data.guru.length) {
+                $('#rekapTableWrapperGuru').html(`<div class="empty-state"><h3>Belum Ada Data Rekap</h3><p>Pilih tanggal lalu klik Generate Rekap.</p></div>`);
+            } else {
+                const rowsGuru = data.guru.map((r, idx) => `
+                    <tr>
+                        <td>${idx + 1}</td>
+                        <td><strong>${this.escapeHtml(r.nama_lengkap)}</strong></td>
+                        <td><span class="badge ${badgeMap[r.status] || 'badge-info'}">${this.escapeHtml(r.status)}</span></td>
+                        <td><strong>${r.jam_masuk || '-'}</strong></td>
+                        <td><strong>${r.jam_pulang || '-'}</strong></td>
+                    </tr>
+                `).join('');
+                $('#rekapTableWrapperGuru').html(`
+                    <div class="data-table-wrapper">
+                        <table class="data-table" id="rekapTableExportGuru">
+                            <thead><tr><th width="50">No</th><th>Nama Pegawai</th><th>Status</th><th>Jam Masuk</th><th>Jam Pulang</th></tr></thead>
+                            <tbody>${rowsGuru}</tbody>
+                        </table>
+                    </div>
+                `);
+            }
+
+            // 2. Render Siswa Table (if admin)
+            if ($('#rekapTableWrapperSiswa').length) {
+                if (!data.siswa || !data.siswa.length) {
+                    $('#rekapTableWrapperSiswa').html(`<div class="empty-state"><h3>Belum Ada Data Siswa</h3><p>Siswa melakukan presensi via mesin atau sinkronisasi absen.</p></div>`);
+                } else {
+                    const rowsSiswa = data.siswa.map((r, idx) => `
+                        <tr>
+                            <td>${idx + 1}</td>
+                            <td><strong>${this.escapeHtml(r.nama_lengkap)}</strong><br><small class="text-muted">NIS: ${this.escapeHtml(r.nik)}</small></td>
+                            <td>${this.escapeHtml(r.jabatan)}</td>
+                            <td><span class="badge ${badgeMap[r.status] || 'badge-info'}">${this.escapeHtml(r.status)}</span></td>
+                            <td><strong>${r.jam_masuk || '-'}</strong></td>
+                            <td><strong>${r.jam_pulang || '-'}</strong></td>
+                        </tr>
+                    `).join('');
+                    $('#rekapTableWrapperSiswa').html(`
+                        <div class="data-table-wrapper">
+                            <table class="data-table" id="rekapTableExportSiswa">
+                                <thead><tr><th width="50">No</th><th>Nama Siswa</th><th>Kelas</th><th>Status</th><th>Jam Masuk</th><th>Jam Pulang</th></tr></thead>
+                                <tbody>${rowsSiswa}</tbody>
+                            </table>
+                        </div>
+                    `);
+                }
+            }
         });
     },
 
     exportExcel() {
         const tgl = $('#rekapTanggal').val();
-        const table = document.getElementById('rekapTableExport');
+        const activeTab = $('#activeRekapTab').val() || 'guru';
+        const tableId = activeTab === 'guru' ? 'rekapTableExportGuru' : 'rekapTableExportSiswa';
+        
+        const table = document.getElementById(tableId);
         if (!table) {
             EModal.toast({ type: 'warning', title: 'Kosong', message: 'Tidak ada data untuk diekspor.' });
             return;
         }
 
-        // Parse HTML table to SheetJS worksheet
-        const wb = XLSX.utils.table_to_book(table, {sheet: "Rekap"});
-        
-        // Save as true .xlsx
-        XLSX.writeFile(wb, `Rekap_Absen_${tgl}.xlsx`);
+        const wb = XLSX.utils.table_to_book(table, {sheet: "Rekap " + activeTab});
+        XLSX.writeFile(wb, `Rekap_Absen_${activeTab}_${tgl}.xlsx`);
     },
 
     // ==================== HELPERS ====================
