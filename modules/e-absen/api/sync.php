@@ -50,9 +50,19 @@ if ($action === 'pull') {
         $newLogsCount = 0;
         $mesinErrors = [];
         
+        // Auto-add force_sync column if missing
+        try {
+            db()->exec("ALTER TABLE absen_mesin ADD COLUMN force_sync TINYINT(1) DEFAULT 0");
+        } catch (Exception $e) {}
+
+        $admsCount = 0;
         foreach ($mesins as $mesin) {
-            // Lewati mesin ADMS karena bersifat Push, tidak bisa ditarik manual via ZKLibrary
-            if (empty($mesin['ip_address'])) {
+            // Untuk mesin ADMS (Push), set force_sync = 1 agar saat getrequest berikutnya dipaksa kirim ulang semua log
+            if (empty($mesin['ip_address']) || trim($mesin['ip_address']) === '') {
+                try {
+                    db()->prepare("UPDATE absen_mesin SET force_sync = 1 WHERE id = ?")->execute([$mesin['id']]);
+                    $admsCount++;
+                } catch (Exception $e) {}
                 continue;
             }
 
@@ -143,6 +153,9 @@ if ($action === 'pull') {
         }
         
         $msg = "Sinkronisasi selesai. $newLogsCount log baru ditarik.";
+        if ($admsCount > 0) {
+            $msg .= " Perintah tarik ulang data telah dikirimkan ke $admsCount mesin ADMS (akan sync saat heartbeat berikutnya).";
+        }
         if (count($mesinErrors) > 0) {
             $msg .= " Namun terdapat error: " . implode(", ", $mesinErrors);
         }

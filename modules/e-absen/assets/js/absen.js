@@ -223,7 +223,7 @@ const Absen = {
                 <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
                     <div>
                         <h3>Daftar Mesin Fingerprint</h3>
-                        <p class="text-muted">Maksimal 4 mesin (Berada dalam 1 jaringan yang sama).</p>
+                        <p class="text-muted">Mendukung koneksi Langsung (IP) dan ADMS/Cloud Server.</p>
                     </div>
                     <button class="btn btn-primary" onclick="Absen.showMesinModal()">+ Tambah Mesin</button>
                 </div>
@@ -233,7 +233,8 @@ const Absen = {
                             <thead>
                                 <tr>
                                     <th>Nama Mesin</th>
-                                    <th>IP Address</th>
+                                    <th>Serial Number (SN)</th>
+                                    <th>IP Address / Mode</th>
                                     <th>Port</th>
                                     <th>Status</th>
                                     <th>Terakhir Sync</th>
@@ -241,7 +242,7 @@ const Absen = {
                                 </tr>
                             </thead>
                             <tbody id="mesinTbody">
-                                <tr><td colspan="6" style="text-align:center;">Memuat data...</td></tr>
+                                <tr><td colspan="7" style="text-align:center;">Memuat data...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -256,20 +257,25 @@ const Absen = {
         this.api('mesin.php?action=list').done(res => {
             const data = res.data || [];
             if (data.length === 0) {
-                $('#mesinTbody').html('<tr><td colspan="6" style="text-align:center;">Belum ada mesin.</td></tr>');
+                $('#mesinTbody').html('<tr><td colspan="7" style="text-align:center;">Belum ada mesin.</td></tr>');
                 return;
             }
             let html = '';
             data.forEach(m => {
+                const isAdms = !m.ip_address || m.ip_address.trim() === '';
+                const snDisplay = m.sn ? `<code>${this.escapeHtml(m.sn)}</code>` : '<span style="color:#ef4444; font-style:italic;">(Wajib diisi untuk ADMS)</span>';
+                const ipDisplay = isAdms ? '<span class="badge badge-info" style="background:#e0f2fe; color:#0369a1;">ADMS (Push)</span>' : `<code>${this.escapeHtml(m.ip_address)}</code>`;
+
                 html += `
                     <tr>
                         <td><strong>${this.escapeHtml(m.nama_mesin)}</strong></td>
-                        <td><code>${this.escapeHtml(m.ip_address)}</code></td>
+                        <td>${snDisplay}</td>
+                        <td>${ipDisplay}</td>
                         <td>${m.port}</td>
-                        <td>${m.status == 1 ? '<span style="color:green">Aktif</span>' : '<span style="color:red">Nonaktif</span>'}</td>
-                        <td>${m.last_sync || '-'}</td>
+                        <td>${m.status == 1 ? '<span style="color:green; font-weight:600;">Aktif</span>' : '<span style="color:red; font-weight:600;">Nonaktif</span>'}</td>
+                        <td><strong>${m.last_sync || '-'}</strong></td>
                         <td style="text-align:right">
-                            ${m.ip_address ? `<button class="btn btn-outline" style="padding:4px 8px; font-size:12px;" onclick="Absen.testMesin('${this.escapeHtml(m.ip_address)}', ${m.port})">Tes</button>` : ''}
+                            ${!isAdms ? `<button class="btn btn-outline" style="padding:4px 8px; font-size:12px;" onclick="Absen.testMesin('${this.escapeHtml(m.ip_address)}', ${m.port})">Tes</button>` : ''}
                             <button class="btn btn-outline" style="padding:4px 8px; font-size:12px;" onclick='Absen.showMesinModal(${JSON.stringify(m).replace(/'/g, "&apos;")})'>Edit</button>
                             <button class="btn btn-outline" style="padding:4px 8px; font-size:12px; color:red; border-color:red;" onclick="Absen.deleteMesin(${m.id}, '${this.escapeHtml(m.nama_mesin)}')">Hapus</button>
                         </td>
@@ -423,33 +429,25 @@ const Absen = {
             return;
         }
 
-        const url = $('#waUrl').val() || 'http://localhost:3000/send';
-        const statusUrl = url.replace('/send', '/status');
-
-        $.ajax({
-            url: statusUrl,
-            method: 'GET',
-            timeout: 3000,
-            success: (res) => {
-                if (res.isReady) {
-                    $('#waStatusBadge').css({background: '#dcfce7', color: '#166534'}).text('✅ WhatsApp Terhubung!');
-                    $('#waQrContainer').html('<div style="color:var(--primary);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="64" height="64" style="margin-bottom:10px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><br><b>Server Aktif</b></div>');
-                    $('#waQrInstruction').hide();
-                } else if (res.qr) {
-                    $('#waStatusBadge').css({background: '#fef3c7', color: '#b45309'}).text('⏳ Menunggu Scan Barcode');
-                    $('#waQrContainer').html(`<img src="${res.qr}" alt="QR Code" style="width:200px; height:200px; display:block; margin:0 auto; border-radius:8px;">`);
-                    $('#waQrInstruction').show();
-                } else {
-                    $('#waStatusBadge').css({background: '#fef3c7', color: '#b45309'}).text('⏳ Menginisiasi WhatsApp...');
-                    $('#waQrContainer').html('<p style="color:var(--text-muted);">Menunggu generate QR Code...</p>');
-                    $('#waQrInstruction').hide();
-                }
-            },
-            error: () => {
-                $('#waStatusBadge').css({background: '#fee2e2', color: '#991b1b'}).text('❌ Server Node.js Mati/Offline');
-                $('#waQrContainer').html('<p style="color:red; font-size:0.9rem;">Server WA mandiri (Node.js) tidak merespon. Pastikan Anda telah menjalankan <code>npm start</code> di terminal server.</p>');
+        this.api('settings.php?action=wa_status').done(res => {
+            const data = res.data || {};
+            if (data.isReady) {
+                $('#waStatusBadge').css({background: '#dcfce7', color: '#166534'}).text('✅ WhatsApp Terhubung!');
+                $('#waQrContainer').html('<div style="color:var(--primary);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="64" height="64" style="margin-bottom:10px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><br><b>Server WhatsApp Aktif</b></div>');
+                $('#waQrInstruction').hide();
+            } else if (data.qr) {
+                $('#waStatusBadge').css({background: '#fef3c7', color: '#b45309'}).text('⏳ Menunggu Scan Barcode');
+                $('#waQrContainer').html(`<img src="${data.qr}" alt="QR Code" style="width:200px; height:200px; display:block; margin:0 auto; border-radius:8px;">`);
+                $('#waQrInstruction').show();
+            } else {
+                $('#waStatusBadge').css({background: '#fef3c7', color: '#b45309'}).text('⏳ Menginisiasi WhatsApp...');
+                $('#waQrContainer').html('<p style="color:var(--text-muted);">Menunggu generate QR Code...</p>');
                 $('#waQrInstruction').hide();
             }
+        }).fail(() => {
+            $('#waStatusBadge').css({background: '#fee2e2', color: '#991b1b'}).text('❌ Server Node.js Mati/Offline');
+            $('#waQrContainer').html('<p style="color:red; font-size:0.9rem;">Server WA mandiri (Node.js) tidak merespon di port 3000. Pastikan Anda telah menjalankan <code>node server.js</code> di VPS.</p>');
+            $('#waQrInstruction').hide();
         });
     },
 
@@ -460,7 +458,7 @@ const Absen = {
                 <div class="form-group">
                     <label class="form-label">URL Gateway Lokal</label>
                     <input type="text" class="form-input" id="waUrl" value="${this.escapeHtml(s.wa_gateway_url || 'http://localhost:3000/send')}">
-                    <small class="text-muted">Pastikan URL sama dengan port di Node.js</small>
+                    <small class="text-muted">Pastikan URL sama dengan port di Node.js (Default: http://localhost:3000/send)</small>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Template Pesan Notifikasi</label>
@@ -478,39 +476,27 @@ const Absen = {
                     <button class="btn btn-primary" onclick="Absen.saveWaSettings()">Simpan Pengaturan Utama</button>
                 </div>
             `);
-            // Check status segera setelah form di render (karena butuh URL)
+            // Check status segera setelah form di render
             this.checkWaStatus();
         });
     },
 
     testWa() {
-        const url = $('#waUrl').val();
         const phone = $('#waTestPhone').val();
         
-        if (!url || !phone) {
-            return EModal.toast({ type: 'warning', message: 'URL Gateway dan Nomor HP harus diisi untuk testing!' });
+        if (!phone) {
+            return EModal.toast({ type: 'warning', message: 'Masukkan Nomor HP untuk testing!' });
         }
 
         EModal.toast({ type: 'info', message: 'Mengirim pesan percobaan...' });
         
-        $.ajax({
-            url: url,
+        this.api('settings.php?action=wa_test', {
             method: 'POST',
-            contentType: 'application/json',
-            data: JSON.stringify({
-                number: phone,
-                message: 'Halo! Ini adalah pesan pengujian WhatsApp Gateway dari E-Portal.'
-            }),
-            success: (res) => {
-                if (res.success) {
-                    EModal.toast({ type: 'success', title: 'Terkirim', message: 'Pesan berhasil terkirim ke WhatsApp!' });
-                } else {
-                    EModal.toast({ type: 'error', title: 'Gagal', message: res.message || 'Gagal mengirim.' });
-                }
-            },
-            error: (xhr) => {
-                EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menghubungi server WA lokal.' });
-            }
+            data: { number: phone, message: 'Halo! Ini adalah pesan pengujian WhatsApp Gateway dari E-Portal.' }
+        }).done(res => {
+            EModal.toast({ type: 'success', title: 'Terkirim', message: res.message });
+        }).fail(xhr => {
+            EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal mengirim pesan.' });
         });
     },
 

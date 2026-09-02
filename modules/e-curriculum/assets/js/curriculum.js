@@ -1327,27 +1327,91 @@ const Curriculum = {
     // ==================== ABSENSI SISWA VIEW ====================
     renderAbsensi($container) {
         const today = new Date().toISOString().split('T')[0];
+        const firstDayOfMonth = today.substring(0, 8) + '01';
+
         $container.html(`
             <div class="acad-card">
-                <div class="acad-card-header">
-                    <div><h3>✅ Absensi Siswa</h3><p class="acad-subtitle">Kelola kehadiran siswa per kelas per hari.</p></div>
+                <div class="acad-card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <h3>✅ Absensi Siswa</h3>
+                        <p class="acad-subtitle">Terintegrasi otomatis dengan mesin E-Absen & Rekapitulasi Kehadiran.</p>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                        <button class="btn-acad btn-acad-outline" onclick="Curriculum.showSettingWaktuModal()">
+                            ⚙️ Setting Jam Terlambat
+                        </button>
+                    </div>
                 </div>
                 <div class="acad-card-body">
-                    <div class="filter-bar">
-                        <div class="filter-item"><label>Tanggal</label><input type="date" class="form-input-acad" id="absensiTanggal" value="${today}"></div>
-                        <div class="filter-item"><label>Kelas</label><select class="form-select-acad" id="absensiKelas"><option value="">Pilih Kelas...</option></select></div>
-                        <div class="filter-item"><button class="btn-acad btn-acad-primary" onclick="Curriculum.loadAbsensiTable()">🔍 Tampilkan</button></div>
+                    <!-- Navigation Tabs -->
+                    <div style="margin-bottom: 20px; border-bottom: 1px solid #e2e8f0; display: flex; gap: 16px;">
+                        <button class="absensi-tab-btn active" data-tab="harian" onclick="Curriculum.switchAbsensiTab('harian')" style="background: none; border: none; padding: 10px 16px; cursor: pointer; border-bottom: 2px solid #7C3AED; font-weight: 600; color: #7C3AED;">
+                            📌 Absensi Harian
+                        </button>
+                        <button class="absensi-tab-btn" data-tab="rekap" onclick="Curriculum.switchAbsensiTab('rekap')" style="background: none; border: none; padding: 10px 16px; cursor: pointer; border-bottom: 2px solid transparent; color: #64748B;">
+                            📊 Rekapitulasi Kehadiran
+                        </button>
                     </div>
-                    <div id="absensiTableWrapper"></div>
+
+                    <!-- Tab 1: Absensi Harian -->
+                    <div id="absensiTabHarian" class="absensi-tab-content">
+                        <div class="filter-bar">
+                            <div class="filter-item"><label>Tanggal</label><input type="date" class="form-input-acad" id="absensiTanggal" value="${today}"></div>
+                            <div class="filter-item"><label>Kelas</label><select class="form-select-acad" id="absensiKelas"><option value="">Pilih Kelas...</option></select></div>
+                            <div class="filter-item" style="display:flex; align-items:flex-end;"><button class="btn-acad btn-acad-primary" onclick="Curriculum.loadAbsensiTable()">🔍 Tampilkan</button></div>
+                        </div>
+                        <div id="absensiInfoBanner" style="margin-bottom:16px; padding:10px 14px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; color:#1e40af; font-size:0.875rem; display:flex; justify-content:space-between; align-items:center;">
+                            <span>📌 Data otomatis menyelaraskan jam tap dari E-Absen. <strong>Batas Jam Terlambat: <span id="lblJamTerlambat">07:15</span></strong></span>
+                        </div>
+                        <div id="absensiTableWrapper"></div>
+                    </div>
+
+                    <!-- Tab 2: Rekapitulasi Absensi -->
+                    <div id="absensiTabRekap" class="absensi-tab-content" style="display:none;">
+                        <div class="filter-bar">
+                            <div class="filter-item"><label>Kelas</label><select class="form-select-acad" id="rekapAbsensiKelas"><option value="0">Semua Kelas</option></select></div>
+                            <div class="filter-item"><label>Tanggal Awal</label><input type="date" class="form-input-acad" id="rekapTglAwal" value="${firstDayOfMonth}"></div>
+                            <div class="filter-item"><label>Tanggal Akhir</label><input type="date" class="form-input-acad" id="rekapTglAkhir" value="${today}"></div>
+                            <div class="filter-item" style="display:flex; align-items:flex-end; gap:8px;">
+                                <button class="btn-acad btn-acad-primary" onclick="Curriculum.loadAbsensiRekapTable()">🔍 Tampilkan Rekap</button>
+                                <button class="btn-acad btn-acad-success" onclick="Curriculum.exportAbsensiExcel()" style="background:#10B981; color:white; border:none;">📥 Export Excel</button>
+                            </div>
+                        </div>
+                        <div id="rekapAbsensiTableWrapper"></div>
+                    </div>
                 </div>
             </div>
         `);
-        // Load kelas for dropdown
+
+        // Load kelas for dropdowns
         this.api('jurnal.php?action=meta').done(res => {
             if (!res.success) return;
             const opts = res.data.classes.map(c => `<option value="${c.id}">${this.escapeHtml(c.nama_kelas)}</option>`).join('');
             $('#absensiKelas').append(opts);
+            $('#rekapAbsensiKelas').append(opts);
         });
+
+        // Load current late setting
+        this.api('absensi.php?action=get_settings').done(res => {
+            if (res.data && res.data.waktu_terlambat) {
+                $('#lblJamTerlambat').text(res.data.waktu_terlambat);
+            }
+        });
+    },
+
+    switchAbsensiTab(tab) {
+        $('.absensi-tab-btn').css({ 'border-bottom': '2px solid transparent', 'color': '#64748B', 'font-weight': 'normal' });
+        $(`.absensi-tab-btn[data-tab="${tab}"]`).css({ 'border-bottom': '2px solid #7C3AED', 'color': '#7C3AED', 'font-weight': '600' });
+
+        $('.absensi-tab-content').hide();
+        if (tab === 'harian') {
+            $('#absensiTabHarian').fadeIn(200);
+        } else {
+            $('#absensiTabRekap').fadeIn(200);
+            if (!$('#rekapAbsensiTableWrapper').children().length) {
+                this.loadAbsensiRekapTable();
+            }
+        }
     },
 
     loadAbsensiTable() {
@@ -1356,23 +1420,36 @@ const Curriculum = {
         if (!kelas_id) { EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Pilih kelas terlebih dahulu.' }); return; }
 
         this.api(`absensi.php?action=list&tanggal=${tanggal}&kelas_id=${kelas_id}&jam_ke=0`).done(res => {
-            const data = res.data || [];
+            const data = res.data ? res.data.students || [] : [];
+            const jamTerlambat = res.data ? res.data.waktu_terlambat : '07:15';
+            $('#lblJamTerlambat').text(jamTerlambat);
+
             if (!data.length) {
                 $('#absensiTableWrapper').html(`<div class="acad-empty"><h3>Tidak Ada Siswa</h3><p>Tidak ditemukan siswa untuk kelas ini.</p></div>`);
                 return;
             }
+
             const rows = data.map((s, idx) => `
-                <tr class="fade-in" style="animation-delay:${idx*0.02}s">
+                <tr class="fade-in">
                     <td>${idx + 1}</td>
                     <td>${this.escapeHtml(s.nis)}</td>
                     <td><strong>${this.escapeHtml(s.nama)}</strong></td>
                     <td>
+                        <span class="badge ${s.jam_masuk ? 'badge-info' : 'badge-secondary'}" style="font-size:0.8rem;">
+                            ${s.scan_info}
+                        </span>
+                    </td>
+                    <td>
                         <div class="absensi-radio-group">
-                            <label class="absensi-radio ${s.status === 'H' ? 'active-h' : ''}"><input type="radio" name="abs_${s.student_id}" value="H" ${s.status === 'H' ? 'checked' : ''}> H</label>
-                            <label class="absensi-radio ${s.status === 'S' ? 'active-s' : ''}"><input type="radio" name="abs_${s.student_id}" value="S" ${s.status === 'S' ? 'checked' : ''}> S</label>
-                            <label class="absensi-radio ${s.status === 'I' ? 'active-i' : ''}"><input type="radio" name="abs_${s.student_id}" value="I" ${s.status === 'I' ? 'checked' : ''}> I</label>
-                            <label class="absensi-radio ${s.status === 'A' ? 'active-a' : ''}"><input type="radio" name="abs_${s.student_id}" value="A" ${s.status === 'A' ? 'checked' : ''}> A</label>
+                            <label class="absensi-radio ${s.status === 'H' ? 'active-h' : ''}"><input type="radio" name="abs_${s.student_id}" value="H" ${s.status === 'H' ? 'checked' : ''}> Hadir</label>
+                            <label class="absensi-radio ${s.status === 'T' ? 'active-t' : ''}" style="${s.status === 'T' ? 'background:#F59E0B; color:white;' : ''}"><input type="radio" name="abs_${s.student_id}" value="T" ${s.status === 'T' ? 'checked' : ''}> Terlambat</label>
+                            <label class="absensi-radio ${s.status === 'S' ? 'active-s' : ''}"><input type="radio" name="abs_${s.student_id}" value="S" ${s.status === 'S' ? 'checked' : ''}> Sakit</label>
+                            <label class="absensi-radio ${s.status === 'I' ? 'active-i' : ''}"><input type="radio" name="abs_${s.student_id}" value="I" ${s.status === 'I' ? 'checked' : ''}> Izin</label>
+                            <label class="absensi-radio ${s.status === 'A' ? 'active-a' : ''}"><input type="radio" name="abs_${s.student_id}" value="A" ${s.status === 'A' ? 'checked' : ''}> Alpha</label>
                         </div>
+                    </td>
+                    <td>
+                        <input type="text" class="form-input-acad abs-keterangan" data-studentid="${s.student_id}" value="${this.escapeHtml(s.keterangan || '')}" placeholder="Keterangan..." style="width:100%; font-size:0.85rem;">
                     </td>
                 </tr>
             `).join('');
@@ -1380,7 +1457,7 @@ const Curriculum = {
             $('#absensiTableWrapper').html(`
                 <div class="data-table-wrapper">
                     <table class="data-table" id="absensiDataTable">
-                        <thead><tr><th width="50">No</th><th>NIS</th><th>Nama Siswa</th><th>Status Kehadiran</th></tr></thead>
+                        <thead><tr><th width="50">No</th><th>NIS</th><th>Nama Siswa</th><th>Log E-Absen</th><th>Status Kehadiran</th><th>Keterangan</th></tr></thead>
                         <tbody>${rows}</tbody>
                     </table>
                 </div>
@@ -1392,9 +1469,13 @@ const Curriculum = {
             // Radio change handler for visual feedback
             $('#absensiDataTable input[type=radio]').on('change', function() {
                 const $group = $(this).closest('.absensi-radio-group');
-                $group.find('.absensi-radio').removeClass('active-h active-s active-i active-a');
+                $group.find('.absensi-radio').removeClass('active-h active-s active-i active-a active-t').css('background','').css('color','');
                 const val = $(this).val();
-                $(this).parent().addClass(`active-${val.toLowerCase()}`);
+                if (val === 'T') {
+                    $(this).parent().css('background','#F59E0B').css('color','white');
+                } else {
+                    $(this).parent().addClass(`active-${val.toLowerCase()}`);
+                }
             });
         });
     },
@@ -1406,10 +1487,15 @@ const Curriculum = {
 
         $('#absensiDataTable tbody tr').each(function() {
             const $checked = $(this).find('input[type=radio]:checked');
+            const $ketInput = $(this).find('.abs-keterangan');
             if ($checked.length) {
                 const name = $checked.attr('name');
                 const studentId = name.replace('abs_', '');
-                absensi.push({ student_id: parseInt(studentId), status: $checked.val() });
+                absensi.push({
+                    student_id: parseInt(studentId),
+                    status: $checked.val(),
+                    keterangan: $ketInput.val() || ''
+                });
             }
         });
 
@@ -1418,6 +1504,124 @@ const Curriculum = {
         this.api('absensi.php?action=save', { method: 'POST', data: { tanggal, kelas_id: parseInt(kelas_id), jam_ke: 0, absensi } }).done(res => {
             EModal.toast({ type: 'success', title: 'Berhasil', message: res.message });
         }).fail(xhr => { EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menyimpan.' }); });
+    },
+
+    loadAbsensiRekapTable() {
+        const kelas_id = $('#rekapAbsensiKelas').val() || 0;
+        const tgl_awal = $('#rekapTglAwal').val();
+        const tgl_akhir = $('#rekapTglAkhir').val();
+
+        $('#rekapAbsensiTableWrapper').html('<div class="skeleton-module" style="height:250px;"></div>');
+
+        this.api(`absensi.php?action=rekap&kelas_id=${kelas_id}&tanggal_awal=${tgl_awal}&tanggal_akhir=${tgl_akhir}`).done(res => {
+            const data = res.data ? res.data.rekap || [] : [];
+
+            if (!data.length) {
+                $('#rekapAbsensiTableWrapper').html(`<div class="acad-empty"><h3>Tidak Ada Data Rekap</h3><p>Tidak ada data absensi pada rentang tanggal ini.</p></div>`);
+                return;
+            }
+
+            const rows = data.map((r, idx) => `
+                <tr>
+                    <td>${idx + 1}</td>
+                    <td>${this.escapeHtml(r.nis)}</td>
+                    <td><strong>${this.escapeHtml(r.nama)}</strong></td>
+                    <td><span class="badge badge-info">${this.escapeHtml(r.kelas)}</span></td>
+                    <td><span style="color:#10B981; font-weight:600;">${r.hadir}</span></td>
+                    <td><span style="color:#F59E0B; font-weight:600;">${r.terlambat}</span></td>
+                    <td><span style="color:#3B82F6; font-weight:600;">${r.sakit}</span></td>
+                    <td><span style="color:#8B5CF6; font-weight:600;">${r.izin}</span></td>
+                    <td><span style="color:#EF4444; font-weight:600;">${r.alpha}</span></td>
+                    <td><strong>${r.total_hadir}</strong></td>
+                    <td>
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <div style="flex:1; background:#e2e8f0; border-radius:4px; height:8px; overflow:hidden;">
+                                <div style="width:${r.persentase}%; background:${r.persentase >= 80 ? '#10B981' : (r.persentase >= 60 ? '#F59E0B' : '#EF4444')}; height:100%;"></div>
+                            </div>
+                            <span style="font-size:0.8rem; font-weight:600;">${r.persentase}%</span>
+                        </div>
+                    </td>
+                </tr>
+            `).join('');
+
+            $('#rekapAbsensiTableWrapper').html(`
+                <div class="data-table-wrapper">
+                    <table class="data-table" id="tableExportRekapAbsensi">
+                        <thead>
+                            <tr>
+                                <th width="40">No</th>
+                                <th>NIS</th>
+                                <th>Nama Siswa</th>
+                                <th>Kelas</th>
+                                <th>Hadir</th>
+                                <th>Terlambat</th>
+                                <th>Sakit</th>
+                                <th>Izin</th>
+                                <th>Alpha</th>
+                                <th>Total Kehadiran</th>
+                                <th>% Kehadiran</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rows}</tbody>
+                    </table>
+                </div>
+            `);
+        });
+    },
+
+    exportAbsensiExcel() {
+        const table = document.getElementById('tableExportRekapAbsensi');
+        if (!table) {
+            EModal.toast({ type: 'warning', title: 'Kosong', message: 'Tidak ada data rekap untuk diekspor.' });
+            return;
+        }
+
+        const tgl_awal = $('#rekapTglAwal').val();
+        const tgl_akhir = $('#rekapTglAkhir').val();
+        const wb = XLSX.utils.table_to_book(table, { sheet: "Rekap Absensi Siswa" });
+        XLSX.writeFile(wb, `Rekap_Absensi_Siswa_${tgl_awal}_sd_${tgl_akhir}.xlsx`);
+    },
+
+    showSettingWaktuModal() {
+        this.api('absensi.php?action=get_settings').done(res => {
+            const currentWaktu = res.data ? res.data.waktu_terlambat : '07:15';
+
+            EModal.form({
+                title: '⚙️ Setting Jam Batas Terlambat Siswa',
+                size: 'sm',
+                form: `
+                    <div class="form-group-acad">
+                        <label class="form-label-acad">Batas Jam Masuk / Terlambat</label>
+                        <input type="time" class="form-input-acad" id="settingJamTerlambat" value="${currentWaktu}">
+                        <small class="text-muted" style="margin-top:6px; display:block;">
+                            Siswa yang melakukan tap di E-Absen <strong>setelah jam ini</strong> akan otomatis dikategorikan sebagai <strong>Terlambat</strong>.
+                        </small>
+                    </div>
+                `,
+                buttons: [
+                    { text: 'Batal', class: 'btn-acad btn-acad-outline', close: true },
+                    {
+                        text: '💾 Simpan Setting',
+                        class: 'btn-acad btn-acad-primary',
+                        click: () => {
+                            const waktu = $('#settingJamTerlambat').val();
+                            if (!waktu) {
+                                EModal.toast({ type: 'warning', message: 'Jam batas wajib diisi.' });
+                                return;
+                            }
+
+                            this.api('absensi.php?action=save_settings', { method: 'POST', data: { waktu_terlambat: waktu } }).done(res => {
+                                EModal.toast({ type: 'success', title: 'Berhasil', message: res.message });
+                                $('#lblJamTerlambat').text(waktu);
+                                EModal.close();
+                            }).fail(xhr => {
+                                EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menyimpan.' });
+                            });
+                        }
+                    }
+                ]
+            });
+        });
     },
 
     // ==================== KETIDAKHADIRAN GURU VIEW ====================

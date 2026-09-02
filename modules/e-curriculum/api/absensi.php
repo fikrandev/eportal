@@ -1,12 +1,17 @@
 <?php
 /**
  * E-Curriculum Absensi Siswa API
- * Manages student attendance
+ * Manages student attendance integrated with E-Absen logs & manual overrides
  */
 require_once __DIR__ . '/auth_helper.php';
 
 $user = acad_auth();
 $action = isset($_GET['action']) ? $_GET['action'] : '';
+
+// Ensure database schema supports 'T' (Terlambat) status
+try {
+    db()->exec("ALTER TABLE acad_absensi MODIFY COLUMN status ENUM('H','S','I','A','T') NOT NULL DEFAULT 'H'");
+} catch (Exception $e) {}
 
 switch ($action) {
     case 'list':
@@ -21,18 +26,25 @@ switch ($action) {
     case 'rekap':
         rekapAbsensi($user);
         break;
+    case 'get_settings':
+        getSettings($user);
+        break;
+    case 'save_settings':
+        saveSettings($user);
+        break;
     default:
         json_response(400, false, 'Action tidak valid.');
 }
 
 /**
- * List absensi for a class on a given date
+ * List absensi for a class on a given date (merging E-Absen logs and acad_absensi)
  */
 function listAbsensi($user) {
     try {
         $tanggal = isset($_GET['tanggal']) ? $_GET['tanggal'] : date('Y-m-d');
         $kelas_id = isset($_GET['kelas_id']) ? (int)$_GET['kelas_id'] : 0;
         $jam_ke = isset($_GET['jam_ke']) ? (int)$_GET['jam_ke'] : 0;
+        $waktu_terlambat = get_setting('waktu_terlambat_siswa', '07:15:00');
 
         if ($kelas_id <= 0) json_response(400, false, 'Kelas wajib dipilih.');
 
@@ -47,31 +59,71 @@ function listAbsensi($user) {
         $stmtS->execute([$kelas['nama_kelas']]);
         $students = $stmtS->fetchAll();
 
-        // Get existing absensi
+        // Get existing manual absensi from acad_absensi
         $stmtA = db()->prepare("
             SELECT student_id, status, keterangan 
             FROM acad_absensi 
             WHERE tanggal = ? AND kelas_id = ? AND jam_ke = ?
         ");
         $stmtA->execute([$tanggal, $kelas_id, $jam_ke]);
-        $existing = [];
+        $existingManual = [];
         while ($row = $stmtA->fetch()) {
-            $existing[$row['student_id']] = $row;
+            $existingManual[$row['student_id']] = $row;
         }
 
-        // Merge
+        // Get E-Absen logs for this date
+        $stmtLogs = db()->prepare("
+            SELECT TRIM(LEADING '0' FROM mesin_pin) COLLATE utf8mb4_unicode_ci as clean_pin, 
+                   MIN(TIME(waktu_absen)) as jam_masuk
+            FROM absen_logs 
+            WHERE DATE(waktu_absen) = ? 
+            GROUP BY clean_pin
+        ");
+        $stmtLogs->execute([$tanggal]);
+        $eAbsenLogs = [];
+        while ($l = $stmtLogs->fetch()) {
+            $eAbsenLogs[$l['clean_pin']] = $l['jam_masuk'];
+        }
+
+        // Merge student list with E-Absen log and manual override
         $result = [];
         foreach ($students as $s) {
+            $cleanNis = ltrim($s['nis'], '0');
+            $jamMasuk = isset($eAbsenLogs[$cleanNis]) ? $eAbsenLogs[$cleanNis] : null;
+
+            // Determine default status based on E-Absen log if available
+            $calculatedStatus = 'H';
+            $scanInfo = 'Belum Absen Mesin';
+
+            if ($jamMasuk !== null) {
+                if ($jamMasuk <= $waktu_terlambat) {
+                    $calculatedStatus = 'H';
+                    $scanInfo = "Hadir (" . substr($jamMasuk, 0, 5) . ")";
+                } else {
+                    $calculatedStatus = 'T';
+                    $scanInfo = "Terlambat (" . substr($jamMasuk, 0, 5) . ")";
+                }
+            }
+
+            // Manual override takes precedence if recorded in acad_absensi
+            $finalStatus = isset($existingManual[$s['id']]) ? $existingManual[$s['id']]['status'] : ($jamMasuk !== null ? $calculatedStatus : 'H');
+            $keterangan = isset($existingManual[$s['id']]) ? $existingManual[$s['id']]['keterangan'] : ($jamMasuk !== null ? "Fingerprint: $jamMasuk" : '');
+
             $result[] = [
                 'student_id' => $s['id'],
                 'nis' => $s['nis'],
                 'nama' => $s['nama'],
-                'status' => isset($existing[$s['id']]) ? $existing[$s['id']]['status'] : 'H',
-                'keterangan' => isset($existing[$s['id']]) ? $existing[$s['id']]['keterangan'] : ''
+                'jam_masuk' => $jamMasuk,
+                'scan_info' => $scanInfo,
+                'status' => $finalStatus,
+                'keterangan' => $keterangan
             ];
         }
 
-        json_response(200, true, 'Data absensi dimuat.', $result);
+        json_response(200, true, 'Data absensi dimuat.', [
+            'waktu_terlambat' => substr($waktu_terlambat, 0, 5),
+            'students' => $result
+        ]);
     } catch (PDOException $e) {
         json_response(500, false, 'Server error: ' . $e->getMessage());
     }
@@ -101,7 +153,7 @@ function saveAbsensi($user) {
 
         foreach ($absensi as $a) {
             $student_id = (int)$a['student_id'];
-            $status = in_array($a['status'], ['H','S','I','A']) ? $a['status'] : 'H';
+            $status = in_array($a['status'], ['H','S','I','A','T']) ? $a['status'] : 'H';
             $keterangan = isset($a['keterangan']) ? trim($a['keterangan']) : '';
 
             $stmt = db()->prepare("
@@ -142,40 +194,181 @@ function getStudentsByKelas($user) {
 }
 
 /**
- * Rekapitulasi absensi
+ * Rekapitulasi absensi per kelas & range tanggal (tgl_awal s/d tgl_akhir)
  */
 function rekapAbsensi($user) {
     try {
         $kelas_id = isset($_GET['kelas_id']) ? (int)$_GET['kelas_id'] : 0;
-        $tanggal = isset($_GET['tanggal']) ? $_GET['tanggal'] : date('Y-m-01');
+        $tanggal_awal = isset($_GET['tanggal_awal']) ? $_GET['tanggal_awal'] : date('Y-m-01');
         $tanggal_akhir = isset($_GET['tanggal_akhir']) ? $_GET['tanggal_akhir'] : date('Y-m-d');
+        $waktu_terlambat = get_setting('waktu_terlambat_siswa', '07:15:00');
+
         $active_year = get_active_academic_year();
         $year_id = $active_year['id'] ?? 0;
 
-        $where = "a.academic_year_id = ? AND a.tanggal BETWEEN ? AND ?";
-        $params = [$year_id, $tanggal, $tanggal_akhir];
-
+        // Get class name filter if specific class selected
+        $nama_kelas_filter = null;
         if ($kelas_id > 0) {
-            $where .= " AND a.kelas_id = ?";
-            $params[] = $kelas_id;
+            $stmtK = db()->prepare("SELECT nama_kelas FROM sch_kelas WHERE id = ?");
+            $stmtK->execute([$kelas_id]);
+            $nama_kelas_filter = $stmtK->fetchColumn();
         }
 
-        $stmt = db()->prepare("
-            SELECT s.nama, s.nis, s.kelas,
-                   SUM(CASE WHEN a.status = 'H' THEN 1 ELSE 0 END) as hadir,
-                   SUM(CASE WHEN a.status = 'S' THEN 1 ELSE 0 END) as sakit,
-                   SUM(CASE WHEN a.status = 'I' THEN 1 ELSE 0 END) as izin,
-                   SUM(CASE WHEN a.status = 'A' THEN 1 ELSE 0 END) as alpha,
-                   COUNT(*) as total
-            FROM acad_absensi a
-            JOIN students s ON a.student_id = s.id
-            WHERE $where AND a.jam_ke = 0
-            GROUP BY s.id, s.nama, s.nis, s.kelas
-            ORDER BY s.kelas, s.nama
+        // 1. Get all relevant students
+        if ($nama_kelas_filter) {
+            $stmtS = db()->prepare("SELECT id, nis, nama, kelas FROM students WHERE kelas = ? AND status = 1 ORDER BY kelas, nama");
+            $stmtS->execute([$nama_kelas_filter]);
+        } else {
+            $stmtS = db()->query("SELECT id, nis, nama, kelas FROM students WHERE status = 1 ORDER BY kelas, nama");
+        }
+        $students = $stmtS->fetchAll();
+
+        if (empty($students)) {
+            json_response(200, true, 'Rekap absensi dimuat.', [
+                'waktu_terlambat' => substr($waktu_terlambat, 0, 5),
+                'tanggal_awal' => $tanggal_awal,
+                'tanggal_akhir' => $tanggal_akhir,
+                'rekap' => []
+            ]);
+        }
+
+        $studentIds = array_column($students, 'id');
+        $nisList = array_map(function($s) { return ltrim($s['nis'], '0'); }, $students);
+
+        // 2. Fetch manual records from acad_absensi for date range
+        $placeholdersS = implode(',', array_fill(0, count($studentIds), '?'));
+        $stmtA = db()->prepare("
+            SELECT student_id, tanggal, status 
+            FROM acad_absensi 
+            WHERE student_id IN ($placeholdersS) 
+              AND tanggal BETWEEN ? AND ? 
+              AND jam_ke = 0
         ");
-        $stmt->execute($params);
-        json_response(200, true, 'Rekap absensi dimuat.', $stmt->fetchAll());
+        $paramsA = array_merge($studentIds, [$tanggal_awal, $tanggal_akhir]);
+        $stmtA->execute($paramsA);
+        
+        $manualMap = []; // [student_id][tanggal] = status
+        while ($row = $stmtA->fetch()) {
+            $manualMap[$row['student_id']][$row['tanggal']] = $row['status'];
+        }
+
+        // 3. Fetch E-Absen logs for date range
+        $placeholdersNis = implode(',', array_fill(0, count($nisList), '?'));
+        $stmtL = db()->prepare("
+            SELECT TRIM(LEADING '0' FROM mesin_pin) COLLATE utf8mb4_unicode_ci as clean_pin,
+                   DATE(waktu_absen) as tgl,
+                   MIN(TIME(waktu_absen)) as jam_masuk
+            FROM absen_logs
+            WHERE TRIM(LEADING '0' FROM mesin_pin) COLLATE utf8mb4_unicode_ci IN ($placeholdersNis)
+              AND DATE(waktu_absen) BETWEEN ? AND ?
+            GROUP BY clean_pin, tgl
+        ");
+        $paramsL = array_merge($nisList, [$tanggal_awal, $tanggal_akhir]);
+        $stmtL->execute($paramsL);
+
+        $eAbsenMap = []; // [clean_pin][tgl] = jam_masuk
+        while ($l = $stmtL->fetch()) {
+            $eAbsenMap[$l['clean_pin']][$l['tgl']] = $l['jam_masuk'];
+        }
+
+        // 4. Calculate attendance per student
+        $rekap = [];
+        foreach ($students as $s) {
+            $sid = $s['id'];
+            $cleanNis = ltrim($s['nis'], '0');
+
+            $countH = 0; // Hadir tepat waktu
+            $countT = 0; // Terlambat
+            $countS = 0; // Sakit
+            $countI = 0; // Izin
+            $countA = 0; // Alpha
+
+            // Collect all dates where student has records (either in acad_absensi or E-Absen)
+            $dates = [];
+            if (isset($manualMap[$sid])) {
+                foreach (array_keys($manualMap[$sid]) as $d) $dates[$d] = true;
+            }
+            if (isset($eAbsenMap[$cleanNis])) {
+                foreach (array_keys($eAbsenMap[$cleanNis]) as $d) $dates[$d] = true;
+            }
+
+            foreach (array_keys($dates) as $d) {
+                // Manual record takes precedence if set
+                if (isset($manualMap[$sid][$d])) {
+                    $st = $manualMap[$sid][$d];
+                    if ($st === 'H') $countH++;
+                    else if ($st === 'T') $countT++;
+                    else if ($st === 'S') $countS++;
+                    else if ($st === 'I') $countI++;
+                    else if ($st === 'A') $countA++;
+                } else if (isset($eAbsenMap[$cleanNis][$d])) {
+                    $jamMasuk = $eAbsenMap[$cleanNis][$d];
+                    if ($jamMasuk <= $waktu_terlambat) {
+                        $countH++;
+                    } else {
+                        $countT++;
+                    }
+                }
+            }
+
+            $totalHadir = $countH + $countT;
+            $totalHariRecorded = count($dates);
+            $persentase = $totalHariRecorded > 0 ? round(($totalHadir / $totalHariRecorded) * 100, 1) : 0;
+
+            $rekap[] = [
+                'student_id' => $sid,
+                'nis' => $s['nis'],
+                'nama' => $s['nama'],
+                'kelas' => $s['kelas'],
+                'hadir' => $countH,
+                'terlambat' => $countT,
+                'sakit' => $countS,
+                'izin' => $countI,
+                'alpha' => $countA,
+                'total_hadir' => $totalHadir,
+                'total_hari' => $totalHariRecorded,
+                'persentase' => $persentase
+            ];
+        }
+
+        json_response(200, true, 'Rekap absensi dimuat.', [
+            'waktu_terlambat' => substr($waktu_terlambat, 0, 5),
+            'tanggal_awal' => $tanggal_awal,
+            'tanggal_akhir' => $tanggal_akhir,
+            'rekap' => $rekap
+        ]);
     } catch (PDOException $e) {
         json_response(500, false, 'Server error: ' . $e->getMessage());
     }
+}
+
+/**
+ * Get setting waktu terlambat
+ */
+function getSettings($user) {
+    $waktu_terlambat = get_setting('waktu_terlambat_siswa', '07:15:00');
+    json_response(200, true, 'Setting dimuat.', [
+        'waktu_terlambat' => substr($waktu_terlambat, 0, 5)
+    ]);
+}
+
+/**
+ * Save setting waktu terlambat
+ */
+function saveSettings($user) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed.');
+    if ($user['role'] !== 'superadmin' && $user['role'] !== 'admin') {
+        json_response(403, false, 'Hanya admin yang dapat mengedit setting.');
+    }
+
+    $input = get_input();
+    $waktu = isset($input['waktu_terlambat']) ? trim($input['waktu_terlambat']) : '07:15';
+
+    // Format HH:MM:SS
+    if (strlen($waktu) === 5) {
+        $waktu .= ':00';
+    }
+
+    upsert_setting('waktu_terlambat_siswa', $waktu, 'text', 'Batas jam terlambat absensi siswa');
+    json_response(200, true, 'Setting jam terlambat berhasil disimpan.');
 }
