@@ -48,7 +48,33 @@ if (!$isCdata && !$isGetrequest) {
 // Query params: SN=...&options=all&pushver=...
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && $isCdata) {
     header("Content-Type: text/plain");
-    echo "GET OPTION FROM: " . (isset($_GET['SN']) ? $_GET['SN'] : 'UNKNOWN') . "\n";
+    
+    // Extract SN (case-insensitive)
+    $handshakeSn = '';
+    foreach ($_GET as $key => $val) {
+        if (strtolower($key) === 'sn') { $handshakeSn = trim($val); break; }
+    }
+    
+    // Auto-register: jika SN belum ada di database, otomatis daftarkan
+    if ($handshakeSn) {
+        try {
+            $stmtCheck = db()->prepare("SELECT id FROM absen_mesin WHERE sn = ?");
+            $stmtCheck->execute([$handshakeSn]);
+            if (!$stmtCheck->fetch()) {
+                // Belum terdaftar, auto-register
+                $stmtIns = db()->prepare("INSERT INTO absen_mesin (nama_mesin, ip_address, port, sn, com_key, status, last_sync) VALUES (?, '', 4370, ?, '0', 1, NOW())");
+                $stmtIns->execute(['Mesin ' . $handshakeSn, $handshakeSn]);
+                file_put_contents($debugLog, date('Y-m-d H:i:s') . " | AUTO-REGISTER | New machine SN=$handshakeSn\n", FILE_APPEND);
+            } else {
+                // Sudah terdaftar, update last_sync
+                db()->prepare("UPDATE absen_mesin SET last_sync = NOW() WHERE sn = ?")->execute([$handshakeSn]);
+            }
+        } catch (Exception $e) {
+            file_put_contents($debugLog, date('Y-m-d H:i:s') . " | AUTO-REGISTER ERROR | " . $e->getMessage() . "\n", FILE_APPEND);
+        }
+    }
+    
+    echo "GET OPTION FROM: " . ($handshakeSn ?: 'UNKNOWN') . "\n";
     echo "Stamp=0\n";
     echo "OpStamp=0\n";
     echo "ErrorDelay=60\n";
@@ -76,32 +102,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $isGetrequest) {
     $needSync = false;
     if ($grSn) {
         try {
-            $stmtCheck = db()->prepare("SELECT id FROM absen_mesin WHERE sn = ? AND (force_sync = 1 OR last_sync IS NULL)");
-            $stmtCheck->execute([$grSn]);
-            if ($stmtCheck->fetch()) {
-                $needSync = true;
-            }
-            
-            // Juga cek apakah ada log sama sekali dari mesin ini
+            // Cek apakah mesin sudah terdaftar
             $stmtMesin = db()->prepare("SELECT id FROM absen_mesin WHERE sn = ?");
             $stmtMesin->execute([$grSn]);
             $mesinRow = $stmtMesin->fetch();
-            if ($mesinRow) {
+            
+            if (!$mesinRow) {
+                // Auto-register mesin baru
+                $stmtIns = db()->prepare("INSERT INTO absen_mesin (nama_mesin, ip_address, port, sn, com_key, status, last_sync) VALUES (?, '', 4370, ?, '0', 1, NOW())");
+                $stmtIns->execute(['Mesin ' . $grSn, $grSn]);
+                $needSync = true; // Mesin baru, minta kirim semua data
+                file_put_contents($debugLog, date('Y-m-d H:i:s') . " | AUTO-REGISTER (getrequest) | New machine SN=$grSn\n", FILE_APPEND);
+            } else {
+                // Mesin sudah terdaftar, cek apakah perlu sync
+                try {
+                    $stmtCheck = db()->prepare("SELECT id FROM absen_mesin WHERE sn = ? AND (force_sync = 1 OR last_sync IS NULL)");
+                    $stmtCheck->execute([$grSn]);
+                    if ($stmtCheck->fetch()) {
+                        $needSync = true;
+                    }
+                } catch (Exception $e) {
+                    $needSync = true;
+                }
+                
+                // Cek apakah ada log dari mesin ini
                 $stmtLogs = db()->prepare("SELECT COUNT(*) FROM absen_logs WHERE mesin_id = ?");
                 $stmtLogs->execute([$mesinRow['id']]);
                 if ((int)$stmtLogs->fetchColumn() === 0) {
                     $needSync = true;
                 }
+                
+                // Update last_sync
+                db()->prepare("UPDATE absen_mesin SET last_sync = NOW() WHERE id = ?")->execute([$mesinRow['id']]);
             }
         } catch (Exception $e) {
             // Jika kolom force_sync belum ada, paksa sync
             $needSync = true;
         }
-        
-        // Selalu update last_sync saat menerima heartbeat (getrequest) dari mesin agar status di web terlihat aktif
-        try {
-            db()->prepare("UPDATE absen_mesin SET last_sync = NOW() WHERE sn = ?")->execute([$grSn]);
-        } catch (Exception $e) {}
     }
     
     if ($needSync) {
@@ -146,7 +183,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isCdata) {
         exit;
     }
     
-    // Update last_sync for this machine based on SN
+    // Update last_sync for this machine based on SN (auto-register if unknown)
+    $mesin = null;
     try {
         $stmtMesin = db()->prepare("SELECT id, status FROM absen_mesin WHERE sn = ?");
         $stmtMesin->execute([$sn]);
@@ -154,6 +192,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isCdata) {
         
         if ($mesin) {
             db()->prepare("UPDATE absen_mesin SET last_sync = NOW() WHERE id = ?")->execute([$mesin['id']]);
+        } else {
+            // Auto-register mesin baru
+            $stmtIns = db()->prepare("INSERT INTO absen_mesin (nama_mesin, ip_address, port, sn, com_key, status, last_sync) VALUES (?, '', 4370, ?, '0', 1, NOW())");
+            $stmtIns->execute(['Mesin ' . $sn, $sn]);
+            $newId = db()->lastInsertId();
+            $mesin = ['id' => $newId, 'status' => 1];
+            file_put_contents($debugLog, date('Y-m-d H:i:s') . " | AUTO-REGISTER (POST) | New machine SN=$sn, ID=$newId\n", FILE_APPEND);
         }
     } catch (PDOException $e) {
         // Ignore DB error, proceed to parse
