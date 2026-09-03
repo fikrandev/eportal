@@ -133,6 +133,17 @@ const Curriculum = {
                         Laporan Kehadiran
                     </button>
                 </div>
+                <div class="acad-nav-group">
+                    <div class="acad-nav-label">Pengaturan Modul</div>
+                    <button class="acad-nav-item" data-route="dokumen">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                        Dokumen Perangkat
+                    </button>
+                    <button class="acad-nav-item" data-route="users">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        Hak Akses
+                    </button>
+                </div>
             `;
         } else {
             // Teacher menu
@@ -156,6 +167,15 @@ const Curriculum = {
                         Ketidakhadiran
                     </button>
                     <button class="acad-nav-item" data-route="buku_penghubung">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                        Buku Penghubung
+                    </button>
+                    <button class="acad-nav-item" data-route="dokumen">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                        Dokumen Perangkat
+                    </button>
+                </div>
+            `;
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
                         Buku Penghubung
                     </button>
@@ -231,6 +251,16 @@ const Curriculum = {
                 $title.text('Dashboard');
                 this.setBreadcrumbs([]);
                 this.renderDashboard($content);
+                break;
+            case 'dokumen':
+                $title.text('Dokumen Perangkat Pembelajaran');
+                this.setBreadcrumbs([{ label: 'Dokumen' }]);
+                this.renderDokumen($content);
+                break;
+            case 'users':
+                $title.text('Manajemen Hak Akses');
+                this.setBreadcrumbs([{ label: 'Pengaturan' }, { label: 'Hak Akses' }]);
+                this.renderUsers($content);
                 break;
             case 'kelas':
                 $title.text('Manajemen Kelas');
@@ -3591,8 +3621,396 @@ const Curriculum = {
             };
             fileInput.click();
         });
+    },
+
+    // ==========================================
+    // MANAJEMEN HAK AKSES
+    // ==========================================
+    renderUsers($content) {
+        $content.html(`
+            <div class="acad-card">
+                <div class="acad-card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                    <h2 class="acad-card-title">Daftar Pengguna E-Curriculum</h2>
+                    <button class="btn-acad btn-acad-primary" onclick="Curriculum.openUserModal()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        Tambah Pengguna
+                    </button>
+                </div>
+                <div class="acad-card-body">
+                    <div class="table-responsive">
+                        <table class="acad-table" id="usersTable">
+                            <thead>
+                                <tr>
+                                    <th>NO</th>
+                                    <th>USERNAME</th>
+                                    <th>NAMA LENGKAP</th>
+                                    <th>HAK AKSES</th>
+                                    <th>AKSI</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td colspan="5" class="text-center">Memuat data...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `);
+        this.loadUsersTable();
+    },
+
+    loadUsersTable() {
+        this.api('users.php?action=list').done(res => {
+            if (res.success) {
+                let html = '';
+                if (res.data.length === 0) {
+                    html = '<tr><td colspan="5" class="text-center">Belum ada pengguna.</td></tr>';
+                } else {
+                    res.data.forEach((u, i) => {
+                        let roleBadge = u.acad_role === 'admin_kurikulum' ? 'badge-primary' : 'badge-warning';
+                        let roleName = u.acad_role === 'admin_kurikulum' ? 'Admin Kurikulum' : 'Operator Kurikulum';
+                        html += `
+                            <tr>
+                                <td>${i + 1}</td>
+                                <td>${this.escape(u.username)}</td>
+                                <td>${this.escape(u.nama_lengkap)}</td>
+                                <td><span class="badge ${roleBadge}">${roleName}</span></td>
+                                <td>
+                                    <button class="btn-icon text-danger" title="Hapus Akses" onclick="Curriculum.deleteUser(${u.id})">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                    </button>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                }
+                $('#usersTable tbody').html(html);
+            }
+        });
+    },
+
+    openUserModal() {
+        const modalHtml = `
+            <div class="form-group mb-3">
+                <label>Username</label>
+                <input type="text" class="form-control" id="userUsername" placeholder="Masukkan username login..." autocomplete="off">
+            </div>
+            <div class="form-group mb-3">
+                <label>Password</label>
+                <input type="text" class="form-control" id="userPassword" placeholder="Masukkan password baru...">
+            </div>
+            <div class="form-group mb-3">
+                <label>Nama Lengkap</label>
+                <input type="text" class="form-control" id="userNama" placeholder="Nama Lengkap User">
+            </div>
+            <div class="form-group mb-3">
+                <label>Hak Akses Kurikulum</label>
+                <select class="form-control" id="userRole">
+                    <option value="admin_kurikulum">Admin Kurikulum</option>
+                    <option value="operator_kurikulum" selected>Operator Kurikulum</option>
+                </select>
+                <small class="text-muted mt-1" style="display:block;">Admin Kurikulum dapat mengubah jadwal dan data master. Operator Kurikulum fokus pada data laporan & input harian.</small>
+            </div>
+        `;
+        
+        Modal.open({
+            title: 'Buat Akses Pengguna',
+            content: modalHtml,
+            size: 'md',
+            buttons: [
+                { text: 'Batal', type: 'secondary', action: 'close' },
+                { text: 'Simpan', type: 'primary', onClick: () => this.saveUser() }
+            ]
+        });
+    },
+
+    saveUser() {
+        const payload = {
+            username: $('#userUsername').val(),
+            password: $('#userPassword').val(),
+            nama_lengkap: $('#userNama').val(),
+            acad_role: $('#userRole').val()
+        };
+        
+        if (!payload.username || !payload.password || !payload.nama_lengkap) {
+            this.toast('Gagal', 'Semua isian wajib diisi!', 'error');
+            return;
+        }
+
+        const btn = $('.acad-modal-footer .btn-primary').addClass('btn-loading').prop('disabled', true);
+        
+        this.api('users.php?action=create', 'POST', payload).done(res => {
+            if (res.success) {
+                this.toast('Berhasil', res.message, 'success');
+                Modal.close();
+                this.loadUsersTable();
+            } else {
+                this.toast('Gagal', res.message, 'error');
+            }
+        }).always(() => {
+            btn.removeClass('btn-loading').prop('disabled', false);
+        });
+    },
+
+    deleteUser(id) {
+        if (!confirm('Apakah Anda yakin ingin mencabut hak akses pengguna ini dari E-Curriculum? (Data login tidak dihapus, hanya akses modul ini saja)')) return;
+        
+        this.api('users.php?action=delete', 'POST', { id }).done(res => {
+            if (res.success) {
+                this.toast('Berhasil', res.message, 'success');
+                this.loadUsersTable();
+            } else {
+                this.toast('Gagal', res.message, 'error');
+            }
+        });
+    },
+
+    // ==========================================
+    // DOKUMEN PERANGKAT (RPP, MODUL AJAR)
+    // ==========================================
+    renderDokumen($content) {
+        const isAdmin = this.state.user.role === 'superadmin' || this.state.user.acad_role;
+        $content.html(`
+            <div class="acad-card">
+                <div class="acad-card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                    <h2 class="acad-card-title">Daftar Dokumen</h2>
+                    ${!isAdmin || isAdmin ? `<button class="btn-acad btn-acad-primary" onclick="Curriculum.openUploadDokumenModal()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        Upload Dokumen
+                    </button>` : ''}
+                </div>
+                <div class="acad-card-body">
+                    <div class="table-responsive">
+                        <table class="acad-table" id="dokumenTable">
+                            <thead>
+                                <tr>
+                                    <th>NO</th>
+                                    <th>TANGGAL UPLOAD</th>
+                                    ${isAdmin ? '<th>NAMA GURU</th>' : ''}
+                                    <th>JUDUL DOKUMEN</th>
+                                    <th>TIPE</th>
+                                    <th>STATUS</th>
+                                    <th>FILE</th>
+                                    <th>AKSI</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td colspan="${isAdmin ? 8 : 7}" class="text-center">Memuat data...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        `);
+        this.loadDokumenTable();
+    },
+
+    loadDokumenTable() {
+        const isAdmin = this.state.user.role === 'superadmin' || this.state.user.acad_role;
+        this.api('documents.php?action=list').done(res => {
+            if (res.success) {
+                let html = '';
+                if (res.data.length === 0) {
+                    html = \`<tr><td colspan="\${isAdmin ? 8 : 7}" class="text-center">Belum ada dokumen yang diunggah.</td></tr>\`;
+                } else {
+                    res.data.forEach((d, i) => {
+                        let statusBadge = 'badge-secondary';
+                        let statusText = 'Pending';
+                        if (d.status === 'approved') {
+                            statusBadge = 'badge-success';
+                            statusText = 'Disetujui';
+                        } else if (d.status === 'rejected') {
+                            statusBadge = 'badge-danger';
+                            statusText = 'Ditolak';
+                        }
+
+                        let aksiAdmin = '';
+                        if (isAdmin && d.status === 'pending') {
+                            aksiAdmin = \`
+                                <button class="btn-icon text-success" title="Approve" onclick="Curriculum.approveDokumen(\${d.id})">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg>
+                                </button>
+                                <button class="btn-icon text-danger" title="Reject" onclick="Curriculum.rejectDokumen(\${d.id})">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                </button>
+                            \`;
+                        }
+
+                        let infoCatatan = '';
+                        if (d.status === 'rejected' && d.catatan_admin) {
+                            infoCatatan = \`<div style="font-size:12px;color:#EF4444;margin-top:4px;">Catatan: \${this.escape(d.catatan_admin)}</div>\`;
+                        }
+
+                        html += \`
+                            <tr>
+                                <td>\${i + 1}</td>
+                                <td>\${d.created_at.split(' ')[0]}</td>
+                                \${isAdmin ? \`<td>\${this.escape(d.nama_guru)}</td>\` : ''}
+                                <td>
+                                    <strong>\${this.escape(d.judul)}</strong>
+                                    \${infoCatatan}
+                                </td>
+                                <td>\${this.escape(d.tipe_dokumen)}</td>
+                                <td><span class="badge \${statusBadge}">\${statusText}</span></td>
+                                <td>
+                                    <a href="\${this.baseUrl}\${d.file_path}" target="_blank" class="text-primary" style="text-decoration:none;">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align:middle"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Buka
+                                    </a>
+                                </td>
+                                <td>
+                                    \${aksiAdmin}
+                                    \${(!isAdmin && d.status !== 'approved') || isAdmin ? \`
+                                        <button class="btn-icon text-danger" title="Hapus" onclick="Curriculum.deleteDokumen(\${d.id})">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                        </button>
+                                    \` : ''}
+                                </td>
+                            </tr>
+                        \`;
+                    });
+                }
+                $('#dokumenTable tbody').html(html);
+            }
+        });
+    },
+
+    openUploadDokumenModal() {
+        const modalHtml = \`
+            <div class="form-group mb-3">
+                <label>Judul Dokumen</label>
+                <input type="text" class="form-control" id="dokumenJudul" placeholder="Contoh: RPP Matematika Kelas X">
+            </div>
+            <div class="form-group mb-3">
+                <label>Tipe Dokumen</label>
+                <select class="form-control" id="dokumenTipe">
+                    <option value="RPP">RPP (Rencana Pelaksanaan Pembelajaran)</option>
+                    <option value="Modul Ajar">Modul Ajar</option>
+                    <option value="Silabus">Silabus</option>
+                    <option value="Prota/Promes">Prota/Promes</option>
+                    <option value="Lainnya">Lainnya</option>
+                </select>
+            </div>
+            <div class="form-group mb-3">
+                <label>File (PDF/Word/Excel/PPT/ZIP, maks 10MB)</label>
+                <input type="file" class="form-control" id="dokumenFile" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip">
+            </div>
+        \`;
+        
+        Modal.open({
+            title: 'Upload Dokumen Kurikulum',
+            content: modalHtml,
+            size: 'md',
+            buttons: [
+                { text: 'Batal', type: 'secondary', action: 'close' },
+                { text: 'Upload', type: 'primary', onClick: () => this.uploadDokumen() }
+            ]
+        });
+    },
+
+    uploadDokumen() {
+        const judul = $('#dokumenJudul').val();
+        const tipe = $('#dokumenTipe').val();
+        const fileInput = document.getElementById('dokumenFile');
+        
+        if (!judul || !tipe || fileInput.files.length === 0) {
+            this.toast('Gagal', 'Judul, Tipe, dan File wajib diisi!', 'error');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('judul', judul);
+        formData.append('tipe', tipe);
+        formData.append('file', fileInput.files[0]);
+
+        const btn = $('.acad-modal-footer .btn-primary').addClass('btn-loading').prop('disabled', true);
+        
+        $.ajax({
+            url: \`\${this.moduleUrl}api/documents.php?action=upload\`,
+            method: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            headers: {
+                'Authorization': \`Bearer \${this.state.token}\`
+            },
+            success: (res) => {
+                if (res.success) {
+                    this.toast('Berhasil', res.message, 'success');
+                    Modal.close();
+                    this.loadDokumenTable();
+                } else {
+                    this.toast('Gagal', res.message || 'Error uploading file', 'error');
+                }
+                btn.removeClass('btn-loading').prop('disabled', false);
+            },
+            error: (err) => {
+                const res = err.responseJSON || {};
+                this.toast('Gagal', res.message || 'Server error', 'error');
+                btn.removeClass('btn-loading').prop('disabled', false);
+            }
+        });
+    },
+
+    approveDokumen(id) {
+        if (!confirm('Setujui dokumen ini?')) return;
+        this.api('documents.php?action=approve', 'POST', { id }).done(res => {
+            if (res.success) {
+                this.toast('Berhasil', res.message, 'success');
+                this.loadDokumenTable();
+            } else {
+                this.toast('Gagal', res.message, 'error');
+            }
+        });
+    },
+
+    rejectDokumen(id) {
+        const modalHtml = \`
+            <div class="form-group mb-3">
+                <label>Alasan Penolakan / Revisi</label>
+                <textarea class="form-control" id="rejectCatatan" rows="3" placeholder="Masukkan catatan revisi untuk guru..."></textarea>
+            </div>
+        \`;
+        Modal.open({
+            title: 'Tolak Dokumen',
+            content: modalHtml,
+            size: 'md',
+            buttons: [
+                { text: 'Batal', type: 'secondary', action: 'close' },
+                { text: 'Tolak', type: 'danger', onClick: () => {
+                    const catatan = $('#rejectCatatan').val();
+                    if (!catatan) {
+                        this.toast('Gagal', 'Catatan wajib diisi!', 'error');
+                        return;
+                    }
+                    this.api('documents.php?action=reject', 'POST', { id, catatan }).done(res => {
+                        if (res.success) {
+                            this.toast('Berhasil', res.message, 'success');
+                            Modal.close();
+                            this.loadDokumenTable();
+                        } else {
+                            this.toast('Gagal', res.message, 'error');
+                        }
+                    });
+                }}
+            ]
+        });
+    },
+
+    deleteDokumen(id) {
+        if (!confirm('Apakah Anda yakin ingin menghapus dokumen ini?')) return;
+        this.api('documents.php?action=delete', 'POST', { id }).done(res => {
+            if (res.success) {
+                this.toast('Berhasil', res.message, 'success');
+                this.loadDokumenTable();
+            } else {
+                this.toast('Gagal', res.message, 'error');
+            }
+        });
     }
 
 };
 
-$(document).ready(() => Curriculum.init());
+// Bootstrap
+document.addEventListener('DOMContentLoaded', () => {
+    Curriculum.init();
+});

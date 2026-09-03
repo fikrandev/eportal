@@ -430,6 +430,14 @@ const Absen = {
         }
 
         this.api('settings.php?action=wa_status').done(res => {
+            if (!res.success) {
+                // PHP merespon sukses HTTP 200 tapi isinya success: false karena curl ke node.js gagal
+                $('#waStatusBadge').css({background: '#fee2e2', color: '#991b1b'}).text('❌ Server Node.js Mati/Offline');
+                $('#waQrContainer').html('<p style="color:red; font-size:0.9rem;">Server WA mandiri (Node.js) tidak merespon di port 3000. Pastikan Anda telah menjalankan <code>node server.js</code> di VPS.</p>');
+                $('#waQrInstruction').hide();
+                return;
+            }
+
             const data = res.data || {};
             if (data.isReady) {
                 $('#waStatusBadge').css({background: '#dcfce7', color: '#166534'}).text('✅ WhatsApp Terhubung!');

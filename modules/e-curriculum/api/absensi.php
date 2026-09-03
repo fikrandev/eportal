@@ -8,6 +8,23 @@ require_once __DIR__ . '/auth_helper.php';
 $user = acad_auth();
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
+// Helper untuk menembak API lokal WhatsApp Server (fire-and-forget dengan timeout singkat)
+function triggerWAGateway($phone, $message) {
+    $stmt = db()->query("SELECT setting_value FROM settings WHERE setting_key = 'wa_gateway_url'");
+    $url = $stmt->fetchColumn();
+    if (!$url) return;
+
+    $data = json_encode(['number' => $phone, 'message' => $message]);
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Content-Length: ' . strlen($data)]);
+    curl_setopt($ch, CURLOPT_TIMEOUT_MS, 500); 
+    curl_exec($ch);
+    curl_close($ch);
+}
+
 // Ensure database schema supports 'T' (Terlambat) status
 try {
     db()->exec("ALTER TABLE acad_absensi MODIFY COLUMN status ENUM('H','S','I','A','T') NOT NULL DEFAULT 'H'");
@@ -151,10 +168,28 @@ function saveAbsensi($user) {
     try {
         db()->beginTransaction();
 
+        // Ambil template WA
+        $waTemplateStmt = db()->query("SELECT setting_value FROM settings WHERE setting_key = 'wa_message_template'");
+        $waTemplate = $waTemplateStmt->fetchColumn();
+        
+        $statusLabels = [
+            'H' => 'Hadir',
+            'S' => 'Sakit',
+            'I' => 'Izin',
+            'A' => 'Alpa',
+            'T' => 'Terlambat'
+        ];
+
         foreach ($absensi as $a) {
             $student_id = (int)$a['student_id'];
             $status = in_array($a['status'], ['H','S','I','A','T']) ? $a['status'] : 'H';
             $keterangan = isset($a['keterangan']) ? trim($a['keterangan']) : '';
+
+            // Cek status lama untuk mencegah pengiriman pesan berulang
+            $stmtCek = db()->prepare("SELECT status FROM acad_absensi WHERE student_id = ? AND kelas_id = ? AND tanggal = ? AND jam_ke = ?");
+            $stmtCek->execute([$student_id, $kelas_id, $tanggal, $jam_ke]);
+            $oldData = $stmtCek->fetch();
+            $oldStatus = $oldData ? $oldData['status'] : null;
 
             $stmt = db()->prepare("
                 INSERT INTO acad_absensi (student_id, kelas_id, academic_year_id, tanggal, jam_ke, status, keterangan, dicatat_oleh)
@@ -162,6 +197,23 @@ function saveAbsensi($user) {
                 ON DUPLICATE KEY UPDATE status = VALUES(status), keterangan = VALUES(keterangan), dicatat_oleh = VALUES(dicatat_oleh)
             ");
             $stmt->execute([$student_id, $kelas_id, $year_id, $tanggal, $jam_ke, $status, $keterangan, $user['user_id']]);
+
+            // Jika status berubah atau baru pertama kali, dan template WA diset, kirim Notifikasi WA
+            if ($oldStatus !== $status && $waTemplate) {
+                $stmtSiswa = db()->prepare("SELECT nama, no_hp_ortu FROM students WHERE id = ?");
+                $stmtSiswa->execute([$student_id]);
+                $siswa = $stmtSiswa->fetch();
+                
+                if ($siswa && !empty($siswa['no_hp_ortu'])) {
+                    $statusText = $statusLabels[$status] ?? 'Hadir';
+                    $msg = str_replace(
+                        ['{nama}', '{status_absen}', '{waktu}'], 
+                        [$siswa['nama'], $statusText, $tanggal], 
+                        $waTemplate
+                    );
+                    triggerWAGateway($siswa['no_hp_ortu'], $msg);
+                }
+            }
         }
 
         db()->commit();
