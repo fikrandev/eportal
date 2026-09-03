@@ -436,15 +436,7 @@
                                 </div>
                                 <span style="font-size:0.75rem; font-weight:700; color:var(--text-primary);">Jurnal Kelas</span>
                             </div>
-                        ` : `
-                            <div class="shortcut-card" onclick="location.hash='#/profil'" style="background:white; border-radius:16px; padding:14px 10px; text-align:center; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px; transition:transform 0.2s ease;">
-                                <div style="width:40px; height:40px; border-radius:12px; background:rgba(139,92,246,0.1); color:#8b5cf6; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                                </div>
-                                <span style="font-size:0.75rem; font-weight:700; color:var(--text-primary);">Profil</span>
-                            </div>
-                        `}
-                    </div>
+                        ` : ''}
 
                     <!-- Ringkasan Absensi Kelas (Untuk Wali Kelas) -->
                     <div id="homeWaliAbsenSummary"></div>
@@ -2215,6 +2207,105 @@
                 nav.style.display = 'flex';
             } else {
                 nav.style.display = 'none';
+            }
+        },
+
+        async renderAbsen(bulan = null) {
+            const content = $('#appContent');
+            if (!bulan) {
+                const now = new Date();
+                bulan = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+            }
+
+            content.innerHTML = `
+                <div class="page-enter">
+                    <div class="page-header" style="margin-bottom:20px; display:flex; align-items:center; gap:12px;">
+                        <button class="btn btn-icon" onclick="history.back()" style="background:white; border:1.5px solid #e2e8f0;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="20"><polyline points="15 18 9 12 15 6"/></svg>
+                        </button>
+                        <div>
+                            <div class="page-title">Rekap Absen</div>
+                            <div class="page-subtitle">Riwayat kehadiran mesin fingerprint</div>
+                        </div>
+                    </div>
+
+                    <div class="form-group" style="margin-bottom: 20px;">
+                        <label class="form-label">Pilih Bulan</label>
+                        <input type="month" id="absenBulan" class="form-control" value="${bulan}" onchange="Pages.renderAbsen(this.value)">
+                    </div>
+
+                    <div id="absenContainer" style="min-height:200px; display:flex; justify-content:center; align-items:center;">
+                        <div class="loader"></div>
+                    </div>
+                </div>
+            `;
+
+            try {
+                const res = await API.get(`api/absen.php?action=rekap_bulanan&bulan=${bulan}`);
+                const container = $('#absenContainer');
+                
+                if (!res.success) {
+                    container.innerHTML = `<div class="empty-state-desc">${escapeHtml(res.message)}</div>`;
+                    return;
+                }
+
+                if (!res.data.mapped) {
+                    container.innerHTML = `
+                        <div class="empty-state" style="padding:40px 20px; text-align:center;">
+                            <div class="empty-state-icon" style="background:#fee2e2; color:#ef4444; width:64px; height:64px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 16px;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="32"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            </div>
+                            <div style="font-weight:700; color:#1e293b; margin-bottom:8px;">Belum Terhubung dengan Mesin</div>
+                            <div class="empty-state-desc" style="font-size:0.85rem;">Hubungi admin untuk menghubungkan akun ini dengan ID Mesin Fingerprint Anda.</div>
+                        </div>
+                    `;
+                    return;
+                }
+
+                if (res.data.logs.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state" style="padding:40px 20px; text-align:center;">
+                            <div style="font-weight:700; color:#1e293b; margin-bottom:8px;">Belum ada Data</div>
+                            <div class="empty-state-desc" style="font-size:0.85rem;">Tidak ada riwayat kehadiran di bulan ini.</div>
+                        </div>
+                    `;
+                    return;
+                }
+
+                let html = `
+                    <div style="background:white; border-radius:16px; padding:16px; box-shadow:var(--shadow-sm); border:1px solid #f1f5f9; margin-bottom:16px;">
+                        <div style="font-size:0.75rem; font-weight:600; color:var(--text-muted); margin-bottom:4px;">Total Kehadiran</div>
+                        <div style="font-size:1.5rem; font-weight:800; color:var(--primary);">${res.data.stats.hadir} <span style="font-size:1rem; font-weight:600; color:var(--text-primary);">Hari</span></div>
+                    </div>
+                    
+                    <div style="display:flex; flex-direction:column; gap:12px;">
+                `;
+
+                res.data.logs.forEach(log => {
+                    html += `
+                        <div style="background:white; border-radius:12px; padding:16px; display:flex; align-items:center; justify-content:space-between; box-shadow:0 2px 8px rgba(0,0,0,0.03); border:1px solid #f1f5f9;">
+                            <div>
+                                <div style="font-size:0.8rem; font-weight:700; color:var(--text-primary); margin-bottom:4px;">${formatTanggal(log.tanggal)}</div>
+                                <div style="display:flex; gap:12px; font-size:0.75rem; font-weight:600; color:var(--text-muted);">
+                                    <div style="display:flex; align-items:center; gap:4px; color:#10b981;">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                                        Masuk: ${log.jam_masuk}
+                                    </div>
+                                    <div style="display:flex; align-items:center; gap:4px; color:#f59e0b;">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="14"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                                        Pulang: ${log.jam_pulang}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                html += `</div>`;
+                container.innerHTML = html;
+
+            } catch(e) {
+                $('#absenContainer').innerHTML = `<div class="empty-state-desc">Gagal memuat riwayat kehadiran.</div>`;
             }
         }
     };
