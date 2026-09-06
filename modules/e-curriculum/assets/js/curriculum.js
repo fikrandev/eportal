@@ -109,6 +109,10 @@ const Curriculum = {
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
                         Absensi Siswa
                     </button>
+                    <button class="acad-nav-item" data-route="absensi_guru">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        Absensi Guru
+                    </button>
                     <button class="acad-nav-item" data-route="ketidakhadiran">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
                         Ketidakhadiran
@@ -161,6 +165,10 @@ const Curriculum = {
                     <button class="acad-nav-item" data-route="absensi">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
                         Absensi Siswa
+                    </button>
+                    <button class="acad-nav-item" data-route="absensi_guru">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        Absensi Guru
                     </button>
                     <button class="acad-nav-item" data-route="ketidakhadiran">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
@@ -316,6 +324,11 @@ const Curriculum = {
                 $title.text('Absensi Siswa');
                 this.setBreadcrumbs([{ label: 'Absensi' }]);
                 this.renderAbsensi($content);
+                break;
+            case 'absensi_guru':
+                $title.text('Absensi Guru');
+                this.setBreadcrumbs([{ label: 'Absensi Guru' }]);
+                this.renderAbsensiGuru($content);
                 break;
             case 'ketidakhadiran':
                 $title.text('Ketidakhadiran Guru');
@@ -1383,7 +1396,7 @@ const Curriculum = {
                         <div class="filter-bar">
                             <div class="filter-item"><label>Tanggal</label><input type="date" class="form-input-acad" id="absensiTanggal" value="${today}"></div>
                             <div class="filter-item"><label>Kelas</label><select class="form-select-acad" id="absensiKelas"><option value="">Pilih Kelas...</option></select></div>
-                            <div class="filter-item" style="display:flex; align-items:flex-end;"><button class="btn-acad btn-acad-primary" onclick="Curriculum.loadAbsensiTable()">🔍 Tampilkan</button></div>
+                            <div class="filter-item" style="display:flex; flex-direction:row; align-items:flex-end;"><button class="btn-acad btn-acad-primary" onclick="Curriculum.loadAbsensiTable()">🔍 Tampilkan</button></div>
                         </div>
                         <div id="absensiInfoBanner" style="margin-bottom:16px; padding:10px 14px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; color:#1e40af; font-size:0.875rem; display:flex; justify-content:space-between; align-items:center;">
                             <span>📌 Data otomatis menyelaraskan jam tap dari E-Absen. <strong>Batas Jam Terlambat: <span id="lblJamTerlambat">07:15</span></strong></span>
@@ -1397,7 +1410,7 @@ const Curriculum = {
                             <div class="filter-item"><label>Kelas</label><select class="form-select-acad" id="rekapAbsensiKelas"><option value="0">Semua Kelas</option></select></div>
                             <div class="filter-item"><label>Tanggal Awal</label><input type="date" class="form-input-acad" id="rekapTglAwal" value="${firstDayOfMonth}"></div>
                             <div class="filter-item"><label>Tanggal Akhir</label><input type="date" class="form-input-acad" id="rekapTglAkhir" value="${today}"></div>
-                            <div class="filter-item" style="display:flex; align-items:flex-end; gap:8px;">
+                            <div class="filter-item" style="display:flex; flex-direction:row; align-items:flex-end; gap:8px;">
                                 <button class="btn-acad btn-acad-primary" onclick="Curriculum.loadAbsensiRekapTable()">🔍 Tampilkan Rekap</button>
                                 <button class="btn-acad btn-acad-success" onclick="Curriculum.exportAbsensiExcel()" style="background:#10B981; color:white; border:none;">📥 Export Excel</button>
                             </div>
@@ -1648,6 +1661,330 @@ const Curriculum = {
             });
         });
     },
+
+    // ==================== ABSENSI GURU VIEW ====================
+    renderAbsensiGuru($container) {
+        const today = new Date().toISOString().split('T')[0];
+        const firstDayOfMonth = today.substring(0, 8) + '01';
+
+        $container.html(`
+            <div class="acad-card">
+                <div class="acad-card-header" style="display:flex; justify-content:space-between; align-items:center;">
+                    <div>
+                        <h3>📋 Absensi Guru</h3>
+                        <p class="acad-subtitle">Terintegrasi otomatis dengan mesin E-Absen & Rekapitulasi Kehadiran.</p>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                        <button class="btn-acad btn-acad-outline" onclick="Curriculum.showSettingWaktuGuruModal()">
+                            ⚙️ Setting Jam Terlambat
+                        </button>
+                    </div>
+                </div>
+                <div class="acad-card-body">
+                    <!-- Navigation Tabs -->
+                    <div style="margin-bottom: 20px; border-bottom: 1px solid #e2e8f0; display: flex; gap: 16px;">
+                        <button class="absensi-guru-tab-btn active" data-tab="harian" onclick="Curriculum.switchAbsensiGuruTab('harian')" style="background: none; border: none; padding: 10px 16px; cursor: pointer; border-bottom: 2px solid #7C3AED; font-weight: 600; color: #7C3AED;">
+                            📌 Absensi Harian
+                        </button>
+                        <button class="absensi-guru-tab-btn" data-tab="rekap" onclick="Curriculum.switchAbsensiGuruTab('rekap')" style="background: none; border: none; padding: 10px 16px; cursor: pointer; border-bottom: 2px solid transparent; font-weight: 600; color: #64748b;">
+                            📊 Rekapitulasi Kehadiran
+                        </button>
+                    </div>
+
+                    <!-- Tab 1: Absensi Harian -->
+                    <div id="absensiGuruTabHarian" class="absensi-guru-tab-content">
+                        <div class="filter-bar">
+                            <div class="filter-item"><label>Tanggal</label><input type="date" class="form-input-acad" id="absensiGuruTanggal" value="${today}"></div>
+                            <div class="filter-item" style="display:flex; flex-direction:row; align-items:flex-end;"><button class="btn-acad btn-acad-primary" onclick="Curriculum.loadAbsensiGuruTable()">🔍 Tampilkan</button></div>
+                        </div>
+                        <div id="absensiGuruInfoBanner" style="margin-bottom:16px; padding:10px 14px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; color:#1e40af; font-size:0.875rem; display:flex; justify-content:space-between; align-items:center;">
+                            <span>📌 Data otomatis menyelaraskan jam tap dari E-Absen. <strong>Batas Jam Terlambat: <span id="lblJamTerlambatGuru">07:15</span></strong></span>
+                        </div>
+                        <div id="absensiGuruTableWrapper"></div>
+                    </div>
+
+                    <!-- Tab 2: Rekapitulasi Absensi -->
+                    <div id="absensiGuruTabRekap" class="absensi-guru-tab-content" style="display:none;">
+                        <div class="filter-bar">
+                            <div class="filter-item"><label>Tanggal Awal</label><input type="date" class="form-input-acad" id="rekapGuruTglAwal" value="${firstDayOfMonth}"></div>
+                            <div class="filter-item"><label>Tanggal Akhir</label><input type="date" class="form-input-acad" id="rekapGuruTglAkhir" value="${today}"></div>
+                            <div class="filter-item" style="display:flex; flex-direction:row; align-items:flex-end; gap:8px;">
+                                <button class="btn-acad btn-acad-primary" onclick="Curriculum.loadAbsensiGuruRekapTable()">🔍 Tampilkan Rekap</button>
+                                <button class="btn-acad btn-acad-success" onclick="Curriculum.exportAbsensiGuruExcel()" style="background:#10B981; color:white; border:none;">📥 Export Excel</button>
+                            </div>
+                        </div>
+                        <div id="rekapAbsensiGuruTableWrapper"></div>
+                    </div>
+                </div>
+            </div>
+        `);
+
+        // Load current late setting
+        this.api('absensi_guru.php?action=get_settings').done(res => {
+            if (res.data && res.data.waktu_terlambat) {
+                $('#lblJamTerlambatGuru').text(res.data.waktu_terlambat);
+            }
+        });
+
+        // Initialize table
+        this.loadAbsensiGuruTable();
+    },
+
+    switchAbsensiGuruTab(tabName) {
+        $('.absensi-guru-tab-btn').removeClass('active').css({ 'border-bottom-color': 'transparent', 'color': '#64748b' });
+        $(`.absensi-guru-tab-btn[data-tab="${tabName}"]`).addClass('active').css({ 'border-bottom-color': '#7C3AED', 'color': '#7C3AED' });
+        $('.absensi-guru-tab-content').hide();
+        
+        if (tabName === 'harian') {
+            $('#absensiGuruTabHarian').fadeIn();
+        } else {
+            $('#absensiGuruTabRekap').fadeIn();
+        }
+    },
+
+    loadAbsensiGuruTable() {
+        const tanggal = $('#absensiGuruTanggal').val();
+        if (!tanggal) return;
+
+        const $wrapper = $('#absensiGuruTableWrapper');
+        $wrapper.html('<div style="padding:20px; text-align:center;">Memuat data absensi...</div>');
+
+        this.api(`absensi_guru.php?action=list&tanggal=${tanggal}`).done(res => {
+            if (!res.success) {
+                $wrapper.html(`<div style="color:red; padding:20px;">Error: ${res.message}</div>`);
+                return;
+            }
+
+            const data = res.data.teachers;
+            if (data.length === 0) {
+                $wrapper.html('<div style="padding:20px; text-align:center; color:gray;">Tidak ada data guru.</div>');
+                return;
+            }
+
+            let trs = '';
+            data.forEach((t, i) => {
+                const isLate = t.status === 'T';
+                const hasScan = t.jam_masuk !== null;
+                const statusColor = t.status === 'H' ? '#10B981' : (t.status === 'T' ? '#F59E0B' : (t.status === 'A' ? '#EF4444' : '#3B82F6'));
+                
+                let scanBadge = '';
+                if (hasScan) {
+                    scanBadge = `<span style="font-size:0.75rem; padding:2px 6px; background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; border-radius:4px;">${this.escapeHtml(t.scan_info)}</span>`;
+                } else {
+                    scanBadge = `<span style="font-size:0.75rem; padding:2px 6px; background:#fef2f2; color:#991b1b; border:1px solid #fecaca; border-radius:4px;">Belum Scan Mesin</span>`;
+                }
+
+                trs += `
+                    <tr>
+                        <td style="text-align:center;">${i+1}</td>
+                        <td>${this.escapeHtml(t.kode_guru)}</td>
+                        <td>
+                            <div style="font-weight:600; color:var(--acad-text-main);">${this.escapeHtml(t.nama)}</div>
+                            <div style="margin-top:4px;">${scanBadge}</div>
+                            <input type="hidden" class="absensi-guru-id" value="${t.guru_id}">
+                        </td>
+                        <td>
+                            <select class="form-select-acad absensi-guru-status" style="width:130px; font-weight:600; color:${statusColor};" onchange="this.style.color = this.value==='H'?'#10B981':(this.value==='T'?'#F59E0B':(this.value==='A'?'#EF4444':'#3B82F6'))">
+                                <option value="H" ${t.status === 'H' ? 'selected' : ''} style="color:#10B981;">Hadir</option>
+                                <option value="T" ${t.status === 'T' ? 'selected' : ''} style="color:#F59E0B;">Terlambat</option>
+                                <option value="S" ${t.status === 'S' ? 'selected' : ''} style="color:#3B82F6;">Sakit</option>
+                                <option value="I" ${t.status === 'I' ? 'selected' : ''} style="color:#3B82F6;">Izin</option>
+                                <option value="A" ${t.status === 'A' ? 'selected' : ''} style="color:#EF4444;">Alpha</option>
+                            </select>
+                        </td>
+                        <td>
+                            <input type="text" class="form-input-acad absensi-guru-keterangan" value="${this.escapeHtml(t.keterangan || '')}" placeholder="Opsional...">
+                        </td>
+                    </tr>
+                `;
+            });
+
+            $wrapper.html(`
+                <div style="overflow-x:auto;">
+                    <table class="acad-table">
+                        <thead>
+                            <tr>
+                                <th style="width:50px; text-align:center;">No</th>
+                                <th style="width:120px;">Kode Guru</th>
+                                <th>Nama Guru & Info Scan</th>
+                                <th style="width:150px;">Status</th>
+                                <th>Keterangan (Manual)</th>
+                            </tr>
+                        </thead>
+                        <tbody>${trs}</tbody>
+                    </table>
+                </div>
+                <div style="margin-top:16px; text-align:right;">
+                    <button class="btn-acad btn-acad-primary" onclick="Curriculum.saveAbsensiGuru()">💾 Simpan Data Absensi Guru</button>
+                </div>
+            `);
+        });
+    },
+
+    saveAbsensiGuru() {
+        const tanggal = $('#absensiGuruTanggal').val();
+        if (!tanggal) {
+            EModal.toast({ type: 'warning', message: 'Tanggal absensi tidak valid.' });
+            return;
+        }
+
+        const absensi = [];
+        $('#absensiGuruTableWrapper tbody tr').each(function() {
+            const tr = $(this);
+            absensi.push({
+                guru_id: tr.find('.absensi-guru-id').val(),
+                status: tr.find('.absensi-guru-status').val(),
+                keterangan: tr.find('.absensi-guru-keterangan').val()
+            });
+        });
+
+        if (absensi.length === 0) return;
+
+        const btn = $('#absensiGuruTableWrapper button');
+        const oldText = btn.text();
+        btn.prop('disabled', true).text('Menyimpan...');
+
+        this.api('absensi_guru.php?action=save', {
+            method: 'POST',
+            data: { tanggal, absensi }
+        }).done(res => {
+            if (res.success) {
+                EModal.toast({ type: 'success', title: 'Berhasil', message: res.message });
+            } else {
+                EModal.toast({ type: 'error', title: 'Gagal', message: res.message });
+            }
+        }).always(() => {
+            btn.prop('disabled', false).text(oldText);
+        });
+    },
+
+    loadAbsensiGuruRekapTable() {
+        const tgl_awal = $('#rekapGuruTglAwal').val();
+        const tgl_akhir = $('#rekapGuruTglAkhir').val();
+        
+        if (!tgl_awal || !tgl_akhir) {
+            EModal.toast({ type: 'warning', message: 'Lengkapi tanggal awal dan akhir.' });
+            return;
+        }
+
+        const $wrapper = $('#rekapAbsensiGuruTableWrapper');
+        $wrapper.html('<div style="padding:20px; text-align:center;">Menghitung rekapitulasi...</div>');
+
+        this.api(`absensi_guru.php?action=rekap&tanggal_awal=${tgl_awal}&tanggal_akhir=${tgl_akhir}`).done(res => {
+            if (!res.success) {
+                $wrapper.html(`<div style="color:red; padding:20px;">Error: ${res.message}</div>`);
+                return;
+            }
+
+            const data = res.data.rekap;
+            if (data.length === 0) {
+                $wrapper.html('<div style="padding:20px; text-align:center; color:gray;">Tidak ada data rekap guru.</div>');
+                return;
+            }
+
+            let trs = '';
+            data.forEach((t, i) => {
+                trs += `
+                    <tr>
+                        <td style="text-align:center;">${i+1}</td>
+                        <td>${this.escapeHtml(t.kode_guru)}</td>
+                        <td style="font-weight:600;">${this.escapeHtml(t.nama)}</td>
+                        <td style="text-align:center; font-weight:600; color:#10B981;">${t.hadir}</td>
+                        <td style="text-align:center; font-weight:600; color:#F59E0B;">${t.terlambat}</td>
+                        <td style="text-align:center; font-weight:600; color:#3B82F6;">${t.sakit}</td>
+                        <td style="text-align:center; font-weight:600; color:#3B82F6;">${t.izin}</td>
+                        <td style="text-align:center; font-weight:600; color:#EF4444;">${t.alpha}</td>
+                        <td style="text-align:center; font-weight:700;">${t.total_hadir}</td>
+                        <td>
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <div style="flex-grow:1; background:#e2e8f0; height:8px; border-radius:4px; overflow:hidden;">
+                                    <div style="width:${t.persentase}%; height:100%; background:${t.persentase > 80 ? '#10B981' : (t.persentase > 60 ? '#F59E0B' : '#EF4444')};"></div>
+                                </div>
+                                <span style="font-size:0.8rem; font-weight:600; width:35px; text-align:right;">${t.persentase}%</span>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            $wrapper.html(`
+                <div style="overflow-x:auto;">
+                    <table class="acad-table" id="tableExportRekapAbsensiGuru">
+                        <thead>
+                            <tr style="background:#f8fafc;">
+                                <th style="width:50px; text-align:center;">No</th>
+                                <th>Kode</th>
+                                <th>Nama Guru</th>
+                                <th style="text-align:center; width:80px;">Hadir</th>
+                                <th style="text-align:center; width:80px;">Terlambat</th>
+                                <th style="text-align:center; width:80px;">Sakit</th>
+                                <th style="text-align:center; width:80px;">Izin</th>
+                                <th style="text-align:center; width:80px;">Alpha</th>
+                                <th style="text-align:center; width:100px;">Total Kehadiran</th>
+                                <th style="width:120px;">% Kehadiran</th>
+                            </tr>
+                        </thead>
+                        <tbody>${trs}</tbody>
+                    </table>
+                </div>
+            `);
+        });
+    },
+
+    exportAbsensiGuruExcel() {
+        const table = document.getElementById('tableExportRekapAbsensiGuru');
+        if (!table) {
+            EModal.toast({ type: 'warning', title: 'Kosong', message: 'Tidak ada data rekap untuk diekspor.' });
+            return;
+        }
+
+        const tgl_awal = $('#rekapGuruTglAwal').val();
+        const tgl_akhir = $('#rekapGuruTglAkhir').val();
+        const wb = XLSX.utils.table_to_book(table, { sheet: "Rekap Absensi Guru" });
+        XLSX.writeFile(wb, `Rekap_Absensi_Guru_${tgl_awal}_sd_${tgl_akhir}.xlsx`);
+    },
+
+    showSettingWaktuGuruModal() {
+        this.api('absensi_guru.php?action=get_settings').done(res => {
+            const currentWaktu = res.data ? res.data.waktu_terlambat : '07:15';
+
+            EModal.form({
+                title: '⚙️ Setting Jam Batas Terlambat Guru',
+                size: 'sm',
+                form: `
+                    <div class="form-group-acad">
+                        <label class="form-label-acad">Batas Jam Masuk / Terlambat</label>
+                        <input type="time" class="form-input-acad" id="settingJamTerlambatGuru" value="${currentWaktu}">
+                        <small class="text-muted" style="margin-top:6px; display:block;">
+                            Guru yang melakukan tap di E-Absen <strong>setelah jam ini</strong> akan otomatis dikategorikan sebagai <strong>Terlambat</strong>.
+                        </small>
+                    </div>
+                `,
+                buttons: [
+                    { text: 'Batal', class: 'btn-acad btn-acad-outline', close: true },
+                    {
+                        text: '💾 Simpan Setting',
+                        class: 'btn-acad btn-acad-primary',
+                        click: () => {
+                            const waktu = $('#settingJamTerlambatGuru').val();
+                            if (!waktu) {
+                                EModal.toast({ type: 'warning', message: 'Jam batas wajib diisi.' });
+                                return;
+                            }
+
+                            this.api('absensi_guru.php?action=save_settings', { method: 'POST', data: { waktu_terlambat: waktu } }).done(res => {
+                                EModal.toast({ type: 'success', title: 'Berhasil', message: res.message });
+                                $('#lblJamTerlambatGuru').text(waktu);
+                                EModal.closeAll();
+                                this.loadAbsensiGuruTable();
+                            });
+                        }
+                    }
+                ]
+            });
+        });
+    }
+,
 
     // ==================== KETIDAKHADIRAN GURU VIEW ====================
     renderKetidakhadiran($container) {
@@ -3632,8 +3969,8 @@ const Curriculum = {
                     </button>
                 </div>
                 <div class="acad-card-body">
-                    <div class="table-responsive">
-                        <table class="acad-table" id="usersTable">
+                    <div class="data-table-wrapper">
+                        <table class="data-table" id="usersTable">
                             <thead>
                                 <tr>
                                     <th>NO</th>
@@ -3667,8 +4004,8 @@ const Curriculum = {
                         html += `
                             <tr>
                                 <td>${i + 1}</td>
-                                <td>${this.escape(u.username)}</td>
-                                <td>${this.escape(u.nama_lengkap)}</td>
+                                <td>${this.escapeHtml(u.username)}</td>
+                                <td>${this.escapeHtml(u.nama_lengkap)}</td>
                                 <td><span class="badge ${roleBadge}">${roleName}</span></td>
                                 <td>
                                     <button class="btn-icon text-danger" title="Hapus Akses" onclick="Curriculum.deleteUser(${u.id})">
@@ -3686,36 +4023,34 @@ const Curriculum = {
 
     openUserModal() {
         const modalHtml = `
-            <div class="form-group mb-3">
-                <label>Username</label>
-                <input type="text" class="form-control" id="userUsername" placeholder="Masukkan username login..." autocomplete="off">
+            <div class="form-group-acad mb-3">
+                <label class="form-label-acad">Username</label>
+                <input type="text" class="form-input-acad" id="userUsername" placeholder="Masukkan username login..." autocomplete="off">
             </div>
-            <div class="form-group mb-3">
-                <label>Password</label>
-                <input type="text" class="form-control" id="userPassword" placeholder="Masukkan password baru...">
+            <div class="form-group-acad mb-3">
+                <label class="form-label-acad">Password</label>
+                <input type="text" class="form-input-acad" id="userPassword" placeholder="Masukkan password baru...">
             </div>
-            <div class="form-group mb-3">
-                <label>Nama Lengkap</label>
-                <input type="text" class="form-control" id="userNama" placeholder="Nama Lengkap User">
+            <div class="form-group-acad mb-3">
+                <label class="form-label-acad">Nama Lengkap</label>
+                <input type="text" class="form-input-acad" id="userNama" placeholder="Nama Lengkap User">
             </div>
-            <div class="form-group mb-3">
-                <label>Hak Akses Kurikulum</label>
-                <select class="form-control" id="userRole">
+            <div class="form-group-acad mb-3">
+                <label class="form-label-acad">Hak Akses Kurikulum</label>
+                <select class="form-select-acad" id="userRole">
                     <option value="admin_kurikulum">Admin Kurikulum</option>
                     <option value="operator_kurikulum" selected>Operator Kurikulum</option>
                 </select>
                 <small class="text-muted mt-1" style="display:block;">Admin Kurikulum dapat mengubah jadwal dan data master. Operator Kurikulum fokus pada data laporan & input harian.</small>
             </div>
         `;
-        
-        Modal.open({
+        EModal.form({
             title: 'Buat Akses Pengguna',
-            content: modalHtml,
+            form: modalHtml,
             size: 'md',
-            buttons: [
-                { text: 'Batal', type: 'secondary', action: 'close' },
-                { text: 'Simpan', type: 'primary', onClick: () => this.saveUser() }
-            ]
+            confirmText: 'Simpan',
+            cancelText: 'Batal',
+            onConfirm: () => this.saveUser()
         });
     },
 
@@ -3737,7 +4072,7 @@ const Curriculum = {
         this.api('users.php?action=create', 'POST', payload).done(res => {
             if (res.success) {
                 this.toast('Berhasil', res.message, 'success');
-                Modal.close();
+                EModal.closeAll();
                 this.loadUsersTable();
             } else {
                 this.toast('Gagal', res.message, 'error');
@@ -3775,8 +4110,8 @@ const Curriculum = {
                     </button>` : ''}
                 </div>
                 <div class="acad-card-body">
-                    <div class="table-responsive">
-                        <table class="acad-table" id="dokumenTable">
+                    <div class="data-table-wrapper">
+                        <table class="data-table" id="dokumenTable">
                             <thead>
                                 <tr>
                                     <th>NO</th>
@@ -3806,7 +4141,7 @@ const Curriculum = {
             if (res.success) {
                 let html = '';
                 if (res.data.length === 0) {
-                    html = \`<tr><td colspan="\${isAdmin ? 8 : 7}" class="text-center">Belum ada dokumen yang diunggah.</td></tr>\`;
+                    html = `<tr><td colspan="${isAdmin ? 8 : 7}" class="text-center">Belum ada dokumen yang diunggah.</td></tr>`;
                 } else {
                     res.data.forEach((d, i) => {
                         let statusBadge = 'badge-secondary';
@@ -3821,47 +4156,47 @@ const Curriculum = {
 
                         let aksiAdmin = '';
                         if (isAdmin && d.status === 'pending') {
-                            aksiAdmin = \`
-                                <button class="btn-icon text-success" title="Approve" onclick="Curriculum.approveDokumen(\${d.id})">
+                            aksiAdmin = `
+                                <button class="btn-icon text-success" title="Approve" onclick="Curriculum.approveDokumen(${d.id})">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg>
                                 </button>
-                                <button class="btn-icon text-danger" title="Reject" onclick="Curriculum.rejectDokumen(\${d.id})">
+                                <button class="btn-icon text-danger" title="Reject" onclick="Curriculum.rejectDokumen(${d.id})">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                                 </button>
-                            \`;
+                            `;
                         }
 
                         let infoCatatan = '';
                         if (d.status === 'rejected' && d.catatan_admin) {
-                            infoCatatan = \`<div style="font-size:12px;color:#EF4444;margin-top:4px;">Catatan: \${this.escape(d.catatan_admin)}</div>\`;
+                            infoCatatan = `<div style="font-size:12px;color:#EF4444;margin-top:4px;">Catatan: ${this.escapeHtml(d.catatan_admin)}</div>`;
                         }
 
-                        html += \`
+                        html += `
                             <tr>
-                                <td>\${i + 1}</td>
-                                <td>\${d.created_at.split(' ')[0]}</td>
-                                \${isAdmin ? \`<td>\${this.escape(d.nama_guru)}</td>\` : ''}
+                                <td>${i + 1}</td>
+                                <td>${d.created_at.split(' ')[0]}</td>
+                                ${isAdmin ? `<td>${this.escapeHtml(d.nama_guru)}</td>` : ''}
                                 <td>
-                                    <strong>\${this.escape(d.judul)}</strong>
-                                    \${infoCatatan}
+                                    <strong>${this.escapeHtml(d.judul)}</strong>
+                                    ${infoCatatan}
                                 </td>
-                                <td>\${this.escape(d.tipe_dokumen)}</td>
-                                <td><span class="badge \${statusBadge}">\${statusText}</span></td>
+                                <td>${this.escapeHtml(d.tipe_dokumen)}</td>
+                                <td><span class="badge ${statusBadge}">${statusText}</span></td>
                                 <td>
-                                    <a href="\${this.baseUrl}\${d.file_path}" target="_blank" class="text-primary" style="text-decoration:none;">
+                                    <a href="${this.baseUrl}${d.file_path}" target="_blank" class="text-primary" style="text-decoration:none;">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align:middle"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Buka
                                     </a>
                                 </td>
                                 <td>
-                                    \${aksiAdmin}
-                                    \${(!isAdmin && d.status !== 'approved') || isAdmin ? \`
-                                        <button class="btn-icon text-danger" title="Hapus" onclick="Curriculum.deleteDokumen(\${d.id})">
+                                    ${aksiAdmin}
+                                    ${(!isAdmin && d.status !== 'approved') || isAdmin ? `
+                                        <button class="btn-icon text-danger" title="Hapus" onclick="Curriculum.deleteDokumen(${d.id})">
                                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                                         </button>
-                                    \` : ''}
+                                    ` : ''}
                                 </td>
                             </tr>
-                        \`;
+                        `;
                     });
                 }
                 $('#dokumenTable tbody').html(html);
@@ -3870,14 +4205,14 @@ const Curriculum = {
     },
 
     openUploadDokumenModal() {
-        const modalHtml = \`
-            <div class="form-group mb-3">
-                <label>Judul Dokumen</label>
-                <input type="text" class="form-control" id="dokumenJudul" placeholder="Contoh: RPP Matematika Kelas X">
+        const modalHtml = `
+            <div class="form-group-acad mb-3">
+                <label class="form-label-acad">Judul Dokumen</label>
+                <input type="text" class="form-input-acad" id="dokumenJudul" placeholder="Contoh: RPP Matematika Kelas X">
             </div>
-            <div class="form-group mb-3">
-                <label>Tipe Dokumen</label>
-                <select class="form-control" id="dokumenTipe">
+            <div class="form-group-acad mb-3">
+                <label class="form-label-acad">Tipe Dokumen</label>
+                <select class="form-select-acad" id="dokumenTipe">
                     <option value="RPP">RPP (Rencana Pelaksanaan Pembelajaran)</option>
                     <option value="Modul Ajar">Modul Ajar</option>
                     <option value="Silabus">Silabus</option>
@@ -3885,20 +4220,18 @@ const Curriculum = {
                     <option value="Lainnya">Lainnya</option>
                 </select>
             </div>
-            <div class="form-group mb-3">
-                <label>File (PDF/Word/Excel/PPT/ZIP, maks 10MB)</label>
-                <input type="file" class="form-control" id="dokumenFile" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip">
+            <div class="form-group-acad mb-3">
+                <label class="form-label-acad">File (PDF/Word/Excel/PPT/ZIP, maks 10MB)</label>
+                <input type="file" class="form-input-acad" id="dokumenFile" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip">
             </div>
-        \`;
-        
-        Modal.open({
+        `;
+        EModal.form({
             title: 'Upload Dokumen Kurikulum',
-            content: modalHtml,
+            form: modalHtml,
             size: 'md',
-            buttons: [
-                { text: 'Batal', type: 'secondary', action: 'close' },
-                { text: 'Upload', type: 'primary', onClick: () => this.uploadDokumen() }
-            ]
+            confirmText: 'Upload',
+            cancelText: 'Batal',
+            onConfirm: () => this.uploadDokumen()
         });
     },
 
@@ -3920,18 +4253,18 @@ const Curriculum = {
         const btn = $('.acad-modal-footer .btn-primary').addClass('btn-loading').prop('disabled', true);
         
         $.ajax({
-            url: \`\${this.moduleUrl}api/documents.php?action=upload\`,
+            url: `${this.moduleUrl}api/documents.php?action=upload`,
             method: 'POST',
             data: formData,
             processData: false,
             contentType: false,
             headers: {
-                'Authorization': \`Bearer \${this.state.token}\`
+                'Authorization': `Bearer ${this.state.token}`
             },
             success: (res) => {
                 if (res.success) {
                     this.toast('Berhasil', res.message, 'success');
-                    Modal.close();
+                    EModal.closeAll();
                     this.loadDokumenTable();
                 } else {
                     this.toast('Gagal', res.message || 'Error uploading file', 'error');
@@ -3959,35 +4292,34 @@ const Curriculum = {
     },
 
     rejectDokumen(id) {
-        const modalHtml = \`
-            <div class="form-group mb-3">
-                <label>Alasan Penolakan / Revisi</label>
-                <textarea class="form-control" id="rejectCatatan" rows="3" placeholder="Masukkan catatan revisi untuk guru..."></textarea>
+        const modalHtml = `
+            <div class="form-group-acad mb-3">
+                <label class="form-label-acad">Alasan Penolakan / Revisi</label>
+                <textarea class="form-input-acad" id="rejectCatatan" rows="3" placeholder="Masukkan catatan revisi untuk guru..."></textarea>
             </div>
-        \`;
-        Modal.open({
+        `;
+        EModal.form({
             title: 'Tolak Dokumen',
-            content: modalHtml,
+            form: modalHtml,
             size: 'md',
-            buttons: [
-                { text: 'Batal', type: 'secondary', action: 'close' },
-                { text: 'Tolak', type: 'danger', onClick: () => {
-                    const catatan = $('#rejectCatatan').val();
-                    if (!catatan) {
-                        this.toast('Gagal', 'Catatan wajib diisi!', 'error');
-                        return;
+            confirmText: 'Tolak',
+            cancelText: 'Batal',
+            onConfirm: () => {
+                const catatan = $('#rejectCatatan').val();
+                if (!catatan) {
+                    this.toast('Gagal', 'Catatan wajib diisi!', 'error');
+                    return;
+                }
+                this.api('documents.php?action=reject', 'POST', { id, catatan }).done(res => {
+                    if (res.success) {
+                        this.toast('Berhasil', res.message, 'success');
+                        EModal.closeAll();
+                        this.loadDokumenTable();
+                    } else {
+                        this.toast('Gagal', res.message, 'error');
                     }
-                    this.api('documents.php?action=reject', 'POST', { id, catatan }).done(res => {
-                        if (res.success) {
-                            this.toast('Berhasil', res.message, 'success');
-                            Modal.close();
-                            this.loadDokumenTable();
-                        } else {
-                            this.toast('Gagal', res.message, 'error');
-                        }
-                    });
-                }}
-            ]
+                });
+            }
         });
     },
 

@@ -6,7 +6,8 @@ require_once __DIR__ . '/auth_helper.php';
 
 $user = acad_auth();
 $action = isset($_GET['action']) ? trim($_GET['action']) : '';
-$academic_year_id = get_active_academic_year_id();
+$active_year = get_active_academic_year();
+$academic_year_id = $active_year ? $active_year['id'] : 0;
 
 $isAdmin = in_array($user['role'], ['superadmin']) || in_array($user['acad_role'] ?? '', ['admin_kurikulum', 'operator_kurikulum']);
 
