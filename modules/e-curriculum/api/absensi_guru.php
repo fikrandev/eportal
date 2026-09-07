@@ -52,26 +52,32 @@ function listAbsensiGuru($user) {
             $existingManual[$row['guru_id']] = $row;
         }
 
-        // Get E-Absen logs for this date
+        // Get E-Absen logs for this date efficiently
+        $stmtMap = db()->query("SELECT user_id, TRIM(LEADING '0' FROM mesin_pin) as clean_pin FROM absen_user_map");
+        $userMap = [];
+        while($m = $stmtMap->fetch()) {
+             $userMap[$m['user_id']] = $m['clean_pin'];
+        }
+
         $stmtLogs = db()->prepare("
-            SELECT m.user_id, 
-                   MIN(TIME(l.waktu_absen)) as jam_masuk
-            FROM absen_user_map m
-            JOIN absen_logs l ON TRIM(LEADING '0' FROM m.mesin_pin) COLLATE utf8mb4_unicode_ci = TRIM(LEADING '0' FROM l.mesin_pin) COLLATE utf8mb4_unicode_ci
-            WHERE DATE(l.waktu_absen) = ? 
-            GROUP BY m.user_id
+            SELECT TRIM(LEADING '0' FROM mesin_pin) COLLATE utf8mb4_unicode_ci as clean_pin, 
+                   MIN(TIME(waktu_absen)) as jam_masuk
+            FROM absen_logs 
+            WHERE DATE(waktu_absen) = ? 
+            GROUP BY clean_pin
         ");
         $stmtLogs->execute([$tanggal]);
         $eAbsenLogs = [];
         while ($l = $stmtLogs->fetch()) {
-            $eAbsenLogs[$l['user_id']] = $l['jam_masuk'];
+            $eAbsenLogs[$l['clean_pin']] = $l['jam_masuk'];
         }
 
         // Merge teacher list with E-Absen log and manual override
         $result = [];
         foreach ($teachers as $t) {
             $tid = $t['id'];
-            $jamMasuk = isset($eAbsenLogs[$tid]) ? $eAbsenLogs[$tid] : null;
+            $cleanPin = isset($userMap[$tid]) ? $userMap[$tid] : null;
+            $jamMasuk = ($cleanPin && isset($eAbsenLogs[$cleanPin])) ? $eAbsenLogs[$cleanPin] : null;
 
             // Determine default status based on E-Absen log if available
             $calculatedStatus = 'H';
@@ -192,23 +198,38 @@ function rekapAbsensiGuru($user) {
             $manualMap[$row['guru_id']][$row['tanggal']] = $row['status'];
         }
 
-        // 3. Fetch E-Absen logs for date range
-        $stmtL = db()->prepare("
-            SELECT m.user_id,
-                   DATE(l.waktu_absen) as tgl,
-                   MIN(TIME(l.waktu_absen)) as jam_masuk
-            FROM absen_user_map m
-            JOIN absen_logs l ON TRIM(LEADING '0' FROM m.mesin_pin) COLLATE utf8mb4_unicode_ci = TRIM(LEADING '0' FROM l.mesin_pin) COLLATE utf8mb4_unicode_ci
-            WHERE DATE(l.waktu_absen) BETWEEN ? AND ?
-              AND m.user_id IN ($placeholdersT)
-            GROUP BY m.user_id, tgl
-        ");
-        $paramsL = array_merge([$tanggal_awal, $tanggal_akhir], $teacherIds);
-        $stmtL->execute($paramsL);
+        // 3. Fetch E-Absen logs for date range efficiently
+        $stmtMap = db()->query("SELECT user_id, TRIM(LEADING '0' FROM mesin_pin) as clean_pin FROM absen_user_map");
+        $userMap = [];
+        $pins = [];
+        while($m = $stmtMap->fetch()) {
+             if (in_array($m['user_id'], $teacherIds)) {
+                 $userMap[$m['user_id']] = $m['clean_pin'];
+                 $pins[] = $m['clean_pin'];
+             }
+        }
+        
+        $stmtL = false;
+        if (count($pins) > 0) {
+            $placeholdersPins = implode(',', array_fill(0, count($pins), '?'));
+            $stmtL = db()->prepare("
+                SELECT TRIM(LEADING '0' FROM mesin_pin) COLLATE utf8mb4_unicode_ci as clean_pin,
+                       DATE(waktu_absen) as tgl,
+                       MIN(TIME(waktu_absen)) as jam_masuk
+                FROM absen_logs 
+                WHERE DATE(waktu_absen) BETWEEN ? AND ?
+                  AND TRIM(LEADING '0' FROM mesin_pin) COLLATE utf8mb4_unicode_ci IN ($placeholdersPins)
+                GROUP BY clean_pin, tgl
+            ");
+            $paramsL = array_merge([$tanggal_awal, $tanggal_akhir], $pins);
+            $stmtL->execute($paramsL);
+        }
 
-        $eAbsenMap = []; // [user_id][tgl] = jam_masuk
-        while ($l = $stmtL->fetch()) {
-            $eAbsenMap[$l['user_id']][$l['tgl']] = $l['jam_masuk'];
+        $eAbsenMap = []; // [clean_pin][tgl] = jam_masuk
+        if ($stmtL) {
+            while ($l = $stmtL->fetch()) {
+                $eAbsenMap[$l['clean_pin']][$l['tgl']] = $l['jam_masuk'];
+            }
         }
 
         // 4. Calculate attendance per teacher
@@ -226,8 +247,9 @@ function rekapAbsensiGuru($user) {
             if (isset($manualMap[$tid])) {
                 foreach (array_keys($manualMap[$tid]) as $d) $dates[$d] = true;
             }
-            if (isset($eAbsenMap[$tid])) {
-                foreach (array_keys($eAbsenMap[$tid]) as $d) $dates[$d] = true;
+            $cleanPin = isset($userMap[$tid]) ? $userMap[$tid] : null;
+            if ($cleanPin && isset($eAbsenMap[$cleanPin])) {
+                foreach (array_keys($eAbsenMap[$cleanPin]) as $d) $dates[$d] = true;
             }
 
             foreach (array_keys($dates) as $d) {
@@ -239,8 +261,8 @@ function rekapAbsensiGuru($user) {
                     else if ($st === 'S') $countS++;
                     else if ($st === 'I') $countI++;
                     else if ($st === 'A') $countA++;
-                } else if (isset($eAbsenMap[$tid][$d])) {
-                    $jamMasuk = $eAbsenMap[$tid][$d];
+                } else if ($cleanPin && isset($eAbsenMap[$cleanPin][$d])) {
+                    $jamMasuk = $eAbsenMap[$cleanPin][$d];
                     if ($jamMasuk <= $waktu_terlambat) {
                         $countH++;
                     } else {

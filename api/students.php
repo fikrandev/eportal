@@ -315,6 +315,8 @@ function importCsv()
             WHERE id=?
         ");
 
+        $maxNoUrut = [];
+
         foreach ($rows as $idx => $row) {
             $line = $idx + 2;
             $data = normalizeStudentInput($row);
@@ -323,6 +325,21 @@ function importCsv()
                 $failed++;
                 $errors[] = "Baris {$line}: {$error}";
                 continue;
+            }
+
+            $kelas = $data['kelas'];
+            if ($data['no_urut'] <= 0) {
+                if (!isset($maxNoUrut[$kelas])) {
+                    $stmtMax = db()->prepare("SELECT MAX(no_urut) FROM students WHERE academic_year_id = ? AND kelas = ?");
+                    $stmtMax->execute([$academicYearId, $kelas]);
+                    $maxNoUrut[$kelas] = (int) $stmtMax->fetchColumn();
+                }
+                $maxNoUrut[$kelas]++;
+                $data['no_urut'] = $maxNoUrut[$kelas];
+            } else {
+                if (!isset($maxNoUrut[$kelas]) || $data['no_urut'] > $maxNoUrut[$kelas]) {
+                    $maxNoUrut[$kelas] = $data['no_urut'];
+                }
             }
 
             $check->execute([$academicYearId, $data['nis']]);
@@ -391,6 +408,8 @@ function importRows()
             WHERE id=?
         ");
 
+        $maxNoUrut = [];
+
         foreach ($rows as $idx => $row) {
             $line = $idx + 2;
             if (!is_array($row)) {
@@ -405,6 +424,21 @@ function importRows()
                 $failed++;
                 $errors[] = "Baris {$line}: {$error}";
                 continue;
+            }
+
+            $kelas = $data['kelas'];
+            if ($data['no_urut'] <= 0) {
+                if (!isset($maxNoUrut[$kelas])) {
+                    $stmtMax = db()->prepare("SELECT MAX(no_urut) FROM students WHERE academic_year_id = ? AND kelas = ?");
+                    $stmtMax->execute([$academicYearId, $kelas]);
+                    $maxNoUrut[$kelas] = (int) $stmtMax->fetchColumn();
+                }
+                $maxNoUrut[$kelas]++;
+                $data['no_urut'] = $maxNoUrut[$kelas];
+            } else {
+                if (!isset($maxNoUrut[$kelas]) || $data['no_urut'] > $maxNoUrut[$kelas]) {
+                    $maxNoUrut[$kelas] = $data['no_urut'];
+                }
             }
 
             $check->execute([$academicYearId, $data['nis']]);
@@ -503,9 +537,9 @@ function setGuruWaliBulk()
 function normalizeStudentInput($input)
 {
     $gender = strtoupper(sanitize($input['jenis_kelamin'] ?? $input['lp'] ?? $input['l_p'] ?? ''));
-    if ($gender === 'LAKI-LAKI' || $gender === 'L') {
+    if (in_array($gender, ['LAKI-LAKI', 'LAKI LAKI', 'LAKI', 'L', 'PRIA', 'MALE', 'M', 'LAKILAKI'])) {
         $gender = 'L';
-    } elseif ($gender === 'PEREMPUAN' || $gender === 'P') {
+    } elseif (in_array($gender, ['PEREMPUAN', 'P', 'WANITA', 'FEMALE', 'F'])) {
         $gender = 'P';
     }
 
@@ -519,19 +553,18 @@ function normalizeStudentInput($input)
         'no_hp_siswa' => trim(strip_tags((string) ($input['no_hp_siswa'] ?? ''))) ?: null,
         'guru_wali' => trim(strip_tags((string) ($input['guru_wali'] ?? ''))) ?: null,
         'tempat_lahir' => trim(strip_tags((string) ($input['tempat_lahir'] ?? $input['tempat'] ?? ''))) ?: null,
-        'jenis_kelamin' => $gender ?: null,
+        'jenis_kelamin' => $gender ?: 'L', // Default to 'L' if missing or unrecognized
         'tanggal_lahir' => normalizeDate($input['tanggal_lahir'] ?? $input['tgl_lahir'] ?? ''),
-        'kelas' => trim(strip_tags((string) ($input['kelas'] ?? '')))
+        'kelas' => trim(strip_tags((string) ($input['kelas'] ?? ''))) ?: 'Belum Ada Kelas'
     ];
 }
 
 function validateStudent($data, $sendResponse = true)
 {
     $message = '';
-    if (empty($data['nis']) || empty($data['nama']) || empty($data['jenis_kelamin']) || empty($data['tanggal_lahir']) || empty($data['kelas'])) {
-        $message = 'NIS, nama, L/P, tanggal lahir, dan kelas wajib diisi.';
-    } elseif (!in_array($data['jenis_kelamin'], ['L', 'P'])) {
-        $message = 'L/P harus L atau P.';
+    // Be very forgiving. Only nis and nama are strictly required for the system to function.
+    if (empty($data['nis']) || empty($data['nama'])) {
+        $message = 'NIS dan nama wajib diisi.';
     } elseif (!empty($data['email']) && !filter_var($data['email'], FILTER_VALIDATE_EMAIL)) {
         $message = 'Format email siswa tidak valid.';
     }
@@ -545,20 +578,28 @@ function validateStudent($data, $sendResponse = true)
 
 function normalizeDate($value)
 {
-    $value = trim((string) $value);
+    $value = strtolower(trim((string) $value));
     if ($value === '') {
-        return '';
+        return '2000-01-01'; // Default valid date instead of empty to prevent DB strict mode errors
     }
+
+    // Parse Indonesian month names
+    $value = str_ireplace(
+        ['januari', 'februari', 'maret', 'april', 'mei', 'juni', 'juli', 'agustus', 'september', 'oktober', 'november', 'desember'],
+        ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'],
+        $value
+    );
 
     if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
         return $value;
     }
+    // Handle DD/MM/YYYY or DD-MM-YYYY
     if (preg_match('/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/', $value, $m)) {
         return sprintf('%04d-%02d-%02d', (int) $m[3], (int) $m[2], (int) $m[1]);
     }
 
     $ts = strtotime($value);
-    return $ts ? date('Y-m-d', $ts) : '';
+    return $ts ? date('Y-m-d', $ts) : '2000-01-01';
 }
 
 function normalizeStudentEmail($value)

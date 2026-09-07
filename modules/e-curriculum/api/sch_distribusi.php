@@ -35,6 +35,33 @@ switch ($action) {
         }
         break;
 
+    case 'create_bulk':
+        $input = get_input();
+        try {
+            db()->beginTransaction();
+            $stmt = db()->prepare("INSERT INTO sch_distribusi (guru_id, kelas_id, mapel_id, jp) VALUES (?, ?, ?, ?)");
+            $guruIds = $input['guru_ids'] ?? [];
+            $kelasIds = $input['kelas_ids'] ?? [];
+            
+            if (empty($guruIds) || empty($kelasIds) || empty($input['mapel_id']) || empty($input['jp'])) {
+                json_response(400, false, 'Data tidak lengkap untuk operasi bulk.');
+            }
+
+            foreach ($guruIds as $gId) {
+                foreach ($kelasIds as $kId) {
+                    $stmt->execute([$gId, $kId, $input['mapel_id'], $input['jp']]);
+                }
+            }
+            db()->commit();
+            json_response(200, true, 'Data distribusi berhasil ditambahkan secara massal');
+        } catch (PDOException $e) {
+            if (db()->inTransaction()) {
+                db()->rollBack();
+            }
+            json_response(500, false, 'Gagal: ' . $e->getMessage());
+        }
+        break;
+
     case 'update':
         $input = get_input();
         try {

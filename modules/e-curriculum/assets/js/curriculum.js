@@ -1422,9 +1422,9 @@ const Curriculum = {
         `);
 
         // Load kelas for dropdowns
-        this.api('jurnal.php?action=meta').done(res => {
+        this.api('sch_kelas.php?action=list').done(res => {
             if (!res.success) return;
-            const opts = res.data.classes.map(c => `<option value="${c.id}">${this.escapeHtml(c.nama_kelas)}</option>`).join('');
+            const opts = res.data.map(c => `<option value="${c.id}">${this.escapeHtml(c.nama_kelas)}</option>`).join('');
             $('#absensiKelas').append(opts);
             $('#rekapAbsensiKelas').append(opts);
         });
@@ -3379,6 +3379,7 @@ const Curriculum = {
                                 </div>
                             </div>
                         </div>
+                        ${!id ? '<p style="font-size:0.75rem;color:gray;margin-top:6px">Klik nama guru untuk memilih (bisa lebih dari satu)</p>' : ''}
                     </div>
 
                     <div class="form-group"><label>Pilih Kelas</label>${gridK}<p style="font-size:0.75rem;color:gray;margin-top:6px">Klik kotak kelas untuk memilih (bisa lebih dari satu)</p></div>
@@ -3521,16 +3522,9 @@ const Curriculum = {
                             EModal.toast({ type: 'success', title: 'Berhasil', message: 'Distribusi diperbarui.' });
                         });
                     } else {
-                        // Create: combination of multiple teachers and multiple classes
-                        let requests = [];
-                        gIds.forEach(gId => {
-                            kIds.forEach(kId => {
-                                let data = { guru_id: gId, kelas_id: kId, mapel_id: mId, jp: jp };
-                                requests.push(this.api('sch_distribusi.php?action=create', {method:'POST', data}));
-                            });
-                        });
-
-                        Promise.all(requests).then(() => {
+                        // Create: bulk combination of multiple teachers and multiple classes
+                        let data = { guru_ids: gIds, kelas_ids: kIds, mapel_id: mId, jp: jp };
+                        this.api('sch_distribusi.php?action=create_bulk', {method:'POST', data}).done(() => {
                             EModal.closeAll(); this.reloadCurrentPage();
                             EModal.toast({ type: 'success', title: 'Berhasil', message: 'Distribusi berhasil ditambahkan.' });
                         });
