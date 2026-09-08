@@ -151,6 +151,12 @@ if ($action === 'pull') {
             db()->query("UPDATE absen_mesin SET last_sync = NOW() WHERE id = " . $mesin['id']);
             db()->commit();
         }
+
+        // Check if 10 teachers threshold reached for WA Group auto notification
+        try {
+            require_once __DIR__ . '/../../e-curriculum/api/wa_group_helper.php';
+            checkAndSendWaGroupGuruAbsensiBatch();
+        } catch (Exception $ex) {}
         
         $msg = "Sinkronisasi selesai. $newLogsCount log baru ditarik.";
         if ($admsCount > 0) {

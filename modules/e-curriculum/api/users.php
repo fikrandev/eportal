@@ -1,6 +1,6 @@
 <?php
 /**
- * E-Curriculum — Manajemen Pengguna & Hak Akses
+ * E-Curriculum — Manajemen Pengguna & Akses Modul (RBAC)
  */
 require_once __DIR__ . '/auth_helper.php';
 
@@ -10,6 +10,24 @@ acad_require_admin($user); // Only admin_kurikulum or superadmin
 $action = isset($_GET['action']) ? trim($_GET['action']) : '';
 
 switch ($action) {
+    // ============ NEW RBAC ACTIONS ============
+    case 'accounts_list':
+        accountsList();
+        break;
+    case 'list_roles':
+        listRolesDef();
+        break;
+    case 'save_role':
+        saveRole();
+        break;
+    case 'delete_role':
+        deleteRole_rbac();
+        break;
+    case 'assign_account':
+        assignAccount();
+        break;
+
+    // ============ LEGACY ACTIONS (backward compat) ============
     case 'list':
         listUsers();
         break;
@@ -22,6 +40,168 @@ switch ($action) {
     default:
         json_response(400, false, 'Action tidak valid.');
 }
+
+// ==================== RBAC: ACCOUNTS LIST ====================
+function accountsList() {
+    try {
+        $stmt = db()->query("
+            SELECT u.id, u.username, u.nama_lengkap, u.nik, u.role as portal_role,
+                   ar.custom_role_id, rd.nama as custom_role_nama
+            FROM users u
+            LEFT JOIN acad_roles ar ON u.id = ar.user_id
+            LEFT JOIN acad_roles_def rd ON ar.custom_role_id = rd.id
+            WHERE u.status = 1 AND u.role NOT IN ('siswa', 'orangtua')
+            ORDER BY u.nama_lengkap ASC
+        ");
+        json_response(200, true, 'OK', $stmt->fetchAll(PDO::FETCH_ASSOC));
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
+// ==================== RBAC: LIST ROLES ====================
+function listRolesDef() {
+    try {
+        $stmt = db()->query("
+            SELECT r.*, 
+                   (SELECT GROUP_CONCAT(permission_key) FROM acad_role_permissions WHERE role_id=r.id) as permissions 
+            FROM acad_roles_def r 
+            ORDER BY r.is_locked DESC, r.nama ASC
+        ");
+        json_response(200, true, 'OK', $stmt->fetchAll(PDO::FETCH_ASSOC));
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
+// ==================== RBAC: SAVE ROLE ====================
+function saveRole() {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed');
+
+    $d = get_input();
+    $id = (int)($d['id'] ?? 0);
+    $nama = trim($d['nama'] ?? '');
+    $deskripsi = trim($d['deskripsi'] ?? '');
+    $perms = $d['permissions'] ?? [];
+
+    if (empty($nama)) json_response(400, false, 'Nama role wajib diisi');
+
+    try {
+        db()->beginTransaction();
+
+        if ($id > 0) {
+            // Update — don't allow renaming locked roles
+            $stmt = db()->prepare("UPDATE acad_roles_def SET nama=?, deskripsi=? WHERE id=? AND is_locked=0");
+            $stmt->execute([$nama, $deskripsi, $id]);
+            // For locked roles, only update permissions
+            if ($stmt->rowCount() === 0) {
+                $checkLocked = db()->prepare("SELECT id FROM acad_roles_def WHERE id=? AND is_locked=1");
+                $checkLocked->execute([$id]);
+                if (!$checkLocked->fetchColumn()) {
+                    db()->rollBack();
+                    json_response(404, false, 'Role tidak ditemukan');
+                }
+                // locked role exists — still update permissions below
+            }
+        } else {
+            $stmt = db()->prepare("INSERT INTO acad_roles_def (nama, deskripsi) VALUES (?,?)");
+            $stmt->execute([$nama, $deskripsi]);
+            $id = db()->lastInsertId();
+        }
+
+        // Sync permissions
+        db()->prepare("DELETE FROM acad_role_permissions WHERE role_id=?")->execute([$id]);
+        $stmtP = db()->prepare("INSERT INTO acad_role_permissions (role_id, permission_key) VALUES (?,?)");
+        foreach ($perms as $p) {
+            $stmtP->execute([$id, trim($p)]);
+        }
+
+        db()->commit();
+        json_response(200, true, 'Role berhasil disimpan');
+    } catch (Exception $e) {
+        if (db()->inTransaction()) db()->rollBack();
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
+// ==================== RBAC: DELETE ROLE ====================
+function deleteRole_rbac() {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed');
+
+    $d = get_input();
+    $id = (int)($d['id'] ?? 0);
+    if ($id <= 0) json_response(400, false, 'ID tidak valid');
+
+    try {
+        // Check if locked
+        $check = db()->prepare("SELECT is_locked FROM acad_roles_def WHERE id=?");
+        $check->execute([$id]);
+        if ($check->fetchColumn()) {
+            json_response(400, false, 'Role sistem tidak dapat dihapus');
+        }
+
+        // Remove role assignments using this role
+        db()->prepare("DELETE FROM acad_roles WHERE custom_role_id=?")->execute([$id]);
+        // Remove permissions
+        db()->prepare("DELETE FROM acad_role_permissions WHERE role_id=?")->execute([$id]);
+        // Remove role def
+        db()->prepare("DELETE FROM acad_roles_def WHERE id=?")->execute([$id]);
+
+        json_response(200, true, 'Role dihapus');
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
+// ==================== RBAC: ASSIGN ACCOUNT ====================
+function assignAccount() {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed');
+
+    $d = get_input();
+    $uid = (int)($d['user_id'] ?? 0);
+    $rid = (int)($d['role_id'] ?? 0);
+
+    if ($uid <= 0) json_response(400, false, 'User tidak valid');
+
+    try {
+        if ($rid <= 0) {
+            // Revoke access
+            db()->prepare("DELETE FROM acad_roles WHERE user_id=?")->execute([$uid]);
+            // Also clean up legacy acad_users
+            db()->prepare("DELETE FROM acad_users WHERE user_id=?")->execute([$uid]);
+            json_response(200, true, 'Akses user berhasil dicabut');
+        }
+
+        // Get role info to determine base role
+        $stmtR = db()->prepare("
+            SELECT rd.nama, GROUP_CONCAT(rp.permission_key) as permissions
+            FROM acad_roles_def rd
+            LEFT JOIN acad_role_permissions rp ON rp.role_id = rd.id
+            WHERE rd.id=?
+            GROUP BY rd.id, rd.nama
+        ");
+        $stmtR->execute([$rid]);
+        $roleRow = $stmtR->fetch(PDO::FETCH_ASSOC);
+        if (!$roleRow) json_response(404, false, 'Role tidak ditemukan');
+
+        $perms = array_filter(explode(',', (string)($roleRow['permissions'] ?? '')));
+        $base_role = in_array('roles_manage', $perms) ? 'admin_kurikulum' : 'operator_kurikulum';
+
+        // Upsert acad_roles
+        db()->prepare("INSERT INTO acad_roles (user_id, custom_role_id, role) VALUES (?,?,?) ON DUPLICATE KEY UPDATE custom_role_id=?, role=?")
+            ->execute([$uid, $rid, $base_role, $rid, $base_role]);
+
+        // Also sync to legacy acad_users for backward compat
+        db()->prepare("INSERT INTO acad_users (user_id, role) VALUES (?,?) ON DUPLICATE KEY UPDATE role=?")
+            ->execute([$uid, $base_role, $base_role]);
+
+        json_response(200, true, 'Akses user berhasil diperbarui');
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
+// ==================== LEGACY FUNCTIONS ====================
 
 /**
  * List all users with access to E-Curriculum

@@ -4,6 +4,7 @@
  * Manages teacher attendance integrated with E-Absen logs & manual overrides
  */
 require_once __DIR__ . '/auth_helper.php';
+require_once __DIR__ . '/wa_group_helper.php';
 
 $user = acad_auth();
 $action = isset($_GET['action']) ? $_GET['action'] : '';
@@ -23,6 +24,9 @@ switch ($action) {
         break;
     case 'save_settings':
         saveSettingsGuru($user);
+        break;
+    case 'send_wa_group':
+        sendWaGroupAbsensiGuru($user);
         break;
     default:
         json_response(400, false, 'Action tidak valid.');
@@ -348,4 +352,21 @@ function saveSettingsGuru($user) {
         'db_result' => $dbResult,
         'raw_input' => $input
     ]);
+}
+
+/**
+ * Send real-time / daily teacher attendance report to WA Group
+ */
+function sendWaGroupAbsensiGuru($user) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed.');
+    $input = get_input();
+    $tanggal = isset($input['tanggal']) ? $input['tanggal'] : date('Y-m-d');
+    $tipe = isset($input['tipe']) ? $input['tipe'] : 'masuk';
+
+    $res = sendWaGroupAbsensiGuruDirect($tanggal, $tipe);
+    if ($res['success']) {
+        json_response(200, true, $res['message']);
+    } else {
+        json_response(400, false, $res['message']);
+    }
 }

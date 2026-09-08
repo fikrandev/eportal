@@ -472,7 +472,7 @@ const Exam = {
                         </button>
                     </div>
                     <h4 style="font-family:var(--font-heading);font-weight:700;margin-bottom:8px;padding-right:80px;">${this.esc(b.judul)}</h4>
-                    <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:12px;">${this.esc(b.nama_mapel || '-')} ${b.kelas ? '• Kelas ' + this.esc(b.kelas) : ''}</p>
+                    <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:12px;">${this.esc(b.nama_mapel || '-')}</p>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                         ${jenisLabel} ${katLabel}
                         <span class="ex-badge ex-badge-green">${b.jumlah_soal || 0} soal</span>
@@ -505,7 +505,6 @@ const Exam = {
 
     addBank() {
         const mapelOpts = this.state.mapelList.map(m => `<option value="${m.id}">${this.esc(m.nama_mapel)}</option>`).join('');
-        const classOpts = this.state.classList.map(c => `<option value="${this.esc(c.kelas)}">${this.esc(c.kelas)} (${c.total_siswa} siswa)</option>`).join('');
         
         EModal.form({
             title: 'Buat Bank Soal Baru',
@@ -515,13 +514,12 @@ const Exam = {
                     <div class="form-group"><label class="form-label">Mata Pelajaran *</label><select class="form-select" id="fBankMapel"><option value="">-- Pilih --</option>${mapelOpts}</select></div>
                     <div class="form-group"><label class="form-label">Jenis</label><select class="form-select" id="fBankJenis"><option value="penilaian">Tes Penilaian</option><option value="psikologi">Tes Psikologi</option></select></div>
                 </div>
-                <div class="form-group"><label class="form-label">Judul Bank Soal *</label><input type="text" class="form-input" id="fBankJudul" placeholder="Contoh: UHB Matematika Kelas X Semester 1"></div>
+                <div class="form-group"><label class="form-label">Judul Bank Soal *</label><input type="text" class="form-input" id="fBankJudul" placeholder="Contoh: UHB Matematika Semester 1"></div>
                 <div class="ex-form-row three">
                     <div class="form-group"><label class="form-label">Kategori Ujian</label><input type="text" class="form-input" id="fBankKategori" placeholder="UHB, STS, SAS, dll"></div>
                     <div class="form-group"><label class="form-label">Tahun Ajaran</label><input type="text" class="form-input" id="fBankTahun" placeholder="2025/2026"></div>
                     <div class="form-group"><label class="form-label">Semester</label><select class="form-select" id="fBankSemester"><option value="1">Semester 1</option><option value="2">Semester 2</option></select></div>
                 </div>
-                <div class="form-group"><label class="form-label">Kelas</label><select class="form-select" id="fBankKelas"><option value="">-- Semua Kelas --</option>${classOpts}</select></div>
             `,
             onConfirm: () => {
                 const mapelId = $('#fBankMapel').val();
@@ -532,7 +530,7 @@ const Exam = {
                     kategori_ujian: $('#fBankKategori').val().trim(),
                     tahun_ajaran: $('#fBankTahun').val().trim(),
                     semester: $('#fBankSemester').val(),
-                    kelas: $('#fBankKelas').val()
+                    kelas: ''
                 }}).then(r => {
                     if (r.success) { EModal.toast({type:'success',title:'Berhasil',message:r.message}); this.navigate('detail_bank', {id: r.data.id}); }
                     else EModal.toast({type:'error',title:'Gagal',message:r.message});
@@ -546,7 +544,6 @@ const Exam = {
             if (!r.success) { EModal.alert('Error', r.message); return; }
             const b = r.data;
             const mapelOpts = this.state.mapelList.map(m => `<option value="${m.id}" ${m.id == b.mapel_id ? 'selected':''}>${this.esc(m.nama_mapel)}</option>`).join('');
-            const classOpts = this.state.classList.map(c => `<option value="${this.esc(c.kelas)}" ${c.kelas === b.kelas ? 'selected':''}>${this.esc(c.kelas)}</option>`).join('');
 
             EModal.form({
                 title: 'Edit Bank Soal',
@@ -562,13 +559,12 @@ const Exam = {
                         <div class="form-group"><label class="form-label">Tahun Ajaran</label><input type="text" class="form-input" id="fBankTahun" value="${this.esc(b.tahun_ajaran || '')}"></div>
                         <div class="form-group"><label class="form-label">Semester</label><select class="form-select" id="fBankSemester"><option value="1" ${b.semester==='1'?'selected':''}>Semester 1</option><option value="2" ${b.semester==='2'?'selected':''}>Semester 2</option></select></div>
                     </div>
-                    <div class="form-group"><label class="form-label">Kelas</label><select class="form-select" id="fBankKelas"><option value="">-- Semua Kelas --</option>${classOpts}</select></div>
                 `,
                 onConfirm: () => {
                     this.api('bank_soal.php?action=update_bank', { method:'POST', data:{
                         id, mapel_id: $('#fBankMapel').val(), judul: $('#fBankJudul').val().trim(),
                         jenis: $('#fBankJenis').val(), kategori_ujian: $('#fBankKategori').val().trim(),
-                        tahun_ajaran: $('#fBankTahun').val().trim(), semester: $('#fBankSemester').val(), kelas: $('#fBankKelas').val()
+                        tahun_ajaran: $('#fBankTahun').val().trim(), semester: $('#fBankSemester').val(), kelas: ''
                     }}).then(r => {
                         if (r.success) { EModal.toast({type:'success',title:'Berhasil'}); this.navigate('bank_soal'); }
                         else EModal.toast({type:'error',title:'Gagal',message:r.message});

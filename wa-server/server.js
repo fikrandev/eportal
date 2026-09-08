@@ -46,6 +46,12 @@ client.on('ready', () => {
 client.on('disconnected', (reason) => {
     console.log('Client was disconnected', reason);
     isReady = false;
+    currentQR = '';
+    setTimeout(() => {
+        try {
+            client.initialize();
+        } catch(e) {}
+    }, 2000);
 });
 
 client.initialize();
@@ -58,7 +64,53 @@ app.get('/status', (req, res) => {
     });
 });
 
-// Endpoint to send message
+// Endpoint to disconnect / logout device session
+app.post('/logout', async (req, res) => {
+    try {
+        console.log('[WA] Disconnecting device session...');
+        isReady = false;
+        currentQR = '';
+        
+        try {
+            await client.logout();
+        } catch (err) {
+            console.log('[WA] Logout warning:', err.message);
+            try {
+                await client.destroy();
+                client.initialize();
+            } catch (e) {}
+        }
+        
+        res.json({ success: true, message: 'Koneksi WhatsApp berhasil diputuskan. Silakan lakukan scan QR Code baru.' });
+    } catch (error) {
+        console.error('[WA Logout Error]', error);
+        res.status(500).json({ success: false, message: 'Gagal memutuskan koneksi: ' + error.message });
+    }
+});
+
+// Endpoint to list WhatsApp Groups
+app.get('/groups', async (req, res) => {
+    if (!isReady) {
+        return res.status(503).json({ success: false, message: 'WhatsApp Client is not ready.' });
+    }
+
+    try {
+        const chats = await client.getChats();
+        const groups = chats
+            .filter(c => c.isGroup)
+            .map(g => ({
+                id: g.id._serialized,
+                name: g.name
+            }));
+            
+        res.json({ success: true, groups });
+    } catch (error) {
+        console.error('[WA Groups Error]', error);
+        res.status(500).json({ success: false, message: 'Failed to fetch groups: ' + error.message });
+    }
+});
+
+// Endpoint to send message (Supports individual numbers & group IDs)
 app.post('/send', async (req, res) => {
     if (!isReady) {
         return res.status(503).json({ success: false, message: 'WhatsApp Client is not ready yet. Please wait or scan QR.' });
@@ -71,14 +123,23 @@ app.post('/send', async (req, res) => {
     }
 
     try {
-        let formattedNumber = number.replace(/\D/g, ''); 
-        if (formattedNumber.startsWith('0')) {
-            formattedNumber = '62' + formattedNumber.substring(1);
+        let chatId = '';
+        const numStr = String(number).trim();
+
+        if (numStr.includes('@g.us') || numStr.includes('@c.us')) {
+            chatId = numStr;
+        } else if (numStr.endsWith('-group') || numStr.startsWith('120363')) {
+            chatId = numStr.endsWith('@g.us') ? numStr : `${numStr}@g.us`;
+        } else {
+            let formattedNumber = numStr.replace(/\D/g, ''); 
+            if (formattedNumber.startsWith('0')) {
+                formattedNumber = '62' + formattedNumber.substring(1);
+            }
+            chatId = `${formattedNumber}@c.us`;
         }
-        const chatId = `${formattedNumber}@c.us`;
 
         await client.sendMessage(chatId, message);
-        console.log(`[WA] Sent message to ${formattedNumber}`);
+        console.log(`[WA] Sent message to ${chatId}`);
         
         res.json({ success: true, message: 'Message sent successfully.' });
     } catch (error) {

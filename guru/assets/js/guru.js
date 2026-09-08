@@ -12,8 +12,10 @@
     // =============================================
     // UTILITY HELPERS
     // =============================================
-    const $ = sel => document.querySelector(sel);
-    const $$ = sel => document.querySelectorAll(sel);
+    window.$ = sel => document.querySelector(sel);
+    window.$$ = sel => document.querySelectorAll(sel);
+    const $ = window.$;
+    const $$ = window.$$;
 
     const HARI_ORDER = ['Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
     const HARI_MAP = { 1: 'Senin', 2: 'Selasa', 3: 'Rabu', 4: 'Kamis', 5: 'Jumat', 6: 'Sabtu', 0: 'Minggu' };
@@ -157,7 +159,31 @@
         },
 
         get(endpoint) { return this.request('GET', endpoint); },
-        post(endpoint, body) { return this.request('POST', endpoint, body); }
+        post(endpoint, body) { return this.request('POST', endpoint, body); },
+        async upload(endpoint, formData) {
+            const url = API_URL + endpoint;
+            const opts = {
+                method: 'POST',
+                headers: {}
+            };
+            if (Auth.token) {
+                opts.headers['Authorization'] = 'Bearer ' + Auth.token;
+            }
+            opts.body = formData;
+            const res = await fetch(url, opts);
+            if (res.status === 401) {
+                Auth.clear();
+                Router.navigate('login');
+                throw new Error('Session expired');
+            }
+            const text = await res.text();
+            try {
+                return JSON.parse(text);
+            } catch (e) {
+                console.error('Non-JSON server response:', text);
+                return { success: false, message: 'Respon server tidak valid: ' + (text ? text.substring(0, 120) : 'kosong') };
+            }
+        }
     };
 
     // =============================================
@@ -250,6 +276,9 @@
                     break;
                 case 'jadwal':
                     Pages.renderJadwal();
+                    break;
+                case 'dokumen':
+                    Pages.renderDokumen();
                     break;
                 case 'jurnal':
                     Pages.renderJurnal(params[0] || null);
@@ -416,6 +445,12 @@
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
                             </div>
                             <span style="font-size:0.75rem; font-weight:700; color:var(--text-primary);">Riwayat Jurnal</span>
+                        </div>
+                        <div class="shortcut-card" onclick="location.hash='#/dokumen'" style="background:white; border-radius:16px; padding:14px 10px; text-align:center; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px; transition:transform 0.2s ease;">
+                            <div style="width:40px; height:40px; border-radius:12px; background:rgba(124,58,237,0.1); color:#7c3aed; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                            </div>
+                            <span style="font-size:0.75rem; font-weight:700; color:var(--text-primary);">Dokumen Perangkat</span>
                         </div>
                             <div class="shortcut-card" onclick="location.hash='#/izin'" style="background:white; border-radius:16px; padding:14px 10px; text-align:center; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px; transition:transform 0.2s ease;">
                                 <div style="width:40px; height:40px; border-radius:12px; background:rgba(239,68,68,0.1); color:#ef4444; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
@@ -635,21 +670,42 @@
 
             content.innerHTML = `
                 <div class="page-enter">
-                    <div class="section-title">
+                    <div class="section-title" style="margin-bottom:14px;">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                         Jadwal Mingguan
                     </div>
 
+                    <!-- Summary Hero Banner -->
+                    <div class="jadwal-summary-banner" id="jadwalSummaryBanner">
+                        <div style="display:flex; justify-content:space-between; align-items:center; position:relative; z-index:2;">
+                            <div>
+                                <div style="font-size:0.75rem; font-weight:700; opacity:0.9; text-transform:uppercase; letter-spacing:0.5px;">Beban Mengajar Mingguan</div>
+                                <div style="font-family:var(--font-heading); font-size:1.5rem; font-weight:800; margin-top:2px;">
+                                    <span id="jadwalTotalJpText">...</span> <span style="font-size:0.95rem; font-weight:600; opacity:0.95;">JP / Minggu</span>
+                                </div>
+                                <div style="font-size:0.75rem; opacity:0.88; margin-top:2px;" id="jadwalTotalHariText">
+                                    Memuat ringkasan jadwal...
+                                </div>
+                            </div>
+                            <div style="width:52px; height:52px; border-radius:16px; background:rgba(255,255,255,0.18); backdrop-filter:blur(8px); display:flex; align-items:center; justify-content:center; font-size:1.75rem;">
+                                📅
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Day Tabs -->
                     <div class="schedule-day-tabs" id="dayTabs">
                         ${HARI_ORDER.map(h => `
-                            <button class="day-tab ${h === hariIni ? 'today active' : ''}" data-hari="${h}" onclick="GuruApp.switchDay('${h}')">${h}</button>
+                            <button class="day-tab ${h === hariIni ? 'today active' : ''}" data-hari="${h}" onclick="GuruApp.switchDay('${h}')">
+                                ${h}
+                            </button>
                         `).join('')}
                     </div>
 
-                    <div id="weeklyScheduleContent">
-                        <div class="skeleton skeleton-card"></div>
-                        <div class="skeleton skeleton-card"></div>
-                        <div class="skeleton skeleton-card"></div>
+                    <div id="weeklyScheduleContent" style="margin-top:6px;">
+                        <div class="skeleton skeleton-card" style="height:76px; margin-bottom:10px;"></div>
+                        <div class="skeleton skeleton-card" style="height:76px; margin-bottom:10px;"></div>
+                        <div class="skeleton skeleton-card" style="height:76px; margin-bottom:10px;"></div>
                     </div>
                 </div>
             `;
@@ -658,6 +714,14 @@
                 const res = await API.get('api/jadwal.php?action=weekly');
                 if (res.success) {
                     this._weeklyData = res.data.jadwal || {};
+                    const totalJp = res.data.total_jp || 0;
+                    const totalHari = res.data.total_hari_mengajar || 0;
+
+                    const totalJpEl = $('#jadwalTotalJpText');
+                    const totalHariEl = $('#jadwalTotalHariText');
+                    if (totalJpEl) totalJpEl.textContent = totalJp;
+                    if (totalHariEl) totalHariEl.textContent = `Aktif ${totalHari} Hari Mengajar`;
+
                     this.renderDaySchedule(hariIni);
                 }
             } catch(e) {
@@ -675,34 +739,84 @@
             const data = this._weeklyData || {};
             const jadwal = data[hari] || [];
             const container = $('#weeklyScheduleContent');
+            const hariIni = getHariIni();
 
             // Update tab active state
             $$('.day-tab').forEach(tab => {
                 tab.classList.toggle('active', tab.dataset.hari === hari);
             });
 
+            // Calculate total JP for this day
+            let totalJpHari = 0;
+            jadwal.forEach(j => {
+                totalJpHari += (parseInt(j.jp) || 1);
+            });
+
             if (jadwal.length === 0) {
                 container.innerHTML = `
-                    <div class="empty-state">
-                        <div class="empty-state-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
-                        <div class="empty-state-title">Tidak Ada Jadwal</div>
-                        <div class="empty-state-desc">Hari ${hari} tidak ada jadwal mengajar.</div>
+                    <div class="empty-state" style="background:white; border-radius:18px; padding:40px 20px; text-align:center; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9;">
+                        <div style="font-size:2.5rem; margin-bottom:12px;">🌴</div>
+                        <div class="empty-state-title" style="font-size:1.05rem; font-weight:700; color:var(--text-primary);">Tidak Ada Jadwal Mengajar</div>
+                        <div class="empty-state-desc" style="font-size:0.82rem; color:var(--text-secondary); margin-top:4px;">
+                            Hari <strong>${hari}</strong> Anda tidak memiliki jam mengajar.
+                        </div>
                     </div>
                 `;
                 return;
             }
 
-            container.innerHTML = jadwal.map(j => `
-                <div class="schedule-slot">
-                    <div class="schedule-slot-time">
-                        <div class="schedule-slot-jam">${escapeHtml(String(j.jam_ke))}</div>
-                        <div class="schedule-slot-label">Jam ke</div>
+            const headerHtml = `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; padding:0 2px;">
+                    <div style="font-size:0.82rem; font-weight:700; color:var(--text-primary); display:flex; align-items:center; gap:6px;">
+                        <span>Hari ${hari}</span>
+                        ${hari === hariIni ? '<span class="badge badge-primary" style="font-size:0.65rem; padding:2px 6px;">Hari Ini</span>' : ''}
                     </div>
-                    <div class="schedule-slot-info">
-                        <div class="schedule-slot-mapel">${escapeHtml(j.nama_mapel)}</div>
-                        <div class="schedule-slot-kelas">${escapeHtml(j.nama_kelas)}</div>
+                    <div style="font-size:0.75rem; font-weight:700; color:var(--primary); background:#eff6ff; padding:3px 10px; border-radius:20px; border:1px solid #bfdbfe;">
+                        ${jadwal.length} Pelajaran • ${totalJpHari} JP
                     </div>
-            `).join('');
+                </div>
+            `;
+
+            const cardsHtml = jadwal.map(j => {
+                const isToday = (hari === hariIni);
+                return `
+                    <div class="weekly-schedule-card">
+                        <div class="weekly-time-badge">
+                            <div style="font-size:0.62rem; font-weight:700; color:#2563eb; text-transform:uppercase; letter-spacing:0.5px;">Jam Ke</div>
+                            <div style="font-family:var(--font-heading); font-size:1.15rem; font-weight:800; color:#1d4ed8; line-height:1.2; white-space:nowrap;">
+                                ${escapeHtml(String(j.jam_ke))}
+                            </div>
+                            ${j.jp ? `<div style="font-size:0.62rem; font-weight:700; color:#3b82f6; margin-top:2px;">${escapeHtml(String(j.jp))} JP</div>` : ''}
+                        </div>
+                        <div style="flex:1; min-width:0;">
+                            <div style="font-family:var(--font-heading); font-size:0.95rem; font-weight:700; color:var(--text-primary); line-height:1.35; margin-bottom:6px; word-break:break-word;">
+                                ${escapeHtml(j.nama_mapel)}
+                            </div>
+                            <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+                                <span style="display:inline-flex; align-items:center; gap:4px; font-size:0.75rem; font-weight:600; color:#1e293b; background:#f1f5f9; padding:3px 8px; border-radius:6px;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+                                    Kelas ${escapeHtml(j.nama_kelas)}
+                                </span>
+                                ${j.kode_mapel ? `
+                                    <span style="font-size:0.7rem; font-weight:600; color:#64748b; background:#f8fafc; padding:2px 6px; border-radius:4px; border:1px solid #e2e8f0;">
+                                        ${escapeHtml(j.kode_mapel)}
+                                    </span>
+                                ` : ''}
+                            </div>
+                        </div>
+                        ${isToday ? `
+                            <div style="flex-shrink:0;">
+                                <button class="btn btn-sm" onclick="location.hash='#/jurnal'" style="background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; border-radius:10px; padding:6px 10px; font-size:0.72rem; font-weight:700; display:flex; align-items:center; gap:4px; white-space:nowrap;">
+                                    <span>Isi</span>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="12" height="12"><polyline points="9 18 15 12 9 6"/></svg>
+                                </button>
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+
+            container.innerHTML = headerHtml + cardsHtml;
         },
 
         // --- JURNAL FORM ---
@@ -1378,6 +1492,13 @@
                                     <div>
                                         <div class="info-label">Sekolah</div>
                                         <div class="info-value">${escapeHtml(school.nama || '-')}</div>
+                                    </div>
+                                </div>
+                                <div class="profile-info-item" onclick="location.hash='#/dokumen'" style="cursor:pointer;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="#7c3aed" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                                    <div style="flex:1;">
+                                        <div class="info-label">Berkas Guru</div>
+                                        <div class="info-value" style="color:#7c3aed; font-weight:700;">Dokumen Perangkat Ajar &rarr;</div>
                                     </div>
                                 </div>
                             </div>
@@ -2229,6 +2350,469 @@
             } catch(e) {
                 $('#absenContainer').innerHTML = `<div class="empty-state-desc">Gagal memuat riwayat kehadiran.</div>`;
             }
+        },
+
+        // =============================================
+        // DOKUMEN PERANGKAT (RPP, MODUL AJAR, DLL)
+        // =============================================
+        _dokumenListCache: [],
+        _dokumenCurrentFilter: 'all',
+
+        async renderDokumen() {
+            const content = $('#appContent');
+            if (!content) return;
+
+            content.innerHTML = `
+                <div class="page-enter">
+                    <!-- Page Header -->
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:16px;">
+                        <div>
+                            <div class="section-title" style="margin-bottom:2px;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                                Dokumen Perangkat
+                            </div>
+                            <p style="font-size:0.75rem; color:var(--text-secondary); margin:0;">Upload RPP, Modul Ajar, Silabus & Administrasi</p>
+                        </div>
+                        <button class="btn btn-sm btn-primary" onclick="GuruApp.openUploadDokumenModal()" style="border-radius:12px; padding:8px 14px; font-weight:700; font-size:0.75rem; display:flex; align-items:center; gap:6px; box-shadow:var(--shadow-primary); flex-shrink:0;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="15" height="15"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            <span>+ Upload</span>
+                        </button>
+                    </div>
+
+                    <!-- Counter Stats -->
+                    <div class="dokumen-stat-grid" id="dokumenStatsContainer">
+                        <div class="dokumen-stat-card">
+                            <div class="dokumen-stat-icon" style="background:#eff6ff; color:#2563eb;">📁</div>
+                            <div class="dokumen-stat-info">
+                                <div class="dokumen-stat-num" id="dokStatTotal">0</div>
+                                <div class="dokumen-stat-lbl">Total Dokumen</div>
+                            </div>
+                        </div>
+                        <div class="dokumen-stat-card">
+                            <div class="dokumen-stat-icon" style="background:#fffbeb; color:#d97706;">⏳</div>
+                            <div class="dokumen-stat-info">
+                                <div class="dokumen-stat-num" id="dokStatPending" style="color:#d97706;">0</div>
+                                <div class="dokumen-stat-lbl">Menunggu</div>
+                            </div>
+                        </div>
+                        <div class="dokumen-stat-card">
+                            <div class="dokumen-stat-icon" style="background:#f0fdf4; color:#16a34a;">✅</div>
+                            <div class="dokumen-stat-info">
+                                <div class="dokumen-stat-num" id="dokStatApproved" style="color:#16a34a;">0</div>
+                                <div class="dokumen-stat-lbl">Disetujui</div>
+                            </div>
+                        </div>
+                        <div class="dokumen-stat-card">
+                            <div class="dokumen-stat-icon" style="background:#fef2f2; color:#dc2626;">❌</div>
+                            <div class="dokumen-stat-info">
+                                <div class="dokumen-stat-num" id="dokStatRejected" style="color:#dc2626;">0</div>
+                                <div class="dokumen-stat-lbl">Ditolak</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Filter Tabs -->
+                    <div class="dokumen-filter-tabs" id="dokumenFilterTabs">
+                        <button class="dokumen-filter-btn active" data-filter="all" onclick="GuruApp.filterDokumen('all')">
+                            Semua (<span id="countFilterAll">0</span>)
+                        </button>
+                        <button class="dokumen-filter-btn" data-filter="pending" onclick="GuruApp.filterDokumen('pending')">
+                            ⏳ Menunggu (<span id="countFilterPending">0</span>)
+                        </button>
+                        <button class="dokumen-filter-btn" data-filter="approved" onclick="GuruApp.filterDokumen('approved')">
+                            ✅ Disetujui (<span id="countFilterApproved">0</span>)
+                        </button>
+                        <button class="dokumen-filter-btn" data-filter="rejected" onclick="GuruApp.filterDokumen('rejected')">
+                            ❌ Ditolak (<span id="countFilterRejected">0</span>)
+                        </button>
+                    </div>
+
+                    <!-- Document Cards List -->
+                    <div id="dokumenCardsList">
+                        <div class="skeleton skeleton-card" style="height:110px; margin-bottom:12px;"></div>
+                        <div class="skeleton skeleton-card" style="height:110px; margin-bottom:12px;"></div>
+                    </div>
+                </div>
+            `;
+
+            this._dokumenCurrentFilter = 'all';
+            this.loadDokumenList();
+        },
+
+        async loadDokumenList() {
+            const container = $('#dokumenCardsList');
+            if (!container) return;
+
+            try {
+                const res = await API.get('api/dokumen.php?action=list');
+                if (res.success) {
+                    this._dokumenListCache = res.data.documents || [];
+                    const summary = res.data.summary || { total: 0, pending: 0, approved: 0, rejected: 0 };
+
+                    // Update stats
+                    const elTotal = $('#dokStatTotal');
+                    const elPending = $('#dokStatPending');
+                    const elApproved = $('#dokStatApproved');
+                    const elRejected = $('#dokStatRejected');
+                    if (elTotal) elTotal.textContent = summary.total;
+                    if (elPending) elPending.textContent = summary.pending;
+                    if (elApproved) elApproved.textContent = summary.approved;
+                    if (elRejected) elRejected.textContent = summary.rejected;
+
+                    // Update filter badges
+                    const cAll = $('#countFilterAll');
+                    const cPending = $('#countFilterPending');
+                    const cApproved = $('#countFilterApproved');
+                    const cRejected = $('#countFilterRejected');
+                    if (cAll) cAll.textContent = summary.total;
+                    if (cPending) cPending.textContent = summary.pending;
+                    if (cApproved) cApproved.textContent = summary.approved;
+                    if (cRejected) cRejected.textContent = summary.rejected;
+
+                    this.renderDokumenCards();
+                } else {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <div class="empty-state-title">Gagal Memuat</div>
+                            <div class="empty-state-desc">${escapeHtml(res.message || 'Gagal mengambil daftar dokumen.')}</div>
+                        </div>
+                    `;
+                }
+            } catch (e) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-title">Gagal Terhubung</div>
+                        <div class="empty-state-desc">Tidak dapat terhubung ke server.</div>
+                    </div>
+                `;
+            }
+        },
+
+        filterDokumen(status) {
+            this._dokumenCurrentFilter = status;
+            $$('.dokumen-filter-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.filter === status);
+            });
+            this.renderDokumenCards();
+        },
+
+        renderDokumenCards() {
+            const container = $('#dokumenCardsList');
+            if (!container) return;
+
+            const allDocs = this._dokumenListCache || [];
+            const filter = this._dokumenCurrentFilter;
+            const filteredDocs = (filter === 'all') ? allDocs : allDocs.filter(d => d.status === filter);
+
+            if (filteredDocs.length === 0) {
+                let msg = 'Belum ada dokumen yang diunggah.';
+                if (filter === 'pending') msg = 'Tidak ada dokumen yang menunggu persetujuan.';
+                else if (filter === 'approved') msg = 'Belum ada dokumen yang disetujui.';
+                else if (filter === 'rejected') msg = 'Tidak ada dokumen yang ditolak.';
+
+                container.innerHTML = `
+                    <div class="empty-state" style="background:white; border-radius:18px; padding:40px 20px; text-align:center; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9;">
+                        <div style="font-size:2.5rem; margin-bottom:12px;">📂</div>
+                        <div class="empty-state-title" style="font-size:1rem; font-weight:700; color:var(--text-primary);">Belum Ada Dokumen</div>
+                        <div class="empty-state-desc" style="font-size:0.8rem; color:var(--text-secondary); margin-top:4px;">${msg}</div>
+                        ${filter === 'all' ? `
+                            <button class="btn btn-sm btn-primary" onclick="GuruApp.openUploadDokumenModal()" style="margin-top:14px; border-radius:10px; font-weight:700; font-size:0.75rem;">
+                                + Upload Dokumen Sekarang
+                            </button>
+                        ` : ''}
+                    </div>
+                `;
+                return;
+            }
+
+            container.innerHTML = filteredDocs.map(d => {
+                // File icon & background
+                const ext = (d.file_ext || '').toLowerCase();
+                let fileIcon = '📄', iconBg = '#f1f5f9', iconColor = '#475569';
+                if (ext === 'pdf') { fileIcon = '📕'; iconBg = '#fee2e2'; iconColor = '#dc2626'; }
+                else if (['doc', 'docx'].includes(ext)) { fileIcon = '📘'; iconBg = '#eff6ff'; iconColor = '#2563eb'; }
+                else if (['xls', 'xlsx'].includes(ext)) { fileIcon = '📗'; iconBg = '#f0fdf4'; iconColor = '#16a34a'; }
+                else if (['ppt', 'pptx'].includes(ext)) { fileIcon = '📙'; iconBg = '#fff7ed'; iconColor = '#ea580c'; }
+                else if (['zip', 'rar'].includes(ext)) { fileIcon = '📦'; iconBg = '#f5f3ff'; iconColor = '#7c3aed'; }
+
+                // Status configuration
+                let statusCls = 'status-pending', statusIcon = '⏳', statusLabel = 'Menunggu';
+                if (d.status === 'approved') {
+                    statusCls = 'status-approved';
+                    statusIcon = '✅';
+                    statusLabel = 'Disetujui';
+                } else if (d.status === 'rejected') {
+                    statusCls = 'status-rejected';
+                    statusIcon = '❌';
+                    statusLabel = 'Ditolak';
+                }
+
+                // File size format
+                let sizeStr = '';
+                if (d.file_size) {
+                    const kb = Math.round(d.file_size / 1024);
+                    sizeStr = kb > 1024 ? (kb / 1024).toFixed(1) + ' MB' : kb + ' KB';
+                }
+
+                // Download URL
+                const downloadUrl = BASE_URL + d.file_path;
+
+                // Catatan admin rejection box
+                const catatanBox = (d.status === 'rejected' && d.catatan_admin) ? `
+                    <div class="dokumen-catatan-box">
+                        <strong>📝 Catatan Kurikulum:</strong><br>
+                        ${escapeHtml(d.catatan_admin)}
+                    </div>
+                ` : '';
+
+                // Can delete only if not approved
+                const canDelete = (d.status !== 'approved');
+
+                return `
+                    <div class="dokumen-card">
+                        <div class="dokumen-card-header">
+                            <div class="dokumen-file-icon" style="background:${iconBg}; color:${iconColor};">
+                                ${fileIcon}
+                            </div>
+                            <div class="dokumen-card-main">
+                                <div class="dokumen-card-title">${escapeHtml(d.judul)}</div>
+                                <div class="dokumen-card-tags">
+                                    <span class="dokumen-tag" style="background:#f1f5f9; color:#334155;">
+                                        📋 ${escapeHtml(d.tipe_dokumen)}
+                                    </span>
+                                    <span class="dokumen-tag" style="background:#f8fafc; color:#64748b; border:1px solid #e2e8f0;">
+                                        📅 ${formatTanggal(d.created_at ? d.created_at.split(' ')[0] : '')}
+                                    </span>
+                                    ${sizeStr ? `
+                                        <span class="dokumen-tag" style="background:#f8fafc; color:#64748b;">
+                                            ${sizeStr}
+                                        </span>
+                                    ` : ''}
+                                </div>
+                            </div>
+                            <div class="dokumen-status-badge ${statusCls}">
+                                <span>${statusIcon}</span>
+                                <span>${statusLabel}</span>
+                            </div>
+                        </div>
+
+                        ${catatanBox}
+
+                        <div class="dokumen-card-footer">
+                            <a href="${downloadUrl}" target="_blank" download class="btn btn-sm" style="background:#eff6ff; color:#2563eb; border:1px solid #bfdbfe; border-radius:10px; padding:6px 12px; font-weight:700; font-size:0.75rem; display:inline-flex; align-items:center; gap:6px; text-decoration:none;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                <span>Unduh Berkas</span>
+                            </a>
+                            ${canDelete ? `
+                                <button class="btn btn-sm" onclick="GuruApp.confirmDeleteDokumen(${d.id}, '${escapeHtml(d.judul).replace(/'/g, "\\'")}')" style="background:#fef2f2; color:#dc2626; border:1px solid #fecaca; border-radius:10px; padding:6px 12px; font-weight:700; font-size:0.75rem; display:inline-flex; align-items:center; gap:6px;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                    <span>Hapus</span>
+                                </button>
+                            ` : `
+                                <span style="font-size:0.72rem; color:#16a34a; font-weight:700; display:flex; align-items:center; gap:4px;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><polyline points="20 6 9 17 4 12"/></svg> Terverifikasi
+                                </span>
+                            `}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+        },
+
+        openUploadDokumenModal() {
+            const overlay = document.createElement('div');
+            overlay.className = 'guru-modal-overlay';
+            overlay.id = 'uploadDokumenModal';
+            overlay.innerHTML = `
+                <div class="guru-modal" style="animation:slideUp 0.3s ease-out; max-width:480px;">
+                    <div class="guru-modal-header">
+                        <div>
+                            <h4 style="margin:0; font-size:1.05rem; font-weight:800; font-family:var(--font-heading);">Upload Dokumen Perangkat</h4>
+                            <p style="margin:2px 0 0; font-size:0.75rem; color:var(--text-secondary);">RPP, Modul Ajar, Silabus, dll</p>
+                        </div>
+                        <button class="guru-modal-close" onclick="GuruApp.closeModal('uploadDokumenModal')">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="20" height="20"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
+                    <div class="guru-modal-body" style="padding:18px 20px;">
+                        <form id="formUploadDokumen" onsubmit="GuruApp.submitUploadDokumen(event)">
+                            <div class="jurnal-form-group" style="margin-bottom:14px;">
+                                <label class="jurnal-form-label" style="font-weight:700; font-size:0.8rem; color:var(--text-primary); margin-bottom:6px; display:block;">
+                                    Judul Dokumen <span style="color:#ef4444;">*</span>
+                                </label>
+                                <input type="text" class="jurnal-form-input" id="dokumenJudulInput" placeholder="Contoh: Modul Ajar Bhs. Indonesia Bab 1 Kelas 12" required style="width:100%; border:1.5px solid #cbd5e1; border-radius:12px; padding:10px 12px; font-size:0.85rem; font-family:inherit;">
+                            </div>
+
+                            <div class="jurnal-form-group" style="margin-bottom:14px;">
+                                <label class="jurnal-form-label" style="font-weight:700; font-size:0.8rem; color:var(--text-primary); margin-bottom:6px; display:block;">
+                                    Tipe Dokumen <span style="color:#ef4444;">*</span>
+                                </label>
+                                <select class="jurnal-form-input" id="dokumenTipeSelect" required style="width:100%; border:1.5px solid #cbd5e1; border-radius:12px; padding:10px 12px; font-size:0.85rem; font-family:inherit; background:white;">
+                                    <option value="">-- Pilih Tipe Dokumen --</option>
+                                    <option value="Modul Ajar">Modul Ajar</option>
+                                    <option value="RPP">RPP (Rencana Pelaksanaan Pembelajaran)</option>
+                                    <option value="Silabus">Silabus</option>
+                                    <option value="Program Tahunan (Prota)">Program Tahunan (Prota)</option>
+                                    <option value="Program Semester (Promes)">Program Semester (Promes)</option>
+                                    <option value="Alur Tujuan Pembelajaran (ATP)">Alur Tujuan Pembelajaran (ATP)</option>
+                                    <option value="Capaian Pembelajaran (CP)">Capaian Pembelajaran (CP)</option>
+                                    <option value="Bahan Ajar">Bahan Ajar / Materi</option>
+                                    <option value="Lainnya">Dokumen Lainnya</option>
+                                </select>
+                            </div>
+
+                            <div class="jurnal-form-group" style="margin-bottom:16px;">
+                                <label class="jurnal-form-label" style="font-weight:700; font-size:0.8rem; color:var(--text-primary); margin-bottom:6px; display:block;">
+                                    Pilih Berkas File <span style="color:#ef4444;">*</span>
+                                </label>
+                                <input type="file" id="dokumenFileInput" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip" style="display:none;" onchange="GuruApp.onDokumenFileSelect(this)" required>
+                                
+                                <label class="dokumen-dropzone" id="dokumenDropzone" for="dokumenFileInput" style="cursor:pointer; display:flex;">
+                                    <div style="font-size:2.2rem; line-height:1; pointer-events:none;">📤</div>
+                                    <div style="font-weight:700; font-size:0.875rem; color:#1e293b; pointer-events:none;" id="dokumenFileLabel">
+                                        Klik untuk memilih berkas file
+                                    </div>
+                                    <div style="font-size:0.72rem; color:#64748b; pointer-events:none;" id="dokumenFileSubLabel">
+                                        Format PDF, Word, Excel, PowerPoint, ZIP (Maks 15MB)
+                                    </div>
+                                </label>
+                            </div>
+
+                            <div style="background:#eff6ff; border-radius:12px; padding:10px 12px; font-size:0.75rem; color:#1e40af; margin-bottom:18px; display:flex; align-items:center; gap:8px;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18" style="flex-shrink:0;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                                <span>Dokumen yang diunggah akan masuk ke modul Kurikulum untuk diverifikasi dan disetujui.</span>
+                            </div>
+
+                            <button type="submit" class="btn btn-primary btn-block" id="btnSubmitUploadDokumen" style="border-radius:12px; padding:12px; font-weight:700; font-size:0.875rem;">
+                                <span class="btn-label">Unggah Dokumen</span>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+
+            // Drag and drop event handling
+            const dropzone = overlay.querySelector('#dokumenDropzone');
+            const fileInput = overlay.querySelector('#dokumenFileInput');
+            if (dropzone && fileInput) {
+                ['dragenter', 'dragover'].forEach(eventName => {
+                    dropzone.addEventListener(eventName, (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        dropzone.classList.add('dragover');
+                    });
+                });
+                ['dragleave', 'drop'].forEach(eventName => {
+                    dropzone.addEventListener(eventName, (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        dropzone.classList.remove('dragover');
+                    });
+                });
+                dropzone.addEventListener('drop', (e) => {
+                    if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                        fileInput.files = e.dataTransfer.files;
+                        Pages.onDokumenFileSelect(fileInput);
+                    }
+                });
+            }
+        },
+
+        onDokumenFileSelect(input) {
+            const file = input.files[0];
+            const labelEl = $('#dokumenFileLabel');
+            const subLabelEl = $('#dokumenFileSubLabel');
+            const dropzone = $('#dokumenDropzone');
+
+            if (file) {
+                const kb = Math.round(file.size / 1024);
+                const sizeText = kb > 1024 ? (kb / 1024).toFixed(1) + ' MB' : kb + ' KB';
+                if (labelEl) labelEl.innerHTML = `<span style="color:#2563eb;">📄 ${escapeHtml(file.name)}</span>`;
+                if (subLabelEl) subLabelEl.textContent = `Ukuran: ${sizeText}`;
+                if (dropzone) dropzone.style.borderColor = '#2563eb';
+            } else {
+                if (labelEl) labelEl.textContent = 'Klik untuk memilih berkas file';
+                if (subLabelEl) subLabelEl.textContent = 'Format PDF, Word, Excel, PowerPoint, ZIP (Maks 15MB)';
+                if (dropzone) dropzone.style.borderColor = '#93c5fd';
+            }
+        },
+
+        async submitUploadDokumen(e) {
+            e.preventDefault();
+            const judul = $('#dokumenJudulInput')?.value.trim();
+            const tipe = $('#dokumenTipeSelect')?.value;
+            const fileInput = $('#dokumenFileInput');
+            const file = fileInput?.files[0];
+            const btn = $('#btnSubmitUploadDokumen');
+
+            if (!judul) { Toast.show('Judul dokumen wajib diisi.', 'error'); return; }
+            if (!tipe) { Toast.show('Pilih tipe dokumen.', 'error'); return; }
+            if (!file) { Toast.show('Silakan pilih berkas yang ingin diunggah.', 'error'); return; }
+
+            const formData = new FormData();
+            formData.append('judul', judul);
+            formData.append('tipe_dokumen', tipe);
+            formData.append('file', file);
+
+            btn?.classList.add('loading');
+            try {
+                const res = await API.upload('api/dokumen.php?action=upload', formData);
+                if (res.success) {
+                    Toast.show(res.message || 'Dokumen berhasil diunggah!', 'success');
+                    GuruApp.closeModal('uploadDokumenModal');
+                    if (Router.currentPage === 'dokumen') {
+                        Pages.loadDokumenList();
+                    }
+                } else {
+                    Toast.show(res.message || 'Gagal mengunggah dokumen.', 'error');
+                }
+            } catch (err) {
+                Toast.show('Terjadi kesalahan saat mengunggah file.', 'error');
+            } finally {
+                btn?.classList.remove('loading');
+            }
+        },
+
+        confirmDeleteDokumen(id, title) {
+            const overlay = document.createElement('div');
+            overlay.className = 'confirm-dialog-overlay';
+            overlay.id = 'confirmDeleteDokumen';
+            overlay.innerHTML = `
+                <div class="confirm-dialog">
+                    <div class="confirm-dialog-icon danger">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    </div>
+                    <h4>Hapus Dokumen?</h4>
+                    <p style="font-size:0.8rem; margin:6px 0 16px; color:#64748b;">Apakah Anda yakin ingin menghapus dokumen <strong>"${escapeHtml(title)}"</strong>?</p>
+                    <div class="confirm-dialog-buttons">
+                        <button class="btn btn-ghost" onclick="GuruApp.closeModal('confirmDeleteDokumen')">Batal</button>
+                        <button class="btn btn-danger" id="btnDoDeleteDokumen" onclick="GuruApp.doDeleteDokumen(${id})">
+                            <span class="btn-label">Hapus</span>
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+        },
+
+        async doDeleteDokumen(id) {
+            const btn = $('#btnDoDeleteDokumen');
+            btn?.classList.add('loading');
+            try {
+                const res = await API.post('api/dokumen.php?action=delete', { id });
+                if (res.success) {
+                    Toast.show('Dokumen berhasil dihapus.', 'success');
+                    GuruApp.closeModal('confirmDeleteDokumen');
+                    Pages.loadDokumenList();
+                } else {
+                    Toast.show(res.message || 'Gagal menghapus dokumen.', 'error');
+                }
+            } catch (err) {
+                Toast.show('Gagal terhubung ke server.', 'error');
+            } finally {
+                btn?.classList.remove('loading');
+            }
         }
     };
 
@@ -2479,6 +3063,34 @@
 
         async printDailyAbsen() {
             await Pages.printDailyAbsen();
+        },
+
+        openUploadDokumenModal() {
+            Pages.openUploadDokumenModal();
+        },
+
+        submitUploadDokumen(e) {
+            Pages.submitUploadDokumen(e);
+        },
+
+        filterDokumen(status) {
+            Pages.filterDokumen(status);
+        },
+
+        confirmDeleteDokumen(id, title) {
+            Pages.confirmDeleteDokumen(id, title);
+        },
+
+        doDeleteDokumen(id) {
+            Pages.doDeleteDokumen(id);
+        },
+
+        onDokumenFileSelect(input) {
+            Pages.onDokumenFileSelect(input);
+        },
+
+        loadDokumenList() {
+            Pages.loadDokumenList();
         }
     };
 

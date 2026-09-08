@@ -143,7 +143,70 @@ function acad_run_migrations() {
             PRIMARY KEY (id),
             UNIQUE KEY guru_tanggal_unique (guru_id,tanggal)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
-        
+
+        // ============ RBAC TABLES FOR AKSES MODUL ============
+
+        // Table acad_roles_def — Role definitions
+        db()->exec("CREATE TABLE IF NOT EXISTS acad_roles_def (
+            id int(11) unsigned NOT NULL AUTO_INCREMENT,
+            nama varchar(100) NOT NULL,
+            deskripsi varchar(255) DEFAULT NULL,
+            is_locked tinyint(1) NOT NULL DEFAULT 0,
+            created_at timestamp NOT NULL DEFAULT current_timestamp(),
+            PRIMARY KEY (id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+        // Table acad_role_permissions — Permission keys per role
+        db()->exec("CREATE TABLE IF NOT EXISTS acad_role_permissions (
+            id int(11) unsigned NOT NULL AUTO_INCREMENT,
+            role_id int(11) unsigned NOT NULL,
+            permission_key varchar(100) NOT NULL,
+            PRIMARY KEY (id),
+            KEY role_id (role_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+        // Table acad_roles — User-to-role mapping
+        db()->exec("CREATE TABLE IF NOT EXISTS acad_roles (
+            id int(11) unsigned NOT NULL AUTO_INCREMENT,
+            user_id int(11) unsigned NOT NULL,
+            custom_role_id int(11) unsigned DEFAULT NULL,
+            role enum('admin_kurikulum','operator_kurikulum') NOT NULL DEFAULT 'operator_kurikulum',
+            created_at timestamp NOT NULL DEFAULT current_timestamp(),
+            PRIMARY KEY (id),
+            UNIQUE KEY user_id (user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+        // Seed default locked roles if not exist
+        $checkRoles = db()->query("SELECT COUNT(*) FROM acad_roles_def WHERE is_locked = 1")->fetchColumn();
+        if ((int)$checkRoles === 0) {
+            // Admin Kurikulum — full access
+            db()->exec("INSERT INTO acad_roles_def (nama, deskripsi, is_locked) VALUES ('Admin Kurikulum', 'Akses penuh ke semua fitur E-Curriculum', 1)");
+            $adminId = db()->lastInsertId();
+            $allPerms = ['dashboard_view','jadwal_manage','jurnal_manage','absensi_manage','absensi_guru_manage','piket_manage','ketidakhadiran_manage','buku_penghubung_manage','dokumen_manage','laporan_view','roles_manage'];
+            $stmtP = db()->prepare("INSERT INTO acad_role_permissions (role_id, permission_key) VALUES (?,?)");
+            foreach ($allPerms as $p) { $stmtP->execute([$adminId, $p]); }
+
+            // Operator Kurikulum — limited access
+            db()->exec("INSERT INTO acad_roles_def (nama, deskripsi, is_locked) VALUES ('Operator Kurikulum', 'Akses terbatas untuk operasional harian', 1)");
+            $opId = db()->lastInsertId();
+            $opPerms = ['dashboard_view','jurnal_manage','absensi_manage','absensi_guru_manage','piket_manage','ketidakhadiran_manage','buku_penghubung_manage','laporan_view'];
+            foreach ($opPerms as $p) { $stmtP->execute([$opId, $p]); }
+        }
+
+        // Migrate existing acad_users to acad_roles
+        try {
+            $existing = db()->query("SELECT user_id, role FROM acad_users")->fetchAll(PDO::FETCH_ASSOC);
+            if (!empty($existing)) {
+                $adminRoleId = db()->query("SELECT id FROM acad_roles_def WHERE nama='Admin Kurikulum' AND is_locked=1 LIMIT 1")->fetchColumn();
+                $opRoleId = db()->query("SELECT id FROM acad_roles_def WHERE nama='Operator Kurikulum' AND is_locked=1 LIMIT 1")->fetchColumn();
+                $stmtMig = db()->prepare("INSERT IGNORE INTO acad_roles (user_id, custom_role_id, role) VALUES (?,?,?)");
+                foreach ($existing as $row) {
+                    $rid = ($row['role'] === 'admin_kurikulum') ? $adminRoleId : $opRoleId;
+                    $stmtMig->execute([$row['user_id'], $rid, $row['role']]);
+                }
+            }
+        } catch (Exception $e) { /* ignore migration errors */ }
+
     } catch (Exception $e) {
         // Ignore errors to not break the API if migration fails
     }

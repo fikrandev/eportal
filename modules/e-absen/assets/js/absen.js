@@ -399,6 +399,12 @@ const Absen = {
                         <p id="waQrInstruction" style="margin-top:15px; font-size:0.9rem; color:var(--text-muted); display:none;">
                             Buka WhatsApp di HP Anda, pilih <b>Perangkat Taut (Linked Devices)</b> lalu scan Barcode di atas.
                         </p>
+                        <div id="waDisconnectWrapper" style="margin-top:20px; display:none;">
+                            <button class="btn btn-danger" onclick="Absen.disconnectWa()" style="width:100%; display:flex; align-items:center; justify-content:center; gap:8px; background:#ef4444; color:white; border:none; padding:10px 16px; border-radius:8px; font-weight:600; cursor:pointer;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
+                                Putuskan Koneksi (Ganti Perangkat)
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -435,6 +441,7 @@ const Absen = {
                 $('#waStatusBadge').css({background: '#fee2e2', color: '#991b1b'}).text('❌ Server Node.js Mati/Offline');
                 $('#waQrContainer').html('<p style="color:red; font-size:0.9rem;">Server WA mandiri (Node.js) tidak merespon di port 3000. Pastikan Anda telah menjalankan <code>node server.js</code> di VPS.</p>');
                 $('#waQrInstruction').hide();
+                $('#waDisconnectWrapper').hide();
                 return;
             }
 
@@ -443,25 +450,52 @@ const Absen = {
                 $('#waStatusBadge').css({background: '#dcfce7', color: '#166534'}).text('✅ WhatsApp Terhubung!');
                 $('#waQrContainer').html('<div style="color:var(--primary);"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="64" height="64" style="margin-bottom:10px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg><br><b>Server WhatsApp Aktif</b></div>');
                 $('#waQrInstruction').hide();
+                $('#waDisconnectWrapper').show();
             } else if (data.qr) {
                 $('#waStatusBadge').css({background: '#fef3c7', color: '#b45309'}).text('⏳ Menunggu Scan Barcode');
                 $('#waQrContainer').html(`<img src="${data.qr}" alt="QR Code" style="width:200px; height:200px; display:block; margin:0 auto; border-radius:8px;">`);
                 $('#waQrInstruction').show();
+                $('#waDisconnectWrapper').hide();
             } else {
                 $('#waStatusBadge').css({background: '#fef3c7', color: '#b45309'}).text('⏳ Menginisiasi WhatsApp...');
                 $('#waQrContainer').html('<p style="color:var(--text-muted);">Menunggu generate QR Code...</p>');
                 $('#waQrInstruction').hide();
+                $('#waDisconnectWrapper').hide();
             }
         }).fail(() => {
             $('#waStatusBadge').css({background: '#fee2e2', color: '#991b1b'}).text('❌ Server Node.js Mati/Offline');
             $('#waQrContainer').html('<p style="color:red; font-size:0.9rem;">Server WA mandiri (Node.js) tidak merespon di port 3000. Pastikan Anda telah menjalankan <code>node server.js</code> di VPS.</p>');
             $('#waQrInstruction').hide();
+            $('#waDisconnectWrapper').hide();
+        });
+    },
+
+    disconnectWa() {
+        EModal.confirm({
+            title: 'Putuskan Koneksi WhatsApp',
+            message: 'Yakin ingin memutuskan koneksi dengan HP yang terhubung saat ini? Sesi WhatsApp akan dikeluarkan dan Anda dapat melakukan scan Barcode baru untuk mengganti perangkat / nomor HP.',
+            type: 'danger',
+            confirmText: 'Ya, Putuskan Koneksi',
+            onConfirm: () => {
+                const loader = EModal.loading('Memutuskan koneksi WhatsApp...');
+                this.api('settings.php?action=wa_logout', { method: 'POST' }).done(res => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'success', title: 'Berhasil', message: res.message || 'Koneksi WhatsApp berhasil diputuskan.' });
+                    this.checkWaStatus();
+                }).fail(xhr => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal memutuskan koneksi.' });
+                    this.checkWaStatus();
+                });
+            }
         });
     },
 
     loadWaSettings() {
         this.api('settings.php?action=get_wa').done(res => {
             const s = res.data || {};
+            const savedGroupId = s.wa_group_guru_id || '';
+
             $('#waFormWrapper').html(`
                 <div class="form-group">
                     <label class="form-label">URL Gateway Lokal</label>
@@ -469,14 +503,24 @@ const Absen = {
                     <small class="text-muted">Pastikan URL sama dengan port di Node.js (Default: http://localhost:3000/send)</small>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Template Pesan Notifikasi</label>
-                    <textarea class="form-input" id="waTemplate" rows="4" style="resize:vertical;">${this.escapeHtml(s.wa_message_template || 'Halo Orang Tua/Wali dari {nama}. Menginformasikan bahwa ananda telah {status_absen} di sekolah pada {waktu}. Terima Kasih.')}</textarea>
+                    <label class="form-label">Grup WA Tujuan Notifikasi Guru</label>
+                    <div style="display:flex; gap:8px;">
+                        <select class="form-select" id="waGroupGuru" style="flex:1;">
+                            <option value="${this.escapeHtml(savedGroupId)}">${savedGroupId ? 'Grup Terpilih: ' + this.escapeHtml(savedGroupId) : '-- Pilih / Muat Grup WA --'}</option>
+                        </select>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="Absen.fetchWaGroups()" title="Muat Ulang Daftar Grup WA">🔄 Refresh Grup</button>
+                    </div>
+                    <small class="text-muted">Pilih Grup WA yang akan menerima laporan Absen Pagi & Absen Pulang Guru secara otomatis / realtime.</small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Template Pesan Notifikasi Siswa (Ke Orang Tua)</label>
+                    <textarea class="form-input" id="waTemplate" rows="3" style="resize:vertical;">${this.escapeHtml(s.wa_message_template || 'Halo Orang Tua/Wali dari {nama}. Menginformasikan bahwa ananda telah {status_absen} di sekolah pada {waktu}. Terima Kasih.')}</textarea>
                     <small class="text-muted" style="display:block; margin-bottom:15px;">Gunakan <b>{nama}</b>, <b>{status_absen}</b>, <b>{waktu}</b> sebagai variabel.</small>
                 </div>
                 <div style="border-top:1px solid var(--border-light); padding-top:15px; margin-top:10px;">
                     <label class="form-label">Testing Pengiriman Pesan</label>
                     <div style="display:flex; gap:10px; margin-bottom:15px;">
-                        <input type="text" class="form-input" id="waTestPhone" placeholder="Nomor HP, contoh: 0812xxx" style="flex:1;">
+                        <input type="text" class="form-input" id="waTestPhone" placeholder="Nomor HP / Group ID (misal: 0812xxx atau ID@g.us)" style="flex:1;">
                         <button class="btn btn-outline" onclick="Absen.testWa()">Tes Kirim Pesan</button>
                     </div>
                 </div>
@@ -484,8 +528,22 @@ const Absen = {
                     <button class="btn btn-primary" onclick="Absen.saveWaSettings()">Simpan Pengaturan Utama</button>
                 </div>
             `);
-            // Check status segera setelah form di render
             this.checkWaStatus();
+            this.fetchWaGroups(savedGroupId);
+        });
+    },
+
+    fetchWaGroups(selectedId = '') {
+        const $sel = $('#waGroupGuru');
+        this.api('settings.php?action=get_wa_groups').done(res => {
+            if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+                let html = '<option value="">-- Pilih Grup WA Guru --</option>';
+                res.data.forEach(g => {
+                    const isSel = (g.id === selectedId || g.id === $('#waGroupGuru').val()) ? 'selected' : '';
+                    html += `<option value="${this.escapeHtml(g.id)}" ${isSel}>👥 ${this.escapeHtml(g.name)} (${this.escapeHtml(g.id)})</option>`;
+                });
+                $sel.html(html);
+            }
         });
     },
 
@@ -493,7 +551,7 @@ const Absen = {
         const phone = $('#waTestPhone').val();
         
         if (!phone) {
-            return EModal.toast({ type: 'warning', message: 'Masukkan Nomor HP untuk testing!' });
+            return EModal.toast({ type: 'warning', message: 'Masukkan Nomor HP / Group ID untuk testing!' });
         }
 
         EModal.toast({ type: 'info', message: 'Mengirim pesan percobaan...' });
@@ -511,7 +569,8 @@ const Absen = {
     saveWaSettings() {
         const data = {
             wa_gateway_url: $('#waUrl').val(),
-            wa_message_template: $('#waTemplate').val()
+            wa_message_template: $('#waTemplate').val(),
+            wa_group_guru_id: $('#waGroupGuru').val()
         };
         this.api('settings.php?action=save_wa', { method: 'POST', data }).done(res => {
             EModal.toast({ type: 'success', message: res.message });

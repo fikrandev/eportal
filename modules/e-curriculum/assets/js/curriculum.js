@@ -27,6 +27,7 @@ const Curriculum = {
         this.bindEvents();
         this.renderSidebar();
         this.loadRouteFromHash();
+        this.initRealtimeSync();
 
         // Update profile in sidebar
         if (this.state.user) {
@@ -46,6 +47,482 @@ const Curriculum = {
         window.addEventListener('hashchange', () => this.loadRouteFromHash());
         $('#menuToggle').on('click', () => this.toggleSidebar());
         $('#sidebarOverlay').on('click', () => this.toggleSidebar(false));
+    },
+
+    // ==================== REALTIME SYNC ENGINE ====================
+    _realtimeTimer: null,
+    _lastRealtimeSignatures: {},
+
+    initRealtimeSync() {
+        if (this._realtimeTimer) clearInterval(this._realtimeTimer);
+
+        // Render visual badge in header
+        this.renderRealtimeBadge();
+
+        // Background polling every 4 seconds
+        this._realtimeTimer = setInterval(() => {
+            if (document.hidden) return; // Tab in background, skip
+            // If user is currently editing or interacting with an open modal, don't interrupt
+            if ($('.emodal-overlay:visible, .acad-modal:visible, .modal.show:visible').length > 0) return;
+            if ($('input:focus, textarea:focus, select:focus').length > 0) return;
+
+            this.syncCurrentRouteData(true);
+        }, 4000);
+    },
+
+    renderRealtimeBadge() {
+        const $topbarRight = $('.acad-topbar-right');
+        if (!$topbarRight.length) return;
+        
+        if (!$('#realtimeStatusBadge').length) {
+            $topbarRight.prepend(`
+                <div id="realtimeStatusBadge" title="Sinkronisasi data otomatis aktif (Realtime). Klik untuk sinkronkan sekarang." onclick="Curriculum.syncCurrentRouteData(false)" style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:20px;font-size:12px;font-weight:600;color:#15803d;margin-right:10px;cursor:pointer;transition:all 0.2s ease;">
+                    <span style="width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block;animation:pulseDot 2s infinite;" id="realtimePulseDot"></span>
+                    <span id="realtimeBadgeText">Realtime Aktif</span>
+                </div>
+            `);
+        }
+    },
+
+    flashRealtimeSync() {
+        const $badge = $('#realtimeStatusBadge');
+        if ($badge.length) {
+            $badge.css({ 'background': '#dcfce7', 'transform': 'scale(1.04)' });
+            setTimeout(() => $badge.css({ 'background': '#f0fdf4', 'transform': 'scale(1)' }), 400);
+        }
+    },
+
+    syncCurrentRouteData(silent = true) {
+        if (!silent) {
+            this.flashRealtimeSync();
+            this.toast('Sinkronisasi', 'Memperbarui data terbaru...', 'info');
+        }
+
+        const route = this.state.currentRoute;
+        switch (route) {
+            case 'dokumen':
+                this.syncRealtimeDokumen(silent);
+                break;
+            case 'dashboard':
+                this.syncRealtimeDashboard(silent);
+                break;
+            case 'users':
+                this.syncRealtimeUsers(silent);
+                break;
+            case 'kelas':
+                this.syncRealtimeKelas(silent);
+                break;
+            case 'mapel':
+                this.syncRealtimeMapel(silent);
+                break;
+            case 'sch_jam':
+                this.syncRealtimeSchJam(silent);
+                break;
+            case 'sch_mapel':
+                this.syncRealtimeSchMapel(silent);
+                break;
+            case 'sch_kelas':
+                this.syncRealtimeSchKelas(silent);
+                break;
+            case 'sch_guru':
+                this.syncRealtimeSchGuru(silent);
+                break;
+            case 'sch_distribusi':
+                this.syncRealtimeSchDistribusi(silent);
+                break;
+            case 'sch_kesediaan':
+                this.syncRealtimeSchKesediaan(silent);
+                break;
+            case 'sch_jadwal':
+                this.syncRealtimeSchJadwal(silent);
+                break;
+            case 'mengajar':
+                this.syncRealtimeMengajar(silent);
+                break;
+            case 'jurnal':
+                this.syncRealtimeJurnal(silent);
+                break;
+            case 'absensi':
+                this.syncRealtimeAbsensi(silent);
+                break;
+            case 'absensi_guru':
+                this.syncRealtimeAbsensiGuru(silent);
+                break;
+            case 'ketidakhadiran':
+                this.syncRealtimeKetidakhadiran(silent);
+                break;
+            case 'piket':
+                this.syncRealtimePiket(silent);
+                break;
+            case 'buku_penghubung':
+                this.syncRealtimeBukuPenghubung(silent);
+                break;
+        }
+    },
+
+    syncRealtimeDokumen(silent = true) {
+        this.api('documents.php?action=list').done(res => {
+            if (!res.success) return;
+            const list = Array.isArray(res.data) ? res.data : [];
+            const sig = JSON.stringify(list.map(d => `${d.id}_${d.status}_${d.updated_at || d.created_at}`));
+            
+            const prevSig = this._lastRealtimeSignatures['dokumen'];
+            this._lastRealtimeSignatures['dokumen'] = sig;
+
+            if (prevSig && prevSig !== sig) {
+                this.flashRealtimeSync();
+
+                // If admin view
+                if (this._dokumenAdminCache !== undefined) {
+                    const oldCache = this._dokumenAdminCache || [];
+                    const oldIds = oldCache.map(d => d.id);
+                    const newDocs = list.filter(d => !oldIds.includes(d.id));
+
+                    if (newDocs.length > 0) {
+                        const first = newDocs[0];
+                        this.toast('Dokumen Baru Masuk! 🔔', `${first.nama_guru || 'Guru'} mengunggah: "${first.judul}"`, 'info');
+                    }
+
+                    this._dokumenAdminCache = list;
+                    this._renderDokumenAdminTable();
+                } else if (this._dokumenGuruCache !== undefined) {
+                    const oldCache = this._dokumenGuruCache || [];
+                    const oldMap = {};
+                    oldCache.forEach(d => { oldMap[d.id] = d.status; });
+
+                    list.forEach(d => {
+                        if (oldMap[d.id] && oldMap[d.id] !== d.status) {
+                            if (d.status === 'approved') {
+                                this.toast('Disetujui! ✅', `Dokumen "${d.judul}" telah disetujui oleh Kurikulum.`, 'success');
+                            } else if (d.status === 'rejected') {
+                                this.toast('Ditolak / Revisi ⚠️', `Dokumen "${d.judul}" ditolak: ${d.catatan_admin || 'Silakan cek catatan.'}`, 'warning');
+                            }
+                        }
+                    });
+
+                    this._dokumenGuruCache = list;
+                    this._renderDokumenGuruCards();
+                }
+            } else if (!prevSig) {
+                if (this._dokumenAdminCache !== undefined) {
+                    this._dokumenAdminCache = list;
+                } else if (this._dokumenGuruCache !== undefined) {
+                    this._dokumenGuruCache = list;
+                }
+            }
+        });
+    },
+
+    syncRealtimeDashboard(silent = true) {
+        this.api('dashboard.php?action=stats').done(res => {
+            if (!res.success) return;
+            const sig = JSON.stringify(res.data);
+            const prevSig = this._lastRealtimeSignatures['dashboard'];
+            this._lastRealtimeSignatures['dashboard'] = sig;
+
+            if (prevSig && prevSig !== sig) {
+                this.flashRealtimeSync();
+                const d = res.data;
+                const $stats = $('#dashboardStats');
+                if ($stats.length) {
+                    $stats.find('.acad-stat-card:eq(0) h4').text(d.total_guru || 0);
+                    $stats.find('.acad-stat-card:eq(1) h4').text(d.total_kelas || 0);
+                    $stats.find('.acad-stat-card:eq(2) h4').text(d.total_mapel || 0);
+                    $stats.find('.acad-stat-card:eq(3) h4').text(d.jurnal_hari_ini || 0);
+                }
+            }
+        });
+    },
+
+    syncRealtimeUsers(silent = true) {
+        if (!$('#rolesDefTable').length && !$('#accountsTable').length) return;
+        this.api('users.php?action=list_roles').done(res => {
+            if (!res.success) return;
+            const sig = JSON.stringify((res.data || []).map(r => `${r.id}_${r.nama}_${r.permissions}`));
+            const prevSig = this._lastRealtimeSignatures['users_roles'];
+            this._lastRealtimeSignatures['users_roles'] = sig;
+
+            if (prevSig && prevSig !== sig) {
+                this.flashRealtimeSync();
+                if (typeof this._loadRolesDef === 'function') this._loadRolesDef();
+            }
+        });
+        this.api('users.php?action=accounts_list').done(res => {
+            if (!res.success) return;
+            const sig = JSON.stringify((res.data || []).map(a => `${a.id}_${a.custom_role_id}`));
+            const prevSig = this._lastRealtimeSignatures['users_accounts'];
+            this._lastRealtimeSignatures['users_accounts'] = sig;
+
+            if (prevSig && prevSig !== sig) {
+                this.flashRealtimeSync();
+                if (typeof this._loadAccounts === 'function') this._loadAccounts();
+            }
+        });
+    },
+
+    syncRealtimeKelas(silent = true) {
+        if (!$('#kelasTableWrapper').length) return;
+        this.api('kelas.php?action=list').done(res => {
+            if (!res.success) return;
+            const sig = JSON.stringify((res.data || []).map(k => `${k.id}_${k.nama_kelas}_${k.wali_id}`));
+            const prevSig = this._lastRealtimeSignatures['kelas'];
+            this._lastRealtimeSignatures['kelas'] = sig;
+
+            if (prevSig && prevSig !== sig) {
+                this.flashRealtimeSync();
+                if (typeof this.loadKelasTable === 'function') this.loadKelasTable();
+            }
+        });
+    },
+
+    syncRealtimeMapel(silent = true) {
+        if (!$('#mapelTableWrapper').length) return;
+        this.api('mapel.php?action=list').done(res => {
+            if (!res.success) return;
+            const sig = JSON.stringify((res.data || []).map(m => `${m.id}_${m.nama_mapel}`));
+            const prevSig = this._lastRealtimeSignatures['mapel'];
+            this._lastRealtimeSignatures['mapel'] = sig;
+
+            if (prevSig && prevSig !== sig) {
+                this.flashRealtimeSync();
+                if (typeof this.loadMapelTable === 'function') this.loadMapelTable();
+            }
+        });
+    },
+
+    syncRealtimeSchJam(silent = true) {
+        if (!$('#jamTable').length) return;
+        this.api('sch_jam.php?action=list').done(res => {
+            if (!res.success) return;
+            const sig = JSON.stringify((res.data || []).map(j => `${j.id}_${j.hari}_${j.jam_ke}_${j.nama_jam}`));
+            const prevSig = this._lastRealtimeSignatures['sch_jam'];
+            this._lastRealtimeSignatures['sch_jam'] = sig;
+
+            if (prevSig && prevSig !== sig) {
+                this.flashRealtimeSync();
+                if (typeof this.loadSchJam === 'function') this.loadSchJam();
+            }
+        });
+    },
+
+    syncRealtimeSchMapel(silent = true) {
+        if (!$('#schMapelTable').length) return;
+        this.api('sch_mapel.php?action=list').done(res => {
+            if (!res.success) return;
+            const sig = JSON.stringify((res.data || []).map(m => `${m.id}_${m.nama_mapel}`));
+            const prevSig = this._lastRealtimeSignatures['sch_mapel'];
+            this._lastRealtimeSignatures['sch_mapel'] = sig;
+
+            if (prevSig && prevSig !== sig) {
+                this.flashRealtimeSync();
+                if (typeof this.loadSchMapel === 'function') this.loadSchMapel();
+            }
+        });
+    },
+
+    syncRealtimeSchKelas(silent = true) {
+        if (!$('#schKelasTable').length) return;
+        this.api('sch_kelas.php?action=list').done(res => {
+            if (!res.success) return;
+            const sig = JSON.stringify((res.data || []).map(k => `${k.id}_${k.nama_kelas}`));
+            const prevSig = this._lastRealtimeSignatures['sch_kelas'];
+            this._lastRealtimeSignatures['sch_kelas'] = sig;
+
+            if (prevSig && prevSig !== sig) {
+                this.flashRealtimeSync();
+                if (typeof this.loadSchKelas === 'function') this.loadSchKelas();
+            }
+        });
+    },
+
+    syncRealtimeSchGuru(silent = true) {
+        if (!$('#schGuruTable').length) return;
+        this.api('sch_guru.php?action=list').done(res => {
+            if (!res.success) return;
+            const sig = JSON.stringify((res.data || []).map(g => `${g.id}_${g.nama_guru}`));
+            const prevSig = this._lastRealtimeSignatures['sch_guru'];
+            this._lastRealtimeSignatures['sch_guru'] = sig;
+
+            if (prevSig && prevSig !== sig) {
+                this.flashRealtimeSync();
+                if (typeof this.loadSchGuru === 'function') this.loadSchGuru();
+            }
+        });
+    },
+
+    syncRealtimeSchDistribusi(silent = true) {
+        if (!$('#distTable').length) return;
+        const kelasId = $('#distFilterKelas').val() || '';
+        this.api(`sch_distribusi.php?action=list${kelasId ? `&kelas_id=${kelasId}` : ''}`).done(res => {
+            if (!res.success) return;
+            const sig = JSON.stringify((res.data || []).map(d => `${d.id}_${d.guru_id}_${d.mapel_id}_${d.jp}`));
+            const prevSig = this._lastRealtimeSignatures['sch_distribusi'];
+            this._lastRealtimeSignatures['sch_distribusi'] = sig;
+
+            if (prevSig && prevSig !== sig) {
+                this.flashRealtimeSync();
+                if (typeof this.loadSchDistribusi === 'function') this.loadSchDistribusi();
+            }
+        });
+    },
+
+    syncRealtimeSchKesediaan(silent = true) {
+        if (!$('#kesediaanTable').length) return;
+        this.api('sch_kesediaan.php?action=list').done(res => {
+            if (!res.success) return;
+            const sig = JSON.stringify((res.data || []).map(k => `${k.guru_id}_${k.hari}_${k.status}`));
+            const prevSig = this._lastRealtimeSignatures['sch_kesediaan'];
+            this._lastRealtimeSignatures['sch_kesediaan'] = sig;
+
+            if (prevSig && prevSig !== sig) {
+                this.flashRealtimeSync();
+                if (typeof this.loadSchKesediaan === 'function') this.loadSchKesediaan();
+            }
+        });
+    },
+
+    syncRealtimeSchJadwal(silent = true) {
+        if (!$('#jdwViewer').length) return;
+        const kelasId = $('#jdwFilter').val() || '';
+        this.api(`sch_jadwal.php?action=list${kelasId ? `&kelas_id=${kelasId}` : ''}`).done(res => {
+            if (!res.success) return;
+            const sig = JSON.stringify((res.data || []).map(j => `${j.id}_${j.hari}_${j.jam_ke}`));
+            const prevSig = this._lastRealtimeSignatures['sch_jadwal'];
+            this._lastRealtimeSignatures['sch_jadwal'] = sig;
+
+            if (prevSig && prevSig !== sig) {
+                this.flashRealtimeSync();
+                if (typeof this.viewJadwal === 'function') this.viewJadwal(kelasId);
+            }
+        });
+    },
+
+    syncRealtimeMengajar(silent = true) {
+        if (!$('#mengajarTableWrapper').length) return;
+        this.api('mengajar.php?action=list').done(res => {
+            if (!res.success) return;
+            const sig = JSON.stringify((res.data || []).map(m => `${m.id}_${m.updated_at || m.created_at || ''}`));
+            const prevSig = this._lastRealtimeSignatures['mengajar'];
+            this._lastRealtimeSignatures['mengajar'] = sig;
+
+            if (prevSig && prevSig !== sig) {
+                this.flashRealtimeSync();
+                if (typeof this.loadMengajarTable === 'function') this.loadMengajarTable();
+            }
+        });
+    },
+
+    syncRealtimeJurnal(silent = true) {
+        const tanggal = $('#jurnalTanggal').val() || new Date().toISOString().split('T')[0];
+        this.api(`jurnal.php?action=list&tanggal=${tanggal}`).done(res => {
+            if (!res.success) return;
+            const data = res.data || [];
+            const sig = JSON.stringify(data.map(j => `${j.id}_${j.updated_at || j.created_at || ''}`));
+            const prevSig = this._lastRealtimeSignatures['jurnal'];
+            this._lastRealtimeSignatures['jurnal'] = sig;
+
+            if (prevSig && prevSig !== sig) {
+                this.flashRealtimeSync();
+                if (typeof this.loadJurnalTable === 'function') this.loadJurnalTable();
+            }
+        });
+    },
+
+    syncRealtimeAbsensi(silent = true) {
+        if (!$('#absensiTableWrapper').length) return;
+        const tanggal = $('#absensiTanggal').val() || new Date().toISOString().split('T')[0];
+        const kelasId = $('#absensiKelas').val() || '';
+        this.api(`absensi.php?action=list_by_date&tanggal=${tanggal}&kelas_id=${kelasId}`).done(res => {
+            if (!res.success) return;
+            const data = res.data || [];
+            const sig = JSON.stringify(data.map(a => `${a.id}_${a.status}`));
+            const prevSig = this._lastRealtimeSignatures['absensi'];
+            this._lastRealtimeSignatures['absensi'] = sig;
+
+            if (prevSig && prevSig !== sig) {
+                this.flashRealtimeSync();
+                if (typeof this.loadAbsensiTable === 'function') this.loadAbsensiTable();
+            }
+        });
+    },
+
+    syncRealtimeAbsensiGuru(silent = true) {
+        const tanggal = $('#absensiGuruTanggal').val() || new Date().toISOString().split('T')[0];
+        if (!$('#absensiGuruTableWrapper').length) return;
+
+        this.api(`absensi_guru.php?action=list&tanggal=${tanggal}`).done(res => {
+            if (!res.success) return;
+            const list = res.data || [];
+            const sig = JSON.stringify((list.teachers || list || []).map(a => `${a.guru_id || a.id}_${a.status}`));
+            const prevSig = this._lastRealtimeSignatures['absensi_guru'];
+            this._lastRealtimeSignatures['absensi_guru'] = sig;
+
+            if (prevSig && prevSig !== sig) {
+                this.flashRealtimeSync();
+                if (typeof this.loadAbsensiGuruTable === 'function') {
+                    this.loadAbsensiGuruTable();
+                }
+            }
+        });
+    },
+
+    syncRealtimeKetidakhadiran(silent = true) {
+        if (!$('#ketidakhadiranTableWrapper').length) return;
+        this.api('ketidakhadiran.php?action=list').done(res => {
+            if (!res.success) return;
+            const list = res.data || [];
+            const sig = JSON.stringify(list.map(k => `${k.id}_${k.status}`));
+            const prevSig = this._lastRealtimeSignatures['ketidakhadiran'];
+            this._lastRealtimeSignatures['ketidakhadiran'] = sig;
+
+            if (prevSig && prevSig !== sig) {
+                this.flashRealtimeSync();
+                if (typeof this.renderKetidakhadiranTable === 'function') {
+                    this.renderKetidakhadiranTable(list);
+                } else if (typeof this.loadKetidakhadiranTable === 'function') {
+                    this.loadKetidakhadiranTable();
+                }
+            }
+        });
+    },
+
+    syncRealtimePiket(silent = true) {
+        if (!$('#piketTableWrapper').length) return;
+        const tanggal = $('#piketTanggal').val() || new Date().toISOString().split('T')[0];
+        this.api(`piket.php?action=list&tanggal=${tanggal}`).done(res => {
+            if (!res.success) return;
+            const list = res.data || [];
+            const sig = JSON.stringify(list.map(p => `${p.id}_${p.status || ''}`));
+            const prevSig = this._lastRealtimeSignatures['piket'];
+            this._lastRealtimeSignatures['piket'] = sig;
+
+            if (prevSig && prevSig !== sig) {
+                this.flashRealtimeSync();
+                if (typeof this.renderPiketTable === 'function') {
+                    this.renderPiketTable(list);
+                } else if (typeof this.loadPiketTable === 'function') {
+                    this.loadPiketTable();
+                }
+            }
+        });
+    },
+
+    syncRealtimeBukuPenghubung(silent = true) {
+        if (!$('#bukuPenghubungTableWrapper').length) return;
+        this.api('buku_penghubung.php?action=list').done(res => {
+            if (!res.success) return;
+            const list = res.data || [];
+            const sig = JSON.stringify(list.map(b => `${b.id}_${b.updated_at || b.created_at || ''}`));
+            const prevSig = this._lastRealtimeSignatures['buku_penghubung'];
+            this._lastRealtimeSignatures['buku_penghubung'] = sig;
+
+            if (prevSig && prevSig !== sig) {
+                this.flashRealtimeSync();
+                if (typeof this.loadBukuPenghubungTable === 'function') {
+                    this.loadBukuPenghubungTable();
+                }
+            }
+        });
     },
 
     /**
@@ -145,7 +622,7 @@ const Curriculum = {
                     </button>
                     <button class="acad-nav-item" data-route="users">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                        Hak Akses
+                        Akses Modul
                     </button>
                 </div>
             `;
@@ -261,9 +738,9 @@ const Curriculum = {
                 this.renderDokumen($content);
                 break;
             case 'users':
-                $title.text('Manajemen Hak Akses');
-                this.setBreadcrumbs([{ label: 'Pengaturan' }, { label: 'Hak Akses' }]);
-                this.renderUsers($content);
+                $title.text('Akses Modul');
+                this.setBreadcrumbs([{ label: 'Pengaturan' }, { label: 'Akses Modul' }]);
+                this.renderRoles($content);
                 break;
             case 'kelas':
                 $title.text('Manajemen Kelas');
@@ -1689,7 +2166,7 @@ const Curriculum = {
                         <h3>📋 Absensi Guru</h3>
                         <p class="acad-subtitle">Terintegrasi otomatis dengan mesin E-Absen & Rekapitulasi Kehadiran.</p>
                     </div>
-                    <div style="display:flex; gap:8px;">
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
                         <button class="btn-acad btn-acad-outline" onclick="Curriculum.showSettingWaktuGuruModal()">
                             ⚙️ Setting Jam Terlambat
                         </button>
@@ -1743,6 +2220,31 @@ const Curriculum = {
 
         // Initialize table
         this.loadAbsensiGuruTable();
+    },
+
+    sendWaGroupAbsenGuru(tipe = 'masuk') {
+        const tanggal = $('#absensiGuruTanggal').val() || new Date().toISOString().split('T')[0];
+        const label = tipe === 'masuk' ? 'Absen Pagi' : 'Absen Pulang';
+        
+        EModal.confirm({
+            title: `Kirim ${label} ke Grup WA`,
+            message: `Kirim laporan <strong>${label} Guru</strong> tanggal <strong>${tanggal}</strong> ke Grup WA yang dikonfigurasi?`,
+            type: 'info',
+            confirmText: 'Ya, Kirim Sekarang',
+            onConfirm: () => {
+                const loader = EModal.loading(`Mengirim laporan ${label} ke Grup WA...`);
+                this.api('absensi_guru.php?action=send_wa_group', {
+                    method: 'POST',
+                    data: { tanggal, tipe }
+                }).done(res => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'success', title: 'Terkirim', message: res.message });
+                }).fail(xhr => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal mengirim pesan.' });
+                });
+            }
+        });
     },
 
     switchAbsensiGuruTab(tabName) {
@@ -4267,141 +4769,260 @@ const Curriculum = {
     },
 
     // ==========================================
-    // MANAJEMEN HAK AKSES
+    // AKSES MODUL (RBAC)
     // ==========================================
-    renderUsers($content) {
+    renderRoles($content) {
         $content.html(`
-            <div class="acad-card">
-                <div class="acad-card-header" style="display:flex; justify-content:space-between; align-items:center;">
-                    <h2 class="acad-card-title">Daftar Pengguna E-Curriculum</h2>
-                    <button class="btn-acad btn-acad-primary" onclick="Curriculum.openUserModal()">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                        Tambah Pengguna
+            <div class="acad-tab-container">
+                <div class="acad-tab-header" style="display:flex;gap:0;border-bottom:2px solid var(--border-color,#e2e8f0);margin-bottom:20px">
+                    <button class="acad-tab-btn active" data-tab="accounts" style="padding:10px 24px;border:none;background:none;font-weight:600;cursor:pointer;border-bottom:2px solid var(--primary,#4f46e5);margin-bottom:-2px;color:var(--primary,#4f46e5);font-size:14px;transition:all .2s">
+                        Manajemen Akun
+                    </button>
+                    <button class="acad-tab-btn" data-tab="roles" style="padding:10px 24px;border:none;background:none;font-weight:600;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;color:var(--text-muted,#94a3b8);font-size:14px;transition:all .2s">
+                        Role &amp; Izin
                     </button>
                 </div>
-                <div class="acad-card-body">
-                    <div class="data-table-wrapper">
-                        <table class="data-table" id="usersTable">
-                            <thead>
-                                <tr>
-                                    <th>NO</th>
-                                    <th>USERNAME</th>
-                                    <th>NAMA LENGKAP</th>
-                                    <th>HAK AKSES</th>
-                                    <th>AKSI</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr><td colspan="5" class="text-center">Memuat data...</td></tr>
-                            </tbody>
-                        </table>
+                <div class="acad-tab-content" id="tab-accounts">
+                    <div class="acad-card">
+                        <div class="acad-card-header">
+                            <div>
+                                <h3 class="acad-card-title" style="margin:0">Pengaturan Akses Pengguna</h3>
+                                <div style="font-size:0.82rem;color:var(--text-muted,#94a3b8);margin-top:4px">
+                                    Semua akun aktif dari Admin E-Portal ditampilkan di sini. Tinggal pilih siapa yang boleh mengakses modul Kurikulum.
+                                </div>
+                            </div>
+                        </div>
+                        <div class="acad-card-body">
+                            <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px">
+                                <div id="accountsSummary" style="font-size:0.84rem;color:var(--text-muted,#94a3b8)">Memuat data akun...</div>
+                                <div style="min-width:280px;flex:1;max-width:420px">
+                                    <input type="text" class="form-input-acad" id="accountsSearchInput" placeholder="Cari username, nama, atau role Kurikulum...">
+                                </div>
+                            </div>
+                            <div id="accountsTable"><div style="text-align:center;padding:40px;color:var(--text-muted,#94a3b8)"><div class="spinner" style="margin:0 auto 10px"></div> Memuat...</div></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="acad-tab-content" id="tab-roles" style="display:none">
+                    <div class="acad-card">
+                        <div class="acad-card-header" style="display:flex;justify-content:space-between;align-items:center">
+                            <h3 class="acad-card-title" style="margin:0">Konfigurasi Role &amp; Hak Akses</h3>
+                            <button class="btn-acad btn-acad-primary" onclick="Curriculum.formRole()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                Tambah Role
+                            </button>
+                        </div>
+                        <div class="acad-card-body"><div id="rolesDefTable"></div></div>
                     </div>
                 </div>
             </div>
         `);
-        this.loadUsersTable();
-    },
 
-    loadUsersTable() {
-        this.api('users.php?action=list').done(res => {
-            if (res.success) {
-                let html = '';
-                if (res.data.length === 0) {
-                    html = '<tr><td colspan="5" class="text-center">Belum ada pengguna.</td></tr>';
-                } else {
-                    res.data.forEach((u, i) => {
-                        let roleBadge = u.acad_role === 'admin_kurikulum' ? 'badge-primary' : 'badge-warning';
-                        let roleName = u.acad_role === 'admin_kurikulum' ? 'Admin Kurikulum' : 'Operator Kurikulum';
-                        html += `
-                            <tr>
-                                <td>${i + 1}</td>
-                                <td>${this.escapeHtml(u.username)}</td>
-                                <td>${this.escapeHtml(u.nama_lengkap)}</td>
-                                <td><span class="badge ${roleBadge}">${roleName}</span></td>
-                                <td>
-                                    <button class="btn-icon text-danger" title="Hapus Akses" onclick="Curriculum.deleteUser(${u.id})">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                    </button>
-                                </td>
-                            </tr>
-                        `;
-                    });
-                }
-                $('#usersTable tbody').html(html);
-            }
+        // Tab switcher
+        $content.find('.acad-tab-btn').click(function() {
+            $content.find('.acad-tab-btn').css({borderBottomColor:'transparent',color:'var(--text-muted,#94a3b8)'});
+            $(this).css({borderBottomColor:'var(--primary,#4f46e5)',color:'var(--primary,#4f46e5)'});
+            $content.find('.acad-tab-content').hide();
+            $content.find('#tab-'+$(this).data('tab')).show();
+        });
+
+        this._loadAccounts();
+        this._loadRolesDef();
+
+        $content.find('#accountsSearchInput').on('input', (e) => {
+            this._renderAccountsTable($(e.currentTarget).val());
         });
     },
 
-    openUserModal() {
-        const modalHtml = `
-            <div class="form-group-acad mb-3">
-                <label class="form-label-acad">Username</label>
-                <input type="text" class="form-input-acad" id="userUsername" placeholder="Masukkan username login..." autocomplete="off">
-            </div>
-            <div class="form-group-acad mb-3">
-                <label class="form-label-acad">Password</label>
-                <input type="text" class="form-input-acad" id="userPassword" placeholder="Masukkan password baru...">
-            </div>
-            <div class="form-group-acad mb-3">
-                <label class="form-label-acad">Nama Lengkap</label>
-                <input type="text" class="form-input-acad" id="userNama" placeholder="Nama Lengkap User">
-            </div>
-            <div class="form-group-acad mb-3">
-                <label class="form-label-acad">Hak Akses Kurikulum</label>
-                <select class="form-select-acad" id="userRole">
-                    <option value="admin_kurikulum">Admin Kurikulum</option>
-                    <option value="operator_kurikulum" selected>Operator Kurikulum</option>
-                </select>
-                <small class="text-muted mt-1" style="display:block;">Admin Kurikulum dapat mengubah jadwal dan data master. Operator Kurikulum fokus pada data laporan & input harian.</small>
-            </div>
-        `;
-        EModal.form({
-            title: 'Buat Akses Pengguna',
-            form: modalHtml,
-            size: 'md',
-            confirmText: 'Simpan',
-            cancelText: 'Batal',
-            onConfirm: () => this.saveUser()
+    // ---------- Tab 1: Manajemen Akun ----------
+    _loadAccounts() {
+        this.api('users.php?action=accounts_list').done(res => {
+            if (!res.success) { $('#accountsTable').html('<div style="text-align:center;padding:30px;color:var(--text-muted)">Gagal memuat data.</div>'); return; }
+            this._accountsCache = Array.isArray(res.data) ? res.data : [];
+            this._renderAccountsTable($('#accountsSearchInput').val() || '');
         });
     },
 
-    saveUser() {
-        const payload = {
-            username: $('#userUsername').val(),
-            password: $('#userPassword').val(),
-            nama_lengkap: $('#userNama').val(),
-            acad_role: $('#userRole').val()
-        };
-        
-        if (!payload.username || !payload.password || !payload.nama_lengkap) {
-            this.toast('Gagal', 'Semua isian wajib diisi!', 'error');
+    _renderAccountsTable(query = '') {
+        const data = Array.isArray(this._accountsCache) ? this._accountsCache : [];
+        const keyword = String(query || '').trim().toLowerCase();
+        const filtered = !keyword ? data : data.filter(u => {
+            const haystack = [
+                u.username,
+                u.nama_lengkap,
+                u.nik,
+                u.custom_role_nama
+            ].filter(Boolean).join(' ').toLowerCase();
+            return haystack.includes(keyword);
+        });
+
+        const withAccess = data.filter(u => parseInt(u.custom_role_id || 0) > 0).length;
+        $('#accountsSummary').html(
+            `<strong>${filtered.length}</strong> akun tampil dari <strong>${data.length}</strong> akun portal aktif. Akses Kurikulum aktif: <strong>${withAccess}</strong> akun.`
+        );
+
+        if (!filtered.length) {
+            $('#accountsTable').html('<div style="text-align:center;padding:30px;color:var(--text-muted,#94a3b8)">Tidak ada akun yang cocok dengan pencarian.</div>');
             return;
         }
 
-        const btn = $('.acad-modal-footer .btn-primary').addClass('btn-loading').prop('disabled', true);
-        
-        this.api('users.php?action=create', 'POST', payload).done(res => {
-            if (res.success) {
-                this.toast('Berhasil', res.message, 'success');
-                EModal.closeAll();
-                this.loadUsersTable();
-            } else {
-                this.toast('Gagal', res.message, 'error');
+        const rows = filtered.map(u => {
+            const hasAccess = parseInt(u.custom_role_id || 0) > 0;
+            const roleBadge = hasAccess
+                ? '<span class="badge badge-primary">'+this.escapeHtml(u.custom_role_nama)+'</span>'
+                : '<span class="badge" style="background:#f1f5f9;color:#64748b">Tanpa Akses</span>';
+            const safeName = (u.nama_lengkap || '').replace(/'/g, "\\'");
+            const safeUsername = this.escapeHtml(u.username || '-');
+            const actionBtns = [
+                '<button class="btn-acad btn-acad-sm" style="border:1px solid var(--border-color,#e2e8f0);background:transparent;color:var(--text-color,#1e293b)" onclick="Curriculum.formAssignAccount('+u.id+',\''+safeName+'\','+(u.custom_role_id || 0)+')">'
+                +(hasAccess ? 'Ubah Akses' : 'Atur Akses')+'</button>'
+            ];
+            if (hasAccess) {
+                actionBtns.push('<button class="btn-acad btn-acad-sm" style="background:#fee2e2;color:#dc2626;border:none" onclick="Curriculum.revokeAccountAccess('+u.id+',\''+safeName+'\')">❌ Cabut</button>');
             }
-        }).always(() => {
-            btn.removeClass('btn-loading').prop('disabled', false);
+            return '<tr>'
+                +'<td><div style="font-weight:700">@'+safeUsername+'</div></td>'
+                +'<td>'+this.escapeHtml(u.nama_lengkap || '-')+'</td>'
+                +'<td>'+this.escapeHtml(u.nik || '-')+'</td>'
+                +'<td>'+roleBadge+'</td>'
+                +'<td><div style="display:flex;gap:8px;flex-wrap:wrap">'+actionBtns.join('')+'</div></td>'
+                +'</tr>';
+        }).join('');
+
+        $('#accountsTable').html('<div class="data-table-wrapper"><table class="data-table"><thead><tr><th>Username</th><th>Nama</th><th>NIK</th><th>Akses Kurikulum</th><th>Aksi</th></tr></thead><tbody>'+rows+'</tbody></table></div>');
+    },
+
+    // ---------- Tab 2: Role & Izin ----------
+    _loadRolesDef() {
+        this.api('users.php?action=list_roles').done(res => {
+            if (!res.success) { $('#rolesDefTable').html('<div style="text-align:center;padding:30px;color:var(--text-muted)">Gagal memuat.</div>'); return; }
+            const rows = res.data.map(r => {
+                const perms = (r.permissions||'').split(',').filter(Boolean);
+                const badges = perms.map(p => '<span class="badge" style="font-size:10px;margin:1px;background:#f0f9ff;color:#0284c7;border:1px solid #bae6fd">'+p+'</span>').join('');
+                const safeName = (r.nama||'').replace(/'/g,"\\'");
+                const lockIcon = parseInt(r.is_locked) ? ' &#x1F512;' : '';
+                const delBtn = parseInt(r.is_locked) ? '' : '<button class="btn-icon text-danger" onclick="Curriculum.delRole('+r.id+',\''+safeName+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>';
+                return '<tr>'
+                    +'<td><strong>'+r.nama+lockIcon+'</strong><div style="font-size:0.75rem;color:var(--text-muted,#94a3b8)">'+(r.deskripsi||'-')+'</div></td>'
+                    +'<td style="max-width:360px"><div style="display:flex;flex-wrap:wrap;gap:3px">'+badges+'</div></td>'
+                    +'<td><div style="display:flex;gap:6px"><button class="btn-icon" onclick="Curriculum.formRole('+r.id+')" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'+delBtn+'</div></td>'
+                    +'</tr>';
+            }).join('');
+            $('#rolesDefTable').html('<div class="data-table-wrapper"><table class="data-table"><thead><tr><th>Role</th><th>Izin (Permissions)</th><th>Aksi</th></tr></thead><tbody>'+rows+'</tbody></table></div>');
         });
     },
 
-    deleteUser(id) {
-        if (!confirm('Apakah Anda yakin ingin mencabut hak akses pengguna ini dari E-Curriculum? (Data login tidak dihapus, hanya akses modul ini saja)')) return;
-        
-        this.api('users.php?action=delete', 'POST', { id }).done(res => {
-            if (res.success) {
-                this.toast('Berhasil', res.message, 'success');
-                this.loadUsersTable();
-            } else {
-                this.toast('Gagal', res.message, 'error');
+    formRole(id) {
+        const isEdit = id !== undefined && id !== null;
+        const allPerms = [
+            {key:'dashboard_view',label:'Lihat Dashboard'},
+            {key:'jadwal_manage',label:'Kelola Jadwal (Jam, Kelas, Mapel, Guru, Distribusi)'},
+            {key:'jurnal_manage',label:'Kelola Jurnal Mengajar'},
+            {key:'absensi_manage',label:'Kelola Absensi Siswa'},
+            {key:'absensi_guru_manage',label:'Kelola Absensi Guru'},
+            {key:'piket_manage',label:'Kelola Piket'},
+            {key:'ketidakhadiran_manage',label:'Kelola Ketidakhadiran'},
+            {key:'buku_penghubung_manage',label:'Kelola Buku Penghubung'},
+            {key:'dokumen_manage',label:'Kelola Dokumen Perangkat'},
+            {key:'laporan_view',label:'Lihat/Cetak Laporan'},
+            {key:'roles_manage',label:'Kelola Role & Akses'}
+        ];
+        const checksHtml = allPerms.map(p =>
+            '<label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:normal">'
+            +'<input type="checkbox" class="rp-chk" value="'+p.key+'"> '+p.label+'</label>'
+        ).join('');
+
+        EModal.form({
+            title: isEdit ? 'Edit Role & Izin' : 'Tambah Role Baru',
+            form: '<div class="form-group-acad mb-3"><label class="form-label-acad">Nama Role</label><input class="form-input-acad" id="f_rlNama" required></div>'
+                +'<div class="form-group-acad mb-3"><label class="form-label-acad">Deskripsi</label><input class="form-input-acad" id="f_rlDesc"></div>'
+                +'<div class="form-group-acad mb-3"><label class="form-label-acad">Hak Akses</label>'
+                +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;padding:12px;border:1px solid var(--border-color,#e2e8f0);border-radius:8px;background:#f9fafb">'
+                +checksHtml+'</div></div>',
+            size: 'lg',
+            confirmText: 'Simpan',
+            cancelText: 'Batal',
+            onOpen: () => {
+                if (isEdit) {
+                    this.api('users.php?action=list_roles').done(res => {
+                        const r = res.data.find(x => x.id == id);
+                        if (!r) return;
+                        $('#f_rlNama').val(r.nama);
+                        $('#f_rlDesc').val(r.deskripsi);
+                        if (parseInt(r.is_locked)) $('#f_rlNama').prop('readonly',true);
+                        const pp = (r.permissions||'').split(',');
+                        $('.rp-chk').each(function(){ if(pp.includes($(this).val())) $(this).prop('checked',true); });
+                    });
+                }
+            },
+            onConfirm: () => {
+                const perms = []; $('.rp-chk:checked').each(function(){ perms.push($(this).val()); });
+                const payload = {id: id||0, nama: $('#f_rlNama').val(), deskripsi: $('#f_rlDesc').val(), permissions: perms};
+                if (!payload.nama) { this.toast('Gagal', 'Nama role wajib diisi', 'error'); return false; }
+                this.api('users.php?action=save_role', { method:'POST', data: payload }).done(res => {
+                    if (res.success) { EModal.closeAll(); this._loadRolesDef(); this.toast('Berhasil', 'Role Tersimpan', 'success'); }
+                    else { this.toast('Gagal', res.message, 'error'); }
+                });
+                return false;
+            }
+        });
+    },
+
+    delRole(id, nama) {
+        EModal.confirm({
+            title:'Hapus Role',
+            message:'Yakin hapus role <strong>'+nama+'</strong>? Semua user dengan role ini akan kehilangan akses.',
+            type:'danger',
+            onConfirm: () => {
+                this.api('users.php?action=delete_role', {method:'POST', data:{id}}).done(res => {
+                    if (res.success) { this._loadRolesDef(); this._loadAccounts(); this.toast('Berhasil', 'Role Dihapus', 'success'); }
+                    else { this.toast('Gagal', res.message, 'error'); }
+                });
+            }
+        });
+    },
+
+    formAssignAccount(userId, userName, currentRoleId = 0) {
+        this.api('users.php?action=list_roles').done(res => {
+            const opts = res.data.map(r => '<option value="'+r.id+'">'+r.nama+'</option>').join('');
+            EModal.form({
+                title: 'Atur Akses: '+userName,
+                form: '<div class="form-group-acad mb-3"><label class="form-label-acad">Pilih Role Kurikulum</label>'
+                    +'<select class="form-select-acad" id="f_assignRl"><option value="0">-- Tanpa Akses --</option>'+opts+'</select></div>'
+                    +'<div style="font-size:12px;color:var(--text-muted,#94a3b8);background:#f3f4f6;padding:10px;border-radius:6px">'
+                    +'<strong>Info:</strong> Akun ini akan mendapatkan hak akses sesuai izin pada role yang dipilih.</div>',
+                size: 'md',
+                confirmText: 'Simpan',
+                cancelText: 'Batal',
+                onOpen: () => {
+                    $('#f_assignRl').val(String(currentRoleId || 0));
+                },
+                onConfirm: () => {
+                    const data = {user_id:userId, role_id:$('#f_assignRl').val()};
+                    this.api('users.php?action=assign_account', {method:'POST', data}).done(res => {
+                        if (res.success) { EModal.closeAll(); this._loadAccounts(); this.toast('Berhasil', 'Akses Diperbarui', 'success'); }
+                        else { this.toast('Gagal', res.message, 'error'); }
+                    });
+                    return false;
+                }
+            });
+        });
+    },
+
+    revokeAccountAccess(userId, userName) {
+        EModal.confirm({
+            title: 'Cabut Akses Kurikulum',
+            message: 'Yakin ingin mencabut akses modul Kurikulum untuk <strong>'+userName+'</strong>?',
+            type: 'danger',
+            onConfirm: () => {
+                this.api('users.php?action=assign_account', {method:'POST', data:{user_id:userId, role_id:0}}).done(res => {
+                    if (res.success) {
+                        this._loadAccounts();
+                        this.toast('Berhasil', 'Akses berhasil dicabut', 'success');
+                    } else {
+                        this.toast('Gagal', res.message, 'error');
+                    }
+                });
             }
         });
     },
@@ -4411,108 +5032,251 @@ const Curriculum = {
     // ==========================================
     renderDokumen($content) {
         const isAdmin = this.state.user.role === 'superadmin' || this.state.user.acad_role;
-        $content.html(`
-            <div class="acad-card">
-                <div class="acad-card-header" style="display:flex; justify-content:space-between; align-items:center;">
-                    <h2 class="acad-card-title">Daftar Dokumen</h2>
-                    ${!isAdmin || isAdmin ? `<button class="btn-acad btn-acad-primary" onclick="Curriculum.openUploadDokumenModal()">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                        Upload Dokumen
-                    </button>` : ''}
-                </div>
-                <div class="acad-card-body">
-                    <div class="data-table-wrapper">
-                        <table class="data-table" id="dokumenTable">
-                            <thead>
-                                <tr>
-                                    <th>NO</th>
-                                    <th>TANGGAL UPLOAD</th>
-                                    ${isAdmin ? '<th>NAMA GURU</th>' : ''}
-                                    <th>JUDUL DOKUMEN</th>
-                                    <th>TIPE</th>
-                                    <th>STATUS</th>
-                                    <th>FILE</th>
-                                    <th>AKSI</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr><td colspan="${isAdmin ? 8 : 7}" class="text-center">Memuat data...</td></tr>
-                            </tbody>
-                        </table>
+        
+        if (isAdmin) {
+            // ========== ADMIN VIEW: Table with approval workflow ==========
+            $content.html(`
+                <div class="acad-card">
+                    <div class="acad-card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px">
+                        <div>
+                            <h2 class="acad-card-title" style="margin:0">Dokumen Perangkat Guru</h2>
+                            <div style="font-size:0.82rem;color:var(--text-muted,#94a3b8);margin-top:4px">Kelola dan setujui dokumen yang dikirim oleh guru.</div>
+                        </div>
+                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                            <select class="form-select-acad" id="dokFilterStatus" style="min-width:140px;padding:6px 10px;font-size:13px">
+                                <option value="">Semua Status</option>
+                                <option value="pending">⏳ Pending</option>
+                                <option value="approved">✅ Disetujui</option>
+                                <option value="rejected">❌ Ditolak</option>
+                            </select>
+                            <input type="text" class="form-input-acad" id="dokSearchInput" placeholder="Cari judul / guru..." style="min-width:200px;padding:6px 10px;font-size:13px">
+                        </div>
+                    </div>
+                    <div class="acad-card-body">
+                        <div id="dokumenAdminSummary" style="font-size:0.84rem;color:var(--text-muted,#94a3b8);margin-bottom:12px">Memuat...</div>
+                        <div id="dokumenAdminTable">
+                            <div style="text-align:center;padding:40px;color:var(--text-muted,#94a3b8)"><div class="spinner" style="margin:0 auto 10px"></div> Memuat dokumen...</div>
+                        </div>
                     </div>
                 </div>
-            </div>
-        `);
-        this.loadDokumenTable();
+            `);
+            this._loadDokumenAdmin();
+            $('#dokFilterStatus, #dokSearchInput').on('input change', () => this._renderDokumenAdminTable());
+        } else {
+            // ========== GURU VIEW: Card-based with upload ==========
+            $content.html(`
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+                    <div>
+                        <h2 style="margin:0;font-size:1.3rem;font-weight:700;color:var(--text-color,#1e293b)">Dokumen Perangkat Saya</h2>
+                        <p style="margin:4px 0 0;font-size:0.84rem;color:var(--text-muted,#94a3b8)">Upload RPP, Modul Ajar, Silabus, dan dokumen lainnya.</p>
+                    </div>
+                    <button class="btn-acad btn-acad-primary" onclick="Curriculum.openUploadDokumenModal()" style="display:flex;align-items:center;gap:6px">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        Upload Dokumen
+                    </button>
+                </div>
+                <div id="dokumenGuruSummary" style="font-size:0.84rem;color:var(--text-muted,#94a3b8);margin-bottom:16px"></div>
+                <div id="dokumenGuruCards">
+                    <div style="text-align:center;padding:60px 20px;color:var(--text-muted,#94a3b8)"><div class="spinner" style="margin:0 auto 10px"></div> Memuat dokumen...</div>
+                </div>
+            `);
+            this._loadDokumenGuru();
+        }
     },
 
-    loadDokumenTable() {
-        const isAdmin = this.state.user.role === 'superadmin' || this.state.user.acad_role;
+    // ========== GURU: Load & Render Cards ==========
+    _loadDokumenGuru() {
         this.api('documents.php?action=list').done(res => {
-            if (res.success) {
-                let html = '';
-                if (res.data.length === 0) {
-                    html = `<tr><td colspan="${isAdmin ? 8 : 7}" class="text-center">Belum ada dokumen yang diunggah.</td></tr>`;
-                } else {
-                    res.data.forEach((d, i) => {
-                        let statusBadge = 'badge-secondary';
-                        let statusText = 'Pending';
-                        if (d.status === 'approved') {
-                            statusBadge = 'badge-success';
-                            statusText = 'Disetujui';
-                        } else if (d.status === 'rejected') {
-                            statusBadge = 'badge-danger';
-                            statusText = 'Ditolak';
-                        }
-
-                        let aksiAdmin = '';
-                        if (isAdmin && d.status === 'pending') {
-                            aksiAdmin = `
-                                <button class="btn-icon text-success" title="Approve" onclick="Curriculum.approveDokumen(${d.id})">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg>
-                                </button>
-                                <button class="btn-icon text-danger" title="Reject" onclick="Curriculum.rejectDokumen(${d.id})">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                                </button>
-                            `;
-                        }
-
-                        let infoCatatan = '';
-                        if (d.status === 'rejected' && d.catatan_admin) {
-                            infoCatatan = `<div style="font-size:12px;color:#EF4444;margin-top:4px;">Catatan: ${this.escapeHtml(d.catatan_admin)}</div>`;
-                        }
-
-                        html += `
-                            <tr>
-                                <td>${i + 1}</td>
-                                <td>${d.created_at.split(' ')[0]}</td>
-                                ${isAdmin ? `<td>${this.escapeHtml(d.nama_guru)}</td>` : ''}
-                                <td>
-                                    <strong>${this.escapeHtml(d.judul)}</strong>
-                                    ${infoCatatan}
-                                </td>
-                                <td>${this.escapeHtml(d.tipe_dokumen)}</td>
-                                <td><span class="badge ${statusBadge}">${statusText}</span></td>
-                                <td>
-                                    <a href="${this.baseUrl}${d.file_path}" target="_blank" class="text-primary" style="text-decoration:none;">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="vertical-align:middle"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> Buka
-                                    </a>
-                                </td>
-                                <td>
-                                    ${aksiAdmin}
-                                    ${(!isAdmin && d.status !== 'approved') || isAdmin ? `
-                                        <button class="btn-icon text-danger" title="Hapus" onclick="Curriculum.deleteDokumen(${d.id})">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                                        </button>
-                                    ` : ''}
-                                </td>
-                            </tr>
-                        `;
-                    });
-                }
-                $('#dokumenTable tbody').html(html);
-            }
+            if (!res.success) { $('#dokumenGuruCards').html('<div style="text-align:center;padding:40px;color:#94a3b8">Gagal memuat data.</div>'); return; }
+            this._dokumenGuruCache = Array.isArray(res.data) ? res.data : [];
+            this._renderDokumenGuruCards();
         });
+    },
+
+    _renderDokumenGuruCards() {
+        const data = this._dokumenGuruCache || [];
+        
+        const pendingCount = data.filter(d => d.status === 'pending').length;
+        const approvedCount = data.filter(d => d.status === 'approved').length;
+        const rejectedCount = data.filter(d => d.status === 'rejected').length;
+        
+        $('#dokumenGuruSummary').html(
+            `Total: <strong>${data.length}</strong> dokumen &nbsp;|&nbsp; ` +
+            `<span style="color:#f59e0b">⏳ Pending: <strong>${pendingCount}</strong></span> &nbsp;|&nbsp; ` +
+            `<span style="color:#22c55e">✅ Disetujui: <strong>${approvedCount}</strong></span> &nbsp;|&nbsp; ` +
+            `<span style="color:#ef4444">❌ Ditolak: <strong>${rejectedCount}</strong></span>`
+        );
+        
+        if (data.length === 0) {
+            $('#dokumenGuruCards').html(`
+                <div style="text-align:center;padding:60px 20px;border:2px dashed var(--border-color,#e2e8f0);border-radius:12px;background:#fafbfc">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" width="48" height="48" style="margin-bottom:12px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    <h3 style="color:var(--text-muted,#64748b);margin:0 0 6px;font-size:1rem">Belum Ada Dokumen</h3>
+                    <p style="color:#94a3b8;font-size:0.85rem;margin:0">Klik tombol <strong>Upload Dokumen</strong> untuk mulai mengunggah.</p>
+                </div>
+            `);
+            return;
+        }
+
+        const cards = data.map(d => {
+            // Status styling
+            let statusColor, statusBg, statusIcon, statusText;
+            switch(d.status) {
+                case 'approved':
+                    statusColor = '#16a34a'; statusBg = '#f0fdf4'; statusIcon = '✅'; statusText = 'Disetujui';
+                    break;
+                case 'rejected':
+                    statusColor = '#dc2626'; statusBg = '#fef2f2'; statusIcon = '❌'; statusText = 'Ditolak';
+                    break;
+                default:
+                    statusColor = '#d97706'; statusBg = '#fffbeb'; statusIcon = '⏳'; statusText = 'Menunggu Persetujuan';
+            }
+
+            // File icon by extension
+            const ext = (d.file_path || '').split('.').pop().toLowerCase();
+            let fileIcon = '📄', fileColor = '#64748b';
+            if (['pdf'].includes(ext)) { fileIcon = '📕'; fileColor = '#dc2626'; }
+            else if (['doc','docx'].includes(ext)) { fileIcon = '📘'; fileColor = '#2563eb'; }
+            else if (['xls','xlsx'].includes(ext)) { fileIcon = '📗'; fileColor = '#16a34a'; }
+            else if (['ppt','pptx'].includes(ext)) { fileIcon = '📙'; fileColor = '#ea580c'; }
+            else if (['zip'].includes(ext)) { fileIcon = '📦'; fileColor = '#7c3aed'; }
+
+            // Date formatting
+            const dateStr = d.created_at ? d.created_at.split(' ')[0] : '-';
+            
+            // Rejection note
+            const rejNote = (d.status === 'rejected' && d.catatan_admin) 
+                ? `<div style="margin-top:10px;padding:8px 12px;background:#fef2f2;border:1px solid #fecaca;border-radius:6px;font-size:12px;color:#b91c1c">
+                    <strong>📝 Catatan Admin:</strong> ${this.escapeHtml(d.catatan_admin)}
+                   </div>` 
+                : '';
+            
+            // Delete button (only for non-approved)
+            const canDelete = d.status !== 'approved';
+            const deleteBtn = canDelete 
+                ? `<button onclick="Curriculum.deleteDokumen(${d.id})" style="padding:6px 12px;font-size:12px;background:#fee2e2;color:#dc2626;border:none;border-radius:6px;cursor:pointer;font-weight:500;transition:all .2s" onmouseover="this.style.background='#fecaca'" onmouseout="this.style.background='#fee2e2'">🗑️ Hapus</button>`
+                : '';
+
+            return `
+                <div style="background:white;border:1px solid var(--border-color,#e2e8f0);border-radius:12px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.06);transition:all .2s" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)';this.style.transform='translateY(-1px)'" onmouseout="this.style.boxShadow='0 1px 3px rgba(0,0,0,0.06)';this.style.transform='none'">
+                    <div style="padding:16px 20px;display:flex;gap:14px;align-items:flex-start">
+                        <div style="font-size:32px;line-height:1;flex-shrink:0;margin-top:2px">${fileIcon}</div>
+                        <div style="flex:1;min-width:0">
+                            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap">
+                                <div style="flex:1;min-width:0">
+                                    <h3 style="margin:0;font-size:0.95rem;font-weight:700;color:var(--text-color,#1e293b);line-height:1.3">${this.escapeHtml(d.judul)}</h3>
+                                    <div style="display:flex;gap:10px;align-items:center;margin-top:6px;flex-wrap:wrap">
+                                        <span style="font-size:12px;color:#64748b;display:flex;align-items:center;gap:3px">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12" height="12"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                            ${dateStr}
+                                        </span>
+                                        <span style="font-size:11px;padding:2px 8px;background:#f1f5f9;border-radius:4px;color:#475569;font-weight:500">${this.escapeHtml(d.tipe_dokumen)}</span>
+                                        <span style="font-size:11px;padding:2px 8px;background:${statusBg};border-radius:4px;color:${statusColor};font-weight:600">${statusIcon} ${statusText}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            ${rejNote}
+                        </div>
+                    </div>
+                    <div style="padding:0 20px 14px;display:flex;gap:8px;justify-content:flex-end;border-top:1px solid #f1f5f9;padding-top:12px;margin-top:0">
+                        <a href="${this.baseUrl}${d.file_path}" target="_blank" style="padding:6px 12px;font-size:12px;background:#eff6ff;color:#2563eb;border:none;border-radius:6px;cursor:pointer;text-decoration:none;font-weight:500;display:inline-flex;align-items:center;gap:4px;transition:all .2s" onmouseover="this.style.background='#dbeafe'" onmouseout="this.style.background='#eff6ff'">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                            Buka File
+                        </a>
+                        ${deleteBtn}
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        $('#dokumenGuruCards').html(`<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:16px">${cards}</div>`);
+    },
+
+    // ========== ADMIN: Load & Render Table ==========
+    _loadDokumenAdmin() {
+        this.api('documents.php?action=list').done(res => {
+            if (!res.success) { $('#dokumenAdminTable').html('<div style="text-align:center;padding:40px;color:#94a3b8">Gagal memuat data.</div>'); return; }
+            this._dokumenAdminCache = Array.isArray(res.data) ? res.data : [];
+            this._renderDokumenAdminTable();
+        });
+    },
+
+    _renderDokumenAdminTable() {
+        const data = this._dokumenAdminCache || [];
+        const filterStatus = ($('#dokFilterStatus').val() || '').toLowerCase();
+        const searchQuery = ($('#dokSearchInput').val() || '').trim().toLowerCase();
+
+        const filtered = data.filter(d => {
+            if (filterStatus && d.status !== filterStatus) return false;
+            if (searchQuery) {
+                const haystack = [d.judul, d.nama_guru, d.tipe_dokumen].filter(Boolean).join(' ').toLowerCase();
+                if (!haystack.includes(searchQuery)) return false;
+            }
+            return true;
+        });
+
+        const pendingCount = data.filter(d => d.status === 'pending').length;
+        const totalCount = data.length;
+        $('#dokumenAdminSummary').html(
+            `<strong>${filtered.length}</strong> dokumen tampil dari <strong>${totalCount}</strong> total. ` +
+            (pendingCount > 0 ? `<span style="color:#d97706;font-weight:600">⏳ ${pendingCount} menunggu persetujuan</span>` : '<span style="color:#16a34a">✅ Semua sudah diproses</span>')
+        );
+
+        if (!filtered.length) {
+            $('#dokumenAdminTable').html('<div style="text-align:center;padding:40px;color:#94a3b8">Tidak ada dokumen yang cocok.</div>');
+            return;
+        }
+
+        const rows = filtered.map((d, i) => {
+            let statusBadge, statusText;
+            switch(d.status) {
+                case 'approved': statusBadge = 'badge-success'; statusText = '✅ Disetujui'; break;
+                case 'rejected': statusBadge = 'badge-danger'; statusText = '❌ Ditolak'; break;
+                default: statusBadge = 'badge-warning'; statusText = '⏳ Pending'; break;
+            }
+
+            const catatan = (d.status === 'rejected' && d.catatan_admin) 
+                ? `<div style="font-size:11px;color:#dc2626;margin-top:3px">📝 ${this.escapeHtml(d.catatan_admin)}</div>` : '';
+
+            let aksi = '';
+            if (d.status === 'pending') {
+                aksi = `
+                    <button class="btn-icon text-success" title="Setujui" onclick="Curriculum.approveDokumen(${d.id})" style="margin-right:4px">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg>
+                    </button>
+                    <button class="btn-icon text-danger" title="Tolak" onclick="Curriculum.rejectDokumen(${d.id})">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                `;
+            }
+            aksi += `
+                <button class="btn-icon text-danger" title="Hapus" onclick="Curriculum.deleteDokumen(${d.id})" style="margin-left:4px">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                </button>
+            `;
+
+            return `<tr>
+                <td>${i + 1}</td>
+                <td>${(d.created_at||'').split(' ')[0]}</td>
+                <td>${this.escapeHtml(d.nama_guru || '-')}</td>
+                <td><strong>${this.escapeHtml(d.judul)}</strong>${catatan}</td>
+                <td>${this.escapeHtml(d.tipe_dokumen)}</td>
+                <td><span class="badge ${statusBadge}">${statusText}</span></td>
+                <td><a href="${this.baseUrl}${d.file_path}" target="_blank" class="text-primary" style="text-decoration:none;font-size:13px">📎 Buka</a></td>
+                <td><div style="display:flex;align-items:center">${aksi}</div></td>
+            </tr>`;
+        }).join('');
+
+        $('#dokumenAdminTable').html(`
+            <div class="data-table-wrapper">
+                <table class="data-table">
+                    <thead><tr>
+                        <th>NO</th><th>TANGGAL</th><th>NAMA GURU</th><th>JUDUL DOKUMEN</th><th>TIPE</th><th>STATUS</th><th>FILE</th><th>AKSI</th>
+                    </tr></thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            </div>
+        `);
     },
 
     openUploadDokumenModal() {
@@ -4534,6 +5298,9 @@ const Curriculum = {
             <div class="form-group-acad mb-3">
                 <label class="form-label-acad">File (PDF/Word/Excel/PPT/ZIP, maks 10MB)</label>
                 <input type="file" class="form-input-acad" id="dokumenFile" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip">
+            </div>
+            <div style="font-size:12px;color:var(--text-muted,#94a3b8);background:#f8fafc;padding:10px;border-radius:6px;border:1px solid #e2e8f0">
+                <strong>ℹ️ Info:</strong> Dokumen yang diunggah akan menunggu persetujuan admin kurikulum sebelum dianggap valid.
             </div>
         `;
         EModal.form({
@@ -4561,7 +5328,7 @@ const Curriculum = {
         formData.append('tipe', tipe);
         formData.append('file', fileInput.files[0]);
 
-        const btn = $('.acad-modal-footer .btn-primary').addClass('btn-loading').prop('disabled', true);
+        const btn = $('.acad-modal-footer .btn-primary, .emodal-footer .btn-primary').addClass('btn-loading').prop('disabled', true);
         
         $.ajax({
             url: `${this.moduleUrl}api/documents.php?action=upload`,
@@ -4576,7 +5343,12 @@ const Curriculum = {
                 if (res.success) {
                     this.toast('Berhasil', res.message, 'success');
                     EModal.closeAll();
-                    this.loadDokumenTable();
+                    // Reload based on view
+                    if (this._dokumenGuruCache !== undefined) {
+                        this._loadDokumenGuru();
+                    } else {
+                        this._loadDokumenAdmin();
+                    }
                 } else {
                     this.toast('Gagal', res.message || 'Error uploading file', 'error');
                 }
@@ -4591,13 +5363,20 @@ const Curriculum = {
     },
 
     approveDokumen(id) {
-        if (!confirm('Setujui dokumen ini?')) return;
-        this.api('documents.php?action=approve', 'POST', { id }).done(res => {
-            if (res.success) {
-                this.toast('Berhasil', res.message, 'success');
-                this.loadDokumenTable();
-            } else {
-                this.toast('Gagal', res.message, 'error');
+        EModal.confirm({
+            title: 'Setujui Dokumen',
+            message: 'Yakin ingin menyetujui dokumen ini?',
+            type: 'success',
+            confirmText: 'Ya, Setujui',
+            onConfirm: () => {
+                this.api('documents.php?action=approve', { method: 'POST', data: { id } }).done(res => {
+                    if (res.success) {
+                        this.toast('Berhasil', res.message, 'success');
+                        this._loadDokumenAdmin();
+                    } else {
+                        this.toast('Gagal', res.message, 'error');
+                    }
+                });
             }
         });
     },
@@ -4621,11 +5400,11 @@ const Curriculum = {
                     this.toast('Gagal', 'Catatan wajib diisi!', 'error');
                     return;
                 }
-                this.api('documents.php?action=reject', 'POST', { id, catatan }).done(res => {
+                this.api('documents.php?action=reject', { method: 'POST', data: { id, catatan } }).done(res => {
                     if (res.success) {
                         this.toast('Berhasil', res.message, 'success');
                         EModal.closeAll();
-                        this.loadDokumenTable();
+                        this._loadDokumenAdmin();
                     } else {
                         this.toast('Gagal', res.message, 'error');
                     }
@@ -4635,13 +5414,24 @@ const Curriculum = {
     },
 
     deleteDokumen(id) {
-        if (!confirm('Apakah Anda yakin ingin menghapus dokumen ini?')) return;
-        this.api('documents.php?action=delete', 'POST', { id }).done(res => {
-            if (res.success) {
-                this.toast('Berhasil', res.message, 'success');
-                this.loadDokumenTable();
-            } else {
-                this.toast('Gagal', res.message, 'error');
+        EModal.confirm({
+            title: 'Hapus Dokumen',
+            message: 'Apakah Anda yakin ingin menghapus dokumen ini?',
+            type: 'danger',
+            confirmText: 'Ya, Hapus',
+            onConfirm: () => {
+                this.api('documents.php?action=delete', { method: 'POST', data: { id } }).done(res => {
+                    if (res.success) {
+                        this.toast('Berhasil', res.message, 'success');
+                        if (this._dokumenGuruCache !== undefined) {
+                            this._loadDokumenGuru();
+                        } else {
+                            this._loadDokumenAdmin();
+                        }
+                    } else {
+                        this.toast('Gagal', res.message, 'error');
+                    }
+                });
             }
         });
     }

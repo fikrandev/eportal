@@ -123,6 +123,12 @@ try {
         db()->commit();
     }
     
+    // Check if 10 teachers threshold reached for WA Group auto notification
+    try {
+        require_once __DIR__ . '/../../e-curriculum/api/wa_group_helper.php';
+        checkAndSendWaGroupGuruAbsensiBatch();
+    } catch (Exception $ex) {}
+
     json_response(200, true, "Auto-Sync selesai. $newLogsCount log baru.");
 } catch (Exception $e) {
     if (db()->inTransaction()) db()->rollBack();

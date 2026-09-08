@@ -299,6 +299,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isCdata) {
         }
     }
     
+    // Check if 10 teachers threshold reached for WA Group auto notification
+    try {
+        require_once __DIR__ . '/../../e-curriculum/api/wa_group_helper.php';
+        checkAndSendWaGroupGuruAbsensiBatch();
+    } catch (Exception $ex) {}
+    
     // Selalu balas OK agar mesin menganggap data sukses diproses
     echo "OK";
     exit;
