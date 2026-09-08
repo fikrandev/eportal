@@ -342,9 +342,6 @@ function saveSettingsGuru($user) {
 
     $dbResult = upsert_setting('waktu_terlambat_guru', $waktu, 'text', 'Batas jam terlambat absensi guru');
     
-    // DEBUG LOG
-    file_put_contents(__DIR__ . '/debug_save.txt', date('Y-m-d H:i:s') . "\nINPUT: " . print_r($input, true) . "\nWAKTU: " . $waktu . "\nDB_RESULT: " . ($dbResult ? 'true' : 'false') . "\n---\n", FILE_APPEND);
-    
     // Debug info added to response
     json_response(200, true, 'Setting jam terlambat guru berhasil disimpan.', [
         'waktu_terlambat' => substr($waktu, 0, 5),

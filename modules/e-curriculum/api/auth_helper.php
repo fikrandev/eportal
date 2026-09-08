@@ -128,6 +128,21 @@ function acad_run_migrations() {
             KEY user_id (user_id),
             KEY academic_year_id (academic_year_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+        // Table acad_absensi_guru (Added for remote server auto-migration)
+        db()->exec("CREATE TABLE IF NOT EXISTS acad_absensi_guru (
+            id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
+            guru_id bigint(20) unsigned NOT NULL,
+            year_id bigint(20) unsigned NOT NULL,
+            tanggal date NOT NULL,
+            status enum('H','T','S','I','A') NOT NULL DEFAULT 'H',
+            keterangan varchar(255) DEFAULT NULL,
+            dicatat_oleh bigint(20) unsigned NOT NULL,
+            created_at timestamp NULL DEFAULT current_timestamp(),
+            updated_at timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+            PRIMARY KEY (id),
+            UNIQUE KEY guru_tanggal_unique (guru_id,tanggal)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
         
     } catch (Exception $e) {
         // Ignore errors to not break the API if migration fails

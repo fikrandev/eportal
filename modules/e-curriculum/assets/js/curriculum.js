@@ -1623,40 +1623,59 @@ const Curriculum = {
     showSettingWaktuModal() {
         this.api('absensi.php?action=get_settings').done(res => {
             const currentWaktu = res.data ? res.data.waktu_terlambat : '07:15';
+            const uniqueId = 'settingJamSiswa_' + Date.now();
 
             EModal.form({
                 title: '⚙️ Setting Jam Batas Terlambat Siswa',
                 size: 'sm',
                 form: `
                     <div class="form-group-acad">
-                        <label class="form-label-acad">Batas Jam Masuk / Terlambat</label>
-                        <input type="time" class="form-input-acad" id="settingJamTerlambat" value="${currentWaktu}">
+                        <label class="form-label-acad">Batas Jam Masuk / Terlambat (Wajib Format 24 Jam)</label>
+                        <input type="text" class="form-input-acad" id="${uniqueId}" value="${currentWaktu}" placeholder="Contoh: 07:15 atau 14:30" maxlength="5">
                         <small class="text-muted" style="margin-top:6px; display:block;">
+                            Ketik dalam format <strong>HH:MM</strong> (misal: 07:15 untuk pagi, 14:30 untuk siang). <br>
                             Siswa yang melakukan tap di E-Absen <strong>setelah jam ini</strong> akan otomatis dikategorikan sebagai <strong>Terlambat</strong>.
                         </small>
                     </div>
                 `,
-                buttons: [
-                    { text: 'Batal', class: 'btn-acad btn-acad-outline', close: true },
-                    {
-                        text: '💾 Simpan Setting',
-                        class: 'btn-acad btn-acad-primary',
-                        click: () => {
-                            const waktu = $('#settingJamTerlambat').val();
-                            if (!waktu) {
-                                EModal.toast({ type: 'warning', message: 'Jam batas wajib diisi.' });
-                                return;
-                            }
-
-                            this.api('absensi.php?action=save_settings', { method: 'POST', data: { waktu_terlambat: waktu } }).done(res => {
-                                EModal.toast({ type: 'success', title: 'Berhasil', message: res.message });
-                                $('#lblJamTerlambat').text(waktu);
-                                EModal.close();
-                            }).fail(xhr => {
-                                EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menyimpan.' });
-                            });
-                        }
+                confirmText: 'Simpan Setting',
+                cancelText: 'Batal',
+                onConfirm: () => {
+                    let waktu = $('#' + uniqueId).val().trim();
+                    if (!waktu) {
+                        EModal.toast({ type: 'warning', message: 'Jam batas wajib diisi.' });
+                        return false;
                     }
+                    
+                    // Validasi format 24 jam (HH:MM)
+                    const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+                    if (!timeRegex.test(waktu)) {
+                        EModal.toast({ type: 'error', title: 'Format Salah', message: 'Harap gunakan format 24 jam yang valid, contoh: 07:15 atau 14:30' });
+                        return false;
+                    }
+
+                    const fd = new FormData();
+                    fd.append('waktu_terlambat', waktu);
+
+                    this.api('absensi.php?action=save_settings', { 
+                        method: 'POST', 
+                        data: fd,
+                        contentType: false,
+                        processData: false
+                    }).done(res => {
+                        EModal.toast({ type: 'success', title: 'Berhasil', message: res.message });
+                        $('#lblJamTerlambat').text(waktu);
+                        this.loadAbsensiTable();
+                        EModal.closeAll();
+                    }).fail(xhr => {
+                        EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menyimpan.' });
+                    });
+                    
+                    return false; // Mencegah modal tertutup otomatis sebelum AJAX selesai
+                }
+            });
+        });
+    },  }
                 ]
             });
         });
