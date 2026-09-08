@@ -159,6 +159,19 @@ if ($action === 'generate') {
     } catch (PDOException $e) {
         json_response(500, false, 'Database error: ' . $e->getMessage());
     }
+} else if ($action === 'send_wa_group') {
+    if (!$isAdmin) json_response(403, false, 'Akses ditolak.');
+    $input = get_input();
+    $tanggal = isset($input['tanggal']) ? $input['tanggal'] : date('Y-m-d');
+    $tipe = isset($input['tipe']) ? $input['tipe'] : 'masuk';
+
+    require_once __DIR__ . '/../../e-curriculum/api/wa_group_helper.php';
+    $res = sendWaGroupAbsensiGuruDirect($tanggal, $tipe);
+    if (!empty($res['success'])) {
+        json_response(200, true, $res['message']);
+    } else {
+        json_response(400, false, $res['message'] ?? 'Gagal mengirim pesan ke grup WA.');
+    }
 } else {
     json_response(400, false, 'Action tidak valid.');
 }

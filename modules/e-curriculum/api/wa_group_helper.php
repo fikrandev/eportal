@@ -16,6 +16,12 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
     $waUrl = $stmtUrl ? $stmtUrl->fetchColumn() : null;
     if (!$waUrl) $waUrl = 'http://localhost:3000/send';
 
+    $waUrl = trim($waUrl);
+    $baseUrl = preg_replace('#/(send|status|groups|logout)/?$#', '', $waUrl);
+    $baseUrl = rtrim($baseUrl, '/');
+    if (empty($baseUrl)) $baseUrl = 'http://localhost:3000';
+    $sendUrl = $baseUrl . '/send';
+
     $stmtGrp = db()->query("SELECT setting_value FROM settings WHERE setting_key = 'wa_group_guru_id'");
     $groupId = $stmtGrp ? $stmtGrp->fetchColumn() : null;
 
@@ -151,7 +157,7 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
         'message' => $fullMessage
     ]);
 
-    $ch = curl_init($waUrl);
+    $ch = curl_init($sendUrl);
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
     curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);

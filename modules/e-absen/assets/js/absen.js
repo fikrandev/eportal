@@ -473,14 +473,14 @@ const Absen = {
     disconnectWa() {
         EModal.confirm({
             title: 'Putuskan Koneksi WhatsApp',
-            message: 'Yakin ingin memutuskan koneksi dengan HP yang terhubung saat ini? Sesi WhatsApp akan dikeluarkan dan Anda dapat melakukan scan Barcode baru untuk mengganti perangkat / nomor HP.',
+            message: 'Yakin ingin memutuskan koneksi WhatsApp saat ini? Sesi perangkat akan dikeluarkan dan Barcode baru akan segera dibuat untuk menghubungkan nomor/perangkat baru.',
             type: 'danger',
-            confirmText: 'Ya, Putuskan Koneksi',
+            confirmText: 'Ya, Putuskan & Buat QR Baru',
             onConfirm: () => {
                 const loader = EModal.loading('Memutuskan koneksi WhatsApp...');
                 this.api('settings.php?action=wa_logout', { method: 'POST' }).done(res => {
                     EModal.close(loader);
-                    EModal.toast({ type: 'success', title: 'Berhasil', message: res.message || 'Koneksi WhatsApp berhasil diputuskan.' });
+                    EModal.toast({ type: 'success', title: 'Berhasil', message: res.message || 'Koneksi berhasil diputuskan.' });
                     this.checkWaStatus();
                 }).fail(xhr => {
                     EModal.close(loader);
@@ -498,19 +498,30 @@ const Absen = {
 
             $('#waFormWrapper').html(`
                 <div class="form-group">
-                    <label class="form-label">URL Gateway Lokal</label>
+                    <label class="form-label">URL Gateway Lokal / Server</label>
                     <input type="text" class="form-input" id="waUrl" value="${this.escapeHtml(s.wa_gateway_url || 'http://localhost:3000/send')}">
-                    <small class="text-muted">Pastikan URL sama dengan port di Node.js (Default: http://localhost:3000/send)</small>
+                    <small class="text-muted">Default: <code>http://localhost:3000/send</code> (Sesuai port Node.js di server)</small>
                 </div>
                 <div class="form-group">
-                    <label class="form-label">Grup WA Tujuan Notifikasi Guru</label>
+                    <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
+                        <span>Grup WA Tujuan Notifikasi Guru</span>
+                        <a href="javascript:void(0)" onclick="$('#manualGroupWrapper').slideToggle(150)" style="font-size:0.8rem; font-weight:normal; text-decoration:none; color:var(--primary);">
+                            ✏️ Input Manual ID
+                        </a>
+                    </label>
                     <div style="display:flex; gap:8px;">
                         <select class="form-select" id="waGroupGuru" style="flex:1;">
-                            <option value="${this.escapeHtml(savedGroupId)}">${savedGroupId ? 'Grup Terpilih: ' + this.escapeHtml(savedGroupId) : '-- Pilih / Muat Grup WA --'}</option>
+                            <option value="${this.escapeHtml(savedGroupId)}">${savedGroupId ? '👥 Grup Tersimpan: ' + this.escapeHtml(savedGroupId) : '-- Pilih Grup WA --'}</option>
                         </select>
-                        <button type="button" class="btn btn-outline btn-sm" onclick="Absen.fetchWaGroups()" title="Muat Ulang Daftar Grup WA">🔄 Refresh Grup</button>
+                        <button type="button" class="btn btn-outline btn-sm" id="btnRefreshGroups" onclick="Absen.fetchWaGroups('${this.escapeHtml(savedGroupId)}')" title="Muat Ulang Daftar Grup WA">
+                            🔄 Refresh Grup
+                        </button>
                     </div>
-                    <small class="text-muted">Pilih Grup WA yang akan menerima laporan Absen Pagi & Absen Pulang Guru secara otomatis / realtime.</small>
+                    <div id="manualGroupWrapper" style="display:none; margin-top:8px;">
+                        <input type="text" class="form-input" id="waGroupGuruManual" placeholder="Tempel ID Grup WhatsApp (misal: 120363xxx@g.us)" value="${this.escapeHtml(savedGroupId)}" oninput="$('#waGroupGuru').val(this.value)">
+                        <small class="text-muted">Masukkan ID grup secara langsung jika daftar grup tidak ingin dimuat ulang.</small>
+                    </div>
+                    <small class="text-muted" style="display:block; margin-top:4px;">Grup ini akan menerima siaran Absen Pagi & Absen Pulang Guru secara otomatis / realtime.</small>
                 </div>
                 <div class="form-group">
                     <label class="form-label">Template Pesan Notifikasi Siswa (Ke Orang Tua)</label>
@@ -519,13 +530,18 @@ const Absen = {
                 </div>
                 <div style="border-top:1px solid var(--border-light); padding-top:15px; margin-top:10px;">
                     <label class="form-label">Testing Pengiriman Pesan</label>
-                    <div style="display:flex; gap:10px; margin-bottom:15px;">
-                        <input type="text" class="form-input" id="waTestPhone" placeholder="Nomor HP / Group ID (misal: 0812xxx atau ID@g.us)" style="flex:1;">
+                    <div style="display:flex; gap:10px; margin-bottom:8px;">
+                        <input type="text" class="form-input" id="waTestPhone" placeholder="Nomor HP / Group ID (misal: 0812xxx atau 120363xxx@g.us)" style="flex:1;">
                         <button class="btn btn-outline" onclick="Absen.testWa()">Tes Kirim Pesan</button>
+                    </div>
+                    <div style="margin-bottom:15px;">
+                        <button type="button" class="btn btn-outline btn-sm" onclick="Absen.testSendToGroup()" style="border-color:#10B981; color:#059669;">
+                            📲 Tes Kirim Pesan ke Grup Guru Terpilih
+                        </button>
                     </div>
                 </div>
                 <div style="text-align:right;">
-                    <button class="btn btn-primary" onclick="Absen.saveWaSettings()">Simpan Pengaturan Utama</button>
+                    <button class="btn btn-primary" onclick="Absen.saveWaSettings()">💾 Simpan Pengaturan Utama</button>
                 </div>
             `);
             this.checkWaStatus();
@@ -535,15 +551,62 @@ const Absen = {
 
     fetchWaGroups(selectedId = '') {
         const $sel = $('#waGroupGuru');
+        const $btn = $('#btnRefreshGroups');
+        const currentSelected = selectedId || $sel.val() || $('#waGroupGuruManual').val() || '';
+
+        $btn.html('Memuat... ⏳').prop('disabled', true);
+
         this.api('settings.php?action=get_wa_groups').done(res => {
             if (res.success && Array.isArray(res.data) && res.data.length > 0) {
                 let html = '<option value="">-- Pilih Grup WA Guru --</option>';
+                let matched = false;
+
                 res.data.forEach(g => {
-                    const isSel = (g.id === selectedId || g.id === $('#waGroupGuru').val()) ? 'selected' : '';
+                    const isSel = (g.id === currentSelected) ? 'selected' : '';
+                    if (isSel) matched = true;
                     html += `<option value="${this.escapeHtml(g.id)}" ${isSel}>👥 ${this.escapeHtml(g.name)} (${this.escapeHtml(g.id)})</option>`;
                 });
+
+                if (currentSelected && !matched) {
+                    html = `<option value="${this.escapeHtml(currentSelected)}" selected>👥 [Tersimpan] ID: ${this.escapeHtml(currentSelected)}</option>` + html;
+                }
+
                 $sel.html(html);
+                $sel.on('change', function() {
+                    $('#waGroupGuruManual').val($(this).val());
+                });
+                EModal.toast({ type: 'success', message: `${res.data.length} Grup WA berhasil dimuat!` });
+            } else if (res.success && Array.isArray(res.data) && res.data.length === 0) {
+                $sel.html(`<option value="${this.escapeHtml(currentSelected)}">${currentSelected ? '👥 Grup Tersimpan: ' + this.escapeHtml(currentSelected) : '-- Tidak Ada Grup Terdeteksi --'}</option>`);
+                EModal.toast({ type: 'info', message: 'Tidak ada grup WhatsApp terdeteksi pada akun ini.' });
+            } else {
+                EModal.toast({ type: 'warning', title: 'Perhatian', message: res.message || 'Pastikan status WhatsApp sudah TERHUBUNG (Scan Barcode).' });
             }
+        }).fail(xhr => {
+            const msg = xhr.responseJSON?.message || 'Server WA Gateway belum aktif atau tidak merespon.';
+            EModal.toast({ type: 'error', title: 'Gagal Muat Grup', message: msg });
+        }).always(() => {
+            $btn.html('🔄 Refresh Grup').prop('disabled', false);
+        });
+    },
+
+    testSendToGroup() {
+        const groupId = $('#waGroupGuru').val() || $('#waGroupGuruManual').val();
+        if (!groupId) {
+            return EModal.toast({ type: 'warning', message: 'Pilih atau masukkan ID Grup WhatsApp terlebih dahulu!' });
+        }
+
+        EModal.toast({ type: 'info', message: 'Mengirim pesan pengujian ke grup...' });
+        this.api('settings.php?action=wa_test', {
+            method: 'POST',
+            data: {
+                number: groupId,
+                message: 'Halo! Ini adalah pesan uji coba integrasi Grup WhatsApp E-Portal Absensi.'
+            }
+        }).done(res => {
+            EModal.toast({ type: 'success', title: 'Terkirim', message: res.message });
+        }).fail(xhr => {
+            EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal mengirim pesan ke grup.' });
         });
     },
 
@@ -567,10 +630,11 @@ const Absen = {
     },
 
     saveWaSettings() {
+        const groupId = $('#waGroupGuruManual').val() || $('#waGroupGuru').val() || '';
         const data = {
             wa_gateway_url: $('#waUrl').val(),
             wa_message_template: $('#waTemplate').val(),
-            wa_group_guru_id: $('#waGroupGuru').val()
+            wa_group_guru_id: groupId
         };
         this.api('settings.php?action=save_wa', { method: 'POST', data }).done(res => {
             EModal.toast({ type: 'success', message: res.message });
@@ -739,10 +803,18 @@ const Absen = {
                         <p class="text-muted">Data jam masuk dan pulang hasil kalkulasi dari log mesin.</p>
                     </div>
                     ${isAdmin ? `
-                    <div class="ea-toolbar">
+                    <div class="ea-toolbar" style="display:flex; gap:8px; flex-wrap:wrap;">
                         <button class="btn btn-primary" onclick="Absen.generateRekap()" id="btnGenRekap">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M21.5 2v6h-6M2.13 15.57a10 10 0 1 0 14.9-10.42L21.5 8M2.5 22v-6h6M21.87 8.43a10 10 0 1 0-14.9 10.42L2.5 16"/></svg>
                             Generate Rekap Hari Ini
+                        </button>
+                        <button class="btn btn-outline" onclick="Absen.sendWaGroup('masuk')" title="Kirim Laporan Absen Pagi Guru ke Grup WA" style="border-color:#10B981; color:#059669; font-weight:600; display:flex; align-items:center; gap:6px;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                            Kirim Absen Pagi ke WA
+                        </button>
+                        <button class="btn btn-outline" onclick="Absen.sendWaGroup('pulang')" title="Kirim Laporan Absen Pulang Guru ke Grup WA" style="border-color:#3B82F6; color:#2563EB; font-weight:600; display:flex; align-items:center; gap:6px;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M22 2L11 13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+                            Kirim Absen Pulang ke WA
                         </button>
                     </div>
                     ` : ''}
@@ -797,6 +869,31 @@ const Absen = {
             EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Error.' });
         }).always(() => {
             $('#btnGenRekap').html('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M21.5 2v6h-6M2.13 15.57a10 10 0 1 0 14.9-10.42L21.5 8M2.5 22v-6h6M21.87 8.43a10 10 0 1 0-14.9 10.42L2.5 16"/></svg> Generate Rekap Hari Ini').prop('disabled', false);
+        });
+    },
+
+    sendWaGroup(tipe = 'masuk') {
+        const tanggal = $('#rekapTanggal').val() || new Date().toISOString().split('T')[0];
+        const label = tipe === 'masuk' ? 'Absen Pagi' : 'Absen Pulang';
+        
+        EModal.confirm({
+            title: `Kirim ${label} ke Grup WA`,
+            message: `Kirim rekapitulasi <strong>${label} Guru</strong> untuk tanggal <strong>${tanggal}</strong> ke Grup WhatsApp yang telah dikonfigurasi?`,
+            type: 'info',
+            confirmText: 'Ya, Kirim Sekarang',
+            onConfirm: () => {
+                const loader = EModal.loading(`Mengirim laporan ${label} ke Grup WhatsApp...`);
+                this.api('rekap.php?action=send_wa_group', {
+                    method: 'POST',
+                    data: { tanggal, tipe }
+                }).done(res => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'success', title: 'Terkirim', message: res.message || 'Laporan berhasil dikirim ke grup WhatsApp!' });
+                }).fail(xhr => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal mengirim laporan ke grup WA.' });
+                });
+            }
         });
     },
 
