@@ -313,6 +313,22 @@ ul, ol {
     color: var(--text-white);
 }
 
+.btn-success:hover {
+    box-shadow: 0 6px 25px rgba(16, 185, 129, 0.4);
+    transform: translateY(-1px);
+}
+
+/* Warning Button */
+.btn-warning {
+    background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+    color: var(--text-white);
+}
+
+.btn-warning:hover {
+    box-shadow: 0 6px 25px rgba(245, 158, 11, 0.4);
+    transform: translateY(-1px);
+}
+
 /* Ghost Button */
 .btn-ghost {
     background: transparent;

@@ -47,6 +47,10 @@ const Admin = {
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10.5 12 5 2 10.5 12 16l10-5.5Z"/><path d="M6 13v4c2 1.5 10 1.5 12 0v-4"/><path d="M12 16v5"/></svg>
                             Data Siswa
                         </button>
+                        <button class="sidebar-nav-item ${section==='siswa-lulus'?'active':''}" data-section="siswa-lulus" onclick="Admin.goTo('siswa-lulus')">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10.5 12 5 2 10.5 12 16l10-5.5Z"/><path d="M6 13v4c2 1.5 10 1.5 12 0v-4"/><circle cx="12" cy="12" r="9" opacity="0.15"/></svg>
+                            Siswa Lulus
+                        </button>
                         <button class="sidebar-nav-item ${section==='foto-siswa'?'active':''}" data-section="foto-siswa" onclick="Admin.goTo('foto-siswa')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                             Foto Siswa
@@ -133,7 +137,7 @@ const Admin = {
 
     loadSection(section) {
         this.closeSidebar();
-        const titles = { dashboard:'Dashboard', users:'Kelola User', gurus:'Data Guru', students:'Data Siswa', 'foto-siswa':'Foto Siswa', referensi: 'Data Referensi', modules:'Kelola Modul', 'academic-years':'Tahun Ajaran', settings:'Pengaturan', 'reset-data':'Reset Data' };
+        const titles = { dashboard:'Dashboard', users:'Kelola User', gurus:'Data Guru', students:'Data Siswa', 'siswa-lulus':'Siswa Lulus (Alumni)', 'foto-siswa':'Foto Siswa', referensi: 'Data Referensi', modules:'Kelola Modul', 'academic-years':'Tahun Ajaran', settings:'Pengaturan', 'reset-data':'Reset Data' };
         $('#adminPageTitle').text(titles[section] || 'Dashboard');
         $('.sidebar-nav-item').removeClass('active');
         $(`.sidebar-nav-item[data-section="${section}"]`).addClass('active');
@@ -143,6 +147,7 @@ const Admin = {
             case 'users': this.renderUserTabs(this.userTab || 'gurus'); break;
             case 'gurus': this.usersType = 'gurus'; this.renderUsers("gurus"); break;
             case 'students': this.renderStudents(); break;
+            case 'siswa-lulus': this.renderSiswaLulus(); break;
             case 'foto-siswa': this.renderFotoSiswa(); break;
             case 'referensi': this.renderReferensi(); break;
             case 'modules': this.renderModules(); break;
@@ -1313,20 +1318,26 @@ const Admin = {
         const target = embedded ? '#userTabContent' : '#adminContent';
         $(target).html(`
             <div class="admin-card students-card">
-                <div class="admin-card-header">
-                    <div>
-                        <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10.5 12 5 2 10.5 12 16l10-5.5Z"/><path d="M6 13v4c2 1.5 10 1.5 12 0v-4"/></svg> Data Siswa</h3>
-                        <p class="admin-subtitle">Tahun aktif: <strong>${active?.tahun_ajaran ? App.escapeHtml(active.tahun_ajaran) + ' Semester ' + App.escapeHtml(active.semester || '-') : 'Belum diatur'}</strong></p>
-                    </div>
-                    <div class="admin-toolbar students-toolbar-inline">
-                        <select class="form-select student-year-select" id="studentYearFilter"><option value="">Tahun aktif</option></select>
-                        <div class="search-box">
-                            <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                            <input type="text" placeholder="Cari NIS, NISN, nama, email, tempat lahir, kelas..." id="studentSearch" value="${this.studentsSearch}">
+                <div class="admin-card-header" style="flex-direction:column; align-items:stretch; gap:16px;">
+                    <!-- Baris 1: Judul + Filter + Search -->
+                    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+                        <div>
+                            <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10.5 12 5 2 10.5 12 16l10-5.5Z"/><path d="M6 13v4c2 1.5 10 1.5 12 0v-4"/></svg> Data Siswa</h3>
+                            <p class="admin-subtitle">Tahun aktif: <strong>${active?.tahun_ajaran ? App.escapeHtml(active.tahun_ajaran) + ' Semester ' + App.escapeHtml(active.semester || '-') : 'Belum diatur'}</strong></p>
                         </div>
-                        <button class="btn btn-danger btn-sm" id="bulkDeleteStudentsBtn" style="display:none;" onclick="Admin.bulkDeleteStudents()">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                            Hapus Terpilih
+                        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                            <select class="form-select student-year-select" id="studentYearFilter" style="width:170px; height:40px; font-size:13px;"><option value="">Tahun aktif</option></select>
+                            <div class="search-box" style="width:300px; min-width:200px;">
+                                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                <input type="text" placeholder="Cari NIS, NISN, nama, kelas..." id="studentSearch" value="${this.studentsSearch}">
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Baris 2: Tombol Aksi -->
+                    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap; border-top:1px solid #e2e8f0; padding-top:14px;">
+                        <button class="btn btn-primary btn-sm" onclick="Admin.showStudentForm()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            Tambah Siswa
                         </button>
                         <button class="btn btn-accent btn-sm" onclick="Admin.showStudentImportExcel()">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -1336,6 +1347,7 @@ const Admin = {
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                             Ekspor Excel
                         </button>
+                        <div style="width:1px; height:24px; background:#d1d5db; margin:0 4px;"></div>
                         <button class="btn btn-warning btn-sm" onclick="Admin.showSetGuruWaliModal()">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                             Set Guru Wali
@@ -1344,9 +1356,13 @@ const Admin = {
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="13 17 18 12 13 7"></polyline><polyline points="6 17 11 12 6 7"></polyline></svg>
                             Naik Kelas
                         </button>
-                        <button class="btn btn-primary btn-sm" onclick="Admin.showStudentForm()">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                            Tambah Siswa
+                        <button class="btn btn-warning btn-sm" onclick="Admin.showGraduateStudentsModal()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M22 10.5 12 5 2 10.5 12 16l10-5.5Z"/><path d="M6 13v4c2 1.5 10 1.5 12 0v-4"/></svg>
+                            Luluskan Siswa
+                        </button>
+                        <button class="btn btn-danger btn-sm" id="bulkDeleteStudentsBtn" style="display:none;" onclick="Admin.bulkDeleteStudents()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            Hapus Terpilih
                         </button>
                     </div>
                 </div>
@@ -1950,13 +1966,351 @@ const Admin = {
             }
         }).done(res => {
             if (res.success) {
-                this.closeFormModal('promoteClassModal');
-                EModal.info({ type: 'success', title: 'Berhasil!', message: res.message });
+                EModal.toast({ type: 'success', title: 'Berhasil!', message: res.message });
                 this.loadStudentsTable();
+                this.loadPromoteStudents();
             }
         }).fail(xhr => {
             EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Terjadi kesalahan.' });
         }).always(() => EModal.btnLoading(btn, false));
+    },
+
+    showGraduateStudentsModal() {
+        const activeYear = App.state.academicYear;
+        const todayStr = new Date().toISOString().split('T')[0];
+
+        const modal = `
+        <div class="admin-form-modal show" id="graduateStudentsModal" onclick="if(event.target===this)Admin.closeFormModal('graduateStudentsModal')">
+            <div class="admin-form-panel" style="max-width: 650px;">
+                <div class="panel-header">
+                    <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" style="vertical-align:middle;margin-right:6px;"><path d="M22 10.5 12 5 2 10.5 12 16l10-5.5Z"/><path d="M6 13v4c2 1.5 10 1.5 12 0v-4"/></svg> Proses Luluskan Siswa</h3>
+                    <button class="panel-close" onclick="Admin.closeFormModal('graduateStudentsModal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                </div>
+                <div class="panel-body">
+                    <p style="font-size:13px;color:var(--text-secondary);margin-bottom:16px;">Pilih kelas dan tentukan siswa yang akan diluluskan. Siswa yang diluluskan akan dipindahkan ke kelompok <strong>Siswa Lulus (Alumni)</strong>.</p>
+                    
+                    <div style="background:var(--bg-body, #f8fafc); border:1px solid var(--border-color, #e2e8f0); border-radius:8px; padding:16px; margin-bottom:16px;">
+                        <h4 style="margin:0 0 12px 0; font-size:14px; font-weight:600;">Detail Kelulusan</h4>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Pilih Kelas</label>
+                                <select class="form-select" id="graduateClassSelect" onchange="Admin.loadGraduateStudentsList(this.value)">
+                                    <option value="">Memuat kelas...</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Tahun Ajaran Kelulusan</label>
+                                <select class="form-select" id="graduateYearSelect">
+                                    <option value="">Memuat tahun ajaran...</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="form-group" style="margin-top:12px;">
+                            <label class="form-label">Tanggal Kelulusan</label>
+                            <input type="date" class="form-input" id="graduateDateInput" value="${todayStr}">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label" style="display:flex; justify-content:space-between; align-items:center;">
+                            <span>Daftar Siswa yang Akan Diluluskan</span>
+                            <span id="graduateCountBadge" class="badge badge-info" style="font-weight:normal; font-size:11px;">0 siswa dipilih</span>
+                        </label>
+                        <div class="data-table-wrapper" style="max-height: 250px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 8px;">
+                            <table class="data-table" style="margin: 0;">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 40px; text-align: center;"><input type="checkbox" id="selectAllGraduateStudents" checked onclick="Admin.toggleSelectAllGraduateStudents(this)"></th>
+                                        <th>Nama Siswa</th>
+                                        <th>NIS</th>
+                                        <th>Kelas</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="graduateStudentsList">
+                                    <tr><td colspan="4" style="text-align:center; padding: 20px;" class="text-muted">Silakan pilih kelas terlebih dahulu</td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+                <div class="panel-footer">
+                    <button class="btn btn-ghost" onclick="Admin.closeFormModal('graduateStudentsModal')">Batal</button>
+                    <button class="btn btn-warning" id="saveGraduateBtn" onclick="Admin.saveGraduateStudents()"><span class="btn-text">Proses Luluskan Siswa</span></button>
+                </div>
+            </div>
+        </div>`;
+        $('body').append(modal);
+
+        // Fetch active classes for active students
+        App.api('api/students.php?action=get_classes&status_siswa=Aktif').done(res => {
+            if (res.success && res.data) {
+                let options = '<option value="">-- Pilih Kelas --</option>';
+                res.data.forEach(c => {
+                    options += `<option value="${App.escapeHtml(c)}">${App.escapeHtml(c)}</option>`;
+                });
+                $('#graduateClassSelect').html(options);
+            }
+        });
+
+        // Fetch academic years
+        App.api('api/academic_years.php?action=list').done(res => {
+            if (res.success && res.data) {
+                let options = '';
+                res.data.forEach(y => {
+                    const isSelected = activeYear && y.id === activeYear.id ? 'selected' : '';
+                    options += `<option value="${y.id}" ${isSelected}>${App.escapeHtml(y.tahun_ajaran)} Semester ${App.escapeHtml(y.semester)}</option>`;
+                });
+                $('#graduateYearSelect').html(options);
+            }
+        });
+    },
+
+    loadGraduateStudentsList(kelas) {
+        if (!kelas) {
+            $('#graduateStudentsList').html('<tr><td colspan="4" style="text-align:center; padding: 20px;" class="text-muted">Silakan pilih kelas terlebih dahulu</td></tr>');
+            $('#graduateCountBadge').text('0 siswa dipilih');
+            return;
+        }
+
+        $('#graduateStudentsList').html('<tr><td colspan="4" style="text-align:center; padding: 20px;">Memuat siswa...</td></tr>');
+
+        App.api(`api/students.php?action=list&kelas=${encodeURIComponent(kelas)}&status_siswa=Aktif&all_years=1&per_page=500`).done(res => {
+            const students = (res.success && res.data && res.data.data) ? res.data.data : [];
+            if (students.length > 0) {
+                let rows = '';
+                students.forEach(s => {
+                    rows += `
+                        <tr>
+                            <td style="text-align:center;"><input type="checkbox" class="graduate-student-cb" value="${s.id}" checked onchange="Admin.updateGraduateCount()"></td>
+                            <td><strong>${App.escapeHtml(s.nama)}</strong></td>
+                            <td>${App.escapeHtml(s.nis || '-')}</td>
+                            <td><span class="badge badge-sm badge-secondary">${App.escapeHtml(s.kelas)}</span></td>
+                        </tr>
+                    `;
+                });
+                $('#graduateStudentsList').html(rows);
+                $('#selectAllGraduateStudents').prop('checked', true);
+                this.updateGraduateCount();
+            } else {
+                $('#graduateStudentsList').html('<tr><td colspan="4" style="text-align:center; padding: 20px;" class="text-muted">Tidak ada siswa aktif di kelas ini.</td></tr>');
+                $('#graduateCountBadge').text('0 siswa dipilih');
+            }
+        });
+    },
+
+    toggleSelectAllGraduateStudents(masterCb) {
+        $('.graduate-student-cb').prop('checked', $(masterCb).is(':checked'));
+        this.updateGraduateCount();
+    },
+
+    updateGraduateCount() {
+        const count = $('.graduate-student-cb:checked').length;
+        $('#graduateCountBadge').text(`${count} siswa dipilih`);
+    },
+
+    saveGraduateStudents() {
+        const selectedIds = [];
+        $('.graduate-student-cb:checked').each(function() {
+            selectedIds.push($(this).val());
+        });
+
+        const kelas = $('#graduateClassSelect').val();
+        const academicYearIdLulus = $('#graduateYearSelect').val();
+        const tanggalLulus = $('#graduateDateInput').val();
+
+        if (selectedIds.length === 0) {
+            EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Pilih setidaknya satu siswa untuk diluluskan.' });
+            return;
+        }
+
+        if (!academicYearIdLulus) {
+            EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Pilih Tahun Ajaran Kelulusan.' });
+            return;
+        }
+
+        if (!tanggalLulus) {
+            EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Tentukan tanggal kelulusan.' });
+            return;
+        }
+
+        const btn = document.getElementById('saveGraduateBtn');
+        EModal.btnLoading(btn, true);
+
+        App.api('api/students.php?action=graduate_students', {
+            method: 'POST',
+            data: {
+                student_ids: selectedIds,
+                kelas: kelas,
+                academic_year_id_lulus: academicYearIdLulus,
+                tanggal_lulus: tanggalLulus
+            }
+        }).done(res => {
+            if (res.success) {
+                Admin.closeFormModal('graduateStudentsModal');
+                EModal.info({ type: 'success', title: 'Berhasil!', message: res.message });
+                Admin.loadStudentsTable();
+            } else {
+                EModal.toast({ type: 'error', title: 'Gagal', message: res.message || 'Gagal meluluskan siswa.' });
+            }
+        }).fail(xhr => {
+            EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Terjadi kesalahan sistem.' });
+        }).always(() => {
+            if (btn) EModal.btnLoading(btn, false);
+        });
+    },
+
+    renderSiswaLulus() {
+        const target = '#adminContent';
+        $(target).html(`
+            <div class="admin-card">
+                <div class="admin-card-header" style="flex-direction:column; align-items:stretch; gap:16px;">
+                    <!-- Baris 1: Judul + Group Tahun Ajaran Lulus + Search -->
+                    <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+                        <div>
+                            <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" style="vertical-align:middle;margin-right:6px;"><path d="M22 10.5 12 5 2 10.5 12 16l10-5.5Z"/><path d="M6 13v4c2 1.5 10 1.5 12 0v-4"/><path d="M18 10l-6 4-6-4"/></svg> Data Siswa Lulus (Alumni)</h3>
+                            <p class="admin-subtitle">Siswa yang telah diluluskan, dikelompokkan berdasarkan Tahun Ajaran Kelulusan.</p>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                            <div style="display:flex; align-items:center; gap:6px;">
+                                <label style="font-size:13px; font-weight:500; white-space:nowrap;">Tahun Lulus:</label>
+                                <select class="form-select" id="alumniYearFilter" style="width:200px; height:40px; font-size:13px;" onchange="Admin.alumniYearId=this.value; Admin.alumniPage=1; Admin.loadAlumniList();">
+                                    <option value="">Semua Tahun Lulus</option>
+                                </select>
+                            </div>
+                            <div class="search-box" style="width:260px; min-width:180px;">
+                                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                <input type="text" placeholder="Cari NIS, nama, kelas..." id="alumniSearch" value="${this.alumniSearch || ''}" onkeyup="if(event.key==='Enter'){Admin.alumniSearch=this.value; Admin.alumniPage=1; Admin.loadAlumniList();}">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="admin-card-body">
+                    <div class="data-table-wrapper" id="alumniTableWrapper">
+                        <div class="skeleton" style="height:300px;border-radius:8px;"></div>
+                    </div>
+                </div>
+            </div>
+        `);
+
+        // Load Graduation Years for the dropdown
+        App.api('api/students.php?action=get_graduation_years').done(res => {
+            if (res.success && res.data) {
+                let options = '<option value="">Semua Tahun Lulus</option>';
+                res.data.forEach(y => {
+                    const sel = (Admin.alumniYearId == y.id) ? 'selected' : '';
+                    options += `<option value="${y.id}" ${sel}>Tahun Lulus ${App.escapeHtml(y.tahun_ajaran)} (${y.total_lulus || 0} siswa)</option>`;
+                });
+                $('#alumniYearFilter').html(options);
+            }
+        });
+
+        this.loadAlumniList();
+    },
+
+    loadAlumniList() {
+        const page = this.alumniPage || 1;
+        const search = this.alumniSearch || '';
+        const yearId = this.alumniYearId || '';
+
+        let url = `api/students.php?action=list&status_siswa=Lulus&page=${page}&per_page=15&all_years=1`;
+        if (search) url += `&search=${encodeURIComponent(search)}`;
+        if (yearId) url += `&academic_year_id_lulus=${yearId}`;
+
+        App.api(url).done(res => {
+            if (!res.success || !res.data) {
+                $('#alumniTableWrapper').html('<p class="text-center text-muted" style="padding:40px;">Gagal memuat data alumni.</p>');
+                return;
+            }
+
+            const items = (res.data && res.data.data) ? res.data.data : [];
+            if (items.length === 0) {
+                $('#alumniTableWrapper').html(`
+                    <div style="text-align:center; padding:40px 20px;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="48" height="48" style="margin-bottom:12px; color:var(--text-secondary); opacity:0.5;"><path d="M22 10.5 12 5 2 10.5 12 16l10-5.5Z"/><path d="M6 13v4c2 1.5 10 1.5 12 0v-4"/></svg>
+                        <p style="margin:0; font-weight:500; color:var(--text-secondary);">Belum ada data siswa lulus${search ? ' yang cocok dengan pencarian' : ''}.</p>
+                        <p style="margin:4px 0 0 0; font-size:12px; color:var(--text-muted);">Anda dapat meluluskan siswa melalui menu <strong>Data Siswa</strong> &gt; tombol <strong>Luluskan Siswa</strong>.</p>
+                    </div>
+                `);
+                return;
+            }
+
+            let rows = '';
+            items.forEach((s, idx) => {
+                const no = ((res.data.page - 1) * res.data.per_page) + idx + 1;
+                const tglLulusFormatted = s.tanggal_lulus ? new Date(s.tanggal_lulus).toLocaleDateString('id-ID', { day:'numeric', month:'short', year:'numeric' }) : '-';
+                rows += `
+                    <tr>
+                        <td style="text-align:center; width:50px;">${no}</td>
+                        <td><strong>${App.escapeHtml(s.nama)}</strong></td>
+                        <td>${App.escapeHtml(s.nis || '-')}</td>
+                        <td>${App.escapeHtml(s.nisn || '-')}</td>
+                        <td><span class="badge badge-sm badge-secondary">${App.escapeHtml(s.kelas)}</span></td>
+                        <td><span class="badge badge-sm badge-warning">Tahun ${App.escapeHtml(s.tahun_lulus_name || s.tahun_ajaran || '-')}</span></td>
+                        <td>${tglLulusFormatted}</td>
+                        <td style="text-align:center; width:120px;">
+                            <button class="btn btn-ghost btn-sm text-danger" title="Batalkan Kelulusan" onclick="Admin.cancelGraduation(${s.id}, '${App.escapeHtml(s.nama)}')">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14" style="vertical-align:middle;margin-right:4px;"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                                Batalkan
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            // Pagination
+            let paginationHtml = '';
+            if (res.data.total_pages > 1) {
+                paginationHtml = `<div class="pagination-wrapper" style="display:flex; justify-content:space-between; align-items:center; margin-top:16px;">
+                    <span style="font-size:12px; color:var(--text-secondary);">Total: ${res.data.total} alumni (Halaman ${res.data.page} dari ${res.data.total_pages})</span>
+                    <div style="display:flex; gap:6px;">
+                        <button class="btn btn-ghost btn-sm" ${res.data.page <= 1 ? 'disabled' : ''} onclick="Admin.alumniPage=${res.data.page - 1}; Admin.loadAlumniList();">SBLM</button>
+                        <button class="btn btn-ghost btn-sm" ${res.data.page >= res.data.total_pages ? 'disabled' : ''} onclick="Admin.alumniPage=${res.data.page + 1}; Admin.loadAlumniList();">SELANJUTNYA</button>
+                    </div>
+                </div>`;
+            }
+
+            $('#alumniTableWrapper').html(`
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th style="width:50px; text-align:center;">No</th>
+                            <th>Nama Siswa</th>
+                            <th>NIS</th>
+                            <th>NISN</th>
+                            <th>Kelas Terakhir</th>
+                            <th>Tahun Kelulusan</th>
+                            <th>Tanggal Lulus</th>
+                            <th style="text-align:center;">Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+                ${paginationHtml}
+            `);
+        });
+    },
+
+    cancelGraduation(id, nama) {
+        EModal.confirm({
+            title: 'Batalkan Kelulusan',
+            message: `Apakah Anda yakin ingin membatalkan status kelulusan untuk <strong>${App.escapeHtml(nama)}</strong>? Siswa ini akan dikembalikan ke status Aktif.`,
+            confirmText: 'Ya, Kembalikan ke Aktif',
+            confirmClass: 'btn-danger',
+            onConfirm: () => {
+                App.api('api/students.php?action=cancel_graduation', {
+                    method: 'POST',
+                    data: { student_ids: [id] }
+                }).done(res => {
+                    if (res.success) {
+                        EModal.toast({ type: 'success', title: 'Berhasil', message: res.message });
+                        Admin.loadAlumniList();
+                    } else {
+                        EModal.toast({ type: 'error', title: 'Gagal', message: res.message });
+                    }
+                });
+            }
+        });
     },
 
     showStudentImportExcel() {

@@ -156,9 +156,10 @@ function syncExamStudents($examId, $yearId, $classes)
 {
     if (!$classes) return;
 
-    // Extend timeout for large datasets (500+ students)
-    @set_time_limit(120);
-    @ini_set('max_execution_time', '120');
+    // Extend memory and execution limits for large datasets
+    @set_time_limit(300);
+    @ini_set('max_execution_time', '300');
+    @ini_set('memory_limit', '256M');
 
     $placeholders = implode(',', array_fill(0, count($classes), '?'));
     $params = array_merge([$yearId], $classes);
@@ -166,41 +167,73 @@ function syncExamStudents($examId, $yearId, $classes)
     $stmt = db()->prepare("
         SELECT id, nis, nisn
         FROM students
-        WHERE academic_year_id = ? AND status = 1 AND kelas IN ($placeholders)
+        WHERE academic_year_id = ? AND (status_siswa = 'Aktif' OR status_siswa IS NULL) AND status = 1 AND kelas IN ($placeholders)
     ");
     $stmt->execute($params);
-    $students = $stmt->fetchAll();
+    $students = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-    // Get existing student IDs for this exam (to skip re-hashing passwords)
-    $existingStmt = db()->prepare("SELECT student_id FROM xam_exam_students WHERE exam_id = ?");
+    // Get existing students & usernames to skip re-hashing & avoid collisions
+    $existingStmt = db()->prepare("SELECT student_id, username FROM xam_exam_students WHERE exam_id = ?");
     $existingStmt->execute([$examId]);
-    $existingIds = $existingStmt->fetchAll(PDO::FETCH_COLUMN);
-    $existingMap = array_flip($existingIds);
+    $existingRows = $existingStmt->fetchAll(PDO::FETCH_ASSOC);
 
+    $existingMap = [];
+    $usedUsernames = [];
+    foreach ($existingRows as $r) {
+        $existingMap[(int)$r['student_id']] = true;
+        if (!empty($r['username'])) {
+            $usedUsernames[$r['username']] = true;
+        }
+    }
+
+    $newRows = [];
     $studentIds = [];
+    $chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+
+    foreach ($students as $student) {
+        $sid = (int) $student['id'];
+        $studentIds[] = $sid;
+
+        if (!isset($existingMap[$sid])) {
+            do {
+                $username = (string) random_int(100000, 999999);
+            } while (isset($usedUsernames[$username]));
+            $usedUsernames[$username] = true;
+
+            $plain = substr(str_shuffle($chars), 0, 4);
+            $hash = password_hash($plain, PASSWORD_BCRYPT, ['cost' => 4]);
+
+            $newRows[] = [
+                'exam_id' => (int)$examId,
+                'student_id' => $sid,
+                'username' => $username,
+                'password_hash' => $hash,
+                'password_plain' => $plain,
+                'status' => 'DITANGGUHKAN'
+            ];
+        }
+    }
 
     db()->beginTransaction();
     try {
-        $insertNew = db()->prepare("
-            INSERT INTO xam_exam_students (exam_id, student_id, username, password_hash, password_plain, status)
-            VALUES (?, ?, ?, ?, ?, 'DITANGGUHKAN')
-            ON DUPLICATE KEY UPDATE
-                username = COALESCE(NULLIF(xam_exam_students.username, ''), VALUES(username)),
-                password_hash = COALESCE(NULLIF(xam_exam_students.password_hash, ''), VALUES(password_hash)),
-                password_plain = COALESCE(NULLIF(xam_exam_students.password_plain, ''), VALUES(password_plain))
-        ");
-
-        foreach ($students as $student) {
-            $sid = (int) $student['id'];
-            $studentIds[] = $sid;
-
-            // Only generate credentials for NEW students
-            // Existing students keep their current username/password
-            if (!isset($existingMap[$sid])) {
-                $username = xam_default_username($examId, $student);
-                $plain = xam_default_password($student);
-                $hash = password_hash($plain, PASSWORD_DEFAULT);
-                $insertNew->execute([$examId, $sid, $username, $hash, $plain]);
+        // Bulk insert new students in chunks of 100
+        if (!empty($newRows)) {
+            $chunks = array_chunk($newRows, 100);
+            foreach ($chunks as $chunk) {
+                $valPlaceholders = [];
+                $insertParams = [];
+                foreach ($chunk as $row) {
+                    $valPlaceholders[] = "(?, ?, ?, ?, ?, ?)";
+                    $insertParams[] = $row['exam_id'];
+                    $insertParams[] = $row['student_id'];
+                    $insertParams[] = $row['username'];
+                    $insertParams[] = $row['password_hash'];
+                    $insertParams[] = $row['password_plain'];
+                    $insertParams[] = $row['status'];
+                }
+                $sql = "INSERT INTO xam_exam_students (exam_id, student_id, username, password_hash, password_plain, status) VALUES " . implode(',', $valPlaceholders) . " ON DUPLICATE KEY UPDATE username = VALUES(username)";
+                $stmtIns = db()->prepare($sql);
+                $stmtIns->execute($insertParams);
             }
         }
 
@@ -214,7 +247,9 @@ function syncExamStudents($examId, $yearId, $classes)
 
         db()->commit();
     } catch (PDOException $e) {
-        db()->rollBack();
+        if (db()->inTransaction()) {
+            db()->rollBack();
+        }
         throw $e;
     }
 }

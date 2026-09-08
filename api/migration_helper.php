@@ -6,7 +6,7 @@
 require_once __DIR__ . '/config.php';
 
 function run_auto_migrations() {
-    $target_version = 8;
+    $target_version = 9;
     
     // 1. Get current version (default to 0 if not set or if table settings doesn't exist yet)
     $current_version = 0;
@@ -243,6 +243,24 @@ function run_auto_migrations() {
             ");
         } catch (PDOException $e) {
             // Ignore if table already exists
+        }
+    }
+
+    // Version 9 migrations (Siswa Lulus / Status Siswa)
+    if ($current_version < 9) {
+        try {
+            $columns = $pdo->query("SHOW COLUMNS FROM students")->fetchAll(PDO::FETCH_COLUMN);
+            if (!in_array('status_siswa', $columns)) {
+                $pdo->exec("ALTER TABLE `students` ADD COLUMN `status_siswa` ENUM('Aktif','Lulus','Keluar','Mutasi') NOT NULL DEFAULT 'Aktif' AFTER `status`");
+            }
+            if (!in_array('academic_year_id_lulus', $columns)) {
+                $pdo->exec("ALTER TABLE `students` ADD COLUMN `academic_year_id_lulus` INT(11) UNSIGNED DEFAULT NULL AFTER `status_siswa`");
+            }
+            if (!in_array('tanggal_lulus', $columns)) {
+                $pdo->exec("ALTER TABLE `students` ADD COLUMN `tanggal_lulus` DATE DEFAULT NULL AFTER `academic_year_id_lulus`");
+            }
+        } catch (Exception $e) {
+            // Ignore if error
         }
     }
 

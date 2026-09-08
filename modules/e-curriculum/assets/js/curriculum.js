@@ -3356,23 +3356,31 @@ const Curriculum = {
         let promiseM = this.api('sch_mapel.php?action=list');
 
         Promise.all([promiseG, promiseK, promiseM]).then(results => {
-            results[0].data.forEach(x => {
+            const guruData = results[0].data || [];
+            const kelasData = results[1].data || [];
+            const mapelData = results[2].data || [];
+
+            guruData.forEach(x => {
                 listG += `<div class="sp-cs-option" data-id="${x.id}" data-text="${x.kode_guru} - ${x.nama_guru}"><strong>${x.nama_guru}</strong> <br><small style="color:gray">${x.kode_guru}</small></div>`;
             });
-            
-            let gridK = '<div class="class-checkbox-grid" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">';
-            results[1].data.forEach(x => {
-                gridK += `<input type="checkbox" id="ck_${x.id}" value="${x.id}" class="kIdCheckbox" style="display:none;">`;
-                gridK += `<label for="ck_${x.id}" style="display:inline-block; width:65px; text-align:center; padding:6px 0; background:var(--bg-color,#f8fafc); border:1px solid var(--border-color,#e2e8f0); border-radius:8px; cursor:pointer; font-size:0.85rem; font-weight:600; transition:all 0.2s; user-select:none;">${x.nama_kelas}</label>`;
+
+            mapelData.forEach(x => {
+                listM += `<div class="sp-cs-option" data-id="${x.id}" data-text="${x.nama_mapel}"><strong>${x.nama_mapel}</strong> <br><small style="color:gray">${x.kode_mapel}</small></div>`;
             });
-            gridK += '</div>';
-            
-            // Add custom style for checked state dynamically
+
+            const renderKelasGridHTML = (blockId) => {
+                let gridK = '<div class="class-checkbox-grid" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">';
+                kelasData.forEach(x => {
+                    gridK += `<input type="checkbox" id="ck_${blockId}_${x.id}" value="${x.id}" class="block-kelas-checkbox kIdCheckbox_${blockId}" style="display:none;">`;
+                    gridK += `<label for="ck_${blockId}_${x.id}" style="display:inline-block; width:62px; text-align:center; padding:6px 0; background:var(--bg-color,#f8fafc); border:1px solid var(--border-color,#e2e8f0); border-radius:8px; cursor:pointer; font-size:0.82rem; font-weight:600; transition:all 0.2s; user-select:none;">${x.nama_kelas}</label>`;
+                });
+                gridK += '</div>';
+                return gridK;
+            };
+
             const style = `
             <style>
                 .class-checkbox-grid input:checked + label { background:var(--primary-color,#3b82f6) !important; color:white !important; border-color:var(--primary-color,#3b82f6) !important; box-shadow:0 2px 6px rgba(59,130,246,0.3) !important; }
-                
-                /* Custom Select Styles */
                 .sp-cs-container { position:relative; user-select:none; }
                 .sp-cs-btn { cursor:pointer; display:flex; justify-content:space-between; align-items:center; background:#fff; border:1px solid #cbd5e1; border-radius:8px; padding:10px 14px; height:42px; transition: all 0.2s; }
                 .sp-cs-btn:hover { border-color: var(--primary); box-shadow: 0 0 0 3px rgba(59,130,246,0.1); }
@@ -3382,43 +3390,21 @@ const Curriculum = {
                 .sp-cs-option:hover { background: #f1f5f9; }
                 .sp-cs-option.selected { background: #e0f2fe; color: #0369a1; font-weight: 600; position: relative; }
                 .sp-cs-option.selected::after { content: '✓'; position: absolute; right: 14px; top: 50%; transform: translateY(-50%); font-size: 1.1rem; color: #0284c7; }
+                .teacher-block-card { background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:14px; margin-bottom:14px; transition: all 0.2s; }
+                .teacher-block-card:hover { border-color:#cbd5e1; box-shadow: 0 4px 12px rgba(0,0,0,0.03); }
+                .emodal-content, .modal-dialog, .modal-content { max-width: 650px !important; }
             </style>`;
-
-            results[2].data.forEach(x => {
-                listM += `<div class="sp-cs-option" data-id="${x.id}" data-text="${x.nama_mapel}"><strong>${x.nama_mapel}</strong> <br><small style="color:gray">${x.kode_mapel}</small></div>`;
-            });
 
             EModal.form({
                 title: id ? 'Edit Distribusi' : 'Tambah Distribusi Mengajar',
+                width: '650px',
                 form: `
                     ${style}
                     <input type="hidden" id="fId" value="${id || ''}">
                     
-                    <div class="form-group">
-                        <label>Pilih Guru</label>
-                        <input type="hidden" id="fG">
-                        <div class="sp-cs-container" id="csContainerG">
-                            <div class="sp-cs-btn" id="csBtnG">
-                                <span id="csTextG" style="color:#64748b;">-- Pilih Guru --</span>
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
-                            </div>
-                            <div class="sp-cs-dropdown" id="csDropG">
-                                <div style="padding:10px; border-bottom:1px solid #e2e8f0; background:#f8fafc;">
-                                    <input type="text" id="csSearchG" class="form-input" placeholder="Cari guru..." style="width:100%; padding:8px 12px; height:36px; border-radius:6px; outline:none;" autocomplete="off">
-                                </div>
-                                <div id="csListG" style="max-height:200px; overflow-y:auto; padding:0;">
-                                    ${listG}
-                                </div>
-                            </div>
-                        </div>
-                        ${!id ? '<p style="font-size:0.75rem;color:gray;margin-top:6px">Klik nama guru untuk memilih (bisa lebih dari satu)</p>' : ''}
-                    </div>
-
-                    <div class="form-group"><label>Pilih Kelas</label>${gridK}<p style="font-size:0.75rem;color:gray;margin-top:6px">Klik kotak kelas untuk memilih (bisa lebih dari satu)</p></div>
-                    
-                    <div class="sch-form-row">
-                        <div class="form-group">
-                            <label>Mata Pelajaran</label>
+                    <div class="sch-form-row" style="display:grid; grid-template-columns: 1fr 160px; gap:14px; margin-bottom:15px; align-items:start;">
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label style="font-weight:600; margin-bottom:6px; display:block;">Pilih Mata Pelajaran (Mapel)</label>
                             <input type="hidden" id="fM">
                             <div class="sp-cs-container" id="csContainerM">
                                 <div class="sp-cs-btn" id="csBtnM">
@@ -3426,78 +3412,165 @@ const Curriculum = {
                                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                 </div>
                                 <div class="sp-cs-dropdown" id="csDropM">
-                                    <div style="padding:10px; border-bottom:1px solid #e2e8f0; background:#f8fafc;">
-                                        <input type="text" id="csSearchM" class="form-input" placeholder="Cari mapel..." style="width:100%; padding:8px 12px; height:36px; border-radius:6px; outline:none;" autocomplete="off">
+                                    <div style="padding:8px; border-bottom:1px solid #e2e8f0; background:#f8fafc;">
+                                        <input type="text" id="csSearchM" class="form-input" placeholder="Cari mapel..." style="width:100%; padding:6px 10px; height:34px; border-radius:6px; outline:none; border:1px solid #cbd5e1;" autocomplete="off">
                                     </div>
-                                    <div id="csListM" style="max-height:200px; overflow-y:auto; padding:0;">
+                                    <div id="csListM" style="max-height:180px; overflow-y:auto; padding:0;">
                                         ${listM}
                                     </div>
                                 </div>
                             </div>
                         </div>
-                        <div class="form-group"><label>Jumlah JP</label><select class="form-select" id="fJp">${[1,2,3,4,5,6,7].map(j=>'<option value="'+j+'">'+j+' JP</option>').join('')}</select></div>
+                        <div class="form-group" style="margin-bottom:0;">
+                            <label style="font-weight:600; white-space:nowrap; margin-bottom:6px; display:block;">Jumlah JP</label>
+                            <select class="form-select" id="fJp" style="height:42px; width:100%; border-radius:8px; border:1px solid #cbd5e1; padding:0 30px 0 12px; font-weight:600; font-size:0.9rem; background-color:#fff; cursor:pointer;">
+                                ${[1,2,3,4,5,6,7].map(j=>`<option value="${j}">${j} JP</option>`).join('')}
+                            </select>
+                        </div>
                     </div>
+
+                    <div id="teacherBlockContainer"></div>
+
+                    ${!id ? `
+                    <button type="button" id="btnAddTeacherBlock" class="btn" style="width:100%; padding:10px; border:2px dashed var(--primary-color, #3b82f6); border-radius:8px; font-weight:600; color:var(--primary-color, #3b82f6); background:transparent; cursor:pointer; margin-bottom:10px; display:flex; align-items:center; justify-content:center; gap:8px;">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                        + Tambah Guru
+                    </button>
+                    ` : ''}
                 `,
                 onOpen: () => {
-                    const bindCustomSelect = (idPrefix, hiddenInputId, isMultiple = false) => {
-                        $(`#csBtn${idPrefix}`).on('click', function(e) {
+                    let blockCounter = 0;
+
+                    const bindMapelSelect = () => {
+                        $('#csBtnM').on('click', function(e) {
                             e.stopPropagation();
                             const isActive = $(this).hasClass('active');
                             $('.sp-cs-dropdown').hide();
                             $('.sp-cs-btn').removeClass('active');
-                            
                             if (!isActive) {
                                 $(this).addClass('active');
-                                $(`#csDrop${idPrefix}`).show();
-                                $(`#csSearch${idPrefix}`).val('').trigger('input').focus();
+                                $('#csDropM').show();
+                                $('#csSearchM').val('').trigger('input').focus();
                             }
                         });
 
-                        $(`#csSearch${idPrefix}`).on('input', function() {
+                        $('#csSearchM').on('input', function() {
                             const term = $(this).val().toLowerCase();
-                            $(`#csList${idPrefix} .sp-cs-option`).each(function() {
+                            $('#csListM .sp-cs-option').each(function() {
                                 const text = $(this).text().toLowerCase();
                                 $(this).toggle(text.includes(term));
                             });
                         });
 
-                        $(`#csList${idPrefix}`).on('click', '.sp-cs-option', function(e) {
+                        $('#csListM').on('click', '.sp-cs-option', function(e) {
                             e.stopPropagation();
-                            if (isMultiple) {
-                                $(this).toggleClass('selected');
-                                let selectedIds = [];
-                                let selectedTexts = [];
-                                $(`#csList${idPrefix} .sp-cs-option.selected`).each(function() {
-                                    selectedIds.push($(this).data('id'));
-                                    const rawText = $(this).data('text');
-                                    const shortName = rawText.includes(' - ') ? rawText.split(' - ')[1] : rawText;
-                                    selectedTexts.push(shortName);
-                                });
-                                $(`#${hiddenInputId}`).val(selectedIds.join(','));
-                                if (selectedIds.length === 0) {
-                                    $(`#csText${idPrefix}`).html(`-- Pilih ${idPrefix === 'G' ? 'Guru' : 'Mapel'} --`).css('color', '#64748b');
-                                } else {
-                                    let textToShow = selectedTexts.join(', ');
-                                    if (textToShow.length > 25) {
-                                        textToShow = `${selectedIds.length} Guru Terpilih`;
-                                    }
-                                    $(`#csText${idPrefix}`).html(textToShow).css('color', '#1e293b');
-                                }
+                            $('#csListM .sp-cs-option').removeClass('selected');
+                            $(this).addClass('selected');
+                            const val = $(this).data('id');
+                            const text = $(this).data('text');
+                            $('#fM').val(val);
+                            $('#csTextM').html(text).css('color', '#1e293b');
+                            $('#csDropM').hide();
+                            $('#csBtnM').removeClass('active');
+                        });
+                    };
+
+                    const updateBlockHeaders = () => {
+                        const blocks = $('.teacher-block-card');
+                        blocks.each(function(index) {
+                            $(this).find('.block-title').text(`Guru #${index + 1}`);
+                            if (blocks.length > 1 && !id) {
+                                $(this).find('.btn-remove-block').show();
                             } else {
-                                $(`#csList${idPrefix} .sp-cs-option`).removeClass('selected');
-                                $(this).addClass('selected');
-                                const val = $(this).data('id');
-                                const text = $(this).data('text');
-                                $(`#${hiddenInputId}`).val(val);
-                                $(`#csText${idPrefix}`).html(text).css('color', '#1e293b');
-                                $(`#csDrop${idPrefix}`).hide();
-                                $(`#csBtn${idPrefix}`).removeClass('active');
+                                $(this).find('.btn-remove-block').hide();
                             }
                         });
                     };
 
-                    bindCustomSelect('G', 'fG', !id);
-                    bindCustomSelect('M', 'fM', false);
+                    const addBlock = () => {
+                        blockCounter++;
+                        const bId = blockCounter;
+                        const blockHtml = `
+                            <div class="teacher-block-card" id="tBlock_${bId}">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid #e2e8f0;">
+                                    <span class="block-title" style="font-weight:700; color:#1e293b; font-size:0.9rem;">Guru</span>
+                                    <button type="button" class="btn-remove-block" data-bid="${bId}" style="display:none; background:#fee2e2; color:#ef4444; border:none; padding:3px 10px; border-radius:6px; font-size:0.78rem; font-weight:600; cursor:pointer;">&times; Hapus</button>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom:12px;">
+                                    <label style="font-weight:600; font-size:0.85rem; margin-bottom:4px; display:block;">Pilih Guru</label>
+                                    <input type="hidden" class="block-guru-id" id="fG_${bId}">
+                                    <div class="sp-cs-container" id="csContainerG_${bId}">
+                                        <div class="sp-cs-btn" id="csBtnG_${bId}">
+                                            <span id="csTextG_${bId}" style="color:#64748b;">-- Pilih Guru --</span>
+                                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                        </div>
+                                        <div class="sp-cs-dropdown" id="csDropG_${bId}">
+                                            <div style="padding:8px; border-bottom:1px solid #e2e8f0; background:#f8fafc;">
+                                                <input type="text" id="csSearchG_${bId}" class="form-input" placeholder="Cari guru..." style="width:100%; padding:6px 10px; height:34px; border-radius:6px; outline:none; border:1px solid #cbd5e1;" autocomplete="off">
+                                            </div>
+                                            <div id="csListG_${bId}" style="max-height:180px; overflow-y:auto; padding:0;">
+                                                ${listG}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="form-group" style="margin-bottom:0;">
+                                    <label style="font-weight:600; font-size:0.85rem; margin-bottom:4px; display:block;">Pilih Kelas</label>
+                                    ${renderKelasGridHTML(bId)}
+                                </div>
+                            </div>
+                        `;
+
+                        $('#teacherBlockContainer').append(blockHtml);
+                        updateBlockHeaders();
+
+                        // Bind Teacher Select for this block
+                        $(`#csBtnG_${bId}`).on('click', function(e) {
+                            e.stopPropagation();
+                            const isActive = $(this).hasClass('active');
+                            $('.sp-cs-dropdown').hide();
+                            $('.sp-cs-btn').removeClass('active');
+                            if (!isActive) {
+                                $(this).addClass('active');
+                                $(`#csDropG_${bId}`).show();
+                                $(`#csSearchG_${bId}`).val('').trigger('input').focus();
+                            }
+                        });
+
+                        $(`#csSearchG_${bId}`).on('input', function() {
+                            const term = $(this).val().toLowerCase();
+                            $(`#csListG_${bId} .sp-cs-option`).each(function() {
+                                const text = $(this).text().toLowerCase();
+                                $(this).toggle(text.includes(term));
+                            });
+                        });
+
+                        $(`#csListG_${bId}`).on('click', '.sp-cs-option', function(e) {
+                            e.stopPropagation();
+                            $(`#csListG_${bId} .sp-cs-option`).removeClass('selected');
+                            $(this).addClass('selected');
+                            const val = $(this).data('id');
+                            const text = $(this).data('text');
+                            $(`#fG_${bId}`).val(val);
+                            $(`#csTextG_${bId}`).html(text).css('color', '#1e293b');
+                            $(`#csDropG_${bId}`).hide();
+                            $(`#csBtnG_${bId}`).removeClass('active');
+                        });
+                    };
+
+                    bindMapelSelect();
+                    addBlock(); // Always create initial Block #1
+
+                    $('#btnAddTeacherBlock').on('click', function() {
+                        addBlock();
+                    });
+
+                    $('#teacherBlockContainer').on('click', '.btn-remove-block', function() {
+                        $(this).closest('.teacher-block-card').remove();
+                        updateBlockHeaders();
+                    });
 
                     $(document).on('click.csDropdown', function(e) {
                         if (!$(e.target).closest('.sp-cs-container').length) {
@@ -3506,59 +3579,97 @@ const Curriculum = {
                         }
                     });
 
+                    // Edit existing record mode
                     if (id) {
                         const row = this.state.distData.find(x => x.id == id);
-                        if(row) { 
-                            $('#fG').val(row.guru_id); 
-                            $(`#csListG .sp-cs-option`).removeClass('selected');
-                            const optG = $(`#csListG .sp-cs-option[data-id="${row.guru_id}"]`);
-                            if(optG.length) {
+                        if (row) {
+                            $('#fM').val(row.mapel_id);
+                            const optM = $(`#csListM .sp-cs-option[data-id="${row.mapel_id}"]`);
+                            if (optM.length) $('#csTextM').html(optM.data('text')).css('color', '#1e293b');
+
+                            $('#fJp').val(row.jp);
+
+                            // Block 1 data binding
+                            const bId = 1;
+                            $(`#fG_${bId}`).val(row.guru_id);
+                            $(`#csListG_${bId} .sp-cs-option`).removeClass('selected');
+                            const optG = $(`#csListG_${bId} .sp-cs-option[data-id="${row.guru_id}"]`);
+                            if (optG.length) {
                                 optG.addClass('selected');
-                                $('#csTextG').html(optG.data('text')).css('color', '#1e293b');
+                                $(`#csTextG_${bId}`).html(optG.data('text')).css('color', '#1e293b');
                             }
-                            
-                            $('#ck_'+row.kelas_id).prop('checked', true);
-                            
-                            // Restrict to single class selection when editing
-                            $('.kIdCheckbox').on('change', function() {
+
+                            $(`#ck_${bId}_${row.kelas_id}`).prop('checked', true);
+
+                            // Restrict to single class selection when editing an existing single record
+                            $(`.kIdCheckbox_${bId}`).on('change', function() {
                                 if ($(this).is(':checked')) {
-                                    $('.kIdCheckbox').not(this).prop('checked', false);
+                                    $(`.kIdCheckbox_${bId}`).not(this).prop('checked', false);
                                 }
                             });
-                            
-                            $('#fM').val(row.mapel_id); 
-                            const optM = $(`#csListM .sp-cs-option[data-id="${row.mapel_id}"]`);
-                            if(optM.length) $('#csTextM').html(optM.data('text')).css('color', '#1e293b');
-
-                            $('#fJp').val(row.jp); 
                         }
                     }
                 },
                 onConfirm: () => {
-                    const gIdVal = $('#fG').val(), mId = $('#fM').val(), jp = $('#fJp').val();
-                    const kIds = [];
-                    $('.kIdCheckbox:checked').each(function(){ kIds.push($(this).val()); });
-                    if(!gIdVal || !mId || !kIds || kIds.length===0) {
-                        EModal.toast({type: 'error', title: 'Perhatian', message: 'Silakan isi Guru, Mapel, dan minimal satu Kelas!'});
+                    const mId = $('#fM').val();
+                    const jp = $('#fJp').val();
+
+                    if (!mId) {
+                        EModal.toast({type: 'error', title: 'Perhatian', message: 'Silakan pilih Mata Pelajaran!'});
                         return false;
                     }
 
-                    const gIds = gIdVal.split(',').map(x => x.trim()).filter(x => x !== '');
-                    let targetAction = id ? 'update' : 'create';
-                    
                     if (id) {
-                        // Update: single teacher and class
-                        let data = { id: id, guru_id: gIds[0], kelas_id: kIds[0], mapel_id: mId, jp: jp };
+                        // Edit single record
+                        const gId = $('#fG_1').val();
+                        const kId = $('.block-kelas-checkbox:checked').val();
+                        if (!gId || !kId) {
+                            EModal.toast({type: 'error', title: 'Perhatian', message: 'Silakan pilih Guru dan Kelas!'});
+                            return false;
+                        }
+                        let data = { id: id, guru_id: gId, kelas_id: kId, mapel_id: mId, jp: jp };
                         this.api('sch_distribusi.php?action=update', {method:'POST', data}).done(() => {
-                            EModal.closeAll(); this.reloadCurrentPage();
+                            EModal.closeAll(); 
+                            this.reloadCurrentPage();
                             EModal.toast({ type: 'success', title: 'Berhasil', message: 'Distribusi diperbarui.' });
                         });
                     } else {
-                        // Create: bulk combination of multiple teachers and multiple classes
-                        let data = { guru_ids: gIds, kelas_ids: kIds, mapel_id: mId, jp: jp };
-                        this.api('sch_distribusi.php?action=create_bulk', {method:'POST', data}).done(() => {
-                            EModal.closeAll(); this.reloadCurrentPage();
-                            EModal.toast({ type: 'success', title: 'Berhasil', message: 'Distribusi berhasil ditambahkan.' });
+                        // Create grouped distributions
+                        const assignments = [];
+                        let isValid = true;
+                        let errorMsg = '';
+
+                        $('.teacher-block-card').each(function() {
+                            const guruId = $(this).find('.block-guru-id').val();
+                            const kelasIds = [];
+                            $(this).find('.block-kelas-checkbox:checked').each(function() {
+                                kelasIds.push($(this).val());
+                            });
+
+                            if (!guruId) {
+                                isValid = false;
+                                errorMsg = 'Ada blok guru yang belum memilih Guru!';
+                                return false;
+                            }
+                            if (kelasIds.length === 0) {
+                                isValid = false;
+                                errorMsg = 'Ada blok guru yang belum memilih Kelas!';
+                                return false;
+                            }
+
+                            assignments.push({ guru_id: guruId, kelas_ids: kelasIds });
+                        });
+
+                        if (!isValid) {
+                            EModal.toast({type: 'error', title: 'Perhatian', message: errorMsg});
+                            return false;
+                        }
+
+                        let data = { mapel_id: mId, jp: jp, assignments: assignments };
+                        this.api('sch_distribusi.php?action=save_grouped', {method:'POST', data}).done(() => {
+                            EModal.closeAll(); 
+                            this.reloadCurrentPage();
+                            EModal.toast({ type: 'success', title: 'Berhasil', message: 'Distribusi mengajar berhasil disimpan.' });
                         });
                     }
                     return false;

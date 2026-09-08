@@ -62,6 +62,46 @@ switch ($action) {
         }
         break;
 
+    case 'save_grouped':
+        $input = get_input();
+        try {
+            $mapelId = (int)($input['mapel_id'] ?? 0);
+            $jp = (int)($input['jp'] ?? 0);
+            $assignments = isset($input['assignments']) && is_array($input['assignments']) ? $input['assignments'] : [];
+
+            if ($mapelId <= 0 || $jp <= 0 || empty($assignments)) {
+                json_response(400, false, 'Data mapel, JP, dan penugasan guru harus diisi lengkap.');
+            }
+
+            db()->beginTransaction();
+            $stmt = db()->prepare("INSERT INTO sch_distribusi (guru_id, kelas_id, mapel_id, jp) VALUES (?, ?, ?, ?)");
+            $insertedCount = 0;
+
+            foreach ($assignments as $assign) {
+                $guruId = (int)($assign['guru_id'] ?? 0);
+                $kelasIds = isset($assign['kelas_ids']) && is_array($assign['kelas_ids']) ? $assign['kelas_ids'] : [];
+
+                if ($guruId > 0 && !empty($kelasIds)) {
+                    foreach ($kelasIds as $kId) {
+                        $kId = (int)$kId;
+                        if ($kId > 0) {
+                            $stmt->execute([$guruId, $kId, $mapelId, $jp]);
+                            $insertedCount++;
+                        }
+                    }
+                }
+            }
+
+            db()->commit();
+            json_response(200, true, "Berhasil menambahkan {$insertedCount} penugasan distribusi mengajar.");
+        } catch (PDOException $e) {
+            if (db()->inTransaction()) {
+                db()->rollBack();
+            }
+            json_response(500, false, 'Gagal: ' . $e->getMessage());
+        }
+        break;
+
     case 'update':
         $input = get_input();
         try {

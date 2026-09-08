@@ -44,6 +44,15 @@ switch ($action) {
     case 'promote_students':
         promoteStudents();
         break;
+    case 'graduate_students':
+        graduateStudents();
+        break;
+    case 'cancel_graduation':
+        cancelGraduation();
+        break;
+    case 'get_graduation_years':
+        getGraduationYears();
+        break;
     default:
         json_response(400, false, 'Action tidak valid.');
 }
@@ -57,9 +66,11 @@ function listStudents()
     $search = isset($_GET['search']) ? sanitize($_GET['search']) : '';
     $kelas = isset($_GET['kelas']) ? sanitize($_GET['kelas']) : '';
     $academicYearId = isset($_GET['academic_year_id']) ? (int) $_GET['academic_year_id'] : 0;
+    $academicYearIdLulus = isset($_GET['academic_year_id_lulus']) ? (int) $_GET['academic_year_id_lulus'] : 0;
+    $statusSiswa = isset($_GET['status_siswa']) ? sanitize($_GET['status_siswa']) : 'Aktif';
     $allYears = isset($_GET['all_years']) ? (int) $_GET['all_years'] : 0;
 
-    if ($academicYearId <= 0 && $allYears !== 1) {
+    if ($academicYearId <= 0 && $allYears !== 1 && $statusSiswa === 'Aktif') {
         $active = get_active_academic_year();
         $academicYearId = (int) ($active['id'] ?? 0);
     }
@@ -68,10 +79,23 @@ function listStudents()
         $where = "WHERE 1=1";
         $params = [];
 
-        if ($academicYearId > 0) {
-            $where .= " AND s.academic_year_id = ?";
-            $params[] = $academicYearId;
+        if ($statusSiswa !== '' && $statusSiswa !== 'all') {
+            $where .= " AND s.status_siswa = ?";
+            $params[] = $statusSiswa;
         }
+
+        if ($statusSiswa === 'Lulus') {
+            if ($academicYearIdLulus > 0) {
+                $where .= " AND s.academic_year_id_lulus = ?";
+                $params[] = $academicYearIdLulus;
+            }
+        } else {
+            if ($academicYearId > 0) {
+                $where .= " AND s.academic_year_id = ?";
+                $params[] = $academicYearId;
+            }
+        }
+
         if ($search !== '') {
             $where .= " AND (s.nis LIKE ? OR s.nisn LIKE ? OR s.nama LIKE ? OR s.email LIKE ? OR s.tempat_lahir LIKE ? OR s.kelas LIKE ?)";
             $like = "%{$search}%";
@@ -83,9 +107,12 @@ function listStudents()
         }
 
         $query = "
-            SELECT s.*, ay.tahun_ajaran, ay.semester
+            SELECT s.*, 
+                   ay.tahun_ajaran, ay.semester,
+                   ay_lulus.tahun_ajaran AS tahun_lulus_name, ay_lulus.semester AS semester_lulus_name
             FROM students s
             LEFT JOIN academic_years ay ON ay.id = s.academic_year_id
+            LEFT JOIN academic_years ay_lulus ON ay_lulus.id = s.academic_year_id_lulus
             {$where}
             ORDER BY s.no_urut ASC, s.nama ASC
         ";
@@ -748,6 +775,125 @@ function promoteStudents()
         if (db()->inTransaction()) {
             db()->rollBack();
         }
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
+function graduateStudents()
+{
+    require_superadmin();
+
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        json_response(405, false, 'Method not allowed.');
+    }
+
+    $input = get_input();
+    $studentIds = isset($input['student_ids']) && is_array($input['student_ids']) ? $input['student_ids'] : [];
+    $kelas = isset($input['kelas']) ? sanitize($input['kelas']) : '';
+    $academicYearIdLulus = isset($input['academic_year_id_lulus']) ? (int) $input['academic_year_id_lulus'] : 0;
+    $tanggalLulus = isset($input['tanggal_lulus']) ? sanitize($input['tanggal_lulus']) : date('Y-m-d');
+
+    if ($academicYearIdLulus <= 0) {
+        $active = get_active_academic_year();
+        $academicYearIdLulus = (int) ($active['id'] ?? 0);
+    }
+    if ($academicYearIdLulus <= 0) {
+        json_response(400, false, 'Pilih Tahun Ajaran Kelulusan.');
+    }
+
+    try {
+        db()->beginTransaction();
+
+        if (!empty($studentIds)) {
+            $placeholders = implode(',', array_fill(0, count($studentIds), '?'));
+            $stmt = db()->prepare("
+                UPDATE students 
+                SET status_siswa = 'Lulus', academic_year_id_lulus = ?, tanggal_lulus = ?
+                WHERE id IN ($placeholders)
+            ");
+            $params = array_merge([$academicYearIdLulus, $tanggalLulus], $studentIds);
+            $stmt->execute($params);
+            $updated = $stmt->rowCount();
+        } elseif (!empty($kelas)) {
+            $stmt = db()->prepare("
+                UPDATE students 
+                SET status_siswa = 'Lulus', academic_year_id_lulus = ?, tanggal_lulus = ?
+                WHERE kelas = ? AND status_siswa = 'Aktif'
+            ");
+            $stmt->execute([$academicYearIdLulus, $tanggalLulus, $kelas]);
+            $updated = $stmt->rowCount();
+        } else {
+            json_response(400, false, 'Pilih kelas atau siswa yang akan diluluskan.');
+        }
+
+        db()->commit();
+        json_response(200, true, "Berhasil meluluskan {$updated} siswa.");
+    } catch (PDOException $e) {
+        if (db()->inTransaction()) {
+            db()->rollBack();
+        }
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
+function cancelGraduation()
+{
+    require_superadmin();
+
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        json_response(405, false, 'Method not allowed.');
+    }
+
+    $input = get_input();
+    $studentIds = isset($input['student_ids']) && is_array($input['student_ids']) ? $input['student_ids'] : [];
+
+    if (empty($studentIds)) {
+        json_response(400, false, 'Pilih setidaknya satu siswa.');
+    }
+
+    try {
+        $placeholders = implode(',', array_fill(0, count($studentIds), '?'));
+        $stmt = db()->prepare("
+            UPDATE students 
+            SET status_siswa = 'Aktif', academic_year_id_lulus = NULL, tanggal_lulus = NULL
+            WHERE id IN ($placeholders)
+        ");
+        $stmt->execute($studentIds);
+        $count = $stmt->rowCount();
+
+        json_response(200, true, "Berhasil membatalkan kelulusan {$count} siswa.");
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
+function getGraduationYears()
+{
+    require_superadmin();
+
+    try {
+        $stmt = db()->query("
+            SELECT ay.id, ay.tahun_ajaran, ay.semester, COUNT(s.id) AS total_lulus
+            FROM academic_years ay
+            LEFT JOIN students s ON s.academic_year_id_lulus = ay.id AND s.status_siswa = 'Lulus'
+            GROUP BY ay.id
+            HAVING total_lulus > 0
+            ORDER BY ay.tahun_ajaran DESC, ay.semester DESC
+        ");
+        $years = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // If no years have graduated students yet, return all academic years so user can select
+        if (empty($years)) {
+            $stmtAll = db()->query("
+                SELECT ay.id, ay.tahun_ajaran, ay.semester, 0 AS total_lulus
+                FROM academic_years ay
+                ORDER BY ay.tahun_ajaran DESC, ay.semester DESC
+            ");
+            $years = $stmtAll->fetchAll(PDO::FETCH_ASSOC);
+        }
+
+        json_response(200, true, 'Daftar Tahun Ajaran Kelulusan.', $years);
+    } catch (PDOException $e) {
         json_response(500, false, 'Server error: ' . $e->getMessage());
     }
 }

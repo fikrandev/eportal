@@ -4,6 +4,14 @@
  * Centralized photo upload, listing, and deletion for all students.
  * Photos are matched to students by NIS filename.
  */
+
+// Override PHP limits for large ZIP uploads (up to 200MB)
+@ini_set('upload_max_filesize', '200M');
+@ini_set('post_max_size', '210M');
+@ini_set('max_execution_time', '300');
+@ini_set('max_input_time', '300');
+@ini_set('memory_limit', '512M');
+
 require_once __DIR__ . '/config.php';
 
 require_superadmin();
@@ -149,19 +157,43 @@ function uploadZip()
         json_response(405, false, 'Method not allowed.');
     }
 
-    if (empty($_FILES['zipfile']) || $_FILES['zipfile']['error'] !== UPLOAD_ERR_OK) {
-        json_response(400, false, 'File ZIP tidak ditemukan atau gagal diupload.');
+    // Detailed error handling for file upload issues
+    if (empty($_FILES['zipfile'])) {
+        // Check if the entire $_FILES is empty (could be post_max_size exceeded)
+        $postMaxSize = ini_get('post_max_size');
+        $uploadMaxSize = ini_get('upload_max_filesize');
+        json_response(400, false, "File ZIP tidak ditemukan di request. Pastikan field name = 'zipfile'. Max upload: {$uploadMaxSize}, Max POST: {$postMaxSize}. Content-Length: " . ($_SERVER['CONTENT_LENGTH'] ?? 'unknown'));
+    }
+
+    if ($_FILES['zipfile']['error'] !== UPLOAD_ERR_OK) {
+        $uploadErrors = [
+            UPLOAD_ERR_INI_SIZE   => 'File terlalu besar (melebihi upload_max_filesize: ' . ini_get('upload_max_filesize') . ').',
+            UPLOAD_ERR_FORM_SIZE  => 'File terlalu besar (melebihi MAX_FILE_SIZE form).',
+            UPLOAD_ERR_PARTIAL    => 'File hanya terupload sebagian. Coba upload ulang.',
+            UPLOAD_ERR_NO_FILE    => 'Tidak ada file yang dipilih untuk diupload.',
+            UPLOAD_ERR_NO_TMP_DIR => 'Folder temporary server tidak ditemukan (hubungi hosting).',
+            UPLOAD_ERR_CANT_WRITE => 'Gagal menulis file ke disk server (hubungi hosting).',
+            UPLOAD_ERR_EXTENSION  => 'Upload dihentikan oleh ekstensi PHP.',
+        ];
+        $errCode = $_FILES['zipfile']['error'];
+        $errMsg = $uploadErrors[$errCode] ?? "Error tidak dikenal (code: {$errCode}).";
+        json_response(400, false, "Gagal upload ZIP: {$errMsg}");
     }
 
     $file = $_FILES['zipfile'];
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
     if ($ext !== 'zip') {
-        json_response(400, false, 'File harus berformat ZIP.');
+        json_response(400, false, 'File harus berformat ZIP. File yang diupload: ' . $file['name']);
+    }
+
+    if (!class_exists('ZipArchive')) {
+        json_response(500, false, 'Ekstensi PHP zip belum diaktifkan di server. Hubungi hosting untuk mengaktifkan extension=zip.');
     }
 
     $zip = new ZipArchive();
-    if ($zip->open($file['tmp_name']) !== true) {
-        json_response(400, false, 'Gagal membuka file ZIP.');
+    $openResult = $zip->open($file['tmp_name']);
+    if ($openResult !== true) {
+        json_response(400, false, 'Gagal membuka file ZIP (error code: ' . $openResult . '). File mungkin corrupt.');
     }
 
     $root = realpath(__DIR__ . '/../');
