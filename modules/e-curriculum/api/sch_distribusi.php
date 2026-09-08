@@ -113,12 +113,41 @@ switch ($action) {
         }
         break;
 
+    case 'delete_single':
     case 'delete':
         $input = get_input();
+        $id = (int)($input['id'] ?? 0);
+        if ($id <= 0) json_response(400, false, 'ID Distribusi tidak valid');
         try {
             $stmt = db()->prepare("DELETE FROM sch_distribusi WHERE id=?");
-            $stmt->execute([$input['id']]);
+            $stmt->execute([$id]);
             json_response(200, true, 'Data distribusi berhasil dihapus');
+        } catch (PDOException $e) {
+            json_response(500, false, 'Gagal: ' . $e->getMessage());
+        }
+        break;
+
+    case 'delete_bulk':
+        $input = get_input();
+        $ids = isset($input['ids']) && is_array($input['ids']) ? array_map('intval', $input['ids']) : [];
+        $ids = array_filter($ids, function($v) { return $v > 0; });
+        if (empty($ids)) json_response(400, false, 'Pilih setidaknya satu data distribusi');
+        try {
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $stmt = db()->prepare("DELETE FROM sch_distribusi WHERE id IN ($placeholders)");
+            $stmt->execute($ids);
+            json_response(200, true, count($ids) . ' data distribusi berhasil dihapus');
+        } catch (PDOException $e) {
+            json_response(500, false, 'Gagal: ' . $e->getMessage());
+        }
+        break;
+
+    case 'clear_all':
+    case 'delete_all':
+        try {
+            db()->query("DELETE FROM sch_distribusi");
+            db()->query("ALTER TABLE sch_distribusi AUTO_INCREMENT = 1");
+            json_response(200, true, 'Semua data distribusi mengajar berhasil dihapus');
         } catch (PDOException $e) {
             json_response(500, false, 'Gagal: ' . $e->getMessage());
         }

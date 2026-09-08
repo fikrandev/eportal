@@ -3292,7 +3292,13 @@ const Curriculum = {
             <div class="sch-card">
                 <div class="sch-card-header">
                     <h3>Penugasan / Distribusi Mengajar</h3>
-                    <div class="sch-toolbar">
+                    <div class="sch-toolbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                        <button class="btn btn-sm" id="btnBulkDeleteDist" style="display:none;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;font-weight:600;" onclick="Curriculum.bulkDeleteDistribusi()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:2px"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg> Hapus Terpilih (<span id="bulkDistCount">0</span>)
+                        </button>
+                        <button class="btn btn-sm" style="background:#fef2f2;color:#ef4444;border:1px solid #fecaca;font-weight:600;" onclick="Curriculum.clearAllDistribusi()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:2px"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> Hapus Semua
+                        </button>
                         <button class="btn btn-outline" onclick="Curriculum.exportData('distribusi')">Export</button>
                         <button class="btn btn-outline" onclick="Curriculum.importData('distribusi')">Import</button>
                         <button class="btn btn-primary" onclick="Curriculum.formDist()">Tambah Distribusi</button>
@@ -3326,25 +3332,100 @@ const Curriculum = {
             if (!data.length) { $('#distTable').html('<div class="sch-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg><h3>Tidak ada distribusi</h3><p>Pilih kelas lain atau tambahkan penugasan baru.</p></div>'); return; }
 
             let totalJp = 0;
-            let html = '<table class="sch-table"><thead><tr><th>No</th><th>Guru</th><th>Kelas</th><th>Mata Pelajaran</th><th>JP</th><th>Aksi</th></tr></thead><tbody>';
+            let html = '<table class="sch-table"><thead><tr>';
+            html += '<th style="width:36px;text-align:center"><input type="checkbox" id="selectAllDist" onchange="Curriculum.toggleSelectAllDist(this.checked)" title="Pilih Semua"></th>';
+            html += '<th>No</th><th>Guru</th><th>Kelas</th><th>Mata Pelajaran</th><th>JP</th><th>Aksi</th></tr></thead><tbody>';
+            
             data.forEach((d, i) => {
                 totalJp += parseInt(d.jp);
+                const escapedName = this.escapeHtml(d.nama_guru);
+                const escapedMapel = this.escapeHtml(d.nama_mapel);
                 html += `<tr>
+                    <td style="text-align:center"><input type="checkbox" class="dist-cb" value="${d.id}" onchange="Curriculum.updateBulkDeleteDistState()"></td>
                     <td>${i+1}</td>
-                    <td><strong>${d.nama_guru}</strong><br><small style="color:var(--text-muted)">${d.kode_guru}</small></td>
-                    <td>${d.nama_kelas}</td>
-                    <td>${d.nama_mapel}</td>
+                    <td><strong>${escapedName}</strong><br><small style="color:var(--text-muted)">${this.escapeHtml(d.kode_guru)}</small></td>
+                    <td>${this.escapeHtml(d.nama_kelas)}</td>
+                    <td>${escapedMapel}</td>
                     <td><span style="background:var(--primary-light);padding:2px 8px;border-radius:12px;font-weight:600">${d.jp}</span></td>
                     <td>
                         <div class="sch-actions">
                             <button class="sch-btn-icon" onclick="Curriculum.formDist(${d.id})" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-                            <button class="sch-btn-icon danger" onclick="Curriculum.deleteMaster('distribusi', ${d.id})" title="Hapus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
+                            <button class="sch-btn-icon danger" onclick="Curriculum.deleteSingleDistribusi(${d.id}, '${escapedName.replace(/'/g, "\\'")}', '${escapedMapel.replace(/'/g, "\\'")}')" title="Hapus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
                         </div>
                     </td>
                 </tr>`;
             });
-            html += `</tbody><tfoot><tr><td colspan="4" style="text-align:right;font-weight:700">Total JP:</td><td colspan="2" style="font-weight:700;color:var(--primary-dark)">${totalJp} Jam</td></tr></tfoot></table>`;
+            html += `</tbody><tfoot><tr><td colspan="5" style="text-align:right;font-weight:700">Total JP:</td><td colspan="2" style="font-weight:700;color:var(--primary-dark)">${totalJp} Jam</td></tr></tfoot></table>`;
             $('#distTable').html(html);
+            this.updateBulkDeleteDistState();
+        });
+    },
+
+    toggleSelectAllDist(checked) {
+        $('.dist-cb').prop('checked', checked);
+        this.updateBulkDeleteDistState();
+    },
+
+    updateBulkDeleteDistState() {
+        const selectedCount = $('.dist-cb:checked').length;
+        const totalCount = $('.dist-cb').length;
+        $('#selectAllDist').prop('checked', totalCount > 0 && selectedCount === totalCount);
+        if (selectedCount > 0) {
+            $('#bulkDistCount').text(selectedCount);
+            $('#btnBulkDeleteDist').show();
+        } else {
+            $('#btnBulkDeleteDist').hide();
+        }
+    },
+
+    deleteSingleDistribusi(id, namaGuru, namaMapel) {
+        EModal.confirm({
+            title: 'Hapus Penugasan Mengajar',
+            message: `Yakin ingin menghapus penugasan <strong>${namaMapel}</strong> untuk <strong>${namaGuru}</strong>?`,
+            onConfirm: () => {
+                this.api('sch_distribusi.php?action=delete', { method: 'POST', data: { id: id } }).done(res => {
+                    EModal.toast({ type: 'success', title: 'Berhasil', message: res.message || 'Penugasan berhasil dihapus.' });
+                    this.loadDistribusi($('#distFilterKelas').val());
+                }).fail(xhr => {
+                    EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menghapus penugasan.' });
+                });
+            }
+        });
+    },
+
+    bulkDeleteDistribusi() {
+        const selectedIds = [];
+        $('.dist-cb:checked').each(function() {
+            selectedIds.push(parseInt($(this).val()));
+        });
+        if (selectedIds.length === 0) return;
+
+        EModal.confirm({
+            title: 'Hapus Penugasan Terpilih',
+            message: `Yakin ingin menghapus <strong>${selectedIds.length} data penugasan</strong> yang dicentang?`,
+            onConfirm: () => {
+                this.api('sch_distribusi.php?action=delete_bulk', { method: 'POST', data: { ids: selectedIds } }).done(res => {
+                    EModal.toast({ type: 'success', title: 'Berhasil', message: res.message || 'Penugasan terpilih berhasil dihapus.' });
+                    this.loadDistribusi($('#distFilterKelas').val());
+                }).fail(xhr => {
+                    EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menghapus penugasan terpilih.' });
+                });
+            }
+        });
+    },
+
+    clearAllDistribusi() {
+        EModal.confirm({
+            title: 'Hapus Semua Distribusi Mengajar',
+            message: '<strong>PERINGATAN!</strong> Yakin ingin menghapus SELURUH data penugasan/distribusi mengajar? Tindakan ini tidak dapat dibatalkan.',
+            onConfirm: () => {
+                this.api('sch_distribusi.php?action=clear_all', { method: 'POST' }).done(res => {
+                    EModal.toast({ type: 'success', title: 'Berhasil', message: res.message || 'Semua data distribusi mengajar berhasil dihapus.' });
+                    this.loadDistribusi($('#distFilterKelas').val());
+                }).fail(xhr => {
+                    EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menghapus semua data distribusi.' });
+                });
+            }
         });
     },
 
