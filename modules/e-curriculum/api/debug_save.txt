@@ -1,0 +1,18 @@
+2026-09-08 07:48:35
+INPUT: Array
+(
+    [waktu_terlambat] => 06:00
+)
+
+WAKTU: 06:00:00
+DB_RESULT: true
+---
+2026-09-08 07:48:41
+INPUT: Array
+(
+    [waktu_terlambat] => 06:45
+)
+
+WAKTU: 06:45:00
+DB_RESULT: true
+---

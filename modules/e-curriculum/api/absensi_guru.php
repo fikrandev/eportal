@@ -321,12 +321,34 @@ function saveSettingsGuru($user) {
     }
 
     $input = get_input();
+    
+    // Check if the server mistakenly parsed JSON as form-urlencoded
+    // where the entire JSON string becomes the first key of $_POST
+    if (!isset($input['waktu_terlambat'])) {
+        $raw = file_get_contents('php://input');
+        if (!empty($raw)) {
+            $json = json_decode($raw, true);
+            if (is_array($json)) {
+                $input = array_merge($input, $json);
+            }
+        }
+    }
+
     $waktu = isset($input['waktu_terlambat']) ? trim($input['waktu_terlambat']) : '07:15';
 
     if (strlen($waktu) === 5) {
         $waktu .= ':00';
     }
 
-    upsert_setting('waktu_terlambat_guru', $waktu, 'text', 'Batas jam terlambat absensi guru');
-    json_response(200, true, 'Setting jam terlambat guru berhasil disimpan.');
+    $dbResult = upsert_setting('waktu_terlambat_guru', $waktu, 'text', 'Batas jam terlambat absensi guru');
+    
+    // DEBUG LOG
+    file_put_contents(__DIR__ . '/debug_save.txt', date('Y-m-d H:i:s') . "\nINPUT: " . print_r($input, true) . "\nWAKTU: " . $waktu . "\nDB_RESULT: " . ($dbResult ? 'true' : 'false') . "\n---\n", FILE_APPEND);
+    
+    // Debug info added to response
+    json_response(200, true, 'Setting jam terlambat guru berhasil disimpan.', [
+        'waktu_terlambat' => substr($waktu, 0, 5),
+        'db_result' => $dbResult,
+        'raw_input' => $input
+    ]);
 }
