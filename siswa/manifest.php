@@ -15,9 +15,9 @@ $icon_url = !empty($school_icon)
 
 header('Content-Type: application/json');
 echo json_encode([
-    'name' => 'Siswa ' . $school_name,
-    'short_name' => 'Siswa App',
-    'description' => 'Aplikasi Siswa - Absensi & Izin',
+    'name' => 'Portal Murid ' . $school_name,
+    'short_name' => 'Portal Murid',
+    'description' => 'Portal Murid - Absensi & Izin',
     'start_url' => './',
     'scope' => './',
     'id' => '/eportal/siswa/',

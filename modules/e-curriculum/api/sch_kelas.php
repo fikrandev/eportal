@@ -45,20 +45,36 @@ switch ($action) {
     case 'delete':
         $input = get_input();
         try {
+            db()->beginTransaction();
             if (isset($input['ids']) && is_array($input['ids'])) {
                 $ids = array_map('intval', $input['ids']);
                 $ids = array_filter($ids, function($val) { return $val > 0; });
-                if (empty($ids)) json_response(400, false, 'ID tidak valid.');
+                if (empty($ids)) {
+                    db()->rollBack();
+                    json_response(400, false, 'ID tidak valid.');
+                }
                 $inQuery = implode(',', array_fill(0, count($ids), '?'));
+                db()->prepare("DELETE FROM sch_distribusi WHERE kelas_id IN ($inQuery)")->execute($ids);
+                db()->prepare("DELETE FROM sch_jadwal WHERE kelas_id IN ($inQuery)")->execute($ids);
                 $stmt = db()->prepare("DELETE FROM sch_kelas WHERE id IN ($inQuery)");
                 $stmt->execute($ids);
+                db()->commit();
                 json_response(200, true, count($ids) . ' kelas berhasil dihapus.');
             } else {
+                $id = (int)($input['id'] ?? 0);
+                if ($id <= 0) {
+                    db()->rollBack();
+                    json_response(400, false, 'ID tidak valid.');
+                }
+                db()->prepare("DELETE FROM sch_distribusi WHERE kelas_id = ?")->execute([$id]);
+                db()->prepare("DELETE FROM sch_jadwal WHERE kelas_id = ?")->execute([$id]);
                 $stmt = db()->prepare("DELETE FROM sch_kelas WHERE id=?");
-                $stmt->execute([$input['id']]);
+                $stmt->execute([$id]);
+                db()->commit();
                 json_response(200, true, 'Data kelas berhasil dihapus');
             }
         } catch (PDOException $e) {
+            if (db()->inTransaction()) db()->rollBack();
             json_response(500, false, 'Gagal: ' . $e->getMessage());
         }
         break;

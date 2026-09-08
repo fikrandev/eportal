@@ -15,9 +15,9 @@ $icon_url = !empty($school_icon)
 
 header('Content-Type: application/json');
 echo json_encode([
-    'name' => 'Guru ' . $school_name,
-    'short_name' => 'Guru App',
-    'description' => 'Aplikasi Guru - Jadwal & Jurnal Mengajar',
+    'name' => 'Portal Guru ' . $school_name,
+    'short_name' => 'Portal Guru',
+    'description' => 'Portal Guru - Jadwal & Jurnal Mengajar',
     'start_url' => './',
     'scope' => './',
     'id' => '/eportal/guru/',

@@ -18,13 +18,13 @@ $school_icon = get_setting('icon_sekolah', '');
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="description" content="Guru App — Jadwal & Jurnal Mengajar">
+    <meta name="description" content="Portal Guru — Jadwal & Jurnal Mengajar">
     <meta name="theme-color" content="#1565C0">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Guru App">
+    <meta name="apple-mobile-web-app-title" content="Portal Guru">
 
-    <title>Guru App — <?php echo htmlspecialchars($school_name); ?></title>
+    <title>Portal Guru — <?php echo htmlspecialchars($school_name); ?></title>
 
     <?php if($school_icon): ?>
     <link rel="icon" href="<?php echo BASE_URL . $school_icon; ?>">
@@ -61,7 +61,7 @@ $school_icon = get_setting('icon_sekolah', '');
     <div id="globalLoader" class="guru-loader">
         <div class="guru-loader-content">
             <div class="guru-loader-spinner"></div>
-            <p class="guru-loader-text">Guru App</p>
+            <p class="guru-loader-text">Portal Guru</p>
         </div>
     </div>
 
@@ -78,7 +78,7 @@ $school_icon = get_setting('icon_sekolah', '');
                     </svg>
                 <?php endif; ?>
             </div>
-            <h1 class="login-title">Guru App</h1>
+            <h1 class="login-title">Portal Guru</h1>
             <p class="login-subtitle"><?php echo htmlspecialchars($school_name); ?></p>
 
             <form id="loginForm" autocomplete="off">

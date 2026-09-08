@@ -116,9 +116,32 @@ function deleteRefKelas() {
     $id = isset($input['id']) ? (int)$input['id'] : 0;
     if (!$id) json_response(400, false, 'ID tidak valid.');
     
-    $stmt = db()->prepare("DELETE FROM ref_kelas WHERE id=?");
-    $stmt->execute([$id]);
-    json_response(200, true, 'Data Kelas berhasil dihapus.');
+    try {
+        db()->beginTransaction();
+        
+        // Get class name before deletion
+        $stmtGet = db()->prepare("SELECT nama_kelas FROM ref_kelas WHERE id = ?");
+        $stmtGet->execute([$id]);
+        $classRow = $stmtGet->fetch(PDO::FETCH_ASSOC);
+        
+        if ($classRow && !empty($classRow['nama_kelas'])) {
+            $namaKelas = $classRow['nama_kelas'];
+            // Unassign students currently assigned to this deleted class so syncRefKelasFromStudents won't auto-recreate it
+            $stmtUpd = db()->prepare("UPDATE students SET kelas = '' WHERE LOWER(TRIM(kelas)) = LOWER(TRIM(?))");
+            $stmtUpd->execute([$namaKelas]);
+        }
+        
+        $stmt = db()->prepare("DELETE FROM ref_kelas WHERE id = ?");
+        $stmt->execute([$id]);
+        
+        db()->commit();
+        json_response(200, true, 'Data Kelas berhasil dihapus.');
+    } catch (Exception $e) {
+        if (db()->inTransaction()) {
+            db()->rollBack();
+        }
+        json_response(500, false, 'Gagal menghapus data kelas: ' . $e->getMessage());
+    }
 }
 
 function listTeachers() {

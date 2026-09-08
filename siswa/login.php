@@ -12,7 +12,7 @@ $school_icon = get_setting('icon_sekolah', '');
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Login Siswa — <?php echo htmlspecialchars($school_name); ?></title>
+    <title>Login Portal Murid — <?php echo htmlspecialchars($school_name); ?></title>
     
     <?php if($school_icon): ?>
     <link rel="icon" href="<?php echo BASE_URL . htmlspecialchars($school_icon); ?>">
@@ -31,7 +31,7 @@ $school_icon = get_setting('icon_sekolah', '');
                 <img src="<?php echo BASE_URL . htmlspecialchars($school_icon); ?>" alt="Logo" class="login-logo">
             <?php endif; ?>
             
-            <h1 class="login-title">Siswa App</h1>
+            <h1 class="login-title">Portal Murid</h1>
             <p class="login-subtitle"><?php echo htmlspecialchars($school_name); ?></p>
 
             <form id="formLogin" onsubmit="event.preventDefault(); submitLogin();">

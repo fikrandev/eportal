@@ -55,7 +55,7 @@ function listPhotos()
     $filter = isset($_GET['filter']) ? sanitize($_GET['filter']) : 'all';
     $kelas  = isset($_GET['kelas']) ? sanitize($_GET['kelas']) : '';
 
-    $where = "WHERE s.academic_year_id = ?";
+    $where = "WHERE s.academic_year_id = ? AND (s.status_siswa = 'Aktif' OR s.status_siswa IS NULL OR s.status_siswa = '')";
     $params = [$academicYearId];
 
     if ($search !== '') {
@@ -111,7 +111,7 @@ function listPhotos()
     $totalWithPhoto = count(array_filter($items, fn($i) => $i['has_photo']));
 
     // Get available classes for filter
-    $stmtClasses = db()->prepare("SELECT DISTINCT kelas FROM students WHERE academic_year_id = ? ORDER BY kelas ASC");
+    $stmtClasses = db()->prepare("SELECT DISTINCT kelas FROM students WHERE academic_year_id = ? AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY kelas ASC");
     $stmtClasses->execute([$academicYearId]);
     $classes = $stmtClasses->fetchAll(PDO::FETCH_COLUMN);
 
@@ -304,11 +304,11 @@ function processPhotoFile($originalName, $tmpPath, $academicYearId = 0)
         return ['success' => false, 'message' => 'Tahun ajaran aktif belum diatur.'];
     }
 
-    // Find student by NIS in the active academic year
+    // Find student by NIS in the active academic year (only active students)
     $stmt = db()->prepare("
         SELECT s.id, s.nis, s.nama, s.foto_path
         FROM students s
-        WHERE s.academic_year_id = ? AND s.nis = ?
+        WHERE s.academic_year_id = ? AND s.nis = ? AND (s.status_siswa = 'Aktif' OR s.status_siswa IS NULL OR s.status_siswa = '')
         LIMIT 1
     ");
     $stmt->execute([$academicYearId, $nis]);

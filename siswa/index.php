@@ -14,13 +14,13 @@ $school_icon = get_setting('icon_sekolah', '');
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="description" content="Siswa App — E-Portal">
+    <meta name="description" content="Portal Murid — E-Portal">
     <meta name="theme-color" content="#1565C0">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Siswa App">
+    <meta name="apple-mobile-web-app-title" content="Portal Murid">
 
-    <title>Siswa App — <?php echo htmlspecialchars($school_name); ?></title>
+    <title>Portal Murid — <?php echo htmlspecialchars($school_name); ?></title>
 
     <?php if($school_icon): ?>
     <link rel="icon" href="<?php echo BASE_URL . htmlspecialchars($school_icon); ?>">
@@ -46,7 +46,7 @@ $school_icon = get_setting('icon_sekolah', '');
     <div id="globalLoader" class="app-loader">
         <div class="app-loader-content">
             <div class="app-loader-spinner"></div>
-            <p class="app-loader-text">Siswa App</p>
+            <p class="app-loader-text">Portal Murid</p>
         </div>
     </div>
 
@@ -63,7 +63,7 @@ $school_icon = get_setting('icon_sekolah', '');
                     </svg>
                 <?php endif; ?>
             </div>
-            <h1 class="login-title">Siswa App</h1>
+            <h1 class="login-title">Portal Murid</h1>
             <p class="login-subtitle"><?php echo htmlspecialchars($school_name); ?></p>
 
             <form id="loginForm" autocomplete="off">

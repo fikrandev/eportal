@@ -124,11 +124,11 @@ $verifyUrl = absoluteBaseUrl() . "modules/e-xam-card/v.php?c=" . urlencode(base6
 
         .card-line { position: absolute; top: 43%; left: 3.5%; right: 3.5%; border-top: 1px solid #000; }
 
-        .student-info { position: absolute; top: 48%; left: 3.5%; width: 90%; }
-        .info-row { display: flex; margin-bottom: 8px; font-size: 18px; font-weight: 700; line-height: 1.2; }
-        .info-label { width: 20%; }
-        .info-sep { width: 4%; }
-        .info-val { flex: 1; }
+        .student-info { position: absolute; top: 48%; left: 3.5%; width: 90%; max-width: 90%; }
+        .info-row { display: flex; margin-bottom: 8px; font-size: 18px; font-weight: 700; line-height: 1.2; align-items: baseline; }
+        .info-label { width: 22%; flex-shrink: 0; }
+        .info-sep { width: 3%; flex-shrink: 0; }
+        .info-val { flex: 1; min-width: 0; word-break: break-word; overflow-wrap: anywhere; }
 
         .photo-area { position: absolute; bottom: 5.5%; left: 18.5%; height: 22.5%; display: inline-block; border: 1px solid #000; padding: 2px; background: #fff; }
         .photo-area img { height: 100%; width: auto; object-fit: contain; display: block; }
