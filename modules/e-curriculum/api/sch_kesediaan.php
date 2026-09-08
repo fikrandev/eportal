@@ -59,6 +59,46 @@ switch ($action) {
         }
         break;
 
+    case 'delete_single':
+    case 'delete':
+        $input = get_input();
+        $guruId = (int)($input['guru_id'] ?? $input['id'] ?? 0);
+        if ($guruId <= 0) json_response(400, false, 'ID Guru tidak valid');
+        try {
+            $stmt = db()->prepare("DELETE FROM sch_kesediaan WHERE guru_id = ?");
+            $stmt->execute([$guruId]);
+            json_response(200, true, 'Kesediaan mengajar untuk guru ini berhasil dihapus');
+        } catch (PDOException $e) {
+            json_response(500, false, 'Gagal: ' . $e->getMessage());
+        }
+        break;
+
+    case 'delete_bulk':
+        $input = get_input();
+        $guruIds = isset($input['guru_ids']) && is_array($input['guru_ids']) ? array_map('intval', $input['guru_ids']) : [];
+        $guruIds = array_filter($guruIds, function($v) { return $v > 0; });
+        if (empty($guruIds)) json_response(400, false, 'Pilih setidaknya satu guru');
+        try {
+            $placeholders = implode(',', array_fill(0, count($guruIds), '?'));
+            $stmt = db()->prepare("DELETE FROM sch_kesediaan WHERE guru_id IN ($placeholders)");
+            $stmt->execute($guruIds);
+            json_response(200, true, count($guruIds) . ' kesediaan guru berhasil dihapus');
+        } catch (PDOException $e) {
+            json_response(500, false, 'Gagal: ' . $e->getMessage());
+        }
+        break;
+
+    case 'clear_all':
+    case 'delete_all':
+        try {
+            db()->query("DELETE FROM sch_kesediaan");
+            db()->query("ALTER TABLE sch_kesediaan AUTO_INCREMENT = 1");
+            json_response(200, true, 'Semua data kesediaan mengajar berhasil dihapus');
+        } catch (PDOException $e) {
+            json_response(500, false, 'Gagal: ' . $e->getMessage());
+        }
+        break;
+
     case 'import':
         $input = get_input();
         $data = $input['data'] ?? [];

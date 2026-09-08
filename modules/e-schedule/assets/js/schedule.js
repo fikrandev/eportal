@@ -682,6 +682,7 @@ const Schedule = {
     },
 
     // ==============================================
+    // ==============================================
     // KESEDIAAN GURU
     // ==============================================
     renderKesediaan($container) {
@@ -689,7 +690,13 @@ const Schedule = {
             <div class="sch-card">
                 <div class="sch-card-header">
                     <h3>Matriks Ketersediaan Guru</h3>
-                    <div class="sch-toolbar">
+                    <div class="sch-toolbar" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                        <button class="btn btn-sm" id="btnBulkDeleteKesediaan" style="display:none;background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;font-weight:600;" onclick="Schedule.bulkDeleteKesediaan()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:2px"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg> Hapus Terpilih (<span id="bulkKesediaanCount">0</span>)
+                        </button>
+                        <button class="btn btn-sm" style="background:#fef2f2;color:#ef4444;border:1px solid #fecaca;font-weight:600;" onclick="Schedule.clearAllKesediaan()">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:2px"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> Hapus Semua
+                        </button>
                         <button class="btn btn-outline" onclick="Schedule.exportData('kesediaan')">Export</button>
                         <button class="btn btn-outline" onclick="Schedule.importData('kesediaan')">Import</button>
                     </div>
@@ -720,16 +727,25 @@ const Schedule = {
 
             if (!data.length || !jams.length) { $('#kesediaanTable').html('<div class="sch-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg><h3>Master Jam / Guru belum lengkap</h3><p>Pastikan jam belajar harian dan data guru sudah disiapkan terlebih dahulu.</p></div>'); return; }
 
-            let html = '<table class="matrix-table"><thead><tr><th style="min-width:150px;text-align:left">Nama Guru</th><th style="width:80px">Aksi</th>';
+            let html = '<table class="matrix-table"><thead><tr>';
+            html += '<th style="width:40px;text-align:center"><input type="checkbox" id="selectAllKesediaanGuru" onchange="Schedule.toggleSelectAllKesediaanGuru(this.checked)" title="Pilih Semua Guru"></th>';
+            html += '<th style="min-width:150px;text-align:left">Nama Guru</th><th style="width:110px;text-align:center">Aksi</th>';
             days.forEach(d => html += `<th>${d} <br><small style="font-weight:400">Jam: ${daysMap[d].map(j=>j.jam_ke).join(',')}</small></th>`);
             html += '</tr></thead><tbody>';
 
             data.forEach(g => {
+                const escapedName = this.escapeHtml ? this.escapeHtml(g.nama_guru) : g.nama_guru;
                 html += `<tr data-gid="${g.id}">
-                    <td style="text-align:left"><strong>${g.nama_guru}</strong><br><small>${g.kode_guru}</small></td>
-                    <td>
-                        <button class="btn btn-sm btn-outline" onclick="Schedule.checkAllRow(${g.id}, true)">All</button>
-                        <button class="btn btn-sm btn-outline" onclick="Schedule.checkAllRow(${g.id}, false)">0</button>
+                    <td style="text-align:center"><input type="checkbox" class="ks-guru-cb" value="${g.id}" onchange="Schedule.updateBulkDeleteKesediaanState()"></td>
+                    <td style="text-align:left"><strong>${escapedName}</strong><br><small>${g.kode_guru}</small></td>
+                    <td style="text-align:center">
+                        <div style="display:flex;gap:4px;justify-content:center;align-items:center">
+                            <button class="btn btn-sm btn-outline" onclick="Schedule.checkAllRow(${g.id}, true)" title="Pilih Semua Jam">All</button>
+                            <button class="btn btn-sm btn-outline" onclick="Schedule.checkAllRow(${g.id}, false)" title="Kosongkan Jam">0</button>
+                            <button class="btn btn-sm" style="background:#fee2e2;color:#dc2626;border:1px solid #fca5a5;padding:2px 6px;" onclick="Schedule.deleteSingleKesediaan(${g.id}, '${escapedName.replace(/'/g, "\\'")}')" title="Hapus ketersediaan guru ini">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            </button>
+                        </div>
                     </td>`;
                 
                 days.forEach(d => {
@@ -749,7 +765,85 @@ const Schedule = {
             html += '</tbody></table>';
 
             $('#kesediaanTable').html(html);
+            this.updateBulkDeleteKesediaanState();
             $('#btnSaveKesediaan').show().on('click', () => this.saveKesediaan(data));
+        });
+    },
+
+    toggleSelectAllKesediaanGuru(checked) {
+        $('.ks-guru-cb').prop('checked', checked);
+        this.updateBulkDeleteKesediaanState();
+    },
+
+    updateBulkDeleteKesediaanState() {
+        const selectedCount = $('.ks-guru-cb:checked').length;
+        const totalCount = $('.ks-guru-cb').length;
+        $('#selectAllKesediaanGuru').prop('checked', totalCount > 0 && selectedCount === totalCount);
+        if (selectedCount > 0) {
+            $('#bulkKesediaanCount').text(selectedCount);
+            $('#btnBulkDeleteKesediaan').show();
+        } else {
+            $('#btnBulkDeleteKesediaan').hide();
+        }
+    },
+
+    deleteSingleKesediaan(gid, namaGuru) {
+        EModal.confirm({
+            title: 'Hapus Ketersediaan Guru',
+            message: `Yakin ingin menghapus semua jam ketersediaan mengajar untuk <strong>${namaGuru}</strong>?`,
+            onConfirm: () => {
+                this.api('kesediaan.php?action=delete_single', {
+                    method: 'POST',
+                    data: { guru_id: gid }
+                }).done(res => {
+                    $(`.jcb-${gid}`).prop('checked', false);
+                    EModal.toast({ type: 'success', title: 'Berhasil', message: res.message || 'Ketersediaan guru berhasil dihapus' });
+                    this.navigate('kesediaan');
+                }).fail(xhr => {
+                    EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menghapus ketersediaan guru' });
+                });
+            }
+        });
+    },
+
+    bulkDeleteKesediaan() {
+        const selectedGids = [];
+        $('.ks-guru-cb:checked').each(function() {
+            selectedGids.push(parseInt($(this).val()));
+        });
+        if (selectedGids.length === 0) return;
+
+        EModal.confirm({
+            title: 'Hapus Ketersediaan Terpilih',
+            message: `Yakin ingin menghapus ketersediaan mengajar untuk <strong>${selectedGids.length} guru</strong> yang dicentang?`,
+            onConfirm: () => {
+                this.api('kesediaan.php?action=delete_bulk', {
+                    method: 'POST',
+                    data: { guru_ids: selectedGids }
+                }).done(res => {
+                    EModal.toast({ type: 'success', title: 'Berhasil', message: res.message || 'Ketersediaan guru terpilih berhasil dihapus' });
+                    this.navigate('kesediaan');
+                }).fail(xhr => {
+                    EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menghapus ketersediaan guru' });
+                });
+            }
+        });
+    },
+
+    clearAllKesediaan() {
+        EModal.confirm({
+            title: 'Hapus Semua Ketersediaan',
+            message: '<strong>PERINGATAN!</strong> Yakin ingin menghapus SELURUH data ketersediaan mengajar semua guru? Tindakan ini tidak dapat dibatalkan.',
+            onConfirm: () => {
+                this.api('kesediaan.php?action=clear_all', {
+                    method: 'POST'
+                }).done(res => {
+                    EModal.toast({ type: 'success', title: 'Berhasil', message: res.message || 'Semua ketersediaan mengajar berhasil dihapus' });
+                    this.navigate('kesediaan');
+                }).fail(xhr => {
+                    EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menghapus semua ketersediaan' });
+                });
+            }
         });
     },
 
