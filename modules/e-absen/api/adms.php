@@ -92,62 +92,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && $isCdata) {
 if ($_SERVER['REQUEST_METHOD'] === 'GET' && $isGetrequest) {
     header("Content-Type: text/plain");
     
-    // Cek SN mesin
+    // Cek SN mesin (case-insensitive)
     $grSn = '';
     foreach ($_GET as $key => $val) {
         if (strtolower($key) === 'sn') { $grSn = trim($val); break; }
     }
     
-    // Cek apakah mesin ini sudah pernah kirim data
-    $needSync = false;
+    $sendCommand = null;
     if ($grSn) {
         try {
-            // Cek apakah mesin sudah terdaftar
-            $stmtMesin = db()->prepare("SELECT id FROM absen_mesin WHERE sn = ?");
+            $stmtMesin = db()->prepare("SELECT id, force_sync FROM absen_mesin WHERE sn = ?");
             $stmtMesin->execute([$grSn]);
             $mesinRow = $stmtMesin->fetch();
             
             if (!$mesinRow) {
-                // Auto-register mesin baru
-                $stmtIns = db()->prepare("INSERT INTO absen_mesin (nama_mesin, ip_address, port, sn, com_key, status, last_sync) VALUES (?, '', 4370, ?, '0', 1, NOW())");
+                // Auto-register mesin baru (force_sync = 0 agar tidak looping)
+                $stmtIns = db()->prepare("INSERT INTO absen_mesin (nama_mesin, ip_address, port, sn, com_key, status, last_sync, force_sync) VALUES (?, '', 4370, ?, '0', 1, NOW(), 0)");
                 $stmtIns->execute(['Mesin ' . $grSn, $grSn]);
-                $needSync = true; // Mesin baru, minta kirim semua data
                 file_put_contents($debugLog, date('Y-m-d H:i:s') . " | AUTO-REGISTER (getrequest) | New machine SN=$grSn\n", FILE_APPEND);
             } else {
-                // Mesin sudah terdaftar, cek apakah perlu sync
-                try {
-                    $stmtCheck = db()->prepare("SELECT id FROM absen_mesin WHERE sn = ? AND (force_sync = 1 OR last_sync IS NULL)");
-                    $stmtCheck->execute([$grSn]);
-                    if ($stmtCheck->fetch()) {
-                        $needSync = true;
-                    }
-                } catch (Exception $e) {
-                    $needSync = true;
-                }
-                
-                // Cek apakah ada log dari mesin ini
-                $stmtLogs = db()->prepare("SELECT COUNT(*) FROM absen_logs WHERE mesin_id = ?");
-                $stmtLogs->execute([$mesinRow['id']]);
-                if ((int)$stmtLogs->fetchColumn() === 0) {
-                    $needSync = true;
-                }
-                
                 // Update last_sync
                 db()->prepare("UPDATE absen_mesin SET last_sync = NOW() WHERE id = ?")->execute([$mesinRow['id']]);
+                
+                // Cek apakah ada permintaan force_sync manual dari web
+                if (!empty($mesinRow['force_sync']) && (int)$mesinRow['force_sync'] === 1) {
+                    $sendCommand = "C:1:DATA UPDATE ATTLOG\n";
+                    // PENTING: Langsung reset force_sync = 0 agar tidak memicu loop log storm ke mesin
+                    db()->prepare("UPDATE absen_mesin SET force_sync = 0 WHERE id = ?")->execute([$mesinRow['id']]);
+                    file_put_contents($debugLog, date('Y-m-d H:i:s') . " | COMMAND SENT & RESET | DATA UPDATE ATTLOG to SN=$grSn\n", FILE_APPEND);
+                }
             }
         } catch (Exception $e) {
-            // Jika kolom force_sync belum ada, paksa sync
-            $needSync = true;
+            file_put_contents($debugLog, date('Y-m-d H:i:s') . " | GETREQUEST ERROR | " . $e->getMessage() . "\n", FILE_APPEND);
         }
     }
     
-    if ($needSync) {
-        // Kirim perintah ke mesin untuk push semua data ATTLOG
-        echo "C:1:DATA UPDATE ATTLOG\n";
-        
-        // Log perintah yang dikirim
-        file_put_contents($debugLog, date('Y-m-d H:i:s') . " | COMMAND SENT | DATA UPDATE ATTLOG to SN=$grSn\n", FILE_APPEND);
+    if ($sendCommand) {
+        echo $sendCommand;
     } else {
+        // Balasan normal ke mesin adalah OK
         echo "OK";
     }
     exit;

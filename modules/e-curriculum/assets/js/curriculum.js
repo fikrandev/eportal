@@ -981,73 +981,670 @@ const Curriculum = {
 
     // ==================== DASHBOARD VIEW ====================
     renderDashboard($container) {
-        const today = new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        const todayStr = new Date().toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+        
+        // Initial skeleton layout
         $container.html(`
-            <div class="acad-stats" id="dashboardStats">
-                <div class="acad-stat-card skeleton-module" style="height: 100px;"></div>
-                <div class="acad-stat-card skeleton-module" style="height: 100px;"></div>
-                <div class="acad-stat-card skeleton-module" style="height: 100px;"></div>
-                <div class="acad-stat-card skeleton-module" style="height: 100px;"></div>
+            <div class="dash-hero-banner skeleton-module" style="height: 160px; margin-bottom: 22px;"></div>
+            <div class="dash-stats-grid">
+                <div class="dash-stat-card skeleton-module" style="height: 120px;"></div>
+                <div class="dash-stat-card skeleton-module" style="height: 120px;"></div>
+                <div class="dash-stat-card skeleton-module" style="height: 120px;"></div>
+                <div class="dash-stat-card skeleton-module" style="height: 120px;"></div>
+                <div class="dash-stat-card skeleton-module" style="height: 120px;"></div>
+                <div class="dash-stat-card skeleton-module" style="height: 120px;"></div>
+                <div class="dash-stat-card skeleton-module" style="height: 120px;"></div>
+                <div class="dash-stat-card skeleton-module" style="height: 120px;"></div>
             </div>
-            <div class="acad-card">
-                <div class="acad-card-header">
-                    <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg> E-Curriculum Portal</h3>
+            <div class="dash-content-grid">
+                <div>
+                    <div class="dash-card skeleton-module" style="height: 280px; margin-bottom: 20px;"></div>
+                    <div class="dash-card skeleton-module" style="height: 280px; margin-bottom: 20px;"></div>
+                    <div class="dash-card skeleton-module" style="height: 280px;"></div>
                 </div>
-                <div class="acad-card-body" style="line-height:1.7;">
-                    <h4 style="margin-top:0; font-family:'Outfit',sans-serif; color:var(--acad-primary);">Selamat Datang di Sistem Informasi Kurikulum</h4>
-                    <p style="color:var(--acad-text-muted);">${today}</p>
-                    <p>Modul E-Curriculum mengelola data kurikulum sekolah secara lengkap: mata pelajaran, kelas, penugasan mengajar, jurnal mengajar harian, absensi siswa, manajemen ketidakhadiran guru, piket, dan buku penghubung siswa.</p>
-                    <div class="dash-actions" style="display:flex; gap:12px; margin-top:20px; flex-wrap:wrap;">
-                        <button class="btn-acad btn-acad-primary" onclick="Curriculum.navigate('jurnal')">📝 Jurnal Mengajar</button>
-                        <button class="btn-acad btn-acad-outline" onclick="Curriculum.navigate('absensi')">✅ Absensi Siswa</button>
-                        <button class="btn-acad btn-acad-outline" onclick="Curriculum.navigate('ketidakhadiran')">📋 Ketidakhadiran</button>
-                    </div>
+                <div>
+                    <div class="dash-card skeleton-module" style="height: 220px; margin-bottom: 20px;"></div>
+                    <div class="dash-card skeleton-module" style="height: 240px; margin-bottom: 20px;"></div>
+                    <div class="dash-card skeleton-module" style="height: 220px;"></div>
                 </div>
             </div>
         `);
 
         this.api('dashboard.php?action=stats').done(res => {
-            if (!res.success) return;
-            const d = res.data;
-            const activeYear = d.academic_year?.tahun_ajaran 
-                ? `${d.academic_year.tahun_ajaran} - Semester ${d.academic_year.semester}`
-                : 'Belum Ditentukan';
-            
-            $('#dashboardStats').html(`
-                <div class="acad-stat-card slide-up">
-                    <div class="acad-stat-icon" style="background: rgba(124, 58, 237, 0.1); color: var(--acad-primary);">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+            if (!res.success) {
+                $container.html(`<div class="acad-empty" style="color:#ef4444;"><h3>Gagal Memuat Dashboard</h3><p>${this.escapeHtml(res.message || 'Terjadi kesalahan.')}</p></div>`);
+                return;
+            }
+
+            const data = res.data;
+            const summary = data.summary || {};
+            const recentJurnals = data.recent_jurnals || [];
+            const recentBuku = data.recent_buku || [];
+            const guruTidakHadir = data.guru_tidak_hadir || [];
+            const piketToday = data.piket_today || [];
+            const jadwalToday = data.jadwal_today || [];
+            const isFallbackJadwal = data.is_fallback_jadwal || false;
+            const topTeachers = data.top_teachers || [];
+            const docByType = data.doc_by_type || [];
+            const absensiGuru = summary.absensi_guru || { hadir: 0, sakit: 0, izin: 0, alpha: 0, total_recorded: 0 };
+            const absensiSiswa = summary.absensi_siswa || { today: { hadir: 0, total: 0, rate: 100 }, month: { hadir: 0, total: 0, rate: 100 } };
+            const docStats = summary.dokumen || { total: 0, pending: 0, approved: 0, rejected: 0 };
+            const workload = summary.workload || { total_guru_mengajar: 0, total_all_jp: 0, avg_jp_per_guru: 0, max_jp: 0 };
+
+            // Greeting based on time
+            const hour = new Date().getHours();
+            let greeting = 'Selamat Pagi';
+            if (hour >= 11 && hour < 15) greeting = 'Selamat Siang';
+            else if (hour >= 15 && hour < 18) greeting = 'Selamat Sore';
+            else if (hour >= 18 || hour < 5) greeting = 'Selamat Malam';
+
+            const userName = this.state.user ? this.state.user.nama_lengkap : 'Bapak/Ibu Guru';
+            const schoolName = this.state.school ? this.state.school.nama : 'E-Portal';
+            const activeYearText = data.academic_year?.tahun_ajaran 
+                ? `${data.academic_year.tahun_ajaran} • Semester ${data.academic_year.semester}`
+                : 'Tahun Ajaran Aktif';
+            const currentDayTitle = isFallbackJadwal ? 'Jadwal Pembelajaran (Pratinjau)' : `Jadwal Pelajaran Hari Ini (${data.today_day_name || 'Aktif'})`;
+
+            // 1. Jurnal Rows HTML
+            let jurnalRowsHtml = '';
+            if (recentJurnals.length > 0) {
+                jurnalRowsHtml = recentJurnals.map(j => {
+                    const initials = this.getInitials(j.guru_nama);
+                    const jamText = j.jam_ke ? `Jam Ke-${this.escapeHtml(j.jam_ke)}` : 'Pagi';
+                    const materiText = j.materi ? (j.materi.length > 70 ? j.materi.substring(0, 70) + '...' : j.materi) : '-';
+                    return `
+                        <div class="dash-feed-item">
+                            <div class="dash-feed-avatar">${this.escapeHtml(initials)}</div>
+                            <div class="dash-feed-content">
+                                <div class="dash-feed-header">
+                                    <div class="dash-feed-title">${this.escapeHtml(j.guru_nama)}</div>
+                                    <span class="dash-feed-time">📅 ${this.escapeHtml(j.tanggal)}</span>
+                                </div>
+                                <div style="display:flex; gap:6px; align-items:center; margin-bottom:4px; flex-wrap:wrap;">
+                                    <span class="badge badge-primary" style="font-size:0.75rem; padding:2px 8px;">${this.escapeHtml(j.nama_mapel)}</span>
+                                    <span class="badge badge-info" style="font-size:0.75rem; padding:2px 8px;">Kelas ${this.escapeHtml(j.nama_kelas)}</span>
+                                    <span class="badge badge-warning" style="font-size:0.75rem; padding:2px 8px;">${jamText}</span>
+                                </div>
+                                <div class="dash-feed-desc">📖 <strong>Materi:</strong> ${this.escapeHtml(materiText)}</div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                jurnalRowsHtml = `
+                    <div style="text-align:center; padding:30px 16px; color:#94a3b8;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40" style="opacity:0.4; margin-bottom:8px;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        <p style="margin:0; font-size:0.88rem;">Belum ada jurnal mengajar yang dicatat hari ini.</p>
+                        <button class="btn-acad btn-acad-sm btn-acad-primary" onclick="Curriculum.navigate('jurnal')" style="margin-top:12px;">+ Input Jurnal Baru</button>
                     </div>
-                    <div class="acad-stat-info">
-                        <h4>${d.total_guru}</h4>
-                        <p>Total Guru Aktif</p>
+                `;
+            }
+
+            // 2. Schedule List HTML
+            let scheduleListHtml = '';
+            if (jadwalToday.length > 0) {
+                scheduleListHtml = `
+                    <div class="dash-schedule-list">
+                        ${jadwalToday.map(s => {
+                            const jamLabel = s.nama_jam ? `Jam ${this.escapeHtml(s.nama_jam)}` : `Ke-${this.escapeHtml(s.jam_ke)}`;
+                            return `
+                                <div class="dash-schedule-item">
+                                    <div class="dash-schedule-time">
+                                        <span class="jam-pill">${jamLabel}</span>
+                                        <span style="font-size:0.68rem; color:#94a3b8; margin-top:2px;">${this.escapeHtml(s.hari)}</span>
+                                    </div>
+                                    <div class="dash-schedule-body">
+                                        <div class="dash-schedule-mapel">${this.escapeHtml(s.nama_mapel)}</div>
+                                        <div class="dash-schedule-guru">
+                                            <span>👨‍🏫</span> ${this.escapeHtml(s.guru_nama)}
+                                        </div>
+                                    </div>
+                                    <div class="dash-schedule-kelas">
+                                        <span class="badge badge-info" style="font-size:0.75rem; padding:4px 8px; font-weight:700;">
+                                            ${this.escapeHtml(s.nama_kelas)}
+                                        </span>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            } else {
+                scheduleListHtml = `
+                    <div style="text-align:center; padding:30px 16px; color:#94a3b8;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="40" height="40" style="opacity:0.4; margin-bottom:8px;"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/></svg>
+                        <p style="margin:0; font-size:0.88rem;">Tidak ada jadwal KBM yang aktif untuk hari ini.</p>
+                        <button class="btn-acad btn-acad-sm btn-acad-outline" onclick="Curriculum.navigate('sch_jadwal')" style="margin-top:10px;">Lihat Jadwal Keseluruhan</button>
+                    </div>
+                `;
+            }
+
+            // 3. Leaderboard Guru HTML
+            let leaderboardHtml = '';
+            if (topTeachers.length > 0) {
+                const medals = ['🥇', '🥈', '🥉', '4️⃣', '5️⃣'];
+                const rankClasses = ['dash-rank-1', 'dash-rank-2', 'dash-rank-3', 'dash-rank-other', 'dash-rank-other'];
+                leaderboardHtml = `
+                    <div class="dash-leaderboard-list">
+                        ${topTeachers.map((t, idx) => {
+                            const medal = medals[idx] || (idx + 1);
+                            const rankCls = rankClasses[idx] || 'dash-rank-other';
+                            return `
+                                <div class="dash-leaderboard-item">
+                                    <div class="dash-rank-badge ${rankCls}">${medal}</div>
+                                    <div class="dash-leader-info">
+                                        <div class="dash-leader-name" title="${this.escapeHtml(t.nama_lengkap)}">${this.escapeHtml(t.nama_lengkap)}</div>
+                                        <div class="dash-leader-meta">
+                                            <span>📚 ${t.total_kelas_ajar || 0} Kelas</span>
+                                            <span>•</span>
+                                            <span>⏱️ ${t.total_jp || 0} JP</span>
+                                        </div>
+                                    </div>
+                                    <div class="dash-leader-score">
+                                        <strong>${t.total_jurnal || 0}</strong>
+                                        <span>Jurnal</span>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            } else {
+                leaderboardHtml = `<div style="text-align:center; padding:20px; color:#94a3b8; font-size:0.85rem;">Belum ada data aktivitas guru.</div>`;
+            }
+
+            // 4. Perangkat By Type HTML
+            let docMatrixHtml = '';
+            if (docByType.length > 0) {
+                docMatrixHtml = `
+                    <div class="dash-doc-matrix">
+                        ${docByType.map(d => {
+                            const total = parseInt(d.total) || 1;
+                            const approved = parseInt(d.approved) || 0;
+                            const pending = parseInt(d.pending) || 0;
+                            const rejected = parseInt(d.rejected) || 0;
+                            const approvedPct = (approved / total) * 100;
+                            const pendingPct = (pending / total) * 100;
+                            const rejectedPct = (rejected / total) * 100;
+                            return `
+                                <div class="dash-doc-matrix-item">
+                                    <div class="dash-doc-matrix-header">
+                                        <div class="dash-doc-matrix-name">${this.escapeHtml(d.tipe_dokumen)}</div>
+                                        <div class="dash-doc-matrix-count">${approved}/${total} Disetujui</div>
+                                    </div>
+                                    <div class="dash-doc-bar">
+                                        <div class="dash-doc-bar-fill" style="width:${approvedPct}%; background:#22c55e;" title="Disetujui: ${approved}"></div>
+                                        <div class="dash-doc-bar-fill" style="width:${pendingPct}%; background:#eab308;" title="Pending: ${pending}"></div>
+                                        <div class="dash-doc-bar-fill" style="width:${rejectedPct}%; background:#ef4444;" title="Ditolak: ${rejected}"></div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                `;
+            } else {
+                docMatrixHtml = `
+                    <div style="background:#f8fafc; border-radius:10px; padding:14px; text-align:center; font-size:0.84rem; color:#64748b;">
+                        Belum ada dokumen perangkat ajar terunggah.
+                    </div>
+                `;
+            }
+
+            // 5. Buku Penghubung Rows HTML
+            let bukuRowsHtml = '';
+            if (recentBuku.length > 0) {
+                bukuRowsHtml = recentBuku.map(b => {
+                    const badgeCls = b.warna_badge || 'badge-info';
+                    const safeCatatan = b.catatan ? (b.catatan.length > 80 ? b.catatan.substring(0, 80) + '...' : b.catatan) : '-';
+                    return `
+                        <div class="dash-feed-item">
+                            <div class="dash-feed-content">
+                                <div class="dash-feed-header">
+                                    <div style="display:flex; align-items:center; gap:6px;">
+                                        <span class="badge ${badgeCls}" style="font-size:0.75rem; padding:3px 8px;">${this.escapeHtml(b.jenis)}</span>
+                                        <strong style="font-size:0.88rem; color:#1e293b;">${this.escapeHtml(b.nama_siswa)}</strong>
+                                        <span style="font-size:0.75rem; color:#64748b;">(${this.escapeHtml(b.nama_kelas || '-')})</span>
+                                    </div>
+                                    <span class="dash-feed-time">📅 ${this.escapeHtml(b.tanggal)}</span>
+                                </div>
+                                <div class="dash-feed-desc" style="margin-top:4px;">${this.escapeHtml(safeCatatan)}</div>
+                                ${b.dicatat_nama ? `<div style="font-size:0.72rem; color:#94a3b8; margin-top:4px;">✍️ Dicatat oleh: <strong>${this.escapeHtml(b.dicatat_nama)}</strong></div>` : ''}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                bukuRowsHtml = `
+                    <div style="text-align:center; padding:30px 16px; color:#94a3b8;">
+                        <p style="margin:0; font-size:0.88rem;">Belum ada catatan buku penghubung.</p>
+                        <button class="btn-acad btn-acad-sm btn-acad-outline" onclick="Curriculum.navigate('buku_penghubung')" style="margin-top:10px;">+ Buat Catatan Siswa</button>
+                    </div>
+                `;
+            }
+
+            // 6. Guru Tidak Hadir Status HTML
+            let guruPresensiHtml = '';
+            if (guruTidakHadir.length > 0) {
+                const listTh = guruTidakHadir.map(g => {
+                    const statusBadge = g.status === 'S' ? '<span class="badge badge-info">Sakit</span>' : (g.status === 'I' ? '<span class="badge badge-warning">Izin</span>' : '<span class="badge badge-danger">Alpha</span>');
+                    return `
+                        <div style="display:flex; justify-content:space-between; align-items:center; padding:8px 0; border-bottom:1px solid #f8fafc;">
+                            <div>
+                                <strong style="font-size:0.85rem; color:#1e293b;">${this.escapeHtml(g.guru_nama)}</strong>
+                                ${g.keterangan ? `<div style="font-size:0.75rem; color:#64748b;">${this.escapeHtml(g.keterangan)}</div>` : ''}
+                            </div>
+                            <div>${statusBadge}</div>
+                        </div>
+                    `;
+                }).join('');
+                guruPresensiHtml = `
+                    <div style="margin-top:10px;">
+                        <div style="font-size:0.8rem; font-weight:700; color:#ef4444; margin-bottom:6px; display:flex; align-items:center; gap:4px;">
+                            ⚠️ Guru Tidak Hadir Hari Ini (${guruTidakHadir.length}):
+                        </div>
+                        ${listTh}
+                    </div>
+                `;
+            } else {
+                guruPresensiHtml = `
+                    <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:12px; margin-top:12px; display:flex; align-items:center; gap:8px;">
+                        <span style="font-size:1.2rem;">✅</span>
+                        <div>
+                            <div style="font-size:0.85rem; font-weight:700; color:#15803d;">Presensi Guru Terkendali</div>
+                            <div style="font-size:0.75rem; color:#166534;">Tidak ada laporan ketidakhadiran guru hari ini.</div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // 7. Piket Status HTML
+            let piketSectionHtml = '';
+            if (piketToday.length > 0) {
+                const piketListHtml = piketToday.map(p => `
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px solid #f8fafc; font-size:0.82rem;">
+                        <div>
+                            <strong>${this.escapeHtml(p.guru_piket_nama)}</strong>
+                            <span style="color:#64748b;"> mengajar kelas ${this.escapeHtml(p.nama_kelas || '-')}</span>
+                        </div>
+                        ${p.guru_diganti_nama ? `<span style="color:#ef4444; font-size:0.75rem;">(Gantikan ${this.escapeHtml(p.guru_diganti_nama)})</span>` : ''}
+                    </div>
+                `).join('');
+                piketSectionHtml = `
+                    <div style="margin-top:14px; padding-top:12px; border-top:1px dashed #e2e8f0;">
+                        <div style="font-size:0.8rem; font-weight:700; color:#6366f1; margin-bottom:6px;">
+                            📅 Guru Piket Aktif Hari Ini:
+                        </div>
+                        ${piketListHtml}
+                    </div>
+                `;
+            }
+
+            // Main Dashboard HTML Assembly
+            $container.html(`
+                <!-- HERO BANNER -->
+                <div class="dash-hero-banner fade-in">
+                    <div class="dash-hero-top">
+                        <div class="dash-hero-title">
+                            <h2>${greeting}, ${this.escapeHtml(userName)}! 👋</h2>
+                            <p>
+                                <span>🏫 ${this.escapeHtml(schoolName)}</span>
+                                <span>•</span>
+                                <span>Pusat Manajemen Kurikulum &amp; Akademik</span>
+                            </p>
+                        </div>
+                        <div class="dash-hero-badge">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                            ${todayStr}
+                        </div>
+                    </div>
+                    <div class="dash-hero-actions">
+                        <button class="dash-action-pill" onclick="Curriculum.navigate('jurnal')">
+                            ✍️ Input Jurnal Mengajar
+                        </button>
+                        <button class="dash-action-pill" onclick="Curriculum.navigate('absensi')">
+                            📊 Rekap Absensi Siswa
+                        </button>
+                        <button class="dash-action-pill" onclick="Curriculum.navigate('buku_penghubung')">
+                            📖 Catat Buku Penghubung
+                        </button>
+                        <button class="dash-action-pill" onclick="Curriculum.navigate('dokumen')">
+                            📁 Verifikasi Perangkat (${docStats.pending || 0})
+                        </button>
                     </div>
                 </div>
-                <div class="acad-stat-card slide-up" style="animation-delay: 0.08s">
-                    <div class="acad-stat-icon" style="background: rgba(236, 72, 153, 0.1); color: var(--acad-accent);">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+
+                <!-- 8-CARD SUMMARY STATS KPI GRID -->
+                <div class="dash-stats-grid">
+                    <!-- 1. GURU -->
+                    <div class="dash-stat-card fade-in" style="animation-delay:0.02s;">
+                        <div class="dash-stat-header">
+                            <div class="dash-stat-icon" style="background:#f5f3ff; color:#7c3aed;">👨‍🏫</div>
+                            <span class="badge badge-primary" style="font-size:0.72rem;">Aktif</span>
+                        </div>
+                        <div class="dash-stat-num">${summary.total_guru || 0}</div>
+                        <div class="dash-stat-label">Total Guru Pengajar</div>
+                        <div class="dash-stat-footer">
+                            <span>👥 Terdaftar di sistem portal</span>
+                        </div>
                     </div>
-                    <div class="acad-stat-info">
-                        <h4>${d.total_siswa}</h4>
-                        <p>Total Siswa</p>
+
+                    <!-- 2. KELAS / ROMBEL -->
+                    <div class="dash-stat-card fade-in" style="animation-delay:0.05s;">
+                        <div class="dash-stat-header">
+                            <div class="dash-stat-icon" style="background:#eff6ff; color:#2563eb;">🏫</div>
+                            <span class="badge badge-info" style="font-size:0.72rem;">Rombel</span>
+                        </div>
+                        <div class="dash-stat-num">${summary.total_kelas || 0}</div>
+                        <div class="dash-stat-label">Rombongan Belajar</div>
+                        <div class="dash-stat-footer">
+                            <span>🎓 ${summary.total_siswa || 0} Total Siswa</span>
+                        </div>
+                    </div>
+
+                    <!-- 3. MATA PELAJARAN & BEBAN JAM -->
+                    <div class="dash-stat-card fade-in" style="animation-delay:0.08s;">
+                        <div class="dash-stat-header">
+                            <div class="dash-stat-icon" style="background:#ecfdf5; color:#059669;">📚</div>
+                            <span class="badge badge-success" style="font-size:0.72rem;">Kurikulum</span>
+                        </div>
+                        <div class="dash-stat-num">${summary.total_mapel || 0}</div>
+                        <div class="dash-stat-label">Mata Pelajaran</div>
+                        <div class="dash-stat-footer">
+                            <span>⏱️ <strong>${summary.total_jp || 0} JP</strong> Alokasi Mingguan</span>
+                        </div>
+                    </div>
+
+                    <!-- 4. JURNAL HARI INI -->
+                    <div class="dash-stat-card fade-in" style="animation-delay:0.11s;">
+                        <div class="dash-stat-header">
+                            <div class="dash-stat-icon" style="background:#fdf2f8; color:#db2777;">📝</div>
+                            <span class="badge badge-warning" style="font-size:0.72rem;">Hari Ini</span>
+                        </div>
+                        <div class="dash-stat-num" style="color:#db2777;">${summary.jurnal_today_count || 0}</div>
+                        <div class="dash-stat-label">Jurnal Pembelajaran</div>
+                        <div class="dash-stat-footer">
+                            <span>📊 Kegiatan KBM tercatat</span>
+                        </div>
+                    </div>
+
+                    <!-- 5. PRESENSI SISWA -->
+                    <div class="dash-stat-card fade-in" style="animation-delay:0.14s;">
+                        <div class="dash-stat-header">
+                            <div class="dash-stat-icon" style="background:#f0fdf4; color:#16a34a;">🎒</div>
+                            <span class="badge badge-success" style="font-size:0.72rem;">${absensiSiswa.month.rate}% Kehadiran</span>
+                        </div>
+                        <div class="dash-stat-num" style="color:#16a34a;">${absensiSiswa.today.hadir || 0}</div>
+                        <div class="dash-stat-label">Siswa Hadir Hari Ini</div>
+                        <div class="dash-stat-footer">
+                            <span>S: ${absensiSiswa.today.sakit} • I: ${absensiSiswa.today.izin} • A: ${absensiSiswa.today.alpha}</span>
+                        </div>
+                    </div>
+
+                    <!-- 6. PRESENSI GURU -->
+                    <div class="dash-stat-card fade-in" style="animation-delay:0.17s;">
+                        <div class="dash-stat-header">
+                            <div class="dash-stat-icon" style="background:#fef3c7; color:#d97706;">👔</div>
+                            <span class="badge ${absensiGuru.sakit + absensiGuru.izin + absensiGuru.alpha > 0 ? 'badge-danger' : 'badge-success'}" style="font-size:0.72rem;">
+                                ${absensiGuru.sakit + absensiGuru.izin + absensiGuru.alpha > 0 ? `${absensiGuru.sakit + absensiGuru.izin + absensiGuru.alpha} Berhalangan` : 'Lengkap'}
+                            </span>
+                        </div>
+                        <div class="dash-stat-num">${absensiGuru.hadir || 0}</div>
+                        <div class="dash-stat-label">Guru Hadir Hari Ini</div>
+                        <div class="dash-stat-footer">
+                            <span>S: ${absensiGuru.sakit} • I: ${absensiGuru.izin} • A: ${absensiGuru.alpha}</span>
+                        </div>
+                    </div>
+
+                    <!-- 7. RATA-RATA BEBAN MENGAJAR -->
+                    <div class="dash-stat-card fade-in" style="animation-delay:0.20s;">
+                        <div class="dash-stat-header">
+                            <div class="dash-stat-icon" style="background:#f0f9ff; color:#0284c7;">⚖️</div>
+                            <span class="badge badge-info" style="font-size:0.72rem;">Rata-Rata</span>
+                        </div>
+                        <div class="dash-stat-num" style="color:#0284c7;">${workload.avg_jp_per_guru || 0} <span style="font-size:1rem; font-weight:600;">JP</span></div>
+                        <div class="dash-stat-label">Rata Beban per Guru</div>
+                        <div class="dash-stat-footer">
+                            <span>Maks: ${workload.max_jp || 0} JP • ${workload.total_guru_mengajar || 0} Pengajar</span>
+                        </div>
+                    </div>
+
+                    <!-- 8. PERANGKAT AJAR DOKUMEN -->
+                    <div class="dash-stat-card fade-in" style="animation-delay:0.23s;">
+                        <div class="dash-stat-header">
+                            <div class="dash-stat-icon" style="background:#e0e7ff; color:#4f46e5;">📁</div>
+                            <span class="badge ${docStats.pending > 0 ? 'badge-warning' : 'badge-success'}" style="font-size:0.72rem;">
+                                ${docStats.pending > 0 ? `${docStats.pending} Menunggu` : 'Tersinkron'}
+                            </span>
+                        </div>
+                        <div class="dash-stat-num">${docStats.total || 0}</div>
+                        <div class="dash-stat-label">Dokumen Perangkat</div>
+                        <div class="dash-stat-footer">
+                            <span>✅ ${docStats.approved || 0} Disetujui (${docStats.total > 0 ? Math.round((docStats.approved / docStats.total) * 100) : 0}%)</span>
+                        </div>
                     </div>
                 </div>
-                <div class="acad-stat-card slide-up" style="animation-delay: 0.16s">
-                    <div class="acad-stat-icon" style="background: rgba(16, 185, 129, 0.1); color: #10B981;">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+
+                <!-- MAIN TWO-COLUMN CONTENT GRID -->
+                <div class="dash-content-grid">
+                    <!-- LEFT COLUMN (PRIMARY FEEDS & SCHEDULE) -->
+                    <div>
+                        <!-- JADWAL KBM HARI INI -->
+                        <div class="dash-card fade-in">
+                            <div class="dash-card-header">
+                                <h3 class="dash-card-title">
+                                    <span style="font-size:1.1rem;">📅</span> ${this.escapeHtml(currentDayTitle)}
+                                </h3>
+                                <button class="btn-acad btn-acad-sm btn-acad-outline" onclick="Curriculum.navigate('sch_jadwal')">
+                                    Lihat Jadwal ➔
+                                </button>
+                            </div>
+                            <div class="dash-card-body" style="padding:14px 20px;">
+                                ${scheduleListHtml}
+                            </div>
+                        </div>
+
+                        <!-- JURNAL MENGAJAR TERKINI -->
+                        <div class="dash-card fade-in">
+                            <div class="dash-card-header">
+                                <h3 class="dash-card-title">
+                                    <span style="font-size:1.1rem;">📝</span> Jurnal Pembelajaran Guru Terkini
+                                </h3>
+                                <button class="btn-acad btn-acad-sm btn-acad-outline" onclick="Curriculum.navigate('jurnal')">
+                                    Lihat Semua ➔
+                                </button>
+                            </div>
+                            <div class="dash-card-body" style="padding:14px 20px;">
+                                ${jurnalRowsHtml}
+                            </div>
+                        </div>
+
+                        <!-- BUKU PENGHUBUNG & BK -->
+                        <div class="dash-card fade-in">
+                            <div class="dash-card-header">
+                                <h3 class="dash-card-title">
+                                    <span style="font-size:1.1rem;">📖</span> Catatan Buku Penghubung &amp; BK
+                                </h3>
+                                <button class="btn-acad btn-acad-sm btn-acad-outline" onclick="Curriculum.navigate('buku_penghubung')">
+                                    Buka Menu ➔
+                                </button>
+                            </div>
+                            <div class="dash-card-body" style="padding:14px 20px;">
+                                ${bukuRowsHtml}
+                            </div>
+                        </div>
                     </div>
-                    <div class="acad-stat-info">
-                        <h4>${d.jurnal_hari_ini}</h4>
-                        <p>Jurnal Hari Ini</p>
-                    </div>
-                </div>
-                <div class="acad-stat-card slide-up" style="animation-delay: 0.24s">
-                    <div class="acad-stat-icon" style="background: rgba(239, 68, 68, 0.1); color: #EF4444;">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-                    </div>
-                    <div class="acad-stat-info">
-                        <h4>${d.tidak_hadir_hari_ini}</h4>
-                        <p>Guru Tidak Hadir</p>
+
+                    <!-- RIGHT COLUMN (WIDGETS, LEADERBOARD & METRICS) -->
+                    <div>
+                        <!-- PINTASAN AKSES CEPAT -->
+                        <div class="dash-card fade-in">
+                            <div class="dash-card-header">
+                                <h3 class="dash-card-title">
+                                    <span style="font-size:1.1rem;">⚡</span> Pintasan Modul Kurikulum
+                                </h3>
+                            </div>
+                            <div class="dash-card-body">
+                                <div class="dash-nav-grid">
+                                    <a class="dash-nav-tile" onclick="Curriculum.navigate('sch_jadwal')">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                                        Jadwal KBM
+                                    </a>
+                                    <a class="dash-nav-tile" onclick="Curriculum.navigate('jurnal')">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                        Jurnal KBM
+                                    </a>
+                                    <a class="dash-nav-tile" onclick="Curriculum.navigate('absensi')">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                                        Absen Siswa
+                                    </a>
+                                    <a class="dash-nav-tile" onclick="Curriculum.navigate('absensi_guru')">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
+                                        Absen Guru
+                                    </a>
+                                    <a class="dash-nav-tile" onclick="Curriculum.navigate('dokumen')">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                                        Perangkat Ajar
+                                    </a>
+                                    <a class="dash-nav-tile" onclick="Curriculum.navigate('buku_penghubung')">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg>
+                                        Penghubung
+                                    </a>
+                                    <a class="dash-nav-tile" onclick="Curriculum.navigate('piket')">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                        Piket Guru
+                                    </a>
+                                    <a class="dash-nav-tile" onclick="Curriculum.navigate('laporan_jurnal')">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+                                        Rekap Laporan
+                                    </a>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- TOP LEADERBOARD GURU KBM -->
+                        <div class="dash-card fade-in">
+                            <div class="dash-card-header">
+                                <h3 class="dash-card-title">
+                                    <span style="font-size:1.1rem;">🏆</span> Guru Teraktif Input Jurnal KBM
+                                </h3>
+                                <button class="btn-acad btn-acad-sm btn-acad-outline" onclick="Curriculum.navigate('laporan_jurnal')">
+                                    Rekap ➔
+                                </button>
+                            </div>
+                            <div class="dash-card-body">
+                                ${leaderboardHtml}
+                            </div>
+                        </div>
+
+                        <!-- TINGKAT PRESENSI SISWA -->
+                        <div class="dash-card fade-in">
+                            <div class="dash-card-header">
+                                <h3 class="dash-card-title">
+                                    <span style="font-size:1.1rem;">🎒</span> Tingkat Presensi Siswa
+                                </h3>
+                                <button class="btn-acad btn-acad-sm btn-acad-outline" onclick="Curriculum.navigate('absensi')">
+                                    Absensi ➔
+                                </button>
+                            </div>
+                            <div class="dash-card-body">
+                                <div class="dash-attend-box">
+                                    <div class="dash-attend-rate">${absensiSiswa.month.rate}%</div>
+                                    <div class="dash-attend-label">Rata-rata Tingkat Kehadiran Siswa Bulan Ini</div>
+                                </div>
+                                <div class="dash-attend-pills">
+                                    <div class="dash-attend-pill-item">
+                                        <div class="val" style="color:#16a34a;">${absensiSiswa.today.hadir || 0}</div>
+                                        <div class="lbl">Hadir</div>
+                                    </div>
+                                    <div class="dash-attend-pill-item">
+                                        <div class="val" style="color:#2563eb;">${absensiSiswa.today.sakit || 0}</div>
+                                        <div class="lbl">Sakit</div>
+                                    </div>
+                                    <div class="dash-attend-pill-item">
+                                        <div class="val" style="color:#d97706;">${absensiSiswa.today.izin || 0}</div>
+                                        <div class="lbl">Izin</div>
+                                    </div>
+                                    <div class="dash-attend-pill-item">
+                                        <div class="val" style="color:#dc2626;">${absensiSiswa.today.alpha || 0}</div>
+                                        <div class="lbl">Alpha</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- STATUS PRESENSI & PIKET GURU HARI INI -->
+                        <div class="dash-card fade-in">
+                            <div class="dash-card-header">
+                                <h3 class="dash-card-title">
+                                    <span style="font-size:1.1rem;">👔</span> Presensi &amp; Piket Hari Ini
+                                </h3>
+                                <button class="btn-acad btn-acad-sm btn-acad-outline" onclick="Curriculum.navigate('absensi_guru')">
+                                    Presensi ➔
+                                </button>
+                            </div>
+                            <div class="dash-card-body">
+                                <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; text-align:center;">
+                                    <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:10px 6px;">
+                                        <div style="font-size:1.25rem; font-weight:800; color:#15803d;">${absensiGuru.hadir || 0}</div>
+                                        <div style="font-size:0.72rem; color:#166534; font-weight:600;">Hadir</div>
+                                    </div>
+                                    <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:10px 6px;">
+                                        <div style="font-size:1.25rem; font-weight:800; color:#1d4ed8;">${absensiGuru.sakit || 0}</div>
+                                        <div style="font-size:0.72rem; color:#1e40af; font-weight:600;">Sakit</div>
+                                    </div>
+                                    <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:10px 6px;">
+                                        <div style="font-size:1.25rem; font-weight:800; color:#b45309;">${absensiGuru.izin || 0}</div>
+                                        <div style="font-size:0.72rem; color:#92400e; font-weight:600;">Izin</div>
+                                    </div>
+                                </div>
+                                ${guruPresensiHtml}
+                                ${piketSectionHtml}
+                            </div>
+                        </div>
+
+                        <!-- MATRIKS KELENGKAPAN PERANGKAT AJAR GURU -->
+                        <div class="dash-card fade-in">
+                            <div class="dash-card-header">
+                                <h3 class="dash-card-title">
+                                    <span style="font-size:1.1rem;">📁</span> Kelengkapan Perangkat Ajar
+                                </h3>
+                                <button class="btn-acad btn-acad-sm btn-acad-outline" onclick="Curriculum.navigate('dokumen')">
+                                    Verifikasi ➔
+                                </button>
+                            </div>
+                            <div class="dash-card-body">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                                    <span style="font-size:0.85rem; color:#64748b;">Total Dokumen Masuk:</span>
+                                    <strong style="font-size:1rem; color:#1e293b;">${docStats.total || 0} Berkas</strong>
+                                </div>
+                                <div style="height:10px; background:#f1f5f9; border-radius:6px; overflow:hidden; display:flex; margin-bottom:14px;">
+                                    <div style="width:${docStats.total > 0 ? (docStats.approved / docStats.total * 100) : 0}%; background:#22c55e;" title="Disetujui: ${docStats.approved}"></div>
+                                    <div style="width:${docStats.total > 0 ? (docStats.pending / docStats.total * 100) : 0}%; background:#eab308;" title="Menunggu: ${docStats.pending}"></div>
+                                    <div style="width:${docStats.total > 0 ? (docStats.rejected / docStats.total * 100) : 0}%; background:#ef4444;" title="Ditolak: ${docStats.rejected}"></div>
+                                </div>
+                                <div style="display:flex; justify-content:space-between; font-size:0.78rem; margin-bottom:14px;">
+                                    <span style="color:#15803d; font-weight:600;">🟢 ${docStats.approved || 0} Disetujui</span>
+                                    <span style="color:#a16207; font-weight:600;">🟡 ${docStats.pending || 0} Menunggu</span>
+                                    <span style="color:#b91c1c; font-weight:600;">🔴 ${docStats.rejected || 0} Ditolak</span>
+                                </div>
+                                ${docMatrixHtml}
+                            </div>
+                        </div>
+
+                        <!-- INFORMASI TAHUN AJARAN -->
+                        <div class="dash-card fade-in" style="background:#f8fafc; border:1px solid #e2e8f0;">
+                            <div class="dash-card-body" style="padding:16px;">
+                                <div style="display:flex; align-items:center; gap:10px;">
+                                    <div style="width:36px; height:36px; border-radius:10px; background:#ede9fe; color:#7c3aed; display:flex; align-items:center; justify-content:center; font-size:1.1rem; flex-shrink:0;">
+                                        🎓
+                                    </div>
+                                    <div>
+                                        <div style="font-size:0.78rem; color:#64748b; font-weight:600;">PERIODE AKADEMIK AKTIF</div>
+                                        <div style="font-size:0.92rem; font-weight:700; color:#1e293b;">${this.escapeHtml(activeYearText)}</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `);
