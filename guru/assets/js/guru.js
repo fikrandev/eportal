@@ -2356,7 +2356,10 @@
         // DOKUMEN PERANGKAT (RPP, MODUL AJAR, DLL)
         // =============================================
         _dokumenListCache: [],
+        _dokumenTypesCache: [],
         _dokumenCurrentFilter: 'all',
+        _dokumenCurrentTypeFilter: 'all',
+        _dokumenSearchQuery: '',
 
         async renderDokumen() {
             const content = $('#appContent');
@@ -2411,6 +2414,18 @@
                         </div>
                     </div>
 
+                    <!-- Search & Type Filter Bar -->
+                    <div style="display:flex; gap:10px; margin-bottom:12px; flex-wrap:wrap;">
+                        <div style="flex:1; min-width:180px;">
+                            <select class="jurnal-form-input" id="dokumenTypeFilterSelect" onchange="GuruApp.filterDokumenByType(this.value)" style="width:100%; border:1.5px solid #cbd5e1; border-radius:12px; padding:9px 12px; font-size:0.8rem; background:white; font-family:inherit;">
+                                <option value="all">Semua Jenis Perangkat</option>
+                            </select>
+                        </div>
+                        <div style="flex:1; min-width:180px;">
+                            <input type="text" class="jurnal-form-input" id="dokumenSearchInput" placeholder="🔍 Cari judul dokumen..." oninput="GuruApp.searchDokumen(this.value)" style="width:100%; border:1.5px solid #cbd5e1; border-radius:12px; padding:9px 12px; font-size:0.8rem; background:white; font-family:inherit;">
+                        </div>
+                    </div>
+
                     <!-- Filter Tabs -->
                     <div class="dokumen-filter-tabs" id="dokumenFilterTabs">
                         <button class="dokumen-filter-btn active" data-filter="all" onclick="GuruApp.filterDokumen('all')">
@@ -2436,7 +2451,30 @@
             `;
 
             this._dokumenCurrentFilter = 'all';
+            this._dokumenCurrentTypeFilter = 'all';
+            this._dokumenSearchQuery = '';
+            this.loadDokumenTypes();
             this.loadDokumenList();
+        },
+
+        async loadDokumenTypes() {
+            try {
+                const res = await API.get('api/dokumen.php?action=types');
+                if (res && res.success && Array.isArray(res.data)) {
+                    this._dokumenTypesCache = res.data;
+                    const select = $('#dokumenTypeFilterSelect');
+                    if (select) {
+                        let opts = '<option value="all">Semua Jenis Perangkat</option>';
+                        res.data.forEach(t => {
+                            opts += `<option value="${escapeHtml(t.nama_tipe)}">${escapeHtml(t.nama_tipe)}</option>`;
+                        });
+                        select.innerHTML = opts;
+                        select.value = this._dokumenCurrentTypeFilter || 'all';
+                    }
+                }
+            } catch (e) {
+                console.warn('Gagal memuat jenis dokumen:', e);
+            }
         },
 
         async loadDokumenList() {
@@ -2496,17 +2534,39 @@
             this.renderDokumenCards();
         },
 
+        filterDokumenByType(type) {
+            this._dokumenCurrentTypeFilter = type;
+            this.renderDokumenCards();
+        },
+
+        searchDokumen(query) {
+            this._dokumenSearchQuery = (query || '').toLowerCase().trim();
+            this.renderDokumenCards();
+        },
+
         renderDokumenCards() {
             const container = $('#dokumenCardsList');
             if (!container) return;
 
             const allDocs = this._dokumenListCache || [];
             const filter = this._dokumenCurrentFilter;
-            const filteredDocs = (filter === 'all') ? allDocs : allDocs.filter(d => d.status === filter);
+            const typeFilter = this._dokumenCurrentTypeFilter;
+            const search = this._dokumenSearchQuery;
+
+            const filteredDocs = allDocs.filter(d => {
+                if (filter !== 'all' && d.status !== filter) return false;
+                if (typeFilter !== 'all' && (d.tipe_dokumen || '').trim().toLowerCase() !== typeFilter.trim().toLowerCase()) return false;
+                if (search) {
+                    const haystack = [d.judul, d.tipe_dokumen].filter(Boolean).join(' ').toLowerCase();
+                    if (!haystack.includes(search)) return false;
+                }
+                return true;
+            });
 
             if (filteredDocs.length === 0) {
                 let msg = 'Belum ada dokumen yang diunggah.';
-                if (filter === 'pending') msg = 'Tidak ada dokumen yang menunggu persetujuan.';
+                if (search || typeFilter !== 'all') msg = 'Tidak ada dokumen yang cocok dengan filter / pencarian.';
+                else if (filter === 'pending') msg = 'Tidak ada dokumen yang menunggu persetujuan.';
                 else if (filter === 'approved') msg = 'Belum ada dokumen yang disetujui.';
                 else if (filter === 'rejected') msg = 'Tidak ada dokumen yang ditolak.';
 
@@ -2515,7 +2575,7 @@
                         <div style="font-size:2.5rem; margin-bottom:12px;">📂</div>
                         <div class="empty-state-title" style="font-size:1rem; font-weight:700; color:var(--text-primary);">Belum Ada Dokumen</div>
                         <div class="empty-state-desc" style="font-size:0.8rem; color:var(--text-secondary); margin-top:4px;">${msg}</div>
-                        ${filter === 'all' ? `
+                        ${filter === 'all' && typeFilter === 'all' && !search ? `
                             <button class="btn btn-sm btn-primary" onclick="GuruApp.openUploadDokumenModal()" style="margin-top:14px; border-radius:10px; font-weight:700; font-size:0.75rem;">
                                 + Upload Dokumen Sekarang
                             </button>
@@ -2619,7 +2679,39 @@
             }).join('');
         },
 
-        openUploadDokumenModal() {
+        async openUploadDokumenModal() {
+            // Load types dynamically from backend API (acad_document_types)
+            let types = this._dokumenTypesCache || [];
+            if (!types.length) {
+                try {
+                    const res = await API.get('api/dokumen.php?action=types');
+                    if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+                        types = res.data;
+                        this._dokumenTypesCache = types;
+                    }
+                } catch(e) {
+                    console.warn('Gagal memuat jenis dokumen:', e);
+                }
+            }
+
+            if (!types.length) {
+                types = [
+                    { nama_tipe: 'RPP', deskripsi: 'Rencana Pelaksanaan Pembelajaran' },
+                    { nama_tipe: 'Modul Ajar', deskripsi: 'Modul Ajar Kurikulum Merdeka' },
+                    { nama_tipe: 'Silabus', deskripsi: 'Silabus Pembelajaran' },
+                    { nama_tipe: 'Prota / Promes', deskripsi: 'Program Tahunan & Semester' },
+                    { nama_tipe: 'ATP', deskripsi: 'Alur Tujuan Pembelajaran' },
+                    { nama_tipe: 'CP', deskripsi: 'Capaian Pembelajaran' },
+                    { nama_tipe: 'Bahan Ajar', deskripsi: 'Bahan Ajar / Materi Pembelajaran' },
+                    { nama_tipe: 'Lainnya', deskripsi: 'Dokumen Lainnya' }
+                ];
+            }
+
+            const typeOptions = types.map(t => {
+                const desc = t.deskripsi ? ` (${escapeHtml(t.deskripsi)})` : '';
+                return `<option value="${escapeHtml(t.nama_tipe)}">${escapeHtml(t.nama_tipe)}${desc}</option>`;
+            }).join('');
+
             const overlay = document.createElement('div');
             overlay.className = 'guru-modal-overlay';
             overlay.id = 'uploadDokumenModal';
@@ -2645,19 +2737,11 @@
 
                             <div class="jurnal-form-group" style="margin-bottom:14px;">
                                 <label class="jurnal-form-label" style="font-weight:700; font-size:0.8rem; color:var(--text-primary); margin-bottom:6px; display:block;">
-                                    Tipe Dokumen <span style="color:#ef4444;">*</span>
+                                    Tipe / Jenis Perangkat <span style="color:#ef4444;">*</span>
                                 </label>
                                 <select class="jurnal-form-input" id="dokumenTipeSelect" required style="width:100%; border:1.5px solid #cbd5e1; border-radius:12px; padding:10px 12px; font-size:0.85rem; font-family:inherit; background:white;">
-                                    <option value="">-- Pilih Tipe Dokumen --</option>
-                                    <option value="Modul Ajar">Modul Ajar</option>
-                                    <option value="RPP">RPP (Rencana Pelaksanaan Pembelajaran)</option>
-                                    <option value="Silabus">Silabus</option>
-                                    <option value="Program Tahunan (Prota)">Program Tahunan (Prota)</option>
-                                    <option value="Program Semester (Promes)">Program Semester (Promes)</option>
-                                    <option value="Alur Tujuan Pembelajaran (ATP)">Alur Tujuan Pembelajaran (ATP)</option>
-                                    <option value="Capaian Pembelajaran (CP)">Capaian Pembelajaran (CP)</option>
-                                    <option value="Bahan Ajar">Bahan Ajar / Materi</option>
-                                    <option value="Lainnya">Dokumen Lainnya</option>
+                                    <option value="">-- Pilih Jenis Perangkat --</option>
+                                    ${typeOptions}
                                 </select>
                             </div>
 
@@ -3075,6 +3159,14 @@
 
         filterDokumen(status) {
             Pages.filterDokumen(status);
+        },
+
+        filterDokumenByType(type) {
+            Pages.filterDokumenByType(type);
+        },
+
+        searchDokumen(query) {
+            Pages.searchDokumen(query);
         },
 
         confirmDeleteDokumen(id, title) {

@@ -42,6 +42,10 @@ switch ($action) {
     case 'list':
         listTeacherDocuments($user);
         break;
+    case 'types':
+    case 'list_types':
+        listDocumentTypesGuru();
+        break;
     case 'upload':
         uploadTeacherDocument($user);
         break;
@@ -50,6 +54,40 @@ switch ($action) {
         break;
     default:
         json_response(400, false, 'Action tidak valid.');
+}
+
+/**
+ * List master document / perangkat types
+ */
+function listDocumentTypesGuru() {
+    try {
+        $stmt = db()->query("SELECT id, nama_tipe, deskripsi, urutan FROM acad_document_types ORDER BY urutan ASC, id ASC");
+        $types = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Fallback default if empty
+        if (empty($types)) {
+            $defaultTypes = [
+                ['nama_tipe' => 'RPP', 'deskripsi' => 'Rencana Pelaksanaan Pembelajaran', 'urutan' => 1],
+                ['nama_tipe' => 'Modul Ajar', 'deskripsi' => 'Modul Ajar Kurikulum Merdeka', 'urutan' => 2],
+                ['nama_tipe' => 'Silabus', 'deskripsi' => 'Silabus Pembelajaran', 'urutan' => 3],
+                ['nama_tipe' => 'Prota / Promes', 'deskripsi' => 'Program Tahunan & Semester', 'urutan' => 4],
+                ['nama_tipe' => 'ATP', 'deskripsi' => 'Alur Tujuan Pembelajaran', 'urutan' => 5],
+                ['nama_tipe' => 'CP', 'deskripsi' => 'Capaian Pembelajaran', 'urutan' => 6],
+                ['nama_tipe' => 'Bahan Ajar', 'deskripsi' => 'Bahan Ajar / Materi Pembelajaran', 'urutan' => 7],
+                ['nama_tipe' => 'Lainnya', 'deskripsi' => 'Dokumen Lainnya', 'urutan' => 8],
+            ];
+            $stmtInsert = db()->prepare("INSERT IGNORE INTO acad_document_types (nama_tipe, deskripsi, urutan) VALUES (?, ?, ?)");
+            foreach ($defaultTypes as $dt) {
+                $stmtInsert->execute([$dt['nama_tipe'], $dt['deskripsi'], $dt['urutan']]);
+            }
+            $stmt = db()->query("SELECT id, nama_tipe, deskripsi, urutan FROM acad_document_types ORDER BY urutan ASC, id ASC");
+            $types = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        }
+
+        json_response(200, true, 'Daftar jenis dokumen berhasil dimuat.', $types);
+    } catch (PDOException $e) {
+        json_response(500, false, 'Database error: ' . $e->getMessage());
+    }
 }
 
 /**
