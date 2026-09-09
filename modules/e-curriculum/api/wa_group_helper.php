@@ -138,7 +138,7 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
                 $lines[] = "*{$numPadded}* *{$nama}*\n      📝 *IZIN (I)*";
             } else {
                 $countAlpha++;
-                $lines[] = "*{$numPadded}* *{$nama}*\n      ❌ *BELUM ABSEN / TA*";
+                $lines[] = "*{$numPadded}* *{$nama}*\n      ❌ *NN / TH / TA / BA*";
             }
         } else {
             // Tipe Pulang
@@ -158,7 +158,7 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
                 $lines[] = "*{$numPadded}* *{$nama}*\n      📝 *IZIN (I)*";
             } else {
                 $countAlpha++;
-                $lines[] = "*{$numPadded}* *{$nama}*\n      ❌ *TIDAK HADIR / TA*";
+                $lines[] = "*{$numPadded}* *{$nama}*\n      ❌ *NN / TH / TA / BA*";
             }
         }
 
@@ -183,7 +183,7 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
         $footer .= "✅ *Hadir* : {$countHadir} Orang\n";
         if ($countSakit > 0) $footer .= "🏥 *Sakit* : {$countSakit} Orang\n";
         if ($countIzin > 0) $footer .= "📝 *Izin* : {$countIzin} Orang\n";
-        if ($countAlpha > 0) $footer .= "❌ *Belum Absen* : {$countAlpha} Orang\n";
+        if ($countAlpha > 0) $footer .= "❌ *NN / TH / TA / BA* : {$countAlpha} Orang\n";
     } else {
         $footer .= "*📊 RINGKASAN KEPULANGAN:*\n";
         $footer .= "👥 *Total Guru* : {$totalGuru} Orang\n";
@@ -192,7 +192,7 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
         if ($belumPulang > 0) $footer .= "⏳ *Belum Pulang* : {$belumPulang} Orang\n";
         if ($countSakit > 0) $footer .= "🏥 *Sakit* : {$countSakit} Orang\n";
         if ($countIzin > 0) $footer .= "📝 *Izin* : {$countIzin} Orang\n";
-        if ($countAlpha > 0) $footer .= "❌ *Tidak Hadir* : {$countAlpha} Orang\n";
+        if ($countAlpha > 0) $footer .= "❌ *NN / TH / TA / BA* : {$countAlpha} Orang\n";
     }
     $footer .= "━━━━━━━━━━━━━━━━━━━━\n";
     $footer .= "_⚡ Pesan otomatis E-Portal System_";
