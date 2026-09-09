@@ -272,6 +272,55 @@ function acad_run_migrations() {
             }
         }
 
+        db()->exec("CREATE TABLE IF NOT EXISTS acad_buku_types (
+            id int(11) unsigned NOT NULL AUTO_INCREMENT,
+            nama_jenis varchar(100) NOT NULL,
+            deskripsi varchar(255) DEFAULT NULL,
+            warna_badge varchar(50) NOT NULL DEFAULT 'badge-info',
+            urutan int(11) NOT NULL DEFAULT 0,
+            created_at timestamp NOT NULL DEFAULT current_timestamp(),
+            PRIMARY KEY (id),
+            UNIQUE KEY nama_jenis (nama_jenis)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+        // Seed default buku types if empty
+        $checkBukuTypes = db()->query("SELECT COUNT(*) FROM acad_buku_types")->fetchColumn();
+        if ((int)$checkBukuTypes === 0) {
+            $defaultBukuTypes = [
+                ['Keterlambatan', 'Catatan siswa terlambat masuk sekolah', 'badge-warning', 1],
+                ['Pelanggaran', 'Catatan pelanggaran tata tertib sekolah', 'badge-danger', 2],
+                ['Prestasi', 'Penghargaan / prestasi akademik & non-akademik', 'badge-success', 3],
+                ['Screening', 'Catatan screening kesehatan / perilaku siswa', 'badge-info', 4],
+                ['Konsultasi', 'Bimbingan dan konseling siswa', 'badge-primary', 5]
+            ];
+            $stmtBT = db()->prepare("INSERT IGNORE INTO acad_buku_types (nama_jenis, deskripsi, warna_badge, urutan) VALUES (?,?,?,?)");
+            foreach ($defaultBukuTypes as $dbt) {
+                $stmtBT->execute($dbt);
+            }
+        }
+
+        // Table acad_buku_penghubung — Catatan Buku Penghubung
+        db()->exec("CREATE TABLE IF NOT EXISTS acad_buku_penghubung (
+            id int(10) unsigned NOT NULL AUTO_INCREMENT,
+            student_id int(11) unsigned NOT NULL,
+            kelas_id int(10) unsigned NOT NULL,
+            academic_year_id int(11) unsigned NOT NULL,
+            jenis varchar(100) NOT NULL DEFAULT 'Konsultasi',
+            tanggal date NOT NULL,
+            catatan text NOT NULL,
+            dicatat_oleh int(11) unsigned DEFAULT NULL,
+            created_at timestamp NOT NULL DEFAULT current_timestamp(),
+            updated_at timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+            PRIMARY KEY (id),
+            KEY idx_student (student_id),
+            KEY idx_kelas (kelas_id),
+            KEY idx_tanggal (tanggal)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+        try {
+            db()->exec("ALTER TABLE acad_buku_penghubung MODIFY COLUMN jenis varchar(100) NOT NULL DEFAULT 'Konsultasi'");
+        } catch (Exception $e) {}
+
     } catch (Exception $e) {
         // Ignore errors to not break the API if migration fails
     }
@@ -279,3 +328,4 @@ function acad_run_migrations() {
 
 // Run migrations silently on API boot
 acad_run_migrations();
+

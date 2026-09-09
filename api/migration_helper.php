@@ -6,7 +6,7 @@
 require_once __DIR__ . '/config.php';
 
 function run_auto_migrations() {
-    $target_version = 10;
+    $target_version = 11;
     
     // 1. Get current version (default to 0 if not set or if table settings doesn't exist yet)
     $current_version = 0;
@@ -397,30 +397,11 @@ function run_auto_migrations() {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
             ");
         } catch (PDOException $e) {}
+    }
 
-        // 8. Table acad_buku_penghubung & acad_buku_types
-        try {
-            $pdo->exec("
-                CREATE TABLE IF NOT EXISTS `acad_buku_penghubung` (
-                    `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
-                    `student_id` INT(11) UNSIGNED NOT NULL COMMENT 'References students.id',
-                    `kelas_id` INT(10) UNSIGNED NOT NULL,
-                    `academic_year_id` INT(11) UNSIGNED NOT NULL,
-                    `jenis` VARCHAR(100) NOT NULL DEFAULT 'Konsultasi',
-                    `tanggal` DATE NOT NULL,
-                    `catatan` TEXT NOT NULL,
-                    `dicatat_oleh` INT(11) UNSIGNED DEFAULT NULL COMMENT 'user_id guru',
-                    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    PRIMARY KEY (`id`),
-                    KEY `idx_buku_student` (`student_id`),
-                    KEY `idx_buku_kelas` (`kelas_id`),
-                    KEY `idx_buku_tanggal` (`tanggal`)
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-            ");
-            $pdo->exec("ALTER TABLE `acad_buku_penghubung` MODIFY COLUMN `jenis` VARCHAR(100) NOT NULL DEFAULT 'Konsultasi'");
-        } catch (PDOException $e) {}
-
+    // Version 11 migrations (Buku Penghubung Types & Penghubung Custom Schema)
+    if ($current_version < 11) {
+        // Table acad_buku_types
         try {
             $pdo->exec("
                 CREATE TABLE IF NOT EXISTS `acad_buku_types` (
@@ -450,6 +431,29 @@ function run_auto_migrations() {
                 }
             }
         } catch (Exception $e) {}
+
+        // Table acad_buku_penghubung
+        try {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `acad_buku_penghubung` (
+                    `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+                    `student_id` INT(11) UNSIGNED NOT NULL COMMENT 'References students.id',
+                    `kelas_id` INT(10) UNSIGNED NOT NULL,
+                    `academic_year_id` INT(11) UNSIGNED NOT NULL,
+                    `jenis` VARCHAR(100) NOT NULL DEFAULT 'Konsultasi',
+                    `tanggal` DATE NOT NULL,
+                    `catatan` TEXT NOT NULL,
+                    `dicatat_oleh` INT(11) UNSIGNED DEFAULT NULL COMMENT 'user_id guru',
+                    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    PRIMARY KEY (`id`),
+                    KEY `idx_buku_student` (`student_id`),
+                    KEY `idx_buku_kelas` (`kelas_id`),
+                    KEY `idx_buku_tanggal` (`tanggal`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            ");
+            $pdo->exec("ALTER TABLE `acad_buku_penghubung` MODIFY COLUMN `jenis` VARCHAR(100) NOT NULL DEFAULT 'Konsultasi'");
+        } catch (PDOException $e) {}
     }
 
     // Update DB migration version to target_version

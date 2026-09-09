@@ -2995,6 +2995,10 @@ const Curriculum = {
             `;
             }).join('');
             $('#bukuTableWrapper').html(`<div class="data-table-wrapper"><table class="data-table"><thead><tr><th>Tanggal</th><th>Siswa</th><th>Kelas</th><th>Jenis</th><th>Catatan</th><th style="width:100px;">Aksi</th></tr></thead><tbody>${rows}</tbody></table></div>`);
+        }).fail(xhr => {
+            let errMsg = 'Gagal memuat catatan buku penghubung.';
+            if (xhr.responseJSON && xhr.responseJSON.message) errMsg = xhr.responseJSON.message;
+            $('#bukuTableWrapper').html(`<div class="acad-empty" style="color:#ef4444;"><h3>Gagal Memuat Data</h3><p>${this.escapeHtml(errMsg)}</p><button class="btn-acad btn-acad-outline" onclick="Curriculum.loadBukuTable()" style="margin-top:10px;">🔄 Coba Lagi</button></div>`);
         });
     },
 
@@ -3893,8 +3897,12 @@ const Curriculum = {
 
     // ==================== GLOBAL HELPERS ====================
     api(endpoint, options = {}) {
+        let fullUrl = this.moduleUrl + 'api/' + endpoint;
+        if (this.state.token && !fullUrl.includes('token=')) {
+            fullUrl += (fullUrl.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(this.state.token);
+        }
         const defaults = {
-            url: this.moduleUrl + 'api/' + endpoint,
+            url: fullUrl,
             dataType: 'json',
             contentType: 'application/json',
             timeout: 30000,

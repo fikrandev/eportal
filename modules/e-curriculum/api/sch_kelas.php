@@ -2,20 +2,44 @@
 /**
  * Kelas API for E-Schedule
  */
-require_once __DIR__ . '/../../../api/config.php';
+require_once __DIR__ . '/auth_helper.php';
 
-$user = auth_check();
+$user = acad_auth();
 $action = isset($_GET['action']) ? $_GET['action'] : 'list';
 
 switch ($action) {
     case 'list':
-        $stmt = db()->query("
-            SELECT k.*, u.nama_lengkap as wali_nama 
-            FROM sch_kelas k 
-            LEFT JOIN users u ON k.wali_id = u.id 
-            ORDER BY k.rombel ASC, k.nama_kelas ASC
-        ");
-        json_response(200, true, 'Sukses', $stmt->fetchAll());
+        try {
+            $stmt = db()->query("
+                SELECT k.*, u.nama_lengkap as wali_nama 
+                FROM sch_kelas k 
+                LEFT JOIN users u ON k.wali_id = u.id 
+                ORDER BY k.rombel ASC, k.nama_kelas ASC
+            ");
+            $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Fallback if sch_kelas is empty: load from ref_kelas
+            if (empty($data)) {
+                $checkRef = db()->query("SHOW TABLES LIKE 'ref_kelas'")->fetch();
+                if ($checkRef) {
+                    $stmtRef = db()->query("SELECT id, tingkat as rombel, nama_kelas FROM ref_kelas ORDER BY tingkat ASC, nama_kelas ASC");
+                    $data = $stmtRef->fetchAll(PDO::FETCH_ASSOC);
+                }
+            }
+
+            // Fallback 2: load distinct from students
+            if (empty($data)) {
+                $stmtStd = db()->query("SELECT DISTINCT kelas as nama_kelas, kelas as rombel FROM students WHERE kelas IS NOT NULL AND kelas != '' ORDER BY kelas ASC");
+                $raw = $stmtStd->fetchAll(PDO::FETCH_ASSOC);
+                $data = array_map(function($idx, $r) {
+                    return ['id' => $idx + 1, 'rombel' => $r['rombel'], 'nama_kelas' => $r['nama_kelas']];
+                }, array_keys($raw), $raw);
+            }
+
+            json_response(200, true, 'Sukses', $data);
+        } catch (PDOException $e) {
+            json_response(500, false, 'Gagal memuat kelas: ' . $e->getMessage());
+        }
         break;
 
     case 'create':

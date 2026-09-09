@@ -7,6 +7,9 @@ require_once __DIR__ . '/auth_helper.php';
 $user = acad_auth();
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
+// Ensure tables exist before executing any action
+ensure_buku_tables();
+
 switch ($action) {
     case 'list':
         listBuku($user);
@@ -34,6 +37,53 @@ switch ($action) {
         break;
     default:
         json_response(400, false, 'Action tidak valid.');
+}
+
+function ensure_buku_tables() {
+    try {
+        db()->exec("CREATE TABLE IF NOT EXISTS acad_buku_types (
+            id int(11) unsigned NOT NULL AUTO_INCREMENT,
+            nama_jenis varchar(100) NOT NULL,
+            deskripsi varchar(255) DEFAULT NULL,
+            warna_badge varchar(50) NOT NULL DEFAULT 'badge-info',
+            urutan int(11) NOT NULL DEFAULT 0,
+            created_at timestamp NOT NULL DEFAULT current_timestamp(),
+            PRIMARY KEY (id),
+            UNIQUE KEY nama_jenis (nama_jenis)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+        $count = (int)db()->query("SELECT COUNT(*) FROM acad_buku_types")->fetchColumn();
+        if ($count === 0) {
+            $defaultBukuTypes = [
+                ['Keterlambatan', 'Catatan siswa terlambat masuk sekolah', 'badge-warning', 1],
+                ['Pelanggaran', 'Catatan pelanggaran tata tertib sekolah', 'badge-danger', 2],
+                ['Prestasi', 'Penghargaan / prestasi akademik & non-akademik', 'badge-success', 3],
+                ['Screening', 'Catatan screening kesehatan / perilaku siswa', 'badge-info', 4],
+                ['Konsultasi', 'Bimbingan dan konseling siswa', 'badge-primary', 5]
+            ];
+            $stmtBT = db()->prepare("INSERT IGNORE INTO acad_buku_types (nama_jenis, deskripsi, warna_badge, urutan) VALUES (?,?,?,?)");
+            foreach ($defaultBukuTypes as $dbt) {
+                $stmtBT->execute($dbt);
+            }
+        }
+
+        db()->exec("CREATE TABLE IF NOT EXISTS acad_buku_penghubung (
+            id int(10) unsigned NOT NULL AUTO_INCREMENT,
+            student_id int(11) unsigned NOT NULL,
+            kelas_id int(10) unsigned NOT NULL,
+            academic_year_id int(11) unsigned NOT NULL,
+            jenis varchar(100) NOT NULL DEFAULT 'Konsultasi',
+            tanggal date NOT NULL,
+            catatan text NOT NULL,
+            dicatat_oleh int(11) unsigned DEFAULT NULL,
+            created_at timestamp NOT NULL DEFAULT current_timestamp(),
+            updated_at timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
+            PRIMARY KEY (id),
+            KEY idx_student (student_id),
+            KEY idx_kelas (kelas_id),
+            KEY idx_tanggal (tanggal)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+    } catch (Exception $e) {}
 }
 
 function get_buku_input() {
@@ -80,11 +130,11 @@ function listBuku($user) {
         }
 
         $stmt = db()->prepare("
-            SELECT b.*, s.nama as nama_siswa, s.nis, k.nama_kelas, u.nama_lengkap as dicatat_nama,
+            SELECT b.*, s.nama as nama_siswa, s.nis, COALESCE(k.nama_kelas, s.kelas) as nama_kelas, u.nama_lengkap as dicatat_nama,
                    COALESCE(t.warna_badge, 'badge-info') as warna_badge, t.deskripsi as jenis_deskripsi
             FROM acad_buku_penghubung b
             JOIN students s ON b.student_id = s.id
-            JOIN sch_kelas k ON b.kelas_id = k.id
+            LEFT JOIN sch_kelas k ON b.kelas_id = k.id
             LEFT JOIN users u ON b.dicatat_oleh = u.id
             LEFT JOIN acad_buku_types t ON b.jenis = t.nama_jenis
             WHERE $where
