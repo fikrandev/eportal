@@ -397,6 +397,59 @@ function run_auto_migrations() {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
             ");
         } catch (PDOException $e) {}
+
+        // 8. Table acad_buku_penghubung & acad_buku_types
+        try {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `acad_buku_penghubung` (
+                    `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+                    `student_id` INT(11) UNSIGNED NOT NULL COMMENT 'References students.id',
+                    `kelas_id` INT(10) UNSIGNED NOT NULL,
+                    `academic_year_id` INT(11) UNSIGNED NOT NULL,
+                    `jenis` VARCHAR(100) NOT NULL DEFAULT 'Konsultasi',
+                    `tanggal` DATE NOT NULL,
+                    `catatan` TEXT NOT NULL,
+                    `dicatat_oleh` INT(11) UNSIGNED DEFAULT NULL COMMENT 'user_id guru',
+                    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    PRIMARY KEY (`id`),
+                    KEY `idx_buku_student` (`student_id`),
+                    KEY `idx_buku_kelas` (`kelas_id`),
+                    KEY `idx_buku_tanggal` (`tanggal`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            ");
+            $pdo->exec("ALTER TABLE `acad_buku_penghubung` MODIFY COLUMN `jenis` VARCHAR(100) NOT NULL DEFAULT 'Konsultasi'");
+        } catch (PDOException $e) {}
+
+        try {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `acad_buku_types` (
+                    `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+                    `nama_jenis` VARCHAR(100) NOT NULL,
+                    `deskripsi` VARCHAR(255) DEFAULT NULL,
+                    `warna_badge` VARCHAR(50) NOT NULL DEFAULT 'badge-info',
+                    `urutan` INT(11) NOT NULL DEFAULT 0,
+                    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (`id`),
+                    UNIQUE KEY `uk_nama_jenis` (`nama_jenis`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            ");
+
+            $checkTypes = $pdo->query("SELECT COUNT(*) FROM `acad_buku_types`")->fetchColumn();
+            if ((int)$checkTypes === 0) {
+                $defaults = [
+                    ['Keterlambatan', 'Catatan siswa terlambat masuk sekolah', 'badge-warning', 1],
+                    ['Pelanggaran', 'Catatan pelanggaran tata tertib sekolah', 'badge-danger', 2],
+                    ['Prestasi', 'Penghargaan / prestasi akademik & non-akademik', 'badge-success', 3],
+                    ['Screening', 'Catatan screening kesehatan / perilaku siswa', 'badge-info', 4],
+                    ['Konsultasi', 'Bimbingan dan konseling siswa', 'badge-primary', 5]
+                ];
+                $stmt = $pdo->prepare("INSERT IGNORE INTO `acad_buku_types` (`nama_jenis`, `deskripsi`, `warna_badge`, `urutan`) VALUES (?,?,?,?)");
+                foreach ($defaults as $d) {
+                    $stmt->execute($d);
+                }
+            }
+        } catch (Exception $e) {}
     }
 
     // Update DB migration version to target_version

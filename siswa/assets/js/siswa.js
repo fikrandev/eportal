@@ -287,19 +287,44 @@ const App = {
             `;
         },
         bk(data) {
-            let bkHTML = data.length ? data.map(b => `
-                <div style="background:white; border-radius:16px; padding:16px; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; margin-bottom:12px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                        <div style="font-weight:600; color:var(--primary); font-size:1.05rem;">${b.jenis}</div>
-                        <div style="font-size:0.8rem; color:var(--text-muted);">${b.tanggal_indo}</div>
+            const jenisColors = {
+                'badge-warning': { bg: '#fffbeb', color: '#b45309', border: '#fde68a' },
+                'badge-danger': { bg: '#fef2f2', color: '#b91c1c', border: '#fecaca' },
+                'badge-success': { bg: '#f0fdf4', color: '#15803d', border: '#bbf7d0' },
+                'badge-primary': { bg: '#f5f3ff', color: '#6d28d9', border: '#ddd6fe' },
+                'badge-info': { bg: '#eff6ff', color: '#1d4ed8', border: '#bfdbfe' }
+            };
+
+            let bkHTML = data.length ? data.map(b => {
+                const style = jenisColors[b.warna_badge] || jenisColors['badge-info'];
+                return `
+                <div style="background:white; border-radius:16px; padding:18px; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; margin-bottom:14px; position:relative; overflow:hidden;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:10px; gap:8px;">
+                        <span style="display:inline-block; padding:4px 10px; border-radius:8px; font-size:0.8rem; font-weight:700; background:${style.bg}; color:${style.color}; border:1px solid ${style.border};">
+                            ${b.jenis}
+                        </span>
+                        <div style="font-size:0.8rem; color:var(--text-muted); font-weight:500;">📅 ${b.tanggal_indo || b.tanggal}</div>
                     </div>
-                    <div style="font-size:0.9rem; color:var(--text-secondary); line-height:1.5;">${b.catatan}</div>
+                    <div style="font-size:0.92rem; color:var(--text-primary); line-height:1.6; margin-bottom:8px; white-space:pre-wrap;">${b.catatan}</div>
+                    ${b.dicatat_nama ? `<div style="font-size:0.75rem; color:var(--text-muted); display:flex; align-items:center; gap:4px; margin-top:8px; padding-top:8px; border-top:1px dashed #e2e8f0;">✍️ Dicatat oleh: <strong>${b.dicatat_nama}</strong></div>` : ''}
                 </div>
-            `).join('') : '<div style="text-align:center; padding:30px 20px; color:var(--text-muted);"><svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.5; margin-bottom:12px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><br>Belum ada catatan dari guru BK.</div>';
+            `;
+            }).join('') : `
+                <div style="text-align:center; padding:40px 20px; color:var(--text-muted); background:white; border-radius:16px; border:1.5px solid #f1f5f9;">
+                    <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.4; margin-bottom:12px;">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                    </svg>
+                    <h3 style="margin:0 0 6px; font-size:1.05rem; color:var(--text-primary);">Belum Ada Catatan</h3>
+                    <p style="margin:0; font-size:0.85rem; color:var(--text-muted);">Buku penghubung / bimbingan konseling belum memiliki catatan untuk Anda.</p>
+                </div>
+            `;
 
             return `
                 <div class="page-enter">
-                    <h2 style="margin-bottom:20px; font-size:1.5rem;">Catatan Bimbingan Konseling</h2>
+                    <div style="margin-bottom:16px;">
+                        <h2 style="margin:0 0 4px; font-size:1.4rem;">📖 Buku Penghubung &amp; BK</h2>
+                        <p style="margin:0; font-size:0.85rem; color:var(--text-muted);">Catatan prestasi, kedisiplinan, bimbingan, dan perkembangan siswa.</p>
+                    </div>
                     ${bkHTML}
                 </div>
             `;

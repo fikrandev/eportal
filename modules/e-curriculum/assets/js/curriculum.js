@@ -549,7 +549,7 @@ const Curriculum = {
             case 'piket':
                 return this.can('piket_manage');
             case 'buku_penghubung':
-                return this.can('buku_penghubung_manage');
+                return this.can('buku_penghubung_manage') || (!hasCustomPerms && isTeacher);
             case 'laporan_jurnal':
             case 'laporan_kehadiran':
                 return this.can('laporan_view');
@@ -656,7 +656,7 @@ const Curriculum = {
         const showAbsenGuru = isSuperAdmin || this.can('absensi_guru_manage');
         const showKetidakhadiran = isSuperAdmin || this.can('ketidakhadiran_manage');
         const showPiket = isSuperAdmin || this.can('piket_manage');
-        const showBukuPenghubung = isSuperAdmin || this.can('buku_penghubung_manage');
+        const showBukuPenghubung = isSuperAdmin || this.can('buku_penghubung_manage') || (!hasCustomPerms && isTeacher);
         const showDokumen = isSuperAdmin || this.can('dokumen_manage');
 
         if (showJurnal || showAbsenSiswa || showAbsenGuru || showKetidakhadiran || showPiket || showBukuPenghubung || showDokumen) {
@@ -759,6 +759,10 @@ const Curriculum = {
                     <button class="acad-nav-item" data-route="mengajar">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                         Jadwal Mengajar
+                    </button>
+                    <button class="acad-nav-item" data-route="buku_penghubung">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                        Buku Penghubung
                     </button>
                     <button class="acad-nav-item" data-route="dokumen">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
@@ -2900,31 +2904,58 @@ const Curriculum = {
     renderBukuPenghubung($container) {
         $container.html(`
             <div class="acad-card">
-                <div class="acad-card-header">
-                    <div><h3>📖 Buku Penghubung Siswa</h3><p class="acad-subtitle">Catatan perilaku, prestasi, pelanggaran, dan konsultasi siswa.</p></div>
-                    <div class="acad-toolbar">
-                        <button class="btn-acad btn-acad-primary" onclick="Curriculum.showBukuForm()">
+                <div class="acad-card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
+                    <div>
+                        <h3 style="margin:0;font-size:1.15rem;font-weight:700">📖 Buku Penghubung Siswa</h3>
+                        <p class="acad-subtitle" style="margin-top:4px">Catatan perilaku, prestasi, kedisiplinan, dan konsultasi siswa (terhubung ke Portal Siswa).</p>
+                    </div>
+                    <div class="acad-toolbar" style="display:flex;gap:8px;flex-wrap:wrap">
+                        <button class="btn-acad btn-acad-outline" onclick="Curriculum.openManageJenisCatatanModal()" style="display:flex;align-items:center;gap:6px;padding:7px 14px;font-size:13px;border-radius:6px;font-weight:600">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+                            Kelola Jenis Catatan
+                        </button>
+                        <button class="btn-acad btn-acad-primary" onclick="Curriculum.showBukuForm()" style="display:flex;align-items:center;gap:6px;padding:7px 14px;font-size:13px;border-radius:6px;font-weight:600">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             Tambah Catatan
                         </button>
                     </div>
                 </div>
                 <div class="acad-card-body">
-                    <div class="filter-bar">
-                        <div class="filter-item"><label>Kelas</label><select class="form-select-acad" id="bukuKelas"><option value="">Semua Kelas</option></select></div>
-                        <div class="filter-item"><label>Jenis</label><select class="form-select-acad" id="bukuJenis"><option value="">Semua</option><option value="Keterlambatan">Keterlambatan</option><option value="Pelanggaran">Pelanggaran</option><option value="Prestasi">Prestasi</option><option value="Screening">Screening</option><option value="Konsultasi">Konsultasi</option></select></div>
+                    <div class="filter-bar" style="margin-bottom:16px">
+                        <div class="filter-item"><label>Kelas</label><select class="form-select-acad" id="bukuKelas" onchange="Curriculum.loadBukuTable()"><option value="">Semua Kelas</option></select></div>
+                        <div class="filter-item"><label>Jenis Catatan</label><select class="form-select-acad" id="bukuJenis" onchange="Curriculum.loadBukuTable()"><option value="">Semua Jenis Catatan</option></select></div>
                         <div class="filter-item"><button class="btn-acad btn-acad-outline" onclick="Curriculum.loadBukuTable()">🔍 Filter</button></div>
                     </div>
                     <div id="bukuTableWrapper"><div class="skeleton-module" style="height:200px;"></div></div>
                 </div>
             </div>
         `);
+
         // Load classes
         this.api('kelas.php?action=list').done(res => {
             const opts = (res.data || []).map(k => `<option value="${k.id}">${this.escapeHtml(k.nama_kelas)}</option>`).join('');
             $('#bukuKelas').append(opts);
         });
+
+        // Load dynamic Jenis Catatan options
+        this._populateBukuJenisFilter('#bukuJenis');
+
         this.loadBukuTable();
+    },
+
+    _populateBukuJenisFilter(selector, selectedVal = '') {
+        this.api('buku_penghubung.php?action=list_types').done(res => {
+            if (res && res.success && Array.isArray(res.data)) {
+                const $select = $(selector);
+                if (!$select.length) return;
+                let opts = '<option value="">Semua Jenis Catatan</option>';
+                res.data.forEach(t => {
+                    const sel = (selectedVal && selectedVal === t.nama_jenis) ? 'selected' : '';
+                    opts += `<option value="${this.escapeHtml(t.nama_jenis)}" ${sel}>${this.escapeHtml(t.nama_jenis)}</option>`;
+                });
+                $select.html(opts);
+            }
+        });
     },
 
     loadBukuTable() {
@@ -2932,7 +2963,7 @@ const Curriculum = {
         const jenis = $('#bukuJenis').val() || '';
         let url = 'buku_penghubung.php?action=list';
         if (kelas) url += `&kelas_id=${kelas}`;
-        if (jenis) url += `&jenis=${jenis}`;
+        if (jenis) url += `&jenis=${encodeURIComponent(jenis)}`;
 
         this.api(url).done(res => {
             const data = res.data || [];
@@ -2940,86 +2971,578 @@ const Curriculum = {
                 $('#bukuTableWrapper').html(`<div class="acad-empty"><h3>Belum Ada Catatan</h3><p>Tambahkan catatan baru untuk siswa.</p></div>`);
                 return;
             }
-            const jenisColors = { Keterlambatan: 'badge-warning', Pelanggaran: 'badge-danger', Prestasi: 'badge-success', Screening: 'badge-info', Konsultasi: 'badge-info' };
-            const rows = data.map((b, idx) => `
+            const rows = data.map((b, idx) => {
+                const safeCatatan = this.escapeHtml(b.catatan).replace(/'/g, "\\'");
+                const safeJenis = this.escapeHtml(b.jenis).replace(/'/g, "\\'");
+                const badgeClass = b.warna_badge || 'badge-info';
+                return `
                 <tr class="fade-in" style="animation-delay:${idx*0.03}s">
                     <td>${this.escapeHtml(b.tanggal)}</td>
-                    <td><strong>${this.escapeHtml(b.nama_siswa)}</strong><br><span class="text-muted" style="font-size:0.75rem;">NIS: ${this.escapeHtml(b.nis)}</span></td>
-                    <td>${this.escapeHtml(b.nama_kelas)}</td>
-                    <td><span class="badge ${jenisColors[b.jenis] || 'badge-info'}">${this.escapeHtml(b.jenis)}</span></td>
-                    <td style="max-width:250px;"><div class="text-truncate">${this.escapeHtml(b.catatan)}</div></td>
+                    <td><strong>${this.escapeHtml(b.nama_siswa)}</strong><br><span class="text-muted" style="font-size:0.75rem;">NIS: ${this.escapeHtml(b.nis || '-')}</span></td>
+                    <td>${this.escapeHtml(b.nama_kelas || '-')}</td>
+                    <td><span class="badge ${badgeClass}">${this.escapeHtml(b.jenis)}</span></td>
+                    <td style="max-width:280px;">
+                        <div style="white-space:pre-wrap;">${this.escapeHtml(b.catatan)}</div>
+                        ${b.dicatat_nama ? `<div class="text-muted" style="font-size:0.72rem; margin-top:4px;">✍️ Dicatat: <strong>${this.escapeHtml(b.dicatat_nama)}</strong></div>` : ''}
+                    </td>
                     <td>
                         <div style="display:flex; gap:6px;">
-                            <button class="btn-icon" title="Edit" onclick="Curriculum.editBuku(${b.id}, '${this.escapeHtml(b.catatan).replace(/'/g, "\\'")}', '${b.jenis}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                            <button class="btn-icon" title="Edit" onclick="Curriculum.editBuku(${b.id}, '${safeCatatan}', '${safeJenis}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
                             <button class="btn-icon danger" title="Hapus" onclick="Curriculum.deleteBuku(${b.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
                         </div>
                     </td>
                 </tr>
-            `).join('');
+            `;
+            }).join('');
             $('#bukuTableWrapper').html(`<div class="data-table-wrapper"><table class="data-table"><thead><tr><th>Tanggal</th><th>Siswa</th><th>Kelas</th><th>Jenis</th><th>Catatan</th><th style="width:100px;">Aksi</th></tr></thead><tbody>${rows}</tbody></table></div>`);
         });
     },
 
     showBukuForm() {
         const today = new Date().toISOString().split('T')[0];
-        this.api('kelas.php?action=list').done(resK => {
-            const kelasOpts = (resK.data || []).map(k => `<option value="${k.id}">${this.escapeHtml(k.nama_kelas)}</option>`).join('');
+        Promise.all([
+            this.api('kelas.php?action=list'),
+            this.api('buku_penghubung.php?action=list_types')
+        ]).then(([resK, resT]) => {
+            const kelasList = resK.data || [];
+            const typesList = resT.data || [];
+            this._renderBukuModal(kelasList, typesList, today);
+        }).catch(() => {
+            this._renderBukuModal([], [], today);
+        });
+    },
 
-            EModal.form({
-                title: 'Tambah Catatan Buku Penghubung', size: 'md',
-                form: `
-                    <div class="form-group-acad"><label class="form-label-acad">Kelas</label><select class="form-select-acad" id="fBukuKelas" onchange="Curriculum.loadStudentsForBuku()"><option value="">Pilih...</option>${kelasOpts}</select></div>
-                    <div class="form-group-acad"><label class="form-label-acad">Siswa</label><select class="form-select-acad" id="fBukuSiswa"><option value="">Pilih kelas dahulu...</option></select></div>
-                    <div class="form-group-acad"><label class="form-label-acad">Jenis Catatan</label><select class="form-select-acad" id="fBukuJenis"><option value="Keterlambatan">Keterlambatan</option><option value="Pelanggaran">Pelanggaran</option><option value="Prestasi">Prestasi</option><option value="Screening">Screening</option><option value="Konsultasi">Konsultasi / Bimbingan</option></select></div>
-                    <div class="form-group-acad"><label class="form-label-acad">Tanggal</label><input type="date" class="form-input-acad" id="fBukuTgl" value="${today}"></div>
-                    <div class="form-group-acad"><label class="form-label-acad">Catatan</label><textarea class="form-input-acad" id="fBukuCatatan" rows="3" placeholder="Tulis catatan..."></textarea></div>
-                `,
-                confirmText: 'Simpan',
-                onConfirm: () => {
-                    const student = $('#fBukuSiswa').val(), kelas = $('#fBukuKelas').val();
-                    if (!student || !kelas) { EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Kelas dan Siswa wajib dipilih.' }); return false; }
-                    this.api('buku_penghubung.php?action=create', { method: 'POST', data: {
-                        student_id: +student, kelas_id: +kelas, jenis: $('#fBukuJenis').val(), tanggal: $('#fBukuTgl').val(), catatan: $('#fBukuCatatan').val()
-                    }}).done(res => {
-                        EModal.closeAll(); EModal.toast({ type: 'success', title: 'Berhasil', message: res.message }); this.loadBukuTable();
-                    }).fail(xhr => { EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal.' }); });
+    _renderBukuModal(kelasList, typesList, today) {
+        let kelasOptionsHtml = '';
+        if (kelasList && kelasList.length) {
+            kelasOptionsHtml = kelasList.map(k => `
+                <div class="acad-cs-option" data-id="${k.id}" data-nama="${this.escapeHtml(k.nama_kelas)}">
+                    <div class="acad-cs-opt-main">${this.escapeHtml(k.nama_kelas)}</div>
+                </div>
+            `).join('');
+            kelasOptionsHtml += '<div id="csKelasEmpty" class="acad-cs-empty" style="display:none;">Kelas tidak ditemukan</div>';
+        } else {
+            kelasOptionsHtml = '<div class="acad-cs-empty">Tidak ada data kelas</div>';
+        }
+        
+        let typesOpts = '';
+        if (typesList && typesList.length) {
+            typesOpts = typesList.map(t => `<option value="${this.escapeHtml(t.nama_jenis)}">${this.escapeHtml(t.nama_jenis)}</option>`).join('');
+        } else {
+            typesOpts = `
+                <option value="Keterlambatan">Keterlambatan</option>
+                <option value="Pelanggaran">Pelanggaran</option>
+                <option value="Prestasi">Prestasi</option>
+                <option value="Screening">Screening</option>
+                <option value="Konsultasi">Konsultasi / Bimbingan</option>
+            `;
+        }
+
+        EModal.form({
+            title: 'Tambah Catatan Buku Penghubung',
+            size: 'md',
+            form: `
+                <!-- Field Kelas dengan Custom Search Dropdown -->
+                <div class="form-group-acad mb-3">
+                    <label class="form-label-acad">Kelas <span class="text-danger">*</span></label>
+                    <input type="hidden" id="fBukuKelas" value="">
+                    <div class="acad-cs-container" id="csKelasContainer">
+                        <div class="acad-cs-btn" id="csKelasBtn">
+                            <span id="csKelasSelectedText" style="color:#64748b; font-size:0.9rem;">-- Cari / Pilih Kelas --</span>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </div>
+                        <div class="acad-cs-dropdown" id="csKelasDropdown">
+                            <div class="acad-cs-search-wrap">
+                                <input type="text" id="csKelasSearchInput" class="acad-cs-search-input" placeholder="🔍 Cari kelas..." autocomplete="off">
+                            </div>
+                            <div class="acad-cs-list" id="csKelasList">
+                                ${kelasOptionsHtml}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Field Siswa dengan Custom Search Dropdown -->
+                <div class="form-group-acad mb-3">
+                    <label class="form-label-acad">Siswa <span class="text-danger">*</span></label>
+                    <input type="hidden" id="fBukuSiswa" value="">
+                    <div class="acad-cs-container" id="csSiswaContainer">
+                        <div class="acad-cs-btn disabled" id="csSiswaBtn">
+                            <span id="csSiswaSelectedText" style="color:#94a3b8; font-size:0.9rem;">Pilih kelas terlebih dahulu...</span>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                        </div>
+                        <div class="acad-cs-dropdown" id="csSiswaDropdown">
+                            <div class="acad-cs-search-wrap">
+                                <input type="text" id="csSiswaSearchInput" class="acad-cs-search-input" placeholder="🔍 Cari nama atau NIS siswa..." autocomplete="off">
+                            </div>
+                            <div class="acad-cs-list" id="csSiswaList">
+                                <div class="acad-cs-empty">Pilih kelas terlebih dahulu</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="form-group-acad mb-3">
+                    <label class="form-label-acad">Jenis Catatan <span class="text-danger">*</span></label>
+                    <select class="form-select-acad" id="fBukuJenis">
+                        ${typesOpts}
+                    </select>
+                </div>
+                <div class="form-group-acad mb-3">
+                    <label class="form-label-acad">Tanggal <span class="text-danger">*</span></label>
+                    <input type="date" class="form-input-acad" id="fBukuTgl" value="${today}">
+                </div>
+                <div class="form-group-acad mb-3">
+                    <label class="form-label-acad">Catatan <span class="text-danger">*</span></label>
+                    <textarea class="form-input-acad" id="fBukuCatatan" rows="3" placeholder="Tuliskan catatan kejadian, pelanggaran, prestasi, atau bimbingan..."></textarea>
+                </div>
+                <div style="font-size:12px;color:var(--text-muted,#94a3b8);background:#f8fafc;padding:10px;border-radius:6px;border:1px solid #e2e8f0">
+                    <strong>ℹ️ Info:</strong> Catatan ini akan otomatis muncul pada menu Catatan / Buku Penghubung di <strong>Portal Siswa</strong> yang bersangkutan.
+                </div>
+            `,
+            confirmText: 'Simpan Catatan',
+            onOpen: () => {
+                // Dropdown Kelas toggle
+                $('#csKelasBtn').on('click', function(e) {
+                    e.stopPropagation();
+                    $('#csSiswaDropdown').hide();
+                    $('#csSiswaBtn').removeClass('active');
+                    $(this).toggleClass('active');
+                    $('#csKelasDropdown').toggle();
+                    if ($('#csKelasDropdown').is(':visible')) {
+                        $('#csKelasSearchInput').val('').trigger('input').focus();
+                    }
+                });
+
+                // Filter Pencarian Kelas
+                $('#csKelasSearchInput').on('input', function() {
+                    const term = $(this).val().toLowerCase().trim();
+                    let matchCount = 0;
+                    $('#csKelasList .acad-cs-option').each(function() {
+                        const text = $(this).text().toLowerCase();
+                        const match = text.includes(term);
+                        $(this).toggle(match);
+                        if (match) matchCount++;
+                    });
+                    $('#csKelasEmpty').toggle(matchCount === 0);
+                });
+
+                // Pilih Option Kelas
+                $('#csKelasList').on('click', '.acad-cs-option', (e) => {
+                    const $opt = $(e.currentTarget);
+                    const id = $opt.data('id');
+                    const nama = $opt.data('nama');
+                    
+                    $('#fBukuKelas').val(id);
+                    $('#csKelasSelectedText').html(`<span style="font-weight:600; color:#1e293b;">${this.escapeHtml(nama)}</span>`);
+                    $('#csKelasList .acad-cs-option').removeClass('selected');
+                    $opt.addClass('selected');
+                    $('#csKelasDropdown').hide();
+                    $('#csKelasBtn').removeClass('active');
+
+                    // Reset & Load Siswa
+                    $('#fBukuSiswa').val('');
+                    $('#csSiswaBtn').removeClass('disabled');
+                    $('#csSiswaSelectedText').html('<span style="color:#64748b; font-size:0.9rem;">-- Cari / Pilih Siswa --</span>');
+                    $('#csSiswaList').html('<div class="acad-cs-empty"><span class="acad-spinner-sm"></span> Memuat data siswa...</div>');
+
+                    this.api(`absensi.php?action=students&kelas_id=${id}`).done(res => {
+                        const list = res.data || [];
+                        if (!list.length) {
+                            $('#csSiswaList').html('<div class="acad-cs-empty">Tidak ada siswa terdaftar di kelas ini</div>');
+                            return;
+                        }
+                        let sHtml = '';
+                        list.forEach(s => {
+                            sHtml += `
+                                <div class="acad-cs-option" data-id="${s.id}" data-nama="${this.escapeHtml(s.nama)}" data-nis="${this.escapeHtml(s.nis || '-')}">
+                                    <div class="acad-cs-opt-main">${this.escapeHtml(s.nama)}</div>
+                                    <div class="acad-cs-opt-sub">NIS: ${this.escapeHtml(s.nis || '-')}</div>
+                                </div>
+                            `;
+                        });
+                        sHtml += '<div id="csSiswaEmpty" class="acad-cs-empty" style="display:none;">Siswa tidak ditemukan</div>';
+                        $('#csSiswaList').html(sHtml);
+                    }).fail(() => {
+                        $('#csSiswaList').html('<div class="acad-cs-empty" style="color:#ef4444;">Gagal memuat data siswa</div>');
+                    });
+                });
+
+                // Dropdown Siswa toggle
+                $('#csSiswaBtn').on('click', function(e) {
+                    e.stopPropagation();
+                    if ($(this).hasClass('disabled')) {
+                        EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Silakan pilih Kelas terlebih dahulu.' });
+                        return;
+                    }
+                    $('#csKelasDropdown').hide();
+                    $('#csKelasBtn').removeClass('active');
+                    $(this).toggleClass('active');
+                    $('#csSiswaDropdown').toggle();
+                    if ($('#csSiswaDropdown').is(':visible')) {
+                        $('#csSiswaSearchInput').val('').trigger('input').focus();
+                    }
+                });
+
+                // Filter Pencarian Siswa
+                $('#csSiswaSearchInput').on('input', function() {
+                    const term = $(this).val().toLowerCase().trim();
+                    let matchCount = 0;
+                    $('#csSiswaList .acad-cs-option').each(function() {
+                        const text = $(this).text().toLowerCase();
+                        const match = text.includes(term);
+                        $(this).toggle(match);
+                        if (match) matchCount++;
+                    });
+                    $('#csSiswaEmpty').toggle(matchCount === 0);
+                });
+
+                // Pilih Option Siswa
+                $('#csSiswaList').on('click', '.acad-cs-option', (e) => {
+                    const $opt = $(e.currentTarget);
+                    const id = $opt.data('id');
+                    const nama = $opt.data('nama');
+                    const nis = $opt.data('nis');
+
+                    $('#fBukuSiswa').val(id);
+                    $('#csSiswaSelectedText').html(`
+                        <div>
+                            <div style="font-weight:600; font-size:0.9rem; color:#1e293b;">${this.escapeHtml(nama)}</div>
+                            <div style="font-size:0.75rem; color:#64748b;">NIS: ${this.escapeHtml(nis)}</div>
+                        </div>
+                    `);
+                    $('#csSiswaList .acad-cs-option').removeClass('selected');
+                    $opt.addClass('selected');
+                    $('#csSiswaDropdown').hide();
+                    $('#csSiswaBtn').removeClass('active');
+                });
+
+                // Global outside-click listener
+                $(document).off('click.acadCsModal').on('click.acadCsModal', function(e) {
+                    if (!$(e.target).closest('#csKelasContainer').length) {
+                        $('#csKelasDropdown').hide();
+                        $('#csKelasBtn').removeClass('active');
+                    }
+                    if (!$(e.target).closest('#csSiswaContainer').length) {
+                        $('#csSiswaDropdown').hide();
+                        $('#csSiswaBtn').removeClass('active');
+                    }
+                });
+            },
+            onConfirm: () => {
+                const student = $('#fBukuSiswa').val();
+                const kelas = $('#fBukuKelas').val();
+                const catatan = ($('#fBukuCatatan').val() || '').trim();
+                const tgl = $('#fBukuTgl').val() || today;
+                const jenis = $('#fBukuJenis').val() || 'Konsultasi';
+
+                if (!kelas) {
+                    EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Silakan cari & pilih Kelas terlebih dahulu.' });
                     return false;
                 }
-            });
-        });
-    },
+                if (!student) {
+                    EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Silakan cari & pilih Siswa.' });
+                    return false;
+                }
+                if (!catatan) {
+                    EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Catatan tidak boleh kosong.' });
+                    return false;
+                }
 
-    loadStudentsForBuku() {
-        const kelas_id = $('#fBukuKelas').val();
-        if (!kelas_id) return;
-        this.api(`absensi.php?action=students&kelas_id=${kelas_id}`).done(res => {
-            const opts = (res.data || []).map(s => `<option value="${s.id}">${this.escapeHtml(s.nama)} (${this.escapeHtml(s.nis)})</option>`).join('');
-            $('#fBukuSiswa').html(`<option value="">Pilih Siswa...</option>${opts}`);
-        });
-    },
-
-    editBuku(id, catatan, jenis) {
-        EModal.form({
-            title: 'Edit Catatan', size: 'md',
-            form: `
-                <div class="form-group-acad"><label class="form-label-acad">Jenis</label><select class="form-select-acad" id="fBukuEditJenis"><option value="Keterlambatan" ${jenis==='Keterlambatan'?'selected':''}>Keterlambatan</option><option value="Pelanggaran" ${jenis==='Pelanggaran'?'selected':''}>Pelanggaran</option><option value="Prestasi" ${jenis==='Prestasi'?'selected':''}>Prestasi</option><option value="Screening" ${jenis==='Screening'?'selected':''}>Screening</option><option value="Konsultasi" ${jenis==='Konsultasi'?'selected':''}>Konsultasi</option></select></div>
-                <div class="form-group-acad"><label class="form-label-acad">Catatan</label><textarea class="form-input-acad" id="fBukuEditCatatan" rows="4">${catatan}</textarea></div>
-            `,
-            confirmText: 'Simpan',
-            onConfirm: () => {
-                this.api('buku_penghubung.php?action=update', { method: 'POST', data: { id, jenis: $('#fBukuEditJenis').val(), catatan: $('#fBukuEditCatatan').val() } }).done(res => {
-                    EModal.closeAll(); EModal.toast({ type: 'success', title: 'Berhasil', message: res.message }); this.loadBukuTable();
+                this.api('buku_penghubung.php?action=create', {
+                    method: 'POST',
+                    data: {
+                        student_id: +student,
+                        kelas_id: +kelas,
+                        jenis: jenis,
+                        tanggal: tgl,
+                        catatan: catatan
+                    }
+                }).done(res => {
+                    EModal.closeAll();
+                    EModal.toast({ type: 'success', title: 'Berhasil', message: res.message || 'Catatan berhasil disimpan.' });
+                    this.loadBukuTable();
+                }).fail(xhr => {
+                    EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menyimpan catatan.' });
                 });
                 return false;
             }
         });
     },
 
+    editBuku(id, catatan, currentJenis) {
+        this.api('buku_penghubung.php?action=list_types').done(resT => {
+            const typesList = resT.data || [];
+            let typesOpts = '';
+            if (typesList.length) {
+                typesOpts = typesList.map(t => `<option value="${this.escapeHtml(t.nama_jenis)}" ${currentJenis === t.nama_jenis ? 'selected' : ''}>${this.escapeHtml(t.nama_jenis)}</option>`).join('');
+            } else {
+                typesOpts = `
+                    <option value="Keterlambatan" ${currentJenis==='Keterlambatan'?'selected':''}>Keterlambatan</option>
+                    <option value="Pelanggaran" ${currentJenis==='Pelanggaran'?'selected':''}>Pelanggaran</option>
+                    <option value="Prestasi" ${currentJenis==='Prestasi'?'selected':''}>Prestasi</option>
+                    <option value="Screening" ${currentJenis==='Screening'?'selected':''}>Screening</option>
+                    <option value="Konsultasi" ${currentJenis==='Konsultasi'?'selected':''}>Konsultasi</option>
+                `;
+            }
+
+            EModal.form({
+                title: 'Edit Catatan Buku Penghubung', size: 'md',
+                form: `
+                    <div class="form-group-acad mb-3"><label class="form-label-acad">Jenis Catatan</label><select class="form-select-acad" id="fBukuEditJenis">${typesOpts}</select></div>
+                    <div class="form-group-acad mb-3"><label class="form-label-acad">Isi Catatan</label><textarea class="form-input-acad" id="fBukuEditCatatan" rows="4">${catatan}</textarea></div>
+                `,
+                confirmText: 'Simpan Perubahan',
+                onConfirm: () => {
+                    const updatedCatatan = ($('#fBukuEditCatatan').val() || '').trim();
+                    const updatedJenis = $('#fBukuEditJenis').val();
+                    if (!updatedCatatan) {
+                        EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Catatan tidak boleh kosong.' });
+                        return false;
+                    }
+                    this.api('buku_penghubung.php?action=update', {
+                        method: 'POST',
+                        data: { id, jenis: updatedJenis, catatan: updatedCatatan }
+                    }).done(res => {
+                        EModal.closeAll();
+                        EModal.toast({ type: 'success', title: 'Berhasil', message: res.message || 'Catatan berhasil diperbarui.' });
+                        this.loadBukuTable();
+                    }).fail(xhr => {
+                        EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal memperbarui catatan.' });
+                    });
+                    return false;
+                }
+            });
+        });
+    },
+
     deleteBuku(id) {
-        EModal.confirm({ title: 'Hapus Catatan', message: 'Hapus catatan ini?', type: 'danger', confirmText: 'Hapus',
+        EModal.confirm({
+            title: 'Hapus Catatan',
+            message: 'Apakah Anda yakin ingin menghapus catatan buku penghubung ini?',
+            type: 'danger',
+            confirmText: 'Hapus',
             onConfirm: () => {
                 this.api('buku_penghubung.php?action=delete', { method: 'POST', data: { id } }).done(res => {
-                    EModal.toast({ type: 'success', title: 'Terhapus', message: res.message }); this.loadBukuTable();
+                    EModal.toast({ type: 'success', title: 'Terhapus', message: res.message || 'Catatan berhasil dihapus.' });
+                    this.loadBukuTable();
+                }).fail(xhr => {
+                    EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menghapus catatan.' });
+                });
+            }
+        });
+    },
+
+    // ==========================================
+    // MASTER JENIS CATATAN (CRUD MODAL)
+    // ==========================================
+    openManageJenisCatatanModal() {
+        const modalHtml = `
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:20px">
+                <div style="font-size:13px;font-weight:700;color:var(--acad-text,#1e293b);margin-bottom:10px" id="lblFormJenisCatatan">
+                    ➕ Tambah Jenis Catatan Baru
+                </div>
+                <input type="hidden" id="f_jenisBukuId" value="0">
+                <div style="display:grid;grid-template-columns:1fr 1.2fr 1fr auto;gap:10px;align-items:center">
+                    <input type="text" class="form-input-acad" id="f_jenisBukuNama" placeholder="Nama Jenis (contoh: Konseling Karir)" style="padding:8px 12px;font-size:13px">
+                    <input type="text" class="form-input-acad" id="f_jenisBukuDesc" placeholder="Keterangan singkat..." style="padding:8px 12px;font-size:13px">
+                    <select class="form-select-acad" id="f_jenisBukuWarna" style="padding:8px 12px;font-size:13px">
+                        <option value="badge-primary">🟣 Primary (Ungu)</option>
+                        <option value="badge-info">🔵 Info (Biru)</option>
+                        <option value="badge-success">🟢 Success (Hijau)</option>
+                        <option value="badge-warning">🟡 Warning (Kuning)</option>
+                        <option value="badge-danger">🔴 Danger (Merah)</option>
+                    </select>
+                    <div style="display:flex;gap:6px">
+                        <button type="button" class="btn-acad btn-acad-primary" id="btnSaveJenisCatatan" onclick="Curriculum.submitSaveJenisCatatan()" style="padding:8px 16px;font-size:13px;white-space:nowrap">
+                            💾 Simpan
+                        </button>
+                        <button type="button" class="btn-acad btn-acad-outline" id="btnCancelEditJenisCatatan" onclick="Curriculum.resetJenisCatatanForm()" style="display:none;padding:8px 12px;font-size:13px">
+                            Batal
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                <div style="font-size:13px;font-weight:700;color:var(--acad-text,#1e293b)">
+                    📋 Daftar Jenis Catatan Tersedia
+                </div>
+                <div id="jenisCatatanCountBadge" style="font-size:12px;color:var(--text-muted,#64748b)"></div>
+            </div>
+            <div id="jenisCatatanTableWrapper" style="max-height:300px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px">
+                <div style="text-align:center;padding:30px;color:#94a3b8"><div class="spinner" style="margin:0 auto 8px"></div> Memuat daftar...</div>
+            </div>
+        `;
+
+        EModal.form({
+            title: 'Kelola Jenis Catatan Buku Penghubung',
+            form: modalHtml,
+            size: 'lg',
+            confirmText: 'Tutup',
+            cancelText: '',
+            onOpen: () => {
+                $('.emodal-card .emodal-footer .btn-ghost').hide();
+                this._loadJenisCatatanList();
+                $('#f_jenisBukuNama, #f_jenisBukuDesc').off('keydown').on('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        this.submitSaveJenisCatatan();
+                    }
+                });
+            },
+            onConfirm: () => {
+                EModal.closeAll();
+                return false;
+            }
+        });
+    },
+
+    _loadJenisCatatanList() {
+        this.api('buku_penghubung.php?action=list_types').done(res => {
+            if (!res.success) {
+                $('#jenisCatatanTableWrapper').html('<div style="text-align:center;padding:24px;color:#dc2626">Gagal memuat jenis catatan.</div>');
+                return;
+            }
+            const types = res.data || [];
+            $('#jenisCatatanCountBadge').text(`${types.length} jenis terdaftar`);
+
+            if (types.length === 0) {
+                $('#jenisCatatanTableWrapper').html('<div style="text-align:center;padding:24px;color:#94a3b8">Belum ada jenis catatan. Silakan tambahkan di atas.</div>');
+                return;
+            }
+
+            const rows = types.map((t, idx) => {
+                const safeNama = (t.nama_jenis || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                const safeDesc = (t.deskripsi || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                const safeWarna = t.warna_badge || 'badge-info';
+                return `
+                    <tr style="border-bottom:1px solid #f1f5f9">
+                        <td style="padding:10px 14px;font-size:13px;color:#64748b;width:40px">${idx + 1}</td>
+                        <td style="padding:10px 14px;font-size:13px;font-weight:600;color:#1e293b">
+                            <span class="badge ${safeWarna}" style="margin-right:6px">${this.escapeHtml(t.nama_jenis)}</span>
+                        </td>
+                        <td style="padding:10px 14px;font-size:13px;color:#64748b">${this.escapeHtml(t.deskripsi || '-')}</td>
+                        <td style="padding:10px 14px;text-align:right;width:140px;white-space:nowrap">
+                            <button type="button" class="btn-acad btn-acad-sm btn-acad-outline" onclick="Curriculum.editJenisCatatan(${t.id}, '${safeNama}', '${safeDesc}', '${safeWarna}')" style="padding:4px 10px;font-size:12px;margin-right:4px">
+                                ✏️ Edit
+                            </button>
+                            <button type="button" class="btn-acad btn-acad-sm" onclick="Curriculum.deleteJenisCatatan(${t.id}, '${safeNama}')" style="padding:4px 10px;font-size:12px;background:#fee2e2;color:#dc2626;border:none">
+                                🗑️ Hapus
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            $('#jenisCatatanTableWrapper').html(`
+                <table style="width:100%;border-collapse:collapse">
+                    <thead>
+                        <tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0;text-align:left">
+                            <th style="padding:10px 14px;font-size:12px;font-weight:600;color:#64748b;width:40px">NO</th>
+                            <th style="padding:10px 14px;font-size:12px;font-weight:600;color:#64748b">NAMA JENIS CATATAN</th>
+                            <th style="padding:10px 14px;font-size:12px;font-weight:600;color:#64748b">DESKRIPSI / KETERANGAN</th>
+                            <th style="padding:10px 14px;font-size:12px;font-weight:600;color:#64748b;text-align:right;width:140px">AKSI</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `);
+        }).fail(() => {
+            $('#jenisCatatanTableWrapper').html('<div style="text-align:center;padding:24px;color:#dc2626">Terjadi kesalahan saat memuat data.</div>');
+        });
+    },
+
+    editJenisCatatan(id, nama, desc, warna) {
+        $('#f_jenisBukuId').val(id);
+        $('#f_jenisBukuNama').val(nama).focus();
+        $('#f_jenisBukuDesc').val(desc);
+        $('#f_jenisBukuWarna').val(warna || 'badge-info');
+        $('#lblFormJenisCatatan').html(`✏️ Edit Jenis Catatan: <strong>${this.escapeHtml(nama)}</strong>`);
+        $('#btnSaveJenisCatatan').text('💾 Update');
+        $('#btnCancelEditJenisCatatan').show();
+    },
+
+    resetJenisCatatanForm() {
+        $('#f_jenisBukuId').val('0');
+        $('#f_jenisBukuNama').val('');
+        $('#f_jenisBukuDesc').val('');
+        $('#f_jenisBukuWarna').val('badge-info');
+        $('#lblFormJenisCatatan').html('➕ Tambah Jenis Catatan Baru');
+        $('#btnSaveJenisCatatan').text('💾 Simpan');
+        $('#btnCancelEditJenisCatatan').hide();
+    },
+
+    submitSaveJenisCatatan() {
+        const id = parseInt($('#f_jenisBukuId').val()) || 0;
+        const nama_jenis = $('#f_jenisBukuNama').val().trim();
+        const deskripsi = $('#f_jenisBukuDesc').val().trim();
+        const warna_badge = $('#f_jenisBukuWarna').val() || 'badge-info';
+
+        if (!nama_jenis) {
+            this.toast('Gagal', 'Nama jenis catatan wajib diisi!', 'error');
+            $('#f_jenisBukuNama').focus();
+            return;
+        }
+
+        const $btn = $('#btnSaveJenisCatatan');
+        const origText = id > 0 ? '💾 Update' : '💾 Simpan';
+        $btn.prop('disabled', true).text('Menyimpan...');
+
+        this.api('buku_penghubung.php?action=save_type', {
+            method: 'POST',
+            data: { id, nama_jenis, deskripsi, warna_badge }
+        }).done(res => {
+            if (res && res.success) {
+                this.toast('Berhasil', res.message || 'Jenis catatan tersimpan', 'success');
+                this.resetJenisCatatanForm();
+                this._loadJenisCatatanList();
+                this._populateBukuJenisFilter('#bukuJenis');
+                this.loadBukuTable();
+            } else {
+                this.toast('Gagal', (res && res.message) || 'Gagal menyimpan jenis catatan', 'error');
+            }
+        }).fail(xhr => {
+            let msg = 'Terjadi kesalahan saat menyimpan';
+            try {
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    msg = xhr.responseJSON.message;
+                } else if (xhr.responseText) {
+                    const parsed = JSON.parse(xhr.responseText);
+                    if (parsed && parsed.message) msg = parsed.message;
+                }
+            } catch(e) {}
+            this.toast('Gagal', msg, 'error');
+        }).always(() => {
+            $btn.prop('disabled', false).text(origText);
+        });
+    },
+
+    deleteJenisCatatan(id, nama) {
+        EModal.confirm({
+            title: 'Hapus Jenis Catatan',
+            message: `Apakah Anda yakin ingin menghapus jenis catatan <strong>${this.escapeHtml(nama)}</strong>?`,
+            type: 'danger',
+            confirmText: 'Ya, Hapus',
+            onConfirm: () => {
+                this.api('buku_penghubung.php?action=delete_type', {
+                    method: 'POST',
+                    data: { id }
+                }).done(res => {
+                    if (res && res.success) {
+                        this.toast('Berhasil', res.message || 'Jenis catatan dihapus', 'success');
+                        this.resetJenisCatatanForm();
+                        this._loadJenisCatatanList();
+                        this._populateBukuJenisFilter('#bukuJenis');
+                        this.loadBukuTable();
+                    } else {
+                        this.toast('Gagal', (res && res.message) || 'Gagal menghapus jenis catatan', 'error');
+                    }
+                }).fail(xhr => {
+                    let msg = 'Gagal menghapus jenis catatan';
+                    try {
+                        if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
+                    } catch(e) {}
+                    this.toast('Gagal', msg, 'error');
                 });
             }
         });
