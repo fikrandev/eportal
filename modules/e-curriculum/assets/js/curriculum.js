@@ -2584,39 +2584,66 @@ const Curriculum = {
 
     showSettingWaktuGuruModal() {
         this.api('absensi_guru.php?action=get_settings').done(res => {
-            const currentWaktu = res.data ? res.data.waktu_terlambat : '07:15';
+            const currentWaktu = res.data ? (res.data.waktu_terlambat || '07:15') : '07:15';
+            const cutoffMasuk = res.data ? (res.data.wa_cutoff_masuk || '06:30') : '06:30';
+            const cutoffPulang = res.data ? (res.data.wa_cutoff_pulang || '19:00') : '19:00';
             const uniqueId = 'settingJamGuru_' + Date.now();
+            const idCutoffMasuk = 'settingCutoffMasuk_' + Date.now();
+            const idCutoffPulang = 'settingCutoffPulang_' + Date.now();
 
             EModal.form({
-                title: '⚙️ Setting Jam Batas Terlambat Guru',
-                size: 'sm',
+                title: '⚙️ Setting Jam Batas Terlambat & Broadcast WA Guru',
+                size: 'md',
                 form: `
-                    <div class="form-group-acad">
-                        <label class="form-label-acad">Batas Jam Masuk / Terlambat (Wajib Format 24 Jam)</label>
-                        <input type="text" class="form-input-acad" id="${uniqueId}" value="${currentWaktu}" placeholder="Contoh: 07:15 atau 14:30" maxlength="5">
-                        <small class="text-muted" style="margin-top:6px; display:block;">
-                            Ketik dalam format <strong>HH:MM</strong> (misal: 07:15 untuk pagi, 14:30 untuk siang). <br>
+                    <div class="form-group-acad" style="margin-bottom:14px;">
+                        <label class="form-label-acad">⏰ Batas Jam Masuk / Terlambat (Format 24 Jam)</label>
+                        <input type="text" class="form-input-acad" id="${uniqueId}" value="${currentWaktu}" placeholder="07:15" maxlength="5">
+                        <small class="text-muted" style="margin-top:4px; display:block;">
                             Guru yang tap absen setelah jam ini akan otomatis berstatus <strong>Terlambat</strong>.
                         </small>
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
+                        <div class="form-group-acad">
+                            <label class="form-label-acad">🌅 Batas Auto WA Pagi</label>
+                            <input type="text" class="form-input-acad" id="${idCutoffMasuk}" value="${cutoffMasuk}" placeholder="06:30" maxlength="5">
+                            <small class="text-muted" style="margin-top:4px; display:block;">
+                                Setelah jam ini, laporan absen pagi tidak akan dikirim otomatis ke grup WA lagi (Default: <strong>06:30</strong>).
+                            </small>
+                        </div>
+                        <div class="form-group-acad">
+                            <label class="form-label-acad">🌆 Batas Auto WA Pulang</label>
+                            <input type="text" class="form-input-acad" id="${idCutoffPulang}" value="${cutoffPulang}" placeholder="19:00" maxlength="5">
+                            <small class="text-muted" style="margin-top:4px; display:block;">
+                                Setelah jam ini, laporan absen pulang tidak akan dikirim otomatis ke grup WA lagi (Default: <strong>19:00</strong>).
+                            </small>
+                        </div>
                     </div>
                 `,
                 confirmText: 'Simpan Setting',
                 cancelText: 'Batal',
                 onConfirm: () => {
                     let waktu = $('#' + uniqueId).val().trim();
-                    if (!waktu) {
-                        EModal.toast({ type: 'warning', message: 'Jam batas wajib diisi.' });
-                        return false;
-                    }
-                    // Validasi format 24 jam (HH:MM)
+                    let cutMasuk = $('#' + idCutoffMasuk).val().trim();
+                    let cutPulang = $('#' + idCutoffPulang).val().trim();
+
                     const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
                     if (!timeRegex.test(waktu)) {
-                        EModal.toast({ type: 'error', title: 'Format Salah', message: 'Harap gunakan format 24 jam yang valid, contoh: 07:15 atau 14:30' });
+                        EModal.toast({ type: 'error', title: 'Format Salah', message: 'Harap gunakan format 24 jam yang valid untuk Jam Terlambat (HH:MM), contoh: 07:15' });
+                        return false;
+                    }
+                    if (cutMasuk && !timeRegex.test(cutMasuk)) {
+                        EModal.toast({ type: 'error', title: 'Format Salah', message: 'Harap gunakan format 24 jam yang valid untuk Batas WA Pagi (HH:MM), contoh: 06:30' });
+                        return false;
+                    }
+                    if (cutPulang && !timeRegex.test(cutPulang)) {
+                        EModal.toast({ type: 'error', title: 'Format Salah', message: 'Harap gunakan format 24 jam yang valid untuk Batas WA Pulang (HH:MM), contoh: 19:00' });
                         return false;
                     }
 
                     const fd = new FormData();
                     fd.append('waktu_terlambat', waktu);
+                    if (cutMasuk) fd.append('wa_cutoff_masuk', cutMasuk);
+                    if (cutPulang) fd.append('wa_cutoff_pulang', cutPulang);
 
                     this.api('absensi_guru.php?action=save_settings', { 
                         method: 'POST', 
@@ -2635,7 +2662,7 @@ const Curriculum = {
                         EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menyimpan.' });
                     });
                     
-                    return false; // Mencegah modal tertutup otomatis sebelum AJAX selesai
+                    return false;
                 }
             });
         });

@@ -306,17 +306,21 @@ function rekapAbsensiGuru($user) {
 }
 
 /**
- * Get setting waktu terlambat guru
+ * Get setting waktu terlambat guru & batas kirim WA
  */
 function getSettingsGuru($user) {
     $waktu_terlambat = get_setting('waktu_terlambat_guru', '07:15:00');
+    $cutoff_masuk = get_setting('wa_guru_cutoff_masuk', '06:30:00');
+    $cutoff_pulang = get_setting('wa_guru_cutoff_pulang', '19:00:00');
     json_response(200, true, 'Setting dimuat.', [
-        'waktu_terlambat' => substr($waktu_terlambat, 0, 5)
+        'waktu_terlambat' => substr($waktu_terlambat, 0, 5),
+        'wa_cutoff_masuk' => substr($cutoff_masuk, 0, 5),
+        'wa_cutoff_pulang' => substr($cutoff_pulang, 0, 5)
     ]);
 }
 
 /**
- * Save setting waktu terlambat guru
+ * Save setting waktu terlambat guru & batas kirim WA
  */
 function saveSettingsGuru($user) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed.');
@@ -328,7 +332,7 @@ function saveSettingsGuru($user) {
     
     // Check if the server mistakenly parsed JSON as form-urlencoded
     // where the entire JSON string becomes the first key of $_POST
-    if (!isset($input['waktu_terlambat'])) {
+    if (!isset($input['waktu_terlambat']) && !isset($input['wa_cutoff_masuk']) && !isset($input['wa_cutoff_pulang'])) {
         $raw = file_get_contents('php://input');
         if (!empty($raw)) {
             $json = json_decode($raw, true);
@@ -338,19 +342,28 @@ function saveSettingsGuru($user) {
         }
     }
 
-    $waktu = isset($input['waktu_terlambat']) ? trim($input['waktu_terlambat']) : '07:15';
-
-    if (strlen($waktu) === 5) {
-        $waktu .= ':00';
+    if (isset($input['waktu_terlambat'])) {
+        $waktu = trim($input['waktu_terlambat']);
+        if (strlen($waktu) === 5) $waktu .= ':00';
+        upsert_setting('waktu_terlambat_guru', $waktu, 'text', 'Batas jam terlambat absensi guru');
     }
 
-    $dbResult = upsert_setting('waktu_terlambat_guru', $waktu, 'text', 'Batas jam terlambat absensi guru');
-    
-    // Debug info added to response
-    json_response(200, true, 'Setting jam terlambat guru berhasil disimpan.', [
-        'waktu_terlambat' => substr($waktu, 0, 5),
-        'db_result' => $dbResult,
-        'raw_input' => $input
+    if (isset($input['wa_cutoff_masuk'])) {
+        $cutoffM = trim($input['wa_cutoff_masuk']);
+        if (strlen($cutoffM) === 5) $cutoffM .= ':00';
+        upsert_setting('wa_guru_cutoff_masuk', $cutoffM, 'text', 'Batas waktu kirim WA otomatis absen pagi');
+    }
+
+    if (isset($input['wa_cutoff_pulang'])) {
+        $cutoffP = trim($input['wa_cutoff_pulang']);
+        if (strlen($cutoffP) === 5) $cutoffP .= ':00';
+        upsert_setting('wa_guru_cutoff_pulang', $cutoffP, 'text', 'Batas waktu kirim WA otomatis absen pulang');
+    }
+
+    json_response(200, true, 'Setting berhasil disimpan.', [
+        'waktu_terlambat' => substr(get_setting('waktu_terlambat_guru', '07:15:00'), 0, 5),
+        'wa_cutoff_masuk' => substr(get_setting('wa_guru_cutoff_masuk', '06:30:00'), 0, 5),
+        'wa_cutoff_pulang' => substr(get_setting('wa_guru_cutoff_pulang', '19:00:00'), 0, 5)
     ]);
 }
 
