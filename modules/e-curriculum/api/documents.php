@@ -132,15 +132,35 @@ function uploadDocument($user, $academic_year_id) {
         json_response(400, false, 'Ukuran file maksimal 10MB.');
     }
     
-    $uploadDir = __DIR__ . '/../../../uploads/curriculum/';
+    $baseUploads = dirname(dirname(dirname(__DIR__))) . '/uploads';
+    if (!is_dir($baseUploads)) {
+        @mkdir($baseUploads, 0777, true);
+        @chmod($baseUploads, 0777);
+    }
+
+    $uploadDir = $baseUploads . '/curriculum/';
     if (!is_dir($uploadDir)) {
-        mkdir($uploadDir, 0755, true);
+        @mkdir($uploadDir, 0777, true);
+        @chmod($uploadDir, 0777);
     }
     
-    $filename = time() . '_' . rand(1000, 9999) . '_' . preg_replace('/[^a-zA-Z0-9_\.-]/', '', basename($file['name']));
+    $cleanName = preg_replace('/[^a-zA-Z0-9_\.-]/', '_', basename($file['name']));
+    $filename = time() . '_' . rand(1000, 9999) . '_' . $cleanName;
     $destination = $uploadDir . $filename;
     
-    if (move_uploaded_file($file['tmp_name'], $destination)) {
+    $moved = false;
+    if (is_uploaded_file($file['tmp_name'])) {
+        $moved = @move_uploaded_file($file['tmp_name'], $destination);
+    }
+    if (!$moved) {
+        $moved = @copy($file['tmp_name'], $destination);
+        if ($moved && file_exists($file['tmp_name'])) {
+            @unlink($file['tmp_name']);
+        }
+    }
+
+    if ($moved) {
+        @chmod($destination, 0664);
         $dbPath = 'uploads/curriculum/' . $filename;
         try {
             $stmt = db()->prepare("
@@ -150,11 +170,20 @@ function uploadDocument($user, $academic_year_id) {
             $stmt->execute([$user['user_id'], $academic_year_id, $judul, $tipe, $dbPath]);
             json_response(201, true, 'Dokumen berhasil diunggah dan menunggu persetujuan.');
         } catch (PDOException $e) {
-            unlink($destination); // rollback file
+            @unlink($destination); // rollback file
             json_response(500, false, 'Gagal menyimpan data: ' . $e->getMessage());
         }
     } else {
-        json_response(500, false, 'Gagal memindahkan file yang diunggah.');
+        $lastError = error_get_last();
+        $errMsg = '';
+        if (!is_dir($uploadDir)) {
+            $errMsg = ' (Folder uploads/curriculum belum ada atau gagal dibuat secara otomatis).';
+        } elseif (!is_writable($uploadDir)) {
+            $errMsg = ' (Folder uploads/curriculum tidak memiliki izin tulis/write permission. Ubah permission folder menjadi 777/755 di server).';
+        } elseif ($lastError && isset($lastError['message'])) {
+            $errMsg = ' (' . $lastError['message'] . ')';
+        }
+        json_response(500, false, 'Gagal memindahkan file yang diunggah' . $errMsg);
     }
 }
 
