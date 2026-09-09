@@ -2889,8 +2889,14 @@ const Curriculum = {
                         <p class="acad-subtitle">Terintegrasi otomatis dengan mesin E-Absen & Rekapitulasi Kehadiran.</p>
                     </div>
                     <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button class="btn-acad btn-acad-outline" onclick="Curriculum.sendWaGroupAbsenGuru('masuk')" style="border-color:#10B981; color:#059669;" title="Kirim Laporan WA Absen Pagi Sekarang">
+                            🌅 Kirim WA Pagi
+                        </button>
+                        <button class="btn-acad btn-acad-outline" onclick="Curriculum.sendWaGroupAbsenGuru('pulang')" style="border-color:#7C3AED; color:#7C3AED;" title="Kirim Laporan WA Absen Pulang Sekarang">
+                            🌆 Kirim WA Pulang
+                        </button>
                         <button class="btn-acad btn-acad-outline" onclick="Curriculum.showSettingWaktuGuruModal()">
-                            ⚙️ Setting Jam Terlambat
+                            ⚙️ Setting Jam & WA
                         </button>
                     </div>
                 </div>
@@ -3188,9 +3194,11 @@ const Curriculum = {
             const currentWaktu = res.data ? (res.data.waktu_terlambat || '07:15') : '07:15';
             const cutoffMasuk = res.data ? (res.data.wa_cutoff_masuk || '06:30') : '06:30';
             const cutoffPulang = res.data ? (res.data.wa_cutoff_pulang || '19:00') : '19:00';
+            const mulaiPulang = res.data ? (res.data.wa_mulai_pulang || '13:00') : '13:00';
             const uniqueId = 'settingJamGuru_' + Date.now();
             const idCutoffMasuk = 'settingCutoffMasuk_' + Date.now();
             const idCutoffPulang = 'settingCutoffPulang_' + Date.now();
+            const idMulaiPulang = 'settingMulaiPulang_' + Date.now();
 
             EModal.form({
                 title: '⚙️ Setting Jam Batas Terlambat & Broadcast WA Guru',
@@ -3208,16 +3216,23 @@ const Curriculum = {
                             <label class="form-label-acad">🌅 Batas Auto WA Pagi</label>
                             <input type="text" class="form-input-acad" id="${idCutoffMasuk}" value="${cutoffMasuk}" placeholder="06:30" maxlength="5">
                             <small class="text-muted" style="margin-top:4px; display:block;">
-                                Setelah jam ini, laporan absen pagi tidak akan dikirim otomatis ke grup WA lagi (Default: <strong>06:30</strong>).
+                                Laporan absen pagi dikirim per batch 10 guru hingga batas jam ini (Default: <strong>06:30</strong>).
                             </small>
                         </div>
                         <div class="form-group-acad">
-                            <label class="form-label-acad">🌆 Batas Auto WA Pulang</label>
-                            <input type="text" class="form-input-acad" id="${idCutoffPulang}" value="${cutoffPulang}" placeholder="19:00" maxlength="5">
+                            <label class="form-label-acad">🏠 Mulai Absen Pulang Mesin</label>
+                            <input type="text" class="form-input-acad" id="${idMulaiPulang}" value="${mulaiPulang}" placeholder="13:00" maxlength="5">
                             <small class="text-muted" style="margin-top:4px; display:block;">
-                                Setelah jam ini, laporan absen pulang tidak akan dikirim otomatis ke grup WA lagi (Default: <strong>19:00</strong>).
+                                Scan mesin mulai jam ini ditampung sebagai <strong>Jam Pulang</strong> (Default: <strong>13:00</strong>).
                             </small>
                         </div>
+                    </div>
+                    <div class="form-group-acad" style="margin-bottom:14px;">
+                        <label class="form-label-acad">🌆 Waktu Kirim WA Absen Pulang</label>
+                        <input type="text" class="form-input-acad" id="${idCutoffPulang}" value="${cutoffPulang}" placeholder="19:00" maxlength="5">
+                        <small class="text-muted" style="margin-top:4px; display:block;">
+                            Laporan absen pulang akan dikirim otomatis ke grup WA <strong>hanya pada jam ini</strong> (Default: <strong>19:00</strong>).
+                        </small>
                     </div>
                 `,
                 confirmText: 'Simpan Setting',
@@ -3226,6 +3241,7 @@ const Curriculum = {
                     let waktu = $('#' + uniqueId).val().trim();
                     let cutMasuk = $('#' + idCutoffMasuk).val().trim();
                     let cutPulang = $('#' + idCutoffPulang).val().trim();
+                    let mulPulang = $('#' + idMulaiPulang).val().trim();
 
                     const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
                     if (!timeRegex.test(waktu)) {
@@ -3237,7 +3253,11 @@ const Curriculum = {
                         return false;
                     }
                     if (cutPulang && !timeRegex.test(cutPulang)) {
-                        EModal.toast({ type: 'error', title: 'Format Salah', message: 'Harap gunakan format 24 jam yang valid untuk Batas WA Pulang (HH:MM), contoh: 19:00' });
+                        EModal.toast({ type: 'error', title: 'Format Salah', message: 'Harap gunakan format 24 jam yang valid untuk Waktu Kirim WA Pulang (HH:MM), contoh: 19:00' });
+                        return false;
+                    }
+                    if (mulPulang && !timeRegex.test(mulPulang)) {
+                        EModal.toast({ type: 'error', title: 'Format Salah', message: 'Harap gunakan format 24 jam yang valid untuk Mulai Absen Pulang (HH:MM), contoh: 13:00' });
                         return false;
                     }
 
@@ -3245,6 +3265,7 @@ const Curriculum = {
                     fd.append('waktu_terlambat', waktu);
                     if (cutMasuk) fd.append('wa_cutoff_masuk', cutMasuk);
                     if (cutPulang) fd.append('wa_cutoff_pulang', cutPulang);
+                    if (mulPulang) fd.append('wa_mulai_pulang', mulPulang);
 
                     this.api('absensi_guru.php?action=save_settings', { 
                         method: 'POST', 

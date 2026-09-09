@@ -64,6 +64,12 @@ try {
             echo "-> Gagal terhubung ke mesin (Offline / Jaringan Terputus).\n";
         }
     }
+
+    // Check WA Group Guru batch & 19:00 evening notification
+    try {
+        require_once __DIR__ . '/../modules/e-curriculum/api/wa_group_helper.php';
+        checkAndSendWaGroupGuruAbsensiBatch();
+    } catch (Exception $ex) {}
 } catch (Exception $e) {
     if (db()->inTransaction()) db()->rollBack();
     echo "ERROR: " . $e->getMessage() . "\n";

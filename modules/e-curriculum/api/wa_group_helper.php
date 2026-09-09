@@ -47,6 +47,10 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
     $headerTitle = ($tipe === 'masuk') ? '📋 *LAPORAN ABSENSI PAGI GURU*' : '📋 *LAPORAN ABSENSI PULANG GURU*';
 
     // Fetch teachers with mapped PINs ordered by PIN numerical value ASC
+    $jamMulaiPulang = get_setting('wa_guru_mulai_pulang', '13:00:00');
+    if (strlen($jamMulaiPulang) === 5) $jamMulaiPulang .= ':00';
+
+    // Fetch teachers with mapped PINs ordered by PIN numerical value ASC
     $stmtG = db()->query("
         SELECT u.id, u.kode_guru, u.nama_lengkap as nama, 
                TRIM(LEADING '0' FROM m.mesin_pin) as clean_pin,
@@ -61,16 +65,18 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
     ");
     $teachers = $stmtG->fetchAll();
 
-    // Fetch logs from absen_logs for date
+    // Fetch logs from absen_logs for date:
+    // jam_masuk : finger pagi pertama (< jam_mulai_pulang / 13:00)
+    // jam_pulang: finger pulang terakhir (>= jam_mulai_pulang / 13:00)
     $stmtLogs = db()->prepare("
         SELECT TRIM(LEADING '0' FROM mesin_pin) COLLATE utf8mb4_unicode_ci as clean_pin, 
-               MIN(TIME(waktu_absen)) as jam_masuk,
-               MAX(TIME(waktu_absen)) as jam_pulang
+               MIN(CASE WHEN TIME(waktu_absen) < ? THEN TIME(waktu_absen) END) as jam_masuk,
+               MAX(CASE WHEN TIME(waktu_absen) >= ? THEN TIME(waktu_absen) END) as jam_pulang
         FROM absen_logs 
         WHERE DATE(waktu_absen) = ? 
         GROUP BY clean_pin
     ");
-    $stmtLogs->execute([$tanggal]);
+    $stmtLogs->execute([$jamMulaiPulang, $jamMulaiPulang, $tanggal]);
     $eAbsenLogs = [];
     while ($l = $stmtLogs->fetch()) {
         $eAbsenLogs[$l['clean_pin']] = $l;
@@ -99,8 +105,8 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
         $displayNo = (!empty($cleanPin)) ? $cleanPin : $no;
         $numPadded = sprintf('%02d.', (int)$displayNo);
 
-        $jamMasuk = ($cleanPin && isset($eAbsenLogs[$cleanPin])) ? substr($eAbsenLogs[$cleanPin]['jam_masuk'], 0, 5) : null;
-        $jamPulang = ($cleanPin && isset($eAbsenLogs[$cleanPin]) && $eAbsenLogs[$cleanPin]['jam_pulang'] !== $eAbsenLogs[$cleanPin]['jam_masuk']) ? substr($eAbsenLogs[$cleanPin]['jam_pulang'], 0, 5) : null;
+        $jamMasuk = ($cleanPin && isset($eAbsenLogs[$cleanPin]) && !empty($eAbsenLogs[$cleanPin]['jam_masuk'])) ? substr($eAbsenLogs[$cleanPin]['jam_masuk'], 0, 5) : null;
+        $jamPulang = ($cleanPin && isset($eAbsenLogs[$cleanPin]) && !empty($eAbsenLogs[$cleanPin]['jam_pulang'])) ? substr($eAbsenLogs[$cleanPin]['jam_pulang'], 0, 5) : null;
 
         $manualStatus = isset($manualMap[$tid]) ? $manualMap[$tid]['status'] : null;
 
@@ -228,10 +234,9 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
 }
 
 /**
- * Check if total teacher taps reached a new batch threshold (every 10 teachers)
- * AND enforce cutoff times:
- * - Absen Masuk (Pagi)  : Cutoff at 06:30 (no auto update after 06:30:59)
- * - Absen Pulang (Sore) : Cutoff at 19:00 (no auto update after 19:00:59)
+ * Check if teacher attendance reports should be broadcasted to WA Group:
+ * - Absen Masuk (Pagi)  : Broadcast in batches of 10 teachers up until cutoff (default: 06:30:59)
+ * - Absen Pulang (Sore) : Broadcast ONLY at 19:00 (default: 19:00:00) once per day
  */
 function checkAndSendWaGroupGuruAbsensiBatch($tanggal = null) {
     if (!$tanggal) $tanggal = date('Y-m-d');
@@ -244,17 +249,20 @@ function checkAndSendWaGroupGuruAbsensiBatch($tanggal = null) {
     $cutoffMasuk = get_setting('wa_guru_cutoff_masuk', '06:30:59');
     if (strlen($cutoffMasuk) === 5) $cutoffMasuk .= ':59';
 
-    $cutoffPulang = get_setting('wa_guru_cutoff_pulang', '19:00:59');
-    if (strlen($cutoffPulang) === 5) $cutoffPulang .= ':59';
+    $jamKirimPulang = get_setting('wa_guru_cutoff_pulang', '19:00:00');
+    if (strlen($jamKirimPulang) === 5) $jamKirimPulang .= ':00';
 
-    // Check if morning (masuk) period: before 12:00:00
+    $jamMulaiPulang = get_setting('wa_guru_mulai_pulang', '13:00:00');
+    if (strlen($jamMulaiPulang) === 5) $jamMulaiPulang .= ':00';
+
+    // 1. PERIODE PAGI (MASUK): Sebelum jam 12:00
     if ($currentTime < '12:00:00') {
-        // STRICT CUTOFF: If current time exceeds 06:30, do NOT send any auto updates
+        // STRICT CUTOFF: Jika waktu sekarang melebihi cutoff masuk (default 06:30), jangan kirim update otomatis lagi
         if ($currentTime > $cutoffMasuk) {
             return false;
         }
 
-        // Count teachers who tapped masuk today (before 12:00:00)
+        // Hitung jumlah guru yang sudah tap masuk pagi hari (sebelum 12:00:00)
         $stmtCount = db()->prepare("
             SELECT COUNT(DISTINCT TRIM(LEADING '0' FROM l.mesin_pin))
             FROM absen_logs l
@@ -269,54 +277,53 @@ function checkAndSendWaGroupGuruAbsensiBatch($tanggal = null) {
 
         $currentBatch = (int)floor($totalTeachersTapped / 10);
 
-        // Check settings for last batch date & number for 'masuk'
+        // Cek settings untuk batch terakhir yang dikirim pada tanggal ini
         $lastDate = get_setting('wa_guru_last_batch_date_masuk');
         $lastBatch = ($lastDate === $tanggal) ? (int)get_setting('wa_guru_last_batch_num_masuk', 0) : 0;
 
         if ($currentBatch > $lastBatch || $lastDate !== $tanggal) {
-            // Send WA report for masuk
+            // Kirim laporan WA masuk
             sendWaGroupAbsensiGuruDirect($tanggal, 'masuk');
 
-            // Save new batch state in settings table
+            // Simpan status batch di settings
             upsert_setting('wa_guru_last_batch_date_masuk', $tanggal, 'text', 'Tanggal batch terakhir WA absen pagi guru');
             upsert_setting('wa_guru_last_batch_num_masuk', $currentBatch, 'number', 'Batch nomor terakhir WA absen pagi guru');
 
             return true;
         }
-    } else {
-        // Afternoon/evening (pulang) period: 12:00:00 to 19:00:00
-        // STRICT CUTOFF: If current time exceeds 19:00, do NOT send any auto updates
-        if ($currentTime > $cutoffPulang) {
-            return false;
+    } 
+    // 2. PERIODE PULANG: Kirim HANYA pada jam 19:00 (atau mulai jam 19:00 jika belum terkirim hari ini)
+    else if ($currentTime >= $jamKirimPulang) {
+        // Cek apakah laporan pulang sudah terkirim hari ini
+        $lastDatePulang = get_setting('wa_guru_last_sent_date_pulang');
+        if ($lastDatePulang === $tanggal) {
+            return false; // Sudah dikirim hari ini
         }
 
-        // Count teachers who tapped pulang today (at or after 12:00:00)
-        $stmtCount = db()->prepare("
-            SELECT COUNT(DISTINCT TRIM(LEADING '0' FROM l.mesin_pin))
+        // Cek apakah ada aktivitas absensi guru hari ini (mencegah kirim di hari libur/kosong)
+        $stmtLogsCheck = db()->prepare("
+            SELECT COUNT(*) 
             FROM absen_logs l
             JOIN absen_user_map m ON TRIM(LEADING '0' FROM l.mesin_pin) = TRIM(LEADING '0' FROM m.mesin_pin)
             JOIN users u ON u.id = m.user_id
-            WHERE DATE(l.waktu_absen) = ? AND TIME(l.waktu_absen) >= '12:00:00' AND u.role = 'guru' AND u.status = 1
+            WHERE DATE(l.waktu_absen) = ? AND u.role = 'guru' AND u.status = 1
         ");
-        $stmtCount->execute([$tanggal]);
-        $totalTeachersPulang = (int)$stmtCount->fetchColumn();
+        $stmtLogsCheck->execute([$tanggal]);
+        $totalLogsHariIni = (int)$stmtLogsCheck->fetchColumn();
 
-        if ($totalTeachersPulang < 10) return false;
+        $stmtManualCheck = db()->prepare("SELECT COUNT(*) FROM acad_absensi_guru WHERE tanggal = ?");
+        $stmtManualCheck->execute([$tanggal]);
+        $totalManualHariIni = (int)$stmtManualCheck->fetchColumn();
 
-        $currentBatch = (int)floor($totalTeachersPulang / 10);
+        if ($totalLogsHariIni === 0 && $totalManualHariIni === 0) {
+            return false;
+        }
 
-        // Check settings for last batch date & number for 'pulang'
-        $lastDate = get_setting('wa_guru_last_batch_date_pulang');
-        $lastBatch = ($lastDate === $tanggal) ? (int)get_setting('wa_guru_last_batch_num_pulang', 0) : 0;
+        // Kirim laporan WA absen pulang lengkap
+        $result = sendWaGroupAbsensiGuruDirect($tanggal, 'pulang');
 
-        if ($currentBatch > $lastBatch || $lastDate !== $tanggal) {
-            // Send WA report for pulang
-            sendWaGroupAbsensiGuruDirect($tanggal, 'pulang');
-
-            // Save new batch state in settings table
-            upsert_setting('wa_guru_last_batch_date_pulang', $tanggal, 'text', 'Tanggal batch terakhir WA absen pulang guru');
-            upsert_setting('wa_guru_last_batch_num_pulang', $currentBatch, 'number', 'Batch nomor terakhir WA absen pulang guru');
-
+        if (!empty($result['success'])) {
+            upsert_setting('wa_guru_last_sent_date_pulang', $tanggal, 'text', 'Tanggal terakhir WA absen pulang guru dikirim');
             return true;
         }
     }
