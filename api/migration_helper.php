@@ -6,7 +6,7 @@
 require_once __DIR__ . '/config.php';
 
 function run_auto_migrations() {
-    $target_version = 9;
+    $target_version = 10;
     
     // 1. Get current version (default to 0 if not set or if table settings doesn't exist yet)
     $current_version = 0;
@@ -262,6 +262,141 @@ function run_auto_migrations() {
         } catch (Exception $e) {
             // Ignore if error
         }
+    }
+
+    // Version 10 migrations (E-Curriculum RBAC, Document Management, Master Document Types & Absensi Guru)
+    if ($current_version < 10) {
+        // 1. Table acad_roles_def
+        try {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `acad_roles_def` (
+                    `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+                    `nama` VARCHAR(100) NOT NULL,
+                    `deskripsi` VARCHAR(255) DEFAULT NULL,
+                    `is_locked` TINYINT(1) NOT NULL DEFAULT 0,
+                    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (`id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            ");
+        } catch (PDOException $e) {}
+
+        // 2. Table acad_role_permissions
+        try {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `acad_role_permissions` (
+                    `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+                    `role_id` INT(11) UNSIGNED NOT NULL,
+                    `permission_key` VARCHAR(100) NOT NULL,
+                    PRIMARY KEY (`id`),
+                    KEY `idx_role_id` (`role_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            ");
+        } catch (PDOException $e) {}
+
+        // 3. Table acad_roles (User to Custom Role mapping)
+        try {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `acad_roles` (
+                    `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+                    `user_id` INT(11) UNSIGNED NOT NULL,
+                    `custom_role_id` INT(11) UNSIGNED DEFAULT NULL,
+                    `role` ENUM('admin_kurikulum','operator_kurikulum') NOT NULL DEFAULT 'operator_kurikulum',
+                    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (`id`),
+                    UNIQUE KEY `uk_user_id` (`user_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            ");
+        } catch (PDOException $e) {}
+
+        // 4. Seed default locked roles if not exist
+        try {
+            $checkRoles = $pdo->query("SELECT COUNT(*) FROM `acad_roles_def` WHERE `is_locked` = 1")->fetchColumn();
+            if ((int)$checkRoles === 0) {
+                // Admin Kurikulum
+                $pdo->exec("INSERT INTO `acad_roles_def` (`nama`, `deskripsi`, `is_locked`) VALUES ('Admin Kurikulum', 'Akses penuh ke semua fitur E-Curriculum', 1)");
+                $adminId = $pdo->lastInsertId();
+                $allPerms = ['dashboard_view','jadwal_manage','jurnal_manage','absensi_manage','absensi_guru_manage','piket_manage','ketidakhadiran_manage','buku_penghubung_manage','dokumen_manage','laporan_view','roles_manage'];
+                $stmtP = $pdo->prepare("INSERT INTO `acad_role_permissions` (`role_id`, `permission_key`) VALUES (?,?)");
+                foreach ($allPerms as $p) { $stmtP->execute([$adminId, $p]); }
+
+                // Operator Kurikulum
+                $pdo->exec("INSERT INTO `acad_roles_def` (`nama`, `deskripsi`, `is_locked`) VALUES ('Operator Kurikulum', 'Akses terbatas untuk operasional harian', 1)");
+                $opId = $pdo->lastInsertId();
+                $opPerms = ['dashboard_view','jurnal_manage','absensi_manage','absensi_guru_manage','piket_manage','ketidakhadiran_manage','buku_penghubung_manage','laporan_view'];
+                foreach ($opPerms as $p) { $stmtP->execute([$opId, $p]); }
+            }
+        } catch (Exception $e) {}
+
+        // 5. Table acad_documents
+        try {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `acad_documents` (
+                    `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+                    `user_id` INT(11) UNSIGNED NOT NULL,
+                    `academic_year_id` INT(11) UNSIGNED DEFAULT NULL,
+                    `judul` VARCHAR(255) NOT NULL,
+                    `tipe_dokumen` VARCHAR(100) NOT NULL DEFAULT 'RPP',
+                    `file_path` VARCHAR(255) NOT NULL,
+                    `status` ENUM('pending','approved','rejected') NOT NULL DEFAULT 'pending',
+                    `catatan_admin` TEXT DEFAULT NULL,
+                    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    PRIMARY KEY (`id`),
+                    KEY `idx_doc_user` (`user_id`),
+                    KEY `idx_doc_academic_year` (`academic_year_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            ");
+        } catch (PDOException $e) {}
+
+        // 6. Table acad_document_types (Master Jenis Perangkat)
+        try {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `acad_document_types` (
+                    `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+                    `nama_tipe` VARCHAR(100) NOT NULL,
+                    `deskripsi` VARCHAR(255) DEFAULT NULL,
+                    `urutan` INT(11) NOT NULL DEFAULT 0,
+                    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    PRIMARY KEY (`id`),
+                    UNIQUE KEY `uk_nama_tipe` (`nama_tipe`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            ");
+
+            $checkTypes = $pdo->query("SELECT COUNT(*) FROM `acad_document_types`")->fetchColumn();
+            if ((int)$checkTypes === 0) {
+                $defaultTypes = [
+                    ['RPP', 'Rencana Pelaksanaan Pembelajaran', 1],
+                    ['Modul Ajar', 'Modul Ajar Kurikulum Merdeka', 2],
+                    ['Silabus', 'Silabus Mata Pelajaran', 3],
+                    ['Prota / Promes', 'Program Tahunan & Semester', 4],
+                    ['ATP', 'Alur Tujuan Pembelajaran', 5],
+                    ['Lainnya', 'Dokumen Pendukung Lainnya', 6]
+                ];
+                $stmtDT = $pdo->prepare("INSERT IGNORE INTO `acad_document_types` (`nama_tipe`, `deskripsi`, `urutan`) VALUES (?,?,?)");
+                foreach ($defaultTypes as $dt) {
+                    $stmtDT->execute($dt);
+                }
+            }
+        } catch (Exception $e) {}
+
+        // 7. Table acad_absensi_guru
+        try {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `acad_absensi_guru` (
+                    `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+                    `guru_id` INT(11) UNSIGNED NOT NULL,
+                    `tanggal` DATE NOT NULL,
+                    `status` ENUM('H','S','I','A') NOT NULL DEFAULT 'H',
+                    `keterangan` VARCHAR(255) DEFAULT '',
+                    `dicatat_oleh` INT(11) UNSIGNED DEFAULT NULL,
+                    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    PRIMARY KEY (`id`),
+                    UNIQUE KEY `uk_guru_tanggal` (`guru_id`,`tanggal`),
+                    KEY `idx_guru_tgl` (`tanggal`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            ");
+        } catch (PDOException $e) {}
     }
 
     // Update DB migration version to target_version

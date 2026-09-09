@@ -61,17 +61,51 @@ function acad_resolve_user_by_token($token, $jsonOnFail = true) {
             return null;
         }
 
-        // Resolve acad_role
+        // Resolve acad_role & custom permissions
         $user['acad_role'] = '';
+        $user['custom_role_nama'] = '';
+        $user['permissions'] = [];
+
         if ($user['role'] === 'superadmin') {
             $user['acad_role'] = 'admin_kurikulum';
+            $user['custom_role_nama'] = 'Super Admin';
+            $user['permissions'] = ['dashboard_view','jadwal_manage','jurnal_manage','absensi_manage','absensi_guru_manage','piket_manage','ketidakhadiran_manage','buku_penghubung_manage','dokumen_manage','laporan_view','roles_manage'];
         } else {
-            $stmtRole = db()->prepare("SELECT role FROM acad_users WHERE user_id = ? LIMIT 1");
-            $stmtRole->execute([$user['user_id']]);
-            $acadRole = $stmtRole->fetchColumn();
-            if ($acadRole) {
-                $user['acad_role'] = $acadRole;
-            }
+            // Check acad_roles joined with acad_roles_def
+            try {
+                $stmtRole = db()->prepare("
+                    SELECT ar.role, ar.custom_role_id, rd.nama as role_nama,
+                           (SELECT GROUP_CONCAT(permission_key) FROM acad_role_permissions WHERE role_id = ar.custom_role_id) as permissions
+                    FROM acad_roles ar
+                    LEFT JOIN acad_roles_def rd ON ar.custom_role_id = rd.id
+                    WHERE ar.user_id = ?
+                    LIMIT 1
+                ");
+                $stmtRole->execute([$user['user_id']]);
+                $roleData = $stmtRole->fetch();
+
+                if ($roleData) {
+                    $user['acad_role'] = $roleData['role'] ?: 'operator_kurikulum';
+                    $user['custom_role_nama'] = $roleData['role_nama'] ?? '';
+                    $rawPerms = (string)($roleData['permissions'] ?? '');
+                    $user['permissions'] = array_values(array_filter(array_map('trim', explode(',', $rawPerms))));
+                } else {
+                    // Fallback legacy acad_users
+                    $stmtLegacy = db()->prepare("SELECT role FROM acad_users WHERE user_id = ? LIMIT 1");
+                    $stmtLegacy->execute([$user['user_id']]);
+                    $acadRole = $stmtLegacy->fetchColumn();
+                    if ($acadRole) {
+                        $user['acad_role'] = $acadRole;
+                        if ($acadRole === 'admin_kurikulum') {
+                            $user['custom_role_nama'] = 'Admin Kurikulum';
+                            $user['permissions'] = ['dashboard_view','jadwal_manage','jurnal_manage','absensi_manage','absensi_guru_manage','piket_manage','ketidakhadiran_manage','buku_penghubung_manage','dokumen_manage','laporan_view','roles_manage'];
+                        } else {
+                            $user['custom_role_nama'] = 'Operator Kurikulum';
+                            $user['permissions'] = ['dashboard_view','jurnal_manage','absensi_manage','absensi_guru_manage','piket_manage','ketidakhadiran_manage','buku_penghubung_manage','laporan_view'];
+                        }
+                    }
+                }
+            } catch (Exception $ex) {}
         }
 
         return $user;
@@ -92,7 +126,10 @@ function acad_auth() {
  * Enforce admin role permission check
  */
 function acad_require_admin($user) {
-    if (!isset($user['acad_role']) || !in_array($user['acad_role'], ['admin_kurikulum', 'operator_kurikulum'])) {
+    $isSuperAdmin = ($user['role'] ?? '') === 'superadmin';
+    $hasRoleManage = in_array('roles_manage', $user['permissions'] ?? []);
+    $isAdminKurikulum = in_array($user['acad_role'] ?? '', ['admin_kurikulum', 'operator_kurikulum']);
+    if (!$isSuperAdmin && !$hasRoleManage && !$isAdminKurikulum) {
         json_response(403, false, 'Akses ditolak. Anda tidak memiliki hak akses admin untuk modul ini.');
     }
 }
@@ -206,6 +243,34 @@ function acad_run_migrations() {
                 }
             }
         } catch (Exception $e) { /* ignore migration errors */ }
+
+        // Table acad_document_types — Master Jenis/Tipe Dokumen Perangkat
+        db()->exec("CREATE TABLE IF NOT EXISTS acad_document_types (
+            id int(11) unsigned NOT NULL AUTO_INCREMENT,
+            nama_tipe varchar(100) NOT NULL,
+            deskripsi varchar(255) DEFAULT NULL,
+            urutan int(11) NOT NULL DEFAULT 0,
+            created_at timestamp NOT NULL DEFAULT current_timestamp(),
+            PRIMARY KEY (id),
+            UNIQUE KEY nama_tipe (nama_tipe)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+        // Seed default document types if empty
+        $checkTypes = db()->query("SELECT COUNT(*) FROM acad_document_types")->fetchColumn();
+        if ((int)$checkTypes === 0) {
+            $defaultTypes = [
+                ['RPP', 'Rencana Pelaksanaan Pembelajaran', 1],
+                ['Modul Ajar', 'Modul Ajar Kurikulum Merdeka', 2],
+                ['Silabus', 'Silabus Mata Pelajaran', 3],
+                ['Prota / Promes', 'Program Tahunan & Semester', 4],
+                ['ATP', 'Alur Tujuan Pembelajaran', 5],
+                ['Lainnya', 'Dokumen Pendukung Lainnya', 6]
+            ];
+            $stmtDT = db()->prepare("INSERT IGNORE INTO acad_document_types (nama_tipe, deskripsi, urutan) VALUES (?,?,?)");
+            foreach ($defaultTypes as $dt) {
+                $stmtDT->execute($dt);
+            }
+        }
 
     } catch (Exception $e) {
         // Ignore errors to not break the API if migration fails

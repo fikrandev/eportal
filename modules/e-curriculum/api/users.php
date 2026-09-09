@@ -46,6 +46,7 @@ function accountsList() {
     try {
         $stmt = db()->query("
             SELECT u.id, u.username, u.nama_lengkap, u.nik, u.role as portal_role,
+                   u.tupoksi, u.jabatan, u.mapel,
                    ar.custom_role_id, rd.nama as custom_role_nama
             FROM users u
             LEFT JOIN acad_roles ar ON u.id = ar.user_id
@@ -82,7 +83,7 @@ function saveRole() {
     $id = (int)($d['id'] ?? 0);
     $nama = trim($d['nama'] ?? '');
     $deskripsi = trim($d['deskripsi'] ?? '');
-    $perms = $d['permissions'] ?? [];
+    $perms = isset($d['permissions']) && is_array($d['permissions']) ? $d['permissions'] : [];
 
     if (empty($nama)) json_response(400, false, 'Nama role wajib diisi');
 
@@ -90,30 +91,40 @@ function saveRole() {
         db()->beginTransaction();
 
         if ($id > 0) {
-            // Update — don't allow renaming locked roles
-            $stmt = db()->prepare("UPDATE acad_roles_def SET nama=?, deskripsi=? WHERE id=? AND is_locked=0");
-            $stmt->execute([$nama, $deskripsi, $id]);
-            // For locked roles, only update permissions
-            if ($stmt->rowCount() === 0) {
-                $checkLocked = db()->prepare("SELECT id FROM acad_roles_def WHERE id=? AND is_locked=1");
-                $checkLocked->execute([$id]);
-                if (!$checkLocked->fetchColumn()) {
-                    db()->rollBack();
-                    json_response(404, false, 'Role tidak ditemukan');
-                }
-                // locked role exists — still update permissions below
+            // Verify existing role
+            $check = db()->prepare("SELECT id, nama, is_locked FROM acad_roles_def WHERE id=?");
+            $check->execute([$id]);
+            $existing = $check->fetch(PDO::FETCH_ASSOC);
+            if (!$existing) {
+                db()->rollBack();
+                json_response(404, false, 'Role tidak ditemukan');
+            }
+
+            if (!empty($existing['is_locked'])) {
+                // Locked role: update description only, retain locked system name
+                $stmt = db()->prepare("UPDATE acad_roles_def SET deskripsi=? WHERE id=?");
+                $stmt->execute([$deskripsi, $id]);
+            } else {
+                // Custom role: update name and description
+                $stmt = db()->prepare("UPDATE acad_roles_def SET nama=?, deskripsi=? WHERE id=?");
+                $stmt->execute([$nama, $deskripsi, $id]);
             }
         } else {
             $stmt = db()->prepare("INSERT INTO acad_roles_def (nama, deskripsi) VALUES (?,?)");
             $stmt->execute([$nama, $deskripsi]);
-            $id = db()->lastInsertId();
+            $id = (int)db()->lastInsertId();
         }
 
         // Sync permissions
         db()->prepare("DELETE FROM acad_role_permissions WHERE role_id=?")->execute([$id]);
-        $stmtP = db()->prepare("INSERT INTO acad_role_permissions (role_id, permission_key) VALUES (?,?)");
-        foreach ($perms as $p) {
-            $stmtP->execute([$id, trim($p)]);
+        if (!empty($perms)) {
+            $stmtP = db()->prepare("INSERT INTO acad_role_permissions (role_id, permission_key) VALUES (?,?)");
+            foreach ($perms as $p) {
+                $pClean = trim((string)$p);
+                if ($pClean !== '') {
+                    $stmtP->execute([$id, $pClean]);
+                }
+            }
         }
 
         db()->commit();

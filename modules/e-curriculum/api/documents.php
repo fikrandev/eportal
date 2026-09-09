@@ -7,13 +7,34 @@ require_once __DIR__ . '/auth_helper.php';
 $user = acad_auth();
 $action = isset($_GET['action']) ? trim($_GET['action']) : '';
 $active_year = get_active_academic_year();
-$academic_year_id = $active_year ? $active_year['id'] : 0;
+$academic_year_id = !empty($active_year['id']) ? (int)$active_year['id'] : null;
+$isAdmin = in_array($user['role'], ['superadmin']) 
+    || in_array('dokumen_manage', $user['permissions'] ?? [])
+    || in_array($user['acad_role'] ?? '', ['admin_kurikulum', 'operator_kurikulum']);
 
-$isAdmin = in_array($user['role'], ['superadmin']) || in_array($user['acad_role'] ?? '', ['admin_kurikulum', 'operator_kurikulum']);
+function get_documents_input() {
+    $raw = file_get_contents('php://input');
+    if (!empty($raw)) {
+        $json = json_decode($raw, true);
+        if (is_array($json)) return $json;
+    }
+    return !empty($_POST) ? $_POST : [];
+}
 
 switch ($action) {
     case 'list':
         listDocuments($user, $isAdmin);
+        break;
+    case 'list_types':
+        listDocumentTypes();
+        break;
+    case 'save_type':
+        if (!$isAdmin) json_response(403, false, 'Akses ditolak.');
+        saveDocumentType();
+        break;
+    case 'delete_type':
+        if (!$isAdmin) json_response(403, false, 'Akses ditolak.');
+        deleteDocumentType();
         break;
     case 'upload':
         uploadDocument($user, $academic_year_id);
@@ -37,23 +58,44 @@ function listDocuments($user, $isAdmin) {
     global $academic_year_id;
     try {
         if ($isAdmin) {
-            $stmt = db()->prepare("
-                SELECT d.*, u.nama_lengkap as nama_guru 
-                FROM acad_documents d 
-                JOIN users u ON d.user_id = u.id 
-                WHERE d.academic_year_id = ?
-                ORDER BY d.created_at DESC
-            ");
-            $stmt->execute([$academic_year_id]);
+            if ($academic_year_id) {
+                $stmt = db()->prepare("
+                    SELECT d.*, u.nama_lengkap as nama_guru 
+                    FROM acad_documents d 
+                    JOIN users u ON d.user_id = u.id 
+                    WHERE d.academic_year_id = ? OR d.academic_year_id IS NULL
+                    ORDER BY d.created_at DESC
+                ");
+                $stmt->execute([$academic_year_id]);
+            } else {
+                $stmt = db()->prepare("
+                    SELECT d.*, u.nama_lengkap as nama_guru 
+                    FROM acad_documents d 
+                    JOIN users u ON d.user_id = u.id 
+                    ORDER BY d.created_at DESC
+                ");
+                $stmt->execute();
+            }
         } else {
-            $stmt = db()->prepare("
-                SELECT d.*, u.nama_lengkap as nama_guru 
-                FROM acad_documents d 
-                JOIN users u ON d.user_id = u.id 
-                WHERE d.academic_year_id = ? AND d.user_id = ?
-                ORDER BY d.created_at DESC
-            ");
-            $stmt->execute([$academic_year_id, $user['user_id']]);
+            if ($academic_year_id) {
+                $stmt = db()->prepare("
+                    SELECT d.*, u.nama_lengkap as nama_guru 
+                    FROM acad_documents d 
+                    JOIN users u ON d.user_id = u.id 
+                    WHERE (d.academic_year_id = ? OR d.academic_year_id IS NULL) AND d.user_id = ?
+                    ORDER BY d.created_at DESC
+                ");
+                $stmt->execute([$academic_year_id, $user['user_id']]);
+            } else {
+                $stmt = db()->prepare("
+                    SELECT d.*, u.nama_lengkap as nama_guru 
+                    FROM acad_documents d 
+                    JOIN users u ON d.user_id = u.id 
+                    WHERE d.user_id = ?
+                    ORDER BY d.created_at DESC
+                ");
+                $stmt->execute([$user['user_id']]);
+            }
         }
         $data = $stmt->fetchAll(PDO::FETCH_ASSOC);
         json_response(200, true, 'Daftar dokumen', $data);
@@ -118,7 +160,7 @@ function uploadDocument($user, $academic_year_id) {
 
 function approveDocument() {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed');
-    $input = get_input();
+    $input = get_documents_input();
     $id = isset($input['id']) ? (int)$input['id'] : 0;
     if ($id <= 0) json_response(400, false, 'ID tidak valid.');
     
@@ -133,7 +175,7 @@ function approveDocument() {
 
 function rejectDocument() {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed');
-    $input = get_input();
+    $input = get_documents_input();
     $id = isset($input['id']) ? (int)$input['id'] : 0;
     $catatan = isset($input['catatan']) ? trim($input['catatan']) : '';
     
@@ -151,7 +193,7 @@ function rejectDocument() {
 
 function deleteDocument($user, $isAdmin) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed');
-    $input = get_input();
+    $input = get_documents_input();
     $id = isset($input['id']) ? (int)$input['id'] : 0;
     if ($id <= 0) json_response(400, false, 'ID tidak valid.');
     
@@ -183,6 +225,73 @@ function deleteDocument($user, $isAdmin) {
         $stmtDel->execute([$id]);
         
         json_response(200, true, 'Dokumen berhasil dihapus.');
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
+// ==================== MASTER JENIS PERANGKAT ====================
+function listDocumentTypes() {
+    try {
+        $stmt = db()->query("SELECT * FROM acad_document_types ORDER BY urutan ASC, id ASC");
+        $types = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        json_response(200, true, 'Daftar jenis dokumen', $types);
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
+function saveDocumentType() {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed');
+    $input = get_documents_input();
+    $id = isset($input['id']) ? (int)$input['id'] : 0;
+    $nama_tipe = isset($input['nama_tipe']) ? trim($input['nama_tipe']) : '';
+    $deskripsi = isset($input['deskripsi']) ? trim($input['deskripsi']) : '';
+    $urutan = isset($input['urutan']) ? (int)$input['urutan'] : 0;
+
+    if (empty($nama_tipe)) {
+        json_response(400, false, 'Nama jenis perangkat wajib diisi.');
+    }
+
+    try {
+        if ($id > 0) {
+            // Check unique name on other records
+            $chk = db()->prepare("SELECT id FROM acad_document_types WHERE nama_tipe = ? AND id != ?");
+            $chk->execute([$nama_tipe, $id]);
+            if ($chk->fetchColumn()) {
+                json_response(400, false, 'Jenis perangkat dengan nama ini sudah ada.');
+            }
+
+            $stmt = db()->prepare("UPDATE acad_document_types SET nama_tipe = ?, deskripsi = ?, urutan = ? WHERE id = ?");
+            $stmt->execute([$nama_tipe, $deskripsi, $urutan, $id]);
+            json_response(200, true, 'Jenis perangkat berhasil diperbarui.');
+        } else {
+            // Check unique name
+            $chk = db()->prepare("SELECT id FROM acad_document_types WHERE nama_tipe = ?");
+            $chk->execute([$nama_tipe]);
+            if ($chk->fetchColumn()) {
+                json_response(400, false, 'Jenis perangkat dengan nama ini sudah ada.');
+            }
+
+            $stmt = db()->prepare("INSERT INTO acad_document_types (nama_tipe, deskripsi, urutan) VALUES (?, ?, ?)");
+            $stmt->execute([$nama_tipe, $deskripsi, $urutan]);
+            json_response(201, true, 'Jenis perangkat berhasil ditambahkan.');
+        }
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
+function deleteDocumentType() {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed');
+    $input = get_documents_input();
+    $id = isset($input['id']) ? (int)$input['id'] : 0;
+    if ($id <= 0) json_response(400, false, 'ID tidak valid.');
+
+    try {
+        $stmt = db()->prepare("DELETE FROM acad_document_types WHERE id = ?");
+        $stmt->execute([$id]);
+        json_response(200, true, 'Jenis perangkat berhasil dihapus.');
     } catch (PDOException $e) {
         json_response(500, false, 'Server error: ' . $e->getMessage());
     }

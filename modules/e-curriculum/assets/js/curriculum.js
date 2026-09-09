@@ -33,7 +33,7 @@ const Curriculum = {
         if (this.state.user) {
             $('#sidebarAvatar').text(this.getInitials(this.state.user.nama_lengkap));
             $('#sidebarUserName').text(this.state.user.nama_lengkap);
-            $('#sidebarUserRole').text(this.state.user.role === 'superadmin' ? 'Super Admin' : this.state.user.role);
+            $('#sidebarUserRole').text(this.state.user.custom_role_nama || (this.state.user.role === 'superadmin' ? 'Super Admin' : (this.state.user.role === 'guru' ? 'Guru' : this.state.user.role)));
         }
 
         // Hide global loader
@@ -71,25 +71,11 @@ const Curriculum = {
     },
 
     renderRealtimeBadge() {
-        const $topbarRight = $('.acad-topbar-right');
-        if (!$topbarRight.length) return;
-        
-        if (!$('#realtimeStatusBadge').length) {
-            $topbarRight.prepend(`
-                <div id="realtimeStatusBadge" title="Sinkronisasi data otomatis aktif (Realtime). Klik untuk sinkronkan sekarang." onclick="Curriculum.syncCurrentRouteData(false)" style="display:inline-flex;align-items:center;gap:6px;padding:5px 12px;background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:20px;font-size:12px;font-weight:600;color:#15803d;margin-right:10px;cursor:pointer;transition:all 0.2s ease;">
-                    <span style="width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block;animation:pulseDot 2s infinite;" id="realtimePulseDot"></span>
-                    <span id="realtimeBadgeText">Realtime Aktif</span>
-                </div>
-            `);
-        }
+        // Realtime sync operates silently in background without topbar badge as requested
     },
 
     flashRealtimeSync() {
-        const $badge = $('#realtimeStatusBadge');
-        if ($badge.length) {
-            $badge.css({ 'background': '#dcfce7', 'transform': 'scale(1.04)' });
-            setTimeout(() => $badge.css({ 'background': '#f0fdf4', 'transform': 'scale(1)' }), 400);
-        }
+        // No-op (badge is hidden)
     },
 
     syncCurrentRouteData(silent = true) {
@@ -525,26 +511,111 @@ const Curriculum = {
         });
     },
 
+    can(permission) {
+        const u = this.state.user;
+        if (!u) return false;
+        if (u.role === 'superadmin') return true;
+        const perms = Array.isArray(u.permissions) ? u.permissions : [];
+        return perms.includes(permission);
+    },
+
+    canAccessRoute(route) {
+        const u = this.state.user || {};
+        if (u.role === 'superadmin') return true;
+        const hasCustomPerms = Array.isArray(u.permissions) && u.permissions.length > 0;
+        const isTeacher = u.role === 'guru';
+
+        switch (route) {
+            case 'dashboard':
+                return this.can('dashboard_view') || (!hasCustomPerms && isTeacher);
+            case 'sch_jam':
+            case 'sch_mapel':
+            case 'sch_kelas':
+            case 'sch_guru':
+            case 'sch_distribusi':
+            case 'sch_kesediaan':
+            case 'sch_jadwal':
+            case 'kelas':
+            case 'mapel':
+                return this.can('jadwal_manage');
+            case 'jurnal':
+                return this.can('jurnal_manage');
+            case 'absensi':
+                return this.can('absensi_manage');
+            case 'absensi_guru':
+                return this.can('absensi_guru_manage');
+            case 'ketidakhadiran':
+                return this.can('ketidakhadiran_manage');
+            case 'piket':
+                return this.can('piket_manage');
+            case 'buku_penghubung':
+                return this.can('buku_penghubung_manage');
+            case 'laporan_jurnal':
+            case 'laporan_kehadiran':
+                return this.can('laporan_view');
+            case 'dokumen':
+                return this.can('dokumen_manage') || (!hasCustomPerms && isTeacher);
+            case 'users':
+                return this.can('roles_manage');
+            case 'mengajar':
+                return !hasCustomPerms && isTeacher;
+            default:
+                return false;
+        }
+    },
+
+    getDefaultRoute() {
+        const u = this.state.user || {};
+        if (u.role === 'superadmin') return 'dashboard';
+        
+        if (this.can('dashboard_view')) return 'dashboard';
+        if (this.can('buku_penghubung_manage')) return 'buku_penghubung';
+        if (this.can('jurnal_manage')) return 'jurnal';
+        if (this.can('absensi_manage')) return 'absensi';
+        if (this.can('absensi_guru_manage')) return 'absensi_guru';
+        if (this.can('piket_manage')) return 'piket';
+        if (this.can('ketidakhadiran_manage')) return 'ketidakhadiran';
+        if (this.can('jadwal_manage')) return 'sch_jadwal';
+        if (this.can('laporan_view')) return 'laporan_jurnal';
+        if (this.can('dokumen_manage')) return 'dokumen';
+        if (this.can('roles_manage')) return 'users';
+        
+        const hasCustomPerms = Array.isArray(u.permissions) && u.permissions.length > 0;
+        if (u.role === 'guru' && !hasCustomPerms) {
+            return 'dashboard';
+        }
+        
+        return 'dashboard';
+    },
+
     /**
      * Sidebar Management
      */
     renderSidebar() {
-        const u = this.state.user;
-        const isAdmin = u.role === 'superadmin';
+        const u = this.state.user || {};
+        const isSuperAdmin = u.role === 'superadmin';
+        const hasCustomPerms = Array.isArray(u.permissions) && u.permissions.length > 0;
+        const isTeacher = u.role === 'guru';
         
-        let navHtml = `
-            <div class="acad-nav-group">
-                <div class="acad-nav-label">Menu Utama</div>
-                <button class="acad-nav-item" data-route="dashboard">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-                    Dashboard
-                </button>
-            </div>
-        `;
+        let navHtml = '';
 
-        if (isAdmin) {
+        // 0. MENU UTAMA (Dashboard)
+        const showDashboard = isSuperAdmin || this.can('dashboard_view') || (!hasCustomPerms && isTeacher);
+        if (showDashboard) {
             navHtml += `
+                <div class="acad-nav-group">
+                    <div class="acad-nav-label">Menu Utama</div>
+                    <button class="acad-nav-item" data-route="dashboard">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                        Dashboard
+                    </button>
+                </div>
+            `;
+        }
 
+        // 1. DATA JADWAL (Admin Kurikulum / Permissions jadwal_manage)
+        if (isSuperAdmin || this.can('jadwal_manage')) {
+            navHtml += `
                 <div class="acad-nav-group">
                     <div class="acad-nav-label">Data Jadwal</div>
                     <button class="acad-nav-item" data-route="sch_jam">
@@ -576,33 +647,82 @@ const Curriculum = {
                         Jadwal Pelajaran
                     </button>
                 </div>
-                <div class="acad-nav-group">
-                    <div class="acad-nav-label">Akademik</div>
+            `;
+        }
+
+        // 2. LAYANAN AKADEMIK & KURIKULUM (Sesuai Izin Role)
+        const showJurnal = isSuperAdmin || this.can('jurnal_manage');
+        const showAbsenSiswa = isSuperAdmin || this.can('absensi_manage');
+        const showAbsenGuru = isSuperAdmin || this.can('absensi_guru_manage');
+        const showKetidakhadiran = isSuperAdmin || this.can('ketidakhadiran_manage');
+        const showPiket = isSuperAdmin || this.can('piket_manage');
+        const showBukuPenghubung = isSuperAdmin || this.can('buku_penghubung_manage');
+        const showDokumen = isSuperAdmin || this.can('dokumen_manage');
+
+        if (showJurnal || showAbsenSiswa || showAbsenGuru || showKetidakhadiran || showPiket || showBukuPenghubung || showDokumen) {
+            navHtml += `<div class="acad-nav-group"><div class="acad-nav-label">Akademik &amp; Layanan</div>`;
+            if (showJurnal) {
+                navHtml += `
                     <button class="acad-nav-item" data-route="jurnal">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
                         Jurnal Mengajar
                     </button>
+                `;
+            }
+            if (showAbsenSiswa) {
+                navHtml += `
                     <button class="acad-nav-item" data-route="absensi">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
                         Absensi Siswa
                     </button>
+                `;
+            }
+            if (showAbsenGuru) {
+                navHtml += `
                     <button class="acad-nav-item" data-route="absensi_guru">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                         Absensi Guru
                     </button>
+                `;
+            }
+            if (showKetidakhadiran) {
+                navHtml += `
                     <button class="acad-nav-item" data-route="ketidakhadiran">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
                         Ketidakhadiran
                     </button>
+                `;
+            }
+            if (showPiket) {
+                navHtml += `
                     <button class="acad-nav-item" data-route="piket">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                         Piket Guru
                     </button>
+                `;
+            }
+            if (showBukuPenghubung) {
+                navHtml += `
                     <button class="acad-nav-item" data-route="buku_penghubung">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
                         Buku Penghubung
                     </button>
-                </div>
+                `;
+            }
+            if (showDokumen) {
+                navHtml += `
+                    <button class="acad-nav-item" data-route="dokumen">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                        Kelola Perangkat
+                    </button>
+                `;
+            }
+            navHtml += `</div>`;
+        }
+
+        // 3. LAPORAN (Laporan Jurnal & Kehadiran)
+        if (isSuperAdmin || this.can('laporan_view')) {
+            navHtml += `
                 <div class="acad-nav-group">
                     <div class="acad-nav-label">Laporan</div>
                     <button class="acad-nav-item" data-route="laporan_jurnal">
@@ -614,20 +734,25 @@ const Curriculum = {
                         Laporan Kehadiran
                     </button>
                 </div>
+            `;
+        }
+
+        // 4. PENGATURAN MODUL (Role Access)
+        const showRoles = isSuperAdmin || this.can('roles_manage');
+        if (showRoles) {
+            navHtml += `
                 <div class="acad-nav-group">
                     <div class="acad-nav-label">Pengaturan Modul</div>
-                    <button class="acad-nav-item" data-route="dokumen">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                        Dokumen Perangkat
-                    </button>
                     <button class="acad-nav-item" data-route="users">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                         Akses Modul
                     </button>
                 </div>
             `;
-        } else {
-            // Teacher menu
+        }
+
+        // 5. KHUSUS GURU PENGAJAR (Akademik Saya) — hanya untuk guru reguler yang tidak memiliki custom role RBAC
+        if (isTeacher && !isSuperAdmin && !hasCustomPerms) {
             navHtml += `
                 <div class="acad-nav-group">
                     <div class="acad-nav-label">Akademik Saya</div>
@@ -635,29 +760,9 @@ const Curriculum = {
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                         Jadwal Mengajar
                     </button>
-                    <button class="acad-nav-item" data-route="jurnal">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                        Jurnal Mengajar
-                    </button>
-                    <button class="acad-nav-item" data-route="absensi">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-                        Absensi Siswa
-                    </button>
-                    <button class="acad-nav-item" data-route="absensi_guru">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                        Absensi Guru
-                    </button>
-                    <button class="acad-nav-item" data-route="ketidakhadiran">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-                        Ketidakhadiran
-                    </button>
-                    <button class="acad-nav-item" data-route="buku_penghubung">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
-                        Buku Penghubung
-                    </button>
                     <button class="acad-nav-item" data-route="dokumen">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                        Dokumen Perangkat
+                        Dokumen Saya
                     </button>
                 </div>
             `;
@@ -702,11 +807,26 @@ const Curriculum = {
     },
 
     loadRouteFromHash() {
-        const hash = window.location.hash || '#/dashboard';
-        const parts = hash.replace('#/', '').split('?');
-        const route = parts[0] || 'dashboard';
-        const searchParams = new URLSearchParams(parts[1] || '');
-        const params = Object.fromEntries(searchParams.entries());
+        const hash = window.location.hash || '';
+        let route = 'dashboard';
+        let params = {};
+        
+        if (hash) {
+            const clean = hash.replace(/^#\/?/, '');
+            const parts = clean.split('?');
+            route = parts[0] || 'dashboard';
+            const searchParams = new URLSearchParams(parts[1] || '');
+            params = Object.fromEntries(searchParams.entries());
+        }
+
+        // Enforce route RBAC permission
+        if (!this.canAccessRoute(route)) {
+            const defaultRoute = this.getDefaultRoute();
+            if (route !== defaultRoute) {
+                this.navigate(defaultRoute);
+                return;
+            }
+        }
 
         this.state.currentRoute = route;
         this.state.params = params;
@@ -733,8 +853,8 @@ const Curriculum = {
                 this.renderDashboard($content);
                 break;
             case 'dokumen':
-                $title.text('Dokumen Perangkat Pembelajaran');
-                this.setBreadcrumbs([{ label: 'Dokumen' }]);
+                $title.text('Kelola Perangkat Pembelajaran');
+                this.setBreadcrumbs([{ label: 'Akademik & Layanan' }, { label: 'Kelola Perangkat' }]);
                 this.renderDokumen($content);
                 break;
             case 'users':
@@ -833,13 +953,14 @@ const Curriculum = {
                 this.renderLaporanKehadiran($content);
                 break;
             default:
-                this.navigate('dashboard');
+                this.navigate(this.getDefaultRoute());
         }
     },
 
     setBreadcrumbs(crumbs) {
         const $breadcrumb = $('#breadcrumb');
-        let html = `<a href="#/dashboard">E-Curriculum</a>`;
+        const defaultRoute = this.getDefaultRoute();
+        let html = `<a href="#/${defaultRoute}">E-Curriculum</a>`;
         
         crumbs.forEach(c => {
             html += ` <span class="sep">/</span> `;
@@ -3282,6 +3403,20 @@ const Curriculum = {
         return div.innerHTML;
     },
 
+    toast(title, message, type = 'info') {
+        const toastType = (type === 'danger' || type === 'error') ? 'error' : (type === 'success' ? 'success' : (type === 'warning' ? 'warning' : 'info'));
+        if (window.EModal && typeof EModal.toast === 'function') {
+            EModal.toast({
+                type: toastType,
+                title: title || (toastType === 'success' ? 'Berhasil' : (toastType === 'error' ? 'Gagal' : 'Pemberitahuan')),
+                message: message || '',
+                duration: 3500
+            });
+        } else {
+            console.log(`[Toast ${toastType}] ${title}: ${message}`);
+        }
+    },
+
     // --- E-SCHEDULE FUNCTIONS ---
 
     // ==============================================
@@ -4851,6 +4986,9 @@ const Curriculum = {
                 u.username,
                 u.nama_lengkap,
                 u.nik,
+                u.tupoksi,
+                u.jabatan,
+                u.mapel,
                 u.custom_role_nama
             ].filter(Boolean).join(' ').toLowerCase();
             return haystack.includes(keyword);
@@ -4869,46 +5007,105 @@ const Curriculum = {
         const rows = filtered.map(u => {
             const hasAccess = parseInt(u.custom_role_id || 0) > 0;
             const roleBadge = hasAccess
-                ? '<span class="badge badge-primary">'+this.escapeHtml(u.custom_role_nama)+'</span>'
+                ? '<span class="badge badge-primary" style="font-weight:600">'+this.escapeHtml(u.custom_role_nama)+'</span>'
                 : '<span class="badge" style="background:#f1f5f9;color:#64748b">Tanpa Akses</span>';
+            
             const safeName = (u.nama_lengkap || '').replace(/'/g, "\\'");
             const safeUsername = this.escapeHtml(u.username || '-');
+            const safeTupoksi = (u.tupoksi || '').replace(/'/g, "\\'");
+
+            // Tupoksi & Jabatan formatting
+            let tupoksiLabel = u.tupoksi ? this.escapeHtml(u.tupoksi) : (u.portal_role === 'guru' ? 'Guru' : (u.portal_role === 'superadmin' ? 'Super Admin' : u.portal_role || '-'));
+            let tupoksiBadgeColor = '#eff6ff';
+            let tupoksiTextColor = '#1d4ed8';
+            let tupoksiBorder = '#bfdbfe';
+
+            const lowTup = tupoksiLabel.toLowerCase();
+            if (lowTup.includes('bk')) {
+                tupoksiBadgeColor = '#fdf4ff';
+                tupoksiTextColor = '#9333ea';
+                tupoksiBorder = '#f0abfc';
+            } else if (lowTup.includes('kepala') || lowTup.includes('waka')) {
+                tupoksiBadgeColor = '#fff7ed';
+                tupoksiTextColor = '#c2410c';
+                tupoksiBorder = '#fed7aa';
+            } else if (lowTup.includes('kebersihan') || lowTup.includes('tu') || lowTup.includes('tenaga') || lowTup.includes('satpam')) {
+                tupoksiBadgeColor = '#f8fafc';
+                tupoksiTextColor = '#475569';
+                tupoksiBorder = '#cbd5e1';
+            }
+
+            let extraInfo = '';
+            if (u.jabatan) {
+                extraInfo += `<div style="font-size:11px;color:#475569;font-weight:500;margin-top:2px;">📌 ${this.escapeHtml(u.jabatan)}</div>`;
+            }
+            if (u.mapel) {
+                extraInfo += `<div style="font-size:11px;color:#64748b;margin-top:1px;">📖 ${this.escapeHtml(u.mapel)}</div>`;
+            }
+
+            const tupoksiCell = `
+                <div>
+                    <span class="badge" style="background:${tupoksiBadgeColor};color:${tupoksiTextColor};border:1px solid ${tupoksiBorder};font-size:11.5px;font-weight:600;padding:3px 8px;border-radius:6px;display:inline-block">
+                        ${tupoksiLabel}
+                    </span>
+                    ${extraInfo}
+                </div>
+            `;
+
             const actionBtns = [
-                '<button class="btn-acad btn-acad-sm" style="border:1px solid var(--border-color,#e2e8f0);background:transparent;color:var(--text-color,#1e293b)" onclick="Curriculum.formAssignAccount('+u.id+',\''+safeName+'\','+(u.custom_role_id || 0)+')">'
+                '<button class="btn-acad btn-acad-sm" style="border:1px solid var(--border-color,#e2e8f0);background:transparent;color:var(--text-color,#1e293b);font-weight:500" onclick="Curriculum.formAssignAccount('+u.id+',\''+safeName+'\','+(u.custom_role_id || 0)+',\''+safeTupoksi+'\')">'
                 +(hasAccess ? 'Ubah Akses' : 'Atur Akses')+'</button>'
             ];
             if (hasAccess) {
-                actionBtns.push('<button class="btn-acad btn-acad-sm" style="background:#fee2e2;color:#dc2626;border:none" onclick="Curriculum.revokeAccountAccess('+u.id+',\''+safeName+'\')">❌ Cabut</button>');
+                actionBtns.push('<button class="btn-acad btn-acad-sm" style="background:#fee2e2;color:#dc2626;border:none;font-weight:500" onclick="Curriculum.revokeAccountAccess('+u.id+',\''+safeName+'\')">❌ Cabut</button>');
             }
+
             return '<tr>'
                 +'<td><div style="font-weight:700">@'+safeUsername+'</div></td>'
-                +'<td>'+this.escapeHtml(u.nama_lengkap || '-')+'</td>'
-                +'<td>'+this.escapeHtml(u.nik || '-')+'</td>'
+                +'<td><strong>'+this.escapeHtml(u.nama_lengkap || '-')+'</strong><div style="font-size:0.75rem;color:var(--text-muted,#94a3b8)">NIK: '+this.escapeHtml(u.nik || '-')+'</div></td>'
+                +'<td>'+tupoksiCell+'</td>'
                 +'<td>'+roleBadge+'</td>'
                 +'<td><div style="display:flex;gap:8px;flex-wrap:wrap">'+actionBtns.join('')+'</div></td>'
                 +'</tr>';
         }).join('');
 
-        $('#accountsTable').html('<div class="data-table-wrapper"><table class="data-table"><thead><tr><th>Username</th><th>Nama</th><th>NIK</th><th>Akses Kurikulum</th><th>Aksi</th></tr></thead><tbody>'+rows+'</tbody></table></div>');
+        $('#accountsTable').html('<div class="data-table-wrapper"><table class="data-table"><thead><tr><th>Username</th><th>Nama Pegawai / Guru</th><th>Tupoksi &amp; Jabatan</th><th>Akses Kurikulum</th><th>Aksi</th></tr></thead><tbody>'+rows+'</tbody></table></div>');
     },
 
     // ---------- Tab 2: Role & Izin ----------
     _loadRolesDef() {
+        const permLabels = {
+            'dashboard_view': 'Dashboard',
+            'jadwal_manage': 'Kelola Jadwal',
+            'jurnal_manage': 'Jurnal Mengajar',
+            'absensi_manage': 'Absensi Siswa',
+            'absensi_guru_manage': 'Absensi Guru',
+            'piket_manage': 'Piket Guru',
+            'ketidakhadiran_manage': 'Ketidakhadiran',
+            'buku_penghubung_manage': 'Buku Penghubung',
+            'dokumen_manage': 'Dokumen Perangkat',
+            'laporan_view': 'Laporan',
+            'roles_manage': 'Kelola Role & Akses'
+        };
+
         this.api('users.php?action=list_roles').done(res => {
             if (!res.success) { $('#rolesDefTable').html('<div style="text-align:center;padding:30px;color:var(--text-muted)">Gagal memuat.</div>'); return; }
             const rows = res.data.map(r => {
                 const perms = (r.permissions||'').split(',').filter(Boolean);
-                const badges = perms.map(p => '<span class="badge" style="font-size:10px;margin:1px;background:#f0f9ff;color:#0284c7;border:1px solid #bae6fd">'+p+'</span>').join('');
+                const badges = perms.map(p => {
+                    const label = permLabels[p] || p;
+                    return '<span class="badge" style="font-size:11px;margin:2px;background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;padding:3px 8px;border-radius:6px;font-weight:500;display:inline-block">'+label+'</span>';
+                }).join('');
                 const safeName = (r.nama||'').replace(/'/g,"\\'");
                 const lockIcon = parseInt(r.is_locked) ? ' &#x1F512;' : '';
-                const delBtn = parseInt(r.is_locked) ? '' : '<button class="btn-icon text-danger" onclick="Curriculum.delRole('+r.id+',\''+safeName+'\')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>';
+                const delBtn = parseInt(r.is_locked) ? '' : '<button class="btn-icon text-danger" onclick="Curriculum.delRole('+r.id+',\''+safeName+'\')" title="Hapus Role"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>';
                 return '<tr>'
                     +'<td><strong>'+r.nama+lockIcon+'</strong><div style="font-size:0.75rem;color:var(--text-muted,#94a3b8)">'+(r.deskripsi||'-')+'</div></td>'
-                    +'<td style="max-width:360px"><div style="display:flex;flex-wrap:wrap;gap:3px">'+badges+'</div></td>'
-                    +'<td><div style="display:flex;gap:6px"><button class="btn-icon" onclick="Curriculum.formRole('+r.id+')" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'+delBtn+'</div></td>'
+                    +'<td style="max-width:480px"><div style="display:flex;flex-wrap:wrap;gap:4px">'+badges+'</div></td>'
+                    +'<td><div style="display:flex;gap:6px"><button class="btn-icon" onclick="Curriculum.formRole('+r.id+')" title="Edit Role & Izin"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>'+delBtn+'</div></td>'
                     +'</tr>';
             }).join('');
-            $('#rolesDefTable').html('<div class="data-table-wrapper"><table class="data-table"><thead><tr><th>Role</th><th>Izin (Permissions)</th><th>Aksi</th></tr></thead><tbody>'+rows+'</tbody></table></div>');
+            $('#rolesDefTable').html('<div class="data-table-wrapper"><table class="data-table"><thead><tr><th>Role</th><th>Izin (Hak Akses Modul)</th><th>Aksi</th></tr></thead><tbody>'+rows+'</tbody></table></div>');
         });
     },
 
@@ -4945,7 +5142,7 @@ const Curriculum = {
             onOpen: () => {
                 if (isEdit) {
                     this.api('users.php?action=list_roles').done(res => {
-                        const r = res.data.find(x => x.id == id);
+                        const r = (res.data || []).find(x => x.id == id);
                         if (!r) return;
                         $('#f_rlNama').val(r.nama);
                         $('#f_rlDesc').val(r.deskripsi);
@@ -4959,10 +5156,27 @@ const Curriculum = {
                 const perms = []; $('.rp-chk:checked').each(function(){ perms.push($(this).val()); });
                 const payload = {id: id||0, nama: $('#f_rlNama').val(), deskripsi: $('#f_rlDesc').val(), permissions: perms};
                 if (!payload.nama) { this.toast('Gagal', 'Nama role wajib diisi', 'error'); return false; }
-                this.api('users.php?action=save_role', { method:'POST', data: payload }).done(res => {
-                    if (res.success) { EModal.closeAll(); this._loadRolesDef(); this.toast('Berhasil', 'Role Tersimpan', 'success'); }
-                    else { this.toast('Gagal', res.message, 'error'); }
-                });
+
+                const $btn = $('.emodal-save-btn');
+                const origText = $btn.html();
+                $btn.prop('disabled', true).text('Menyimpan...');
+
+                this.api('users.php?action=save_role', { method:'POST', data: payload })
+                    .done(res => {
+                        if (res.success) {
+                            EModal.closeAll();
+                            this._loadRolesDef();
+                            this.toast('Berhasil', 'Role Berhasil Disimpan', 'success');
+                        } else {
+                            this.toast('Gagal', res.message || 'Gagal menyimpan role', 'error');
+                            $btn.prop('disabled', false).html(origText);
+                        }
+                    })
+                    .fail(xhr => {
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Terjadi kesalahan saat menyimpan role';
+                        this.toast('Gagal', msg, 'error');
+                        $btn.prop('disabled', false).html(origText);
+                    });
                 return false;
             }
         });
@@ -4974,20 +5188,33 @@ const Curriculum = {
             message:'Yakin hapus role <strong>'+nama+'</strong>? Semua user dengan role ini akan kehilangan akses.',
             type:'danger',
             onConfirm: () => {
-                this.api('users.php?action=delete_role', {method:'POST', data:{id}}).done(res => {
-                    if (res.success) { this._loadRolesDef(); this._loadAccounts(); this.toast('Berhasil', 'Role Dihapus', 'success'); }
-                    else { this.toast('Gagal', res.message, 'error'); }
-                });
+                this.api('users.php?action=delete_role', {method:'POST', data:{id}})
+                    .done(res => {
+                        if (res.success) {
+                            this._loadRolesDef();
+                            this._loadAccounts();
+                            this.toast('Berhasil', 'Role Dihapus', 'success');
+                        } else {
+                            this.toast('Gagal', res.message || 'Gagal menghapus role', 'error');
+                        }
+                    })
+                    .fail(xhr => {
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Gagal menghapus role';
+                        this.toast('Gagal', msg, 'error');
+                    });
             }
         });
     },
 
-    formAssignAccount(userId, userName, currentRoleId = 0) {
+    formAssignAccount(userId, userName, currentRoleId = 0, userTupoksi = '') {
         this.api('users.php?action=list_roles').done(res => {
-            const opts = res.data.map(r => '<option value="'+r.id+'">'+r.nama+'</option>').join('');
+            const opts = (res.data || []).map(r => '<option value="'+r.id+'">'+r.nama+'</option>').join('');
+            const tupoksiSubtitle = userTupoksi ? `<div style="font-size:12px;color:var(--text-muted,#64748b);margin-bottom:10px;padding:6px 10px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px">Tupoksi: <strong>${this.escapeHtml(userTupoksi)}</strong></div>` : '';
             EModal.form({
                 title: 'Atur Akses: '+userName,
-                form: '<div class="form-group-acad mb-3"><label class="form-label-acad">Pilih Role Kurikulum</label>'
+                form: '<div class="form-group-acad mb-3">'
+                    +tupoksiSubtitle
+                    +'<label class="form-label-acad">Pilih Role Kurikulum</label>'
                     +'<select class="form-select-acad" id="f_assignRl"><option value="0">-- Tanpa Akses --</option>'+opts+'</select></div>'
                     +'<div style="font-size:12px;color:var(--text-muted,#94a3b8);background:#f3f4f6;padding:10px;border-radius:6px">'
                     +'<strong>Info:</strong> Akun ini akan mendapatkan hak akses sesuai izin pada role yang dipilih.</div>',
@@ -4999,10 +5226,26 @@ const Curriculum = {
                 },
                 onConfirm: () => {
                     const data = {user_id:userId, role_id:$('#f_assignRl').val()};
-                    this.api('users.php?action=assign_account', {method:'POST', data}).done(res => {
-                        if (res.success) { EModal.closeAll(); this._loadAccounts(); this.toast('Berhasil', 'Akses Diperbarui', 'success'); }
-                        else { this.toast('Gagal', res.message, 'error'); }
-                    });
+                    const $btn = $('.emodal-save-btn');
+                    const origText = $btn.html();
+                    $btn.prop('disabled', true).text('Menyimpan...');
+
+                    this.api('users.php?action=assign_account', {method:'POST', data})
+                        .done(res => {
+                            if (res.success) {
+                                EModal.closeAll();
+                                this._loadAccounts();
+                                this.toast('Berhasil', 'Akses Diperbarui', 'success');
+                            } else {
+                                this.toast('Gagal', res.message || 'Gagal memperbarui akses', 'error');
+                                $btn.prop('disabled', false).html(origText);
+                            }
+                        })
+                        .fail(xhr => {
+                            const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Gagal memperbarui akses';
+                            this.toast('Gagal', msg, 'error');
+                            $btn.prop('disabled', false).html(origText);
+                        });
                     return false;
                 }
             });
@@ -5015,14 +5258,19 @@ const Curriculum = {
             message: 'Yakin ingin mencabut akses modul Kurikulum untuk <strong>'+userName+'</strong>?',
             type: 'danger',
             onConfirm: () => {
-                this.api('users.php?action=assign_account', {method:'POST', data:{user_id:userId, role_id:0}}).done(res => {
-                    if (res.success) {
-                        this._loadAccounts();
-                        this.toast('Berhasil', 'Akses berhasil dicabut', 'success');
-                    } else {
-                        this.toast('Gagal', res.message, 'error');
-                    }
-                });
+                this.api('users.php?action=assign_account', {method:'POST', data:{user_id:userId, role_id:0}})
+                    .done(res => {
+                        if (res.success) {
+                            this._loadAccounts();
+                            this.toast('Berhasil', 'Akses berhasil dicabut', 'success');
+                        } else {
+                            this.toast('Gagal', res.message || 'Gagal mencabut akses', 'error');
+                        }
+                    })
+                    .fail(xhr => {
+                        const msg = (xhr.responseJSON && xhr.responseJSON.message) ? xhr.responseJSON.message : 'Gagal mencabut akses';
+                        this.toast('Gagal', msg, 'error');
+                    });
             }
         });
     },
@@ -5031,29 +5279,47 @@ const Curriculum = {
     // DOKUMEN PERANGKAT (RPP, MODUL AJAR)
     // ==========================================
     renderDokumen($content) {
-        const isAdmin = this.state.user.role === 'superadmin' || this.state.user.acad_role;
+        const isAdmin = this.state.user.role === 'superadmin' || this.can('dokumen_manage');
+        const isTeacher = this.state.user.role === 'guru';
         
         if (isAdmin) {
             // ========== ADMIN VIEW: Table with approval workflow ==========
             $content.html(`
                 <div class="acad-card">
-                    <div class="acad-card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px">
+                    <div class="acad-card-header" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">
                         <div>
-                            <h2 class="acad-card-title" style="margin:0">Dokumen Perangkat Guru</h2>
-                            <div style="font-size:0.82rem;color:var(--text-muted,#94a3b8);margin-top:4px">Kelola dan setujui dokumen yang dikirim oleh guru.</div>
+                            <h3 class="acad-card-title" style="margin:0;font-size:1.15rem;font-weight:700">Dokumen Perangkat Guru</h3>
+                            <div class="acad-subtitle" style="margin-top:4px">Kelola dan verifikasi dokumen perangkat pembelajaran (RPP, Modul Ajar, Silabus) yang dikirim oleh guru.</div>
                         </div>
-                        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-                            <select class="form-select-acad" id="dokFilterStatus" style="min-width:140px;padding:6px 10px;font-size:13px">
-                                <option value="">Semua Status</option>
-                                <option value="pending">⏳ Pending</option>
-                                <option value="approved">✅ Disetujui</option>
-                                <option value="rejected">❌ Ditolak</option>
-                            </select>
-                            <input type="text" class="form-input-acad" id="dokSearchInput" placeholder="Cari judul / guru..." style="min-width:200px;padding:6px 10px;font-size:13px">
+                        <div>
+                            <button class="btn-acad btn-acad-outline" onclick="Curriculum.openManageJenisDokumenModal()" style="display:flex;align-items:center;gap:6px;padding:7px 14px;font-size:13px;border-radius:6px;font-weight:600">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+                                Kelola Jenis Perangkat
+                            </button>
                         </div>
                     </div>
                     <div class="acad-card-body">
-                        <div id="dokumenAdminSummary" style="font-size:0.84rem;color:var(--text-muted,#94a3b8);margin-bottom:12px">Memuat...</div>
+                        <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px;padding:12px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px">
+                            <div id="dokumenAdminSummary" style="font-size:0.85rem;color:var(--text-muted,#64748b)">Memuat ringkasan...</div>
+                            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                                <div style="width:190px;min-width:160px">
+                                    <select class="form-select-acad" id="dokFilterTipe" style="padding:7px 12px;font-size:13px;height:38px;border-radius:6px">
+                                        <option value="">Semua Jenis Perangkat</option>
+                                    </select>
+                                </div>
+                                <div style="width:150px;min-width:130px">
+                                    <select class="form-select-acad" id="dokFilterStatus" style="padding:7px 12px;font-size:13px;height:38px;border-radius:6px">
+                                        <option value="">Semua Status</option>
+                                        <option value="pending">⏳ Pending</option>
+                                        <option value="approved">✅ Disetujui</option>
+                                        <option value="rejected">❌ Ditolak</option>
+                                    </select>
+                                </div>
+                                <div style="width:220px;min-width:170px">
+                                    <input type="text" class="form-input-acad" id="dokSearchInput" placeholder="Cari judul / guru..." style="padding:7px 12px;font-size:13px;height:38px;border-radius:6px">
+                                </div>
+                            </div>
+                        </div>
                         <div id="dokumenAdminTable">
                             <div style="text-align:center;padding:40px;color:var(--text-muted,#94a3b8)"><div class="spinner" style="margin:0 auto 10px"></div> Memuat dokumen...</div>
                         </div>
@@ -5061,11 +5327,12 @@ const Curriculum = {
                 </div>
             `);
             this._loadDokumenAdmin();
-            $('#dokFilterStatus, #dokSearchInput').on('input change', () => this._renderDokumenAdminTable());
-        } else {
+            this._populateDokumenTypeFilter('#dokFilterTipe');
+            $('#dokFilterTipe, #dokFilterStatus, #dokSearchInput').on('input change', () => this._renderDokumenAdminTable());
+        } else if (isTeacher) {
             // ========== GURU VIEW: Card-based with upload ==========
             $content.html(`
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:12px">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:12px">
                     <div>
                         <h2 style="margin:0;font-size:1.3rem;font-weight:700;color:var(--text-color,#1e293b)">Dokumen Perangkat Saya</h2>
                         <p style="margin:4px 0 0;font-size:0.84rem;color:var(--text-muted,#94a3b8)">Upload RPP, Modul Ajar, Silabus, dan dokumen lainnya.</p>
@@ -5075,13 +5342,59 @@ const Curriculum = {
                         Upload Dokumen
                     </button>
                 </div>
-                <div id="dokumenGuruSummary" style="font-size:0.84rem;color:var(--text-muted,#94a3b8);margin-bottom:16px"></div>
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px;padding:12px 16px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px">
+                    <div id="dokumenGuruSummary" style="font-size:0.84rem;color:var(--text-muted,#64748b)">Memuat ringkasan...</div>
+                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+                        <div style="width:190px;min-width:160px">
+                            <select class="form-select-acad" id="dokGuruFilterTipe" style="padding:7px 12px;font-size:13px;height:38px;border-radius:6px">
+                                <option value="">Semua Jenis Perangkat</option>
+                            </select>
+                        </div>
+                        <div style="width:150px;min-width:130px">
+                            <select class="form-select-acad" id="dokGuruFilterStatus" style="padding:7px 12px;font-size:13px;height:38px;border-radius:6px">
+                                <option value="">Semua Status</option>
+                                <option value="pending">⏳ Pending</option>
+                                <option value="approved">✅ Disetujui</option>
+                                <option value="rejected">❌ Ditolak</option>
+                            </select>
+                        </div>
+                        <div style="width:200px;min-width:160px">
+                            <input type="text" class="form-input-acad" id="dokGuruSearchInput" placeholder="Cari judul dokumen..." style="padding:7px 12px;font-size:13px;height:38px;border-radius:6px">
+                        </div>
+                    </div>
+                </div>
                 <div id="dokumenGuruCards">
                     <div style="text-align:center;padding:60px 20px;color:var(--text-muted,#94a3b8)"><div class="spinner" style="margin:0 auto 10px"></div> Memuat dokumen...</div>
                 </div>
             `);
             this._loadDokumenGuru();
+            this._populateDokumenTypeFilter('#dokGuruFilterTipe');
+            $('#dokGuruFilterTipe, #dokGuruFilterStatus, #dokGuruSearchInput').on('input change', () => this._renderDokumenGuruCards());
+        } else {
+            $content.html(`
+                <div class="acad-card" style="text-align:center;padding:60px 20px;">
+                    <div style="font-size:40px;margin-bottom:12px">&#128274;</div>
+                    <h3 style="margin:0 0 8px;color:var(--text-color,#1e293b)">Akses Dibatasi</h3>
+                    <p style="color:var(--text-muted,#94a3b8);font-size:14px;margin:0">Anda tidak memiliki izin untuk mengakses dokumen.</p>
+                </div>
+            `);
         }
+    },
+
+    _populateDokumenTypeFilter(selector) {
+        this.api('documents.php?action=list_types').done(res => {
+            if (res && res.success && Array.isArray(res.data)) {
+                const $select = $(selector);
+                if (!$select.length) return;
+                const currentVal = $select.val() || '';
+                let opts = '<option value="">Semua Jenis Perangkat</option>';
+                res.data.forEach(t => {
+                    const val = t.nama_tipe;
+                    opts += `<option value="${this.escapeHtml(val)}">${this.escapeHtml(val)}</option>`;
+                });
+                $select.html(opts).val(currentVal);
+            }
+        });
     },
 
     // ========== GURU: Load & Render Cards ==========
@@ -5095,6 +5408,9 @@ const Curriculum = {
 
     _renderDokumenGuruCards() {
         const data = this._dokumenGuruCache || [];
+        const filterStatus = ($('#dokGuruFilterStatus').val() || '').toLowerCase();
+        const filterTipe = ($('#dokGuruFilterTipe').val() || '').trim().toLowerCase();
+        const searchQuery = ($('#dokGuruSearchInput').val() || '').trim().toLowerCase();
         
         const pendingCount = data.filter(d => d.status === 'pending').length;
         const approvedCount = data.filter(d => d.status === 'approved').length;
@@ -5106,19 +5422,29 @@ const Curriculum = {
             `<span style="color:#22c55e">✅ Disetujui: <strong>${approvedCount}</strong></span> &nbsp;|&nbsp; ` +
             `<span style="color:#ef4444">❌ Ditolak: <strong>${rejectedCount}</strong></span>`
         );
+
+        const filtered = data.filter(d => {
+            if (filterStatus && (d.status || '').toLowerCase() !== filterStatus) return false;
+            if (filterTipe && (d.tipe_dokumen || '').trim().toLowerCase() !== filterTipe) return false;
+            if (searchQuery) {
+                const haystack = [d.judul, d.tipe_dokumen].filter(Boolean).join(' ').toLowerCase();
+                if (!haystack.includes(searchQuery)) return false;
+            }
+            return true;
+        });
         
-        if (data.length === 0) {
+        if (filtered.length === 0) {
             $('#dokumenGuruCards').html(`
                 <div style="text-align:center;padding:60px 20px;border:2px dashed var(--border-color,#e2e8f0);border-radius:12px;background:#fafbfc">
                     <svg viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.5" width="48" height="48" style="margin-bottom:12px"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    <h3 style="color:var(--text-muted,#64748b);margin:0 0 6px;font-size:1rem">Belum Ada Dokumen</h3>
-                    <p style="color:#94a3b8;font-size:0.85rem;margin:0">Klik tombol <strong>Upload Dokumen</strong> untuk mulai mengunggah.</p>
+                    <h3 style="color:var(--text-muted,#64748b);margin:0 0 6px;font-size:1rem">${data.length === 0 ? 'Belum Ada Dokumen' : 'Tidak Ada Dokumen yang Cocok'}</h3>
+                    <p style="color:#94a3b8;font-size:0.85rem;margin:0">${data.length === 0 ? 'Klik tombol <strong>Upload Dokumen</strong> untuk mulai mengunggah.' : 'Coba sesuaikan filter atau kata kunci pencarian Anda.'}</p>
                 </div>
             `);
             return;
         }
 
-        const cards = data.map(d => {
+        const cards = filtered.map(d => {
             // Status styling
             let statusColor, statusBg, statusIcon, statusText;
             switch(d.status) {
@@ -5204,10 +5530,12 @@ const Curriculum = {
     _renderDokumenAdminTable() {
         const data = this._dokumenAdminCache || [];
         const filterStatus = ($('#dokFilterStatus').val() || '').toLowerCase();
+        const filterTipe = ($('#dokFilterTipe').val() || '').trim().toLowerCase();
         const searchQuery = ($('#dokSearchInput').val() || '').trim().toLowerCase();
 
         const filtered = data.filter(d => {
-            if (filterStatus && d.status !== filterStatus) return false;
+            if (filterStatus && (d.status || '').toLowerCase() !== filterStatus) return false;
+            if (filterTipe && (d.tipe_dokumen || '').trim().toLowerCase() !== filterTipe) return false;
             if (searchQuery) {
                 const haystack = [d.judul, d.nama_guru, d.tipe_dokumen].filter(Boolean).join(' ').toLowerCase();
                 if (!haystack.includes(searchQuery)) return false;
@@ -5280,36 +5608,84 @@ const Curriculum = {
     },
 
     openUploadDokumenModal() {
-        const modalHtml = `
-            <div class="form-group-acad mb-3">
-                <label class="form-label-acad">Judul Dokumen</label>
-                <input type="text" class="form-input-acad" id="dokumenJudul" placeholder="Contoh: RPP Matematika Kelas X">
-            </div>
-            <div class="form-group-acad mb-3">
-                <label class="form-label-acad">Tipe Dokumen</label>
-                <select class="form-select-acad" id="dokumenTipe">
-                    <option value="RPP">RPP (Rencana Pelaksanaan Pembelajaran)</option>
-                    <option value="Modul Ajar">Modul Ajar</option>
-                    <option value="Silabus">Silabus</option>
-                    <option value="Prota/Promes">Prota/Promes</option>
-                    <option value="Lainnya">Lainnya</option>
-                </select>
-            </div>
-            <div class="form-group-acad mb-3">
-                <label class="form-label-acad">File (PDF/Word/Excel/PPT/ZIP, maks 10MB)</label>
-                <input type="file" class="form-input-acad" id="dokumenFile" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip">
-            </div>
-            <div style="font-size:12px;color:var(--text-muted,#94a3b8);background:#f8fafc;padding:10px;border-radius:6px;border:1px solid #e2e8f0">
-                <strong>ℹ️ Info:</strong> Dokumen yang diunggah akan menunggu persetujuan admin kurikulum sebelum dianggap valid.
-            </div>
-        `;
-        EModal.form({
-            title: 'Upload Dokumen Kurikulum',
-            form: modalHtml,
-            size: 'md',
-            confirmText: 'Upload',
-            cancelText: 'Batal',
-            onConfirm: () => this.uploadDokumen()
+        this.api('documents.php?action=list_types').done(res => {
+            const types = (res.data && res.data.length > 0) ? res.data : [
+                { nama_tipe: 'RPP', deskripsi: 'Rencana Pelaksanaan Pembelajaran' },
+                { nama_tipe: 'Modul Ajar', deskripsi: 'Modul Ajar Kurikulum Merdeka' },
+                { nama_tipe: 'Silabus', deskripsi: 'Silabus' },
+                { nama_tipe: 'Prota / Promes', deskripsi: 'Program Tahunan & Semester' },
+                { nama_tipe: 'ATP', deskripsi: 'Alur Tujuan Pembelajaran' },
+                { nama_tipe: 'Lainnya', deskripsi: 'Dokumen Lainnya' }
+            ];
+
+            const typeOptions = types.map(t => {
+                const desc = t.deskripsi ? ` (${this.escapeHtml(t.deskripsi)})` : '';
+                return `<option value="${this.escapeHtml(t.nama_tipe)}">${this.escapeHtml(t.nama_tipe)}${desc}</option>`;
+            }).join('');
+
+            const modalHtml = `
+                <div class="form-group-acad mb-3">
+                    <label class="form-label-acad">Judul Dokumen</label>
+                    <input type="text" class="form-input-acad" id="dokumenJudul" placeholder="Contoh: RPP Matematika Kelas X">
+                </div>
+                <div class="form-group-acad mb-3">
+                    <label class="form-label-acad">Jenis / Tipe Perangkat</label>
+                    <select class="form-select-acad" id="dokumenTipe">
+                        ${typeOptions}
+                    </select>
+                </div>
+                <div class="form-group-acad mb-3">
+                    <label class="form-label-acad">File (PDF/Word/Excel/PPT/ZIP, maks 10MB)</label>
+                    <input type="file" class="form-input-acad" id="dokumenFile" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip">
+                </div>
+                <div style="font-size:12px;color:var(--text-muted,#94a3b8);background:#f8fafc;padding:10px;border-radius:6px;border:1px solid #e2e8f0">
+                    <strong>ℹ️ Info:</strong> Dokumen yang diunggah akan menunggu persetujuan admin kurikulum sebelum dianggap valid.
+                </div>
+            `;
+
+            EModal.form({
+                title: 'Upload Dokumen Perangkat',
+                form: modalHtml,
+                size: 'md',
+                confirmText: 'Upload',
+                cancelText: 'Batal',
+                onConfirm: () => this.uploadDokumen()
+            });
+        }).fail(() => {
+            const defaultOptions = `
+                <option value="RPP">RPP (Rencana Pelaksanaan Pembelajaran)</option>
+                <option value="Modul Ajar">Modul Ajar</option>
+                <option value="Silabus">Silabus</option>
+                <option value="Prota/Promes">Prota/Promes</option>
+                <option value="Lainnya">Lainnya</option>
+            `;
+            const modalHtml = `
+                <div class="form-group-acad mb-3">
+                    <label class="form-label-acad">Judul Dokumen</label>
+                    <input type="text" class="form-input-acad" id="dokumenJudul" placeholder="Contoh: RPP Matematika Kelas X">
+                </div>
+                <div class="form-group-acad mb-3">
+                    <label class="form-label-acad">Jenis / Tipe Perangkat</label>
+                    <select class="form-select-acad" id="dokumenTipe">
+                        ${defaultOptions}
+                    </select>
+                </div>
+                <div class="form-group-acad mb-3">
+                    <label class="form-label-acad">File (PDF/Word/Excel/PPT/ZIP, maks 10MB)</label>
+                    <input type="file" class="form-input-acad" id="dokumenFile" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip">
+                </div>
+                <div style="font-size:12px;color:var(--text-muted,#94a3b8);background:#f8fafc;padding:10px;border-radius:6px;border:1px solid #e2e8f0">
+                    <strong>ℹ️ Info:</strong> Dokumen yang diunggah akan menunggu persetujuan admin kurikulum sebelum dianggap valid.
+                </div>
+            `;
+            EModal.form({
+                title: 'Upload Dokumen Perangkat',
+                form: modalHtml,
+                size: 'md',
+                confirmText: 'Upload',
+                cancelText: 'Batal',
+                onConfirm: () => this.uploadDokumen()
+            });
         });
     },
 
@@ -5431,6 +5807,208 @@ const Curriculum = {
                     } else {
                         this.toast('Gagal', res.message, 'error');
                     }
+                });
+            }
+        });
+    },
+
+    // ==========================================
+    // MASTER JENIS PERANGKAT (CRUD MODAL)
+    // ==========================================
+    openManageJenisDokumenModal() {
+        const modalHtml = `
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:16px;margin-bottom:20px">
+                <div style="font-size:13px;font-weight:700;color:var(--acad-text,#1e293b);margin-bottom:10px" id="lblFormJenis">
+                    ➕ Tambah Jenis Perangkat Baru
+                </div>
+                <input type="hidden" id="f_jenisId" value="0">
+                <div style="display:grid;grid-template-columns:1fr 1.5fr auto;gap:10px;align-items:center">
+                    <input type="text" class="form-input-acad" id="f_jenisNama" placeholder="Nama Jenis (contoh: Modul P5)" style="padding:8px 12px;font-size:13px">
+                    <input type="text" class="form-input-acad" id="f_jenisDesc" placeholder="Keterangan (contoh: Projek Penguatan Profil Pelajar Pancasila)" style="padding:8px 12px;font-size:13px">
+                    <div style="display:flex;gap:6px">
+                        <button type="button" class="btn-acad btn-acad-primary" id="btnSaveJenis" onclick="Curriculum.submitSaveJenisDokumen()" style="padding:8px 16px;font-size:13px;white-space:nowrap">
+                            💾 Simpan
+                        </button>
+                        <button type="button" class="btn-acad btn-acad-outline" id="btnCancelEditJenis" onclick="Curriculum.resetJenisDokumenForm()" style="display:none;padding:8px 12px;font-size:13px">
+                            Batal
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+                <div style="font-size:13px;font-weight:700;color:var(--acad-text,#1e293b)">
+                    📋 Daftar Jenis Perangkat Tersedia
+                </div>
+                <div id="jenisCountBadge" style="font-size:12px;color:var(--text-muted,#64748b)"></div>
+            </div>
+            <div id="jenisDokumenTableWrapper" style="max-height:300px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px">
+                <div style="text-align:center;padding:30px;color:#94a3b8"><div class="spinner" style="margin:0 auto 8px"></div> Memuat daftar...</div>
+            </div>
+        `;
+
+        EModal.form({
+            title: 'Kelola Jenis Perangkat Pembelajaran',
+            form: modalHtml,
+            size: 'lg',
+            confirmText: 'Tutup',
+            cancelText: '',
+            onOpen: () => {
+                $('.emodal-card .emodal-footer .btn-ghost').hide();
+                this._loadJenisDokumenList();
+                $('#f_jenisNama, #f_jenisDesc').off('keydown').on('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        this.submitSaveJenisDokumen();
+                    }
+                });
+            },
+            onConfirm: () => {
+                EModal.closeAll();
+                return false;
+            }
+        });
+    },
+
+    _loadJenisDokumenList() {
+        this.api('documents.php?action=list_types').done(res => {
+            if (!res.success) {
+                $('#jenisDokumenTableWrapper').html('<div style="text-align:center;padding:24px;color:#dc2626">Gagal memuat jenis perangkat.</div>');
+                return;
+            }
+            const types = res.data || [];
+            $('#jenisCountBadge').text(`${types.length} jenis terdaftar`);
+
+            if (types.length === 0) {
+                $('#jenisDokumenTableWrapper').html('<div style="text-align:center;padding:24px;color:#94a3b8">Belum ada jenis perangkat. Silakan tambahkan di atas.</div>');
+                return;
+            }
+
+            const rows = types.map((t, idx) => {
+                const safeNama = (t.nama_tipe || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                const safeDesc = (t.deskripsi || '').replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                return `
+                    <tr style="border-bottom:1px solid #f1f5f9">
+                        <td style="padding:10px 14px;font-size:13px;color:#64748b;width:40px">${idx + 1}</td>
+                        <td style="padding:10px 14px;font-size:13px;font-weight:600;color:#1e293b">${this.escapeHtml(t.nama_tipe)}</td>
+                        <td style="padding:10px 14px;font-size:13px;color:#64748b">${this.escapeHtml(t.deskripsi || '-')}</td>
+                        <td style="padding:10px 14px;text-align:right;width:140px;white-space:nowrap">
+                            <button type="button" class="btn-acad btn-acad-sm btn-acad-outline" onclick="Curriculum.editJenisDokumen(${t.id}, '${safeNama}', '${safeDesc}')" style="padding:4px 10px;font-size:12px;margin-right:4px">
+                                ✏️ Edit
+                            </button>
+                            <button type="button" class="btn-acad btn-acad-sm" onclick="Curriculum.deleteJenisDokumen(${t.id}, '${safeNama}')" style="padding:4px 10px;font-size:12px;background:#fee2e2;color:#dc2626;border:none">
+                                🗑️ Hapus
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            $('#jenisDokumenTableWrapper').html(`
+                <table style="width:100%;border-collapse:collapse">
+                    <thead>
+                        <tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0;text-align:left">
+                            <th style="padding:10px 14px;font-size:12px;font-weight:600;color:#64748b;width:40px">NO</th>
+                            <th style="padding:10px 14px;font-size:12px;font-weight:600;color:#64748b">NAMA JENIS PERANGKAT</th>
+                            <th style="padding:10px 14px;font-size:12px;font-weight:600;color:#64748b">DESKRIPSI / KETERANGAN</th>
+                            <th style="padding:10px 14px;font-size:12px;font-weight:600;color:#64748b;text-align:right;width:140px">AKSI</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `);
+        }).fail(() => {
+            $('#jenisDokumenTableWrapper').html('<div style="text-align:center;padding:24px;color:#dc2626">Terjadi kesalahan saat memuat data.</div>');
+        });
+    },
+
+    editJenisDokumen(id, nama, desc) {
+        $('#f_jenisId').val(id);
+        $('#f_jenisNama').val(nama).focus();
+        $('#f_jenisDesc').val(desc);
+        $('#lblFormJenis').html(`✏️ Edit Jenis Perangkat: <strong>${this.escapeHtml(nama)}</strong>`);
+        $('#btnSaveJenis').text('💾 Update');
+        $('#btnCancelEditJenis').show();
+    },
+
+    resetJenisDokumenForm() {
+        $('#f_jenisId').val('0');
+        $('#f_jenisNama').val('');
+        $('#f_jenisDesc').val('');
+        $('#lblFormJenis').html('➕ Tambah Jenis Perangkat Baru');
+        $('#btnSaveJenis').text('💾 Simpan');
+        $('#btnCancelEditJenis').hide();
+    },
+
+    submitSaveJenisDokumen() {
+        const id = parseInt($('#f_jenisId').val()) || 0;
+        const nama_tipe = $('#f_jenisNama').val().trim();
+        const deskripsi = $('#f_jenisDesc').val().trim();
+
+        if (!nama_tipe) {
+            this.toast('Gagal', 'Nama jenis perangkat wajib diisi!', 'error');
+            $('#f_jenisNama').focus();
+            return;
+        }
+
+        const $btn = $('#btnSaveJenis');
+        const origText = id > 0 ? '💾 Update' : '💾 Simpan';
+        $btn.prop('disabled', true).text('Menyimpan...');
+
+        this.api('documents.php?action=save_type', {
+            method: 'POST',
+            data: { id, nama_tipe, deskripsi }
+        }).done(res => {
+            if (res && res.success) {
+                this.toast('Berhasil', res.message || 'Jenis perangkat tersimpan', 'success');
+                this.resetJenisDokumenForm();
+                this._loadJenisDokumenList();
+                this._populateDokumenTypeFilter('#dokFilterTipe');
+                this._populateDokumenTypeFilter('#dokGuruFilterTipe');
+            } else {
+                this.toast('Gagal', (res && res.message) || 'Gagal menyimpan jenis perangkat', 'error');
+            }
+        }).fail(xhr => {
+            let msg = 'Terjadi kesalahan saat menyimpan';
+            try {
+                if (xhr.responseJSON && xhr.responseJSON.message) {
+                    msg = xhr.responseJSON.message;
+                } else if (xhr.responseText) {
+                    const parsed = JSON.parse(xhr.responseText);
+                    if (parsed && parsed.message) msg = parsed.message;
+                }
+            } catch(e) {}
+            this.toast('Gagal', msg, 'error');
+        }).always(() => {
+            $btn.prop('disabled', false).text(origText);
+        });
+    },
+
+    deleteJenisDokumen(id, nama) {
+        EModal.confirm({
+            title: 'Hapus Jenis Perangkat',
+            message: `Apakah Anda yakin ingin menghapus jenis perangkat <strong>${this.escapeHtml(nama)}</strong>?`,
+            type: 'danger',
+            confirmText: 'Ya, Hapus',
+            onConfirm: () => {
+                this.api('documents.php?action=delete_type', {
+                    method: 'POST',
+                    data: { id }
+                }).done(res => {
+                    if (res && res.success) {
+                        this.toast('Berhasil', res.message || 'Jenis perangkat dihapus', 'success');
+                        this.resetJenisDokumenForm();
+                        this._loadJenisDokumenList();
+                        this._populateDokumenTypeFilter('#dokFilterTipe');
+                        this._populateDokumenTypeFilter('#dokGuruFilterTipe');
+                    } else {
+                        this.toast('Gagal', (res && res.message) || 'Gagal menghapus jenis perangkat', 'error');
+                    }
+                }).fail(xhr => {
+                    let msg = 'Gagal menghapus jenis perangkat';
+                    try {
+                        if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
+                    } catch(e) {}
+                    this.toast('Gagal', msg, 'error');
                 });
             }
         });

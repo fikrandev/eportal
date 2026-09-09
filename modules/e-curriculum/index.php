@@ -68,6 +68,9 @@ $active_academic_year = get_active_academic_year();
                 username: '<?php echo addslashes($user['username']); ?>',
                 nama_lengkap: '<?php echo addslashes($user['nama_lengkap']); ?>',
                 role: '<?php echo $user['role']; ?>',
+                acad_role: '<?php echo $user['acad_role'] ?? ''; ?>',
+                custom_role_nama: '<?php echo addslashes($user['custom_role_nama'] ?? ''); ?>',
+                permissions: <?php echo json_encode(array_values($user['permissions'] ?? []), JSON_UNESCAPED_UNICODE); ?>,
                 avatar: '<?php echo addslashes($user['avatar'] ?? ''); ?>'
             },
             school: {
