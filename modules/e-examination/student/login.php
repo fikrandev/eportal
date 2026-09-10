@@ -6,12 +6,21 @@
  * 2. Kartu Ujian (Exam Card: Username & Password)
  */
 require_once __DIR__ . '/../../../api/config.php';
+require_once __DIR__ . '/../../../api/migration_helper.php';
+
+// Ensure all database tables and column migrations are applied
+try {
+    run_auto_migrations();
+} catch (Throwable $e) {}
 
 $school_name = get_setting('nama_sekolah', 'E-Portal');
 $school_icon = get_setting('icon_sekolah', '');
 
 // Redirect jika sudah login
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
+
 if (isset($_SESSION['exam_student'])) {
     $qs = $_SERVER['QUERY_STRING'] ? '?' . $_SERVER['QUERY_STRING'] : '';
     header("Location: " . BASE_URL . "modules/e-examination/student/dashboard.php" . $qs);
@@ -24,14 +33,19 @@ $token = isset($_GET['token']) ? trim($_GET['token']) : '';
 $examInfo = null;
 $requiredMethod = '';
 if ($exam_id > 0) {
-    $stmtExam = db()->prepare("SELECT id, judul, metode_login, token, status FROM exam_ujian WHERE id = ?");
-    $stmtExam->execute([$exam_id]);
-    $examInfo = $stmtExam->fetch(PDO::FETCH_ASSOC);
-    if ($examInfo) {
-        $requiredMethod = $examInfo['metode_login'] ?? 'nis_dob';
-        if (empty($token) && !empty($examInfo['token'])) {
-            $token = $examInfo['token'];
+    try {
+        $stmtExam = db()->prepare("SELECT * FROM exam_ujian WHERE id = ?");
+        $stmtExam->execute([$exam_id]);
+        $examInfo = $stmtExam->fetch(PDO::FETCH_ASSOC);
+        if ($examInfo) {
+            $requiredMethod = $examInfo['metode_login'] ?? 'nis_dob';
+            if (empty($token) && !empty($examInfo['token'])) {
+                $token = $examInfo['token'];
+            }
         }
+    } catch (Throwable $e) {
+        $examInfo = null;
+        $requiredMethod = '';
     }
 }
 

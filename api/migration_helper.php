@@ -6,7 +6,7 @@
 require_once __DIR__ . '/config.php';
 
 function run_auto_migrations() {
-    $target_version = 13;
+    $target_version = 14;
     
     // 1. Get current version (default to 0 if not set or if table settings doesn't exist yet)
     $current_version = 0;
@@ -689,6 +689,19 @@ function run_auto_migrations() {
         upsert_setting('waktu_istirahat_guru_selesai', '13:00:00', 'text', 'Jam selesai istirahat guru');
         upsert_setting('waktu_pulang_guru', '15:30:00', 'text', 'Jam pulang guru');
         upsert_setting('wa_guru_mulai_pulang', '13:00:00', 'text', 'Jam mulai tap mesin untuk absen pulang guru');
+    }
+
+    // Version 14 migrations (E-Examination metode_login in exam_ujian)
+    if ($current_version < 14) {
+        try {
+            $checkTable = $pdo->query("SHOW TABLES LIKE 'exam_ujian'")->fetch();
+            if ($checkTable) {
+                $cols = $pdo->query("SHOW COLUMNS FROM `exam_ujian` LIKE 'metode_login'")->fetchAll();
+                if (empty($cols)) {
+                    $pdo->exec("ALTER TABLE `exam_ujian` ADD COLUMN `metode_login` ENUM('nis_dob','examcard') NOT NULL DEFAULT 'nis_dob' AFTER `jenis`");
+                }
+            }
+        } catch (Exception $e) {}
     }
 
     // Update DB migration version to target_version

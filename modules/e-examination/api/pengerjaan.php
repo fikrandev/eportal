@@ -3,13 +3,20 @@
  * E-Examination — API Pengerjaan Ujian & Student Auth
  */
 require_once __DIR__ . '/../../../api/config.php';
+require_once __DIR__ . '/../../../api/migration_helper.php';
+
+try {
+    run_auto_migrations();
+} catch (Throwable $e) {}
 
 header('Content-Type: application/json; charset=UTF-8');
 
 $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
 
-session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_start();
+}
 
 try {
     switch ($action) {
