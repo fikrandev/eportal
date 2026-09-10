@@ -546,39 +546,61 @@ const ExamApp = {
             try { currentAns = JSON.parse(currentAns); } catch(e){}
         }
 
+        let opsiList = s.opsi;
+        if (typeof opsiList === 'string') {
+            try { opsiList = JSON.parse(opsiList); } catch(e){ opsiList = []; }
+        }
+
         if (s.tipe_soal === 'pilihan_satu' || s.tipe_soal === 'benar_salah') {
-            s.opsi.forEach((o, i) => {
-                const isChecked = currentAns === o.label ? 'checked' : '';
-                const selectedClass = isChecked ? 'selected' : '';
-                const uid = `opt_${s.id}_${i}`;
-                
-                $opts.append(`
-                    <label class="option-item ${selectedClass}" for="${uid}">
-                        <input type="radio" name="ans_${s.id}" id="${uid}" value="${this.esc(o.label)}" ${isChecked} onchange="ExamApp.handleInput()">
-                        <div class="option-label"><strong>${this.esc(o.label)}.</strong> ${o.teks}</div>
-                    </label>
-                `);
-            });
+            if (Array.isArray(opsiList)) {
+                opsiList.forEach((o, i) => {
+                    const optLabel = (typeof o === 'object' && o !== null) ? (o.label || String.fromCharCode(65 + i)) : String.fromCharCode(65 + i);
+                    const optText = (typeof o === 'object' && o !== null) ? (o.text ?? o.teks ?? o.isi ?? o.label ?? '') : (o || '');
+                    const isChecked = currentAns === optLabel ? 'checked' : '';
+                    const selectedClass = isChecked ? 'selected' : '';
+                    const uid = `opt_${s.id}_${i}`;
+                    
+                    $opts.append(`
+                        <label class="option-item ${selectedClass}" for="${uid}">
+                            <input type="radio" name="ans_${s.id}" id="${uid}" value="${this.esc(optLabel)}" ${isChecked} onchange="ExamApp.handleInput()">
+                            <div class="option-label"><strong>${this.esc(optLabel)}.</strong> ${optText}</div>
+                        </label>
+                    `);
+                });
+            }
         } 
         else if (s.tipe_soal === 'pilihan_banyak') {
             let ansArr = Array.isArray(currentAns) ? currentAns : [];
-            s.opsi.forEach((o, i) => {
-                const isChecked = ansArr.includes(o.label) ? 'checked' : '';
-                const selectedClass = isChecked ? 'selected' : '';
-                const uid = `opt_${s.id}_${i}`;
-                
-                $opts.append(`
-                    <label class="option-item ${selectedClass}" for="${uid}">
-                        <input type="checkbox" name="ans_${s.id}[]" id="${uid}" value="${this.esc(o.label)}" ${isChecked} onchange="ExamApp.handleInput()">
-                        <div class="option-label"><strong>${this.esc(o.label)}.</strong> ${o.teks}</div>
-                    </label>
-                `);
-            });
+            if (Array.isArray(opsiList)) {
+                opsiList.forEach((o, i) => {
+                    const optLabel = (typeof o === 'object' && o !== null) ? (o.label || String.fromCharCode(65 + i)) : String.fromCharCode(65 + i);
+                    const optText = (typeof o === 'object' && o !== null) ? (o.text ?? o.teks ?? o.isi ?? o.label ?? '') : (o || '');
+                    const isChecked = ansArr.includes(optLabel) ? 'checked' : '';
+                    const selectedClass = isChecked ? 'selected' : '';
+                    const uid = `opt_${s.id}_${i}`;
+                    
+                    $opts.append(`
+                        <label class="option-item ${selectedClass}" for="${uid}">
+                            <input type="checkbox" name="ans_${s.id}[]" id="${uid}" value="${this.esc(optLabel)}" ${isChecked} onchange="ExamApp.handleInput()">
+                            <div class="option-label"><strong>${this.esc(optLabel)}.</strong> ${optText}</div>
+                        </label>
+                    `);
+                });
+            }
         }
         else if (s.tipe_soal === 'menjodohkan') {
-            // Options contain "kiri" and "kanan" arrays
-            let kiri = s.opsi.kiri || [];
-            let kanan = s.opsi.kanan || [];
+            // Options contain "kiri" and "kanan" arrays or list of pairs
+            let kiri = [];
+            let kanan = [];
+            if (opsiList && typeof opsiList === 'object' && !Array.isArray(opsiList)) {
+                kiri = opsiList.kiri || opsiList.left || [];
+                kanan = opsiList.kanan || opsiList.right || [];
+            } else if (Array.isArray(opsiList)) {
+                opsiList.forEach(p => {
+                    if (p.left || p.kiri) kiri.push(p.left || p.kiri);
+                    if (p.right || p.kanan) kanan.push(p.right || p.kanan);
+                });
+            }
             let ansObj = (currentAns && typeof currentAns === 'object') ? currentAns : {};
 
             let html = '<div style="display:flex; flex-direction:column; gap:16px;">';
