@@ -168,6 +168,15 @@ function activateAcademicYear()
         $stmt = db()->prepare("UPDATE academic_years SET is_active = 1 WHERE id = ?");
         $stmt->execute([$id]);
         syncActiveAcademicYearSettings($year['tahun_ajaran'], $year['semester'], $id);
+
+        // Keep active students synchronized with the newly activated academic year
+        $stmtSync = db()->prepare("
+            UPDATE students 
+            SET academic_year_id = ? 
+            WHERE status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '')
+        ");
+        $stmtSync->execute([$id]);
+
         db()->commit();
 
         json_response(200, true, 'Tahun ajaran aktif berhasil diperbarui.', $year);

@@ -25,11 +25,19 @@ try {
             $isPsikologi = ($ujian['jenis'] === 'psikologi');
 
             // Fetch session status and scores for all students in the assigned class
+            $activeYear = get_active_academic_year();
+            $yearId = (int)($activeYear['id'] ?? 0);
+
+            $yearFilter = $yearId > 0 ? "AND (s.academic_year_id = {$yearId} OR s.academic_year_id IS NULL OR s.academic_year_id = 0)" : "";
+
             $stmt = db()->prepare("
                 SELECT s.id as student_id, s.nis, s.nama as nama_siswa, s.kelas,
                        es.id as sesi_id, es.status, es.waktu_mulai, es.waktu_selesai, es.nilai_akhir as skor, es.pelanggaran
                 FROM exam_ujian_kelas uk
-                JOIN students s ON s.kelas COLLATE utf8mb4_unicode_ci = uk.kelas COLLATE utf8mb4_unicode_ci AND s.status = 1
+                JOIN students s ON s.kelas COLLATE utf8mb4_unicode_ci = uk.kelas COLLATE utf8mb4_unicode_ci 
+                               AND s.status = 1 
+                               AND (s.status_siswa = 'Aktif' OR s.status_siswa IS NULL OR s.status_siswa = '')
+                               {$yearFilter}
                 LEFT JOIN exam_sesi es ON es.student_id = s.id AND es.ujian_id = uk.ujian_id
                 WHERE uk.ujian_id = ?
                 ORDER BY s.kelas ASC, s.nama ASC
@@ -100,11 +108,18 @@ try {
 
             $isPsikologi = ($ujian['jenis'] === 'psikologi');
 
+            $activeYear = get_active_academic_year();
+            $yearId = (int)($activeYear['id'] ?? 0);
+            $yearFilter = $yearId > 0 ? "AND (s.academic_year_id = {$yearId} OR s.academic_year_id IS NULL OR s.academic_year_id = 0)" : "";
+
             $stmt = db()->prepare("
                 SELECT s.nis, s.nama as nama_siswa, s.kelas,
                        es.status, es.waktu_mulai, es.waktu_selesai, es.nilai_akhir as skor, es.pelanggaran
                 FROM exam_ujian_kelas uk
-                JOIN students s ON s.kelas COLLATE utf8mb4_unicode_ci = uk.kelas COLLATE utf8mb4_unicode_ci AND s.status = 1
+                JOIN students s ON s.kelas COLLATE utf8mb4_unicode_ci = uk.kelas COLLATE utf8mb4_unicode_ci 
+                               AND s.status = 1 
+                               AND (s.status_siswa = 'Aktif' OR s.status_siswa IS NULL OR s.status_siswa = '')
+                               {$yearFilter}
                 LEFT JOIN exam_sesi es ON es.student_id = s.id AND es.ujian_id = uk.ujian_id
                 WHERE uk.ujian_id = ?
                 ORDER BY s.kelas ASC, s.nama ASC

@@ -25,8 +25,13 @@ if ($action === 'stats') {
         $today_day_name = $hari_indo[$today_day_num] ?? 'Senin';
 
         // 1. Core Summary Metrics
-        $total_guru = (int)$pdo->query("SELECT COUNT(*) FROM users WHERE role = 'guru' AND status = 1")->fetchColumn();
-        $total_siswa = (int)$pdo->query("SELECT COUNT(*) FROM students WHERE status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '')")->fetchColumn();
+        $active_year = get_active_academic_year();
+        $year_id = (int)($active_year['id'] ?? 0);
+        if ($year_id > 0) {
+            $total_siswa = (int)$pdo->query("SELECT COUNT(*) FROM students WHERE academic_year_id = {$year_id} AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '')")->fetchColumn();
+        } else {
+            $total_siswa = (int)$pdo->query("SELECT COUNT(*) FROM students WHERE status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '')")->fetchColumn();
+        }
         
         $total_kelas = (int)$pdo->query("SELECT COUNT(*) FROM sch_kelas")->fetchColumn();
         if ($total_kelas === 0) {

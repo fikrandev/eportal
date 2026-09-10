@@ -259,8 +259,8 @@ function getPortalStudents() {
         
         $ayId = $active['id'];
         
-        // Fetch ALL students for the active year (using academic_year_id)
-        $stmt = db()->prepare("SELECT id, nama, kelas FROM students WHERE academic_year_id = ? ORDER BY kelas ASC, nama ASC");
+        // Fetch ALL students for the active year (using academic_year_id & active status)
+        $stmt = db()->prepare("SELECT id, nama, kelas FROM students WHERE academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY kelas ASC, nama ASC");
         $stmt->execute([$ayId]);
         $students = $stmt->fetchAll();
 
@@ -396,7 +396,14 @@ function saveGuruMapping() {
 function listKelas() {
     perf_require_admin();
     try {
-        $stmt = db()->query("SELECT DISTINCT kelas FROM students WHERE kelas != '' ORDER BY kelas ASC");
+        $active = get_active_academic_year();
+        $ayId = (int)($active['id'] ?? 0);
+        if ($ayId > 0) {
+            $stmt = db()->prepare("SELECT DISTINCT kelas FROM students WHERE academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') AND kelas != '' ORDER BY kelas ASC");
+            $stmt->execute([$ayId]);
+        } else {
+            $stmt = db()->query("SELECT DISTINCT kelas FROM students WHERE status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') AND kelas != '' ORDER BY kelas ASC");
+        }
         json_response(200, true, 'Data Kelas.', $stmt->fetchAll(PDO::FETCH_COLUMN));
     } catch (PDOException $e) {
         json_response(500, false, 'Error: ' . $e->getMessage());
@@ -455,9 +462,16 @@ function listSiswaByKelas() {
     if (!$kelas) json_response(400, false, 'Kelas tidak valid.');
     
     try {
+        $active = get_active_academic_year();
+        $ayId = (int)($active['id'] ?? 0);
         // Ambil semua siswa di kelas tersebut DARI PORTAL
-        $stmt = db()->prepare("SELECT id, nis, nama as nama_siswa FROM students WHERE kelas = ? ORDER BY nama ASC");
-        $stmt->execute([$kelas]);
+        if ($ayId > 0) {
+            $stmt = db()->prepare("SELECT id, nis, nama as nama_siswa FROM students WHERE kelas = ? AND academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY nama ASC");
+            $stmt->execute([$kelas, $ayId]);
+        } else {
+            $stmt = db()->prepare("SELECT id, nis, nama as nama_siswa FROM students WHERE kelas = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY nama ASC");
+            $stmt->execute([$kelas]);
+        }
         $siswaList = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
         $assignments = [];

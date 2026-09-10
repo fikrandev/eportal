@@ -428,7 +428,7 @@ function studentsForAccounts($yearId, $scope, $kelas)
 
 function classesForYear($yearId)
 {
-    $stmt = db()->prepare("SELECT kelas, COUNT(*) as total_siswa FROM students WHERE academic_year_id = ? AND kelas <> '' GROUP BY kelas ORDER BY kelas ASC");
+    $stmt = db()->prepare("SELECT kelas, COUNT(*) as total_siswa FROM students WHERE academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') AND kelas <> '' GROUP BY kelas ORDER BY kelas ASC");
     $stmt->execute([$yearId]);
     return $stmt->fetchAll();
 }

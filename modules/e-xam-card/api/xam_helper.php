@@ -100,14 +100,25 @@ function xam_exam_classes($examId)
 
 function xam_all_classes($yearId)
 {
-    $stmt = db()->prepare("\n        SELECT kelas, COUNT(*) as total_siswa\n        FROM students\n        WHERE academic_year_id = ? AND status = 1 AND kelas <> ''\n        GROUP BY kelas\n        ORDER BY kelas ASC\n    ");
+    $stmt = db()->prepare("
+        SELECT kelas, COUNT(*) as total_siswa
+        FROM students
+        WHERE academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') AND kelas <> ''
+        GROUP BY kelas
+        ORDER BY kelas ASC
+    ");
     $stmt->execute([(int) $yearId]);
     return $stmt->fetchAll();
 }
 
 function xam_students_by_class($yearId, $kelas)
 {
-    $stmt = db()->prepare("\n        SELECT id, nis, nisn, nama, kelas, no_urut\n        FROM students\n        WHERE academic_year_id = ? AND status = 1 AND kelas = ?\n        ORDER BY no_urut ASC, nama ASC\n    ");
+    $stmt = db()->prepare("
+        SELECT id, nis, nisn, nama, kelas, no_urut
+        FROM students
+        WHERE academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') AND kelas = ?
+        ORDER BY no_urut ASC, nama ASC
+    ");
     $stmt->execute([(int) $yearId, $kelas]);
     return $stmt->fetchAll();
 }

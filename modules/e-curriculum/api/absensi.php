@@ -83,9 +83,17 @@ function listAbsensi($user) {
         $kelas = $stmtK->fetch();
         if (!$kelas) json_response(404, false, 'Kelas tidak ditemukan.');
 
-        // Get students in this class (filter active & not graduated)
-        $stmtS = db()->prepare("SELECT id, nis, nama FROM students WHERE kelas = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY nama");
-        $stmtS->execute([$kelas['nama_kelas']]);
+        // Get students in this class (filter active academic year & active status)
+        $active_year = get_active_academic_year();
+        $year_id = (int)($active_year['id'] ?? 0);
+
+        if ($year_id > 0) {
+            $stmtS = db()->prepare("SELECT id, nis, nama FROM students WHERE kelas = ? AND academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY nama");
+            $stmtS->execute([$kelas['nama_kelas'], $year_id]);
+        } else {
+            $stmtS = db()->prepare("SELECT id, nis, nama FROM students WHERE kelas = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY nama");
+            $stmtS->execute([$kelas['nama_kelas']]);
+        }
         $students = $stmtS->fetchAll();
 
         // Get existing manual absensi from acad_absensi
@@ -300,8 +308,16 @@ function getStudentsByKelas($user) {
         $kelas = $stmtK->fetch();
         if (!$kelas) json_response(404, false, 'Kelas tidak ditemukan.');
 
-        $stmt = db()->prepare("SELECT id, nis, nisn, nama, jenis_kelamin FROM students WHERE kelas = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY nama");
-        $stmt->execute([$kelas['nama_kelas']]);
+        $active_year = get_active_academic_year();
+        $year_id = (int)($active_year['id'] ?? 0);
+
+        if ($year_id > 0) {
+            $stmt = db()->prepare("SELECT id, nis, nisn, nama, jenis_kelamin FROM students WHERE kelas = ? AND academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY nama");
+            $stmt->execute([$kelas['nama_kelas'], $year_id]);
+        } else {
+            $stmt = db()->prepare("SELECT id, nis, nisn, nama, jenis_kelamin FROM students WHERE kelas = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY nama");
+            $stmt->execute([$kelas['nama_kelas']]);
+        }
         json_response(200, true, 'Siswa dimuat.', $stmt->fetchAll());
     } catch (PDOException $e) {
         json_response(500, false, 'Server error: ' . $e->getMessage());
@@ -319,7 +335,7 @@ function rekapAbsensi($user) {
         $waktu_terlambat = get_setting('waktu_terlambat_siswa', '07:15:00');
 
         $active_year = get_active_academic_year();
-        $year_id = $active_year['id'] ?? 0;
+        $year_id = (int)($active_year['id'] ?? 0);
 
         // Get class name filter if specific class selected
         $nama_kelas_filter = null;
@@ -329,12 +345,22 @@ function rekapAbsensi($user) {
             $nama_kelas_filter = $stmtK->fetchColumn();
         }
 
-        // 1. Get all relevant students (filter active & not graduated)
+        // 1. Get all relevant students (filter active academic year & not graduated)
         if ($nama_kelas_filter) {
-            $stmtS = db()->prepare("SELECT id, nis, nama, kelas FROM students WHERE kelas = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY kelas, nama");
-            $stmtS->execute([$nama_kelas_filter]);
+            if ($year_id > 0) {
+                $stmtS = db()->prepare("SELECT id, nis, nama, kelas FROM students WHERE kelas = ? AND academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY kelas, nama");
+                $stmtS->execute([$nama_kelas_filter, $year_id]);
+            } else {
+                $stmtS = db()->prepare("SELECT id, nis, nama, kelas FROM students WHERE kelas = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY kelas, nama");
+                $stmtS->execute([$nama_kelas_filter]);
+            }
         } else {
-            $stmtS = db()->query("SELECT id, nis, nama, kelas FROM students WHERE status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY kelas, nama");
+            if ($year_id > 0) {
+                $stmtS = db()->prepare("SELECT id, nis, nama, kelas FROM students WHERE academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY kelas, nama");
+                $stmtS->execute([$year_id]);
+            } else {
+                $stmtS = db()->query("SELECT id, nis, nama, kelas FROM students WHERE status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY kelas, nama");
+            }
         }
         $students = $stmtS->fetchAll();
 

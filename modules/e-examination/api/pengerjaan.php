@@ -84,7 +84,13 @@ try {
                     throw new Exception('NIS dan Tanggal Lahir wajib diisi', 400);
                 }
 
-                $stmt = db()->prepare("SELECT id, nis, nama, kelas, tanggal_lahir, status, status_siswa FROM students WHERE nis = ? LIMIT 1");
+                $stmt = db()->prepare("
+                    SELECT id, nis, nama, kelas, tanggal_lahir, status, status_siswa 
+                    FROM students 
+                    WHERE nis = ? 
+                    ORDER BY (status_siswa = 'Aktif') DESC, academic_year_id DESC 
+                    LIMIT 1
+                ");
                 $stmt->execute([$nis]);
                 $studentRow = $stmt->fetch(PDO::FETCH_ASSOC);
 

@@ -437,8 +437,15 @@ function getJurnalMeta($user) {
 
             // Map sch_kelas nama to students.kelas
             $placeholders = implode(',', array_fill(0, count($classNames), '?'));
-            $stmt = db()->prepare("SELECT id, nis, nama, kelas FROM students WHERE kelas IN ($placeholders) AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY kelas, nama");
-            $stmt->execute(array_values($classNames));
+            if ($year_id > 0) {
+                $stmt = db()->prepare("SELECT id, nis, nama, kelas FROM students WHERE kelas IN ($placeholders) AND academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY kelas, nama");
+                $params = array_values($classNames);
+                $params[] = $year_id;
+                $stmt->execute($params);
+            } else {
+                $stmt = db()->prepare("SELECT id, nis, nama, kelas FROM students WHERE kelas IN ($placeholders) AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY kelas, nama");
+                $stmt->execute(array_values($classNames));
+            }
             $students = $stmt->fetchAll();
         }
 
@@ -619,8 +626,16 @@ function getStudentsByKelas($user) {
         $kelas = $stmtK->fetch();
         if (!$kelas) json_response(404, false, 'Kelas tidak ditemukan.');
         
-        $stmt = db()->prepare("SELECT id, nis, nama FROM students WHERE kelas = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY nama");
-        $stmt->execute([$kelas['nama_kelas']]);
+        $active_year = get_active_academic_year();
+        $year_id = (int)($active_year['id'] ?? 0);
+
+        if ($year_id > 0) {
+            $stmt = db()->prepare("SELECT id, nis, nama FROM students WHERE kelas = ? AND academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY nama");
+            $stmt->execute([$kelas['nama_kelas'], $year_id]);
+        } else {
+            $stmt = db()->prepare("SELECT id, nis, nama FROM students WHERE kelas = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY nama");
+            $stmt->execute([$kelas['nama_kelas']]);
+        }
         json_response(200, true, 'Siswa dimuat.', $stmt->fetchAll());
     } catch (PDOException $e) {
         json_response(500, false, 'Server error: ' . $e->getMessage());

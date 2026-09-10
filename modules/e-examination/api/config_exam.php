@@ -177,15 +177,38 @@ function exam_generate_token($length = 6) {
 function exam_get_classes() {
     $active = get_active_academic_year();
     $yearId = (int)($active['id'] ?? 0);
-    if ($yearId <= 0) return [];
 
-    $stmt = db()->prepare("
+    $sql = "
         SELECT kelas, COUNT(*) as total_siswa
         FROM students
-        WHERE academic_year_id = ? AND status = 1 AND kelas <> ''
-        GROUP BY kelas
-        ORDER BY kelas ASC
-    ");
-    $stmt->execute([$yearId]);
-    return $stmt->fetchAll();
+        WHERE status = 1 
+          AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '')
+          AND kelas <> ''
+    ";
+    $params = [];
+    if ($yearId > 0) {
+        $sql .= " AND academic_year_id = ?";
+        $params[] = $yearId;
+    }
+    $sql .= " GROUP BY kelas ORDER BY kelas ASC";
+
+    $stmt = db()->prepare($sql);
+    $stmt->execute($params);
+    $res = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+    if (empty($res) && $yearId > 0) {
+        // Fallback if active year not yet populated
+        $stmtFallback = db()->query("
+            SELECT kelas, COUNT(*) as total_siswa
+            FROM students
+            WHERE status = 1 
+              AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '')
+              AND kelas <> ''
+            GROUP BY kelas
+            ORDER BY kelas ASC
+        ");
+        $res = $stmtFallback->fetchAll(PDO::FETCH_ASSOC);
+    }
+
+    return $res;
 }

@@ -192,7 +192,7 @@ function classesForUser($user)
 {
     $yearId = grad_active_year_id();
     $params = [$yearId];
-    $where = "academic_year_id = ? AND kelas <> ''";
+    $where = "academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') AND kelas <> ''";
     if (empty($user['can_manage_graduation'])) {
         if (empty($user['scoped_classes'])) return [];
         $placeholders = implode(',', array_fill(0, count($user['scoped_classes']), '?'));
@@ -207,7 +207,7 @@ function classesForUser($user)
 
 function studentsForClass($yearId, $kelas)
 {
-    $stmt = db()->prepare("SELECT id, nis, nisn, nama, kelas, rata_rata FROM students WHERE academic_year_id = ? AND kelas = ? ORDER BY no_urut ASC, nama ASC");
+    $stmt = db()->prepare("SELECT id, nis, nisn, nama, kelas, rata_rata FROM students WHERE academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') AND kelas = ? ORDER BY no_urut ASC, nama ASC");
     $stmt->execute([$yearId, $kelas]);
     return $stmt->fetchAll();
 }
