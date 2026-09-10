@@ -21,7 +21,21 @@ try {
             if ($method !== 'POST') throw new Exception('Method not allowed', 405);
             $data = json_decode(file_get_contents('php://input'), true) ?: $_POST;
             $login_type = sanitize($data['login_type'] ?? 'nis_dob');
+            $exam_id = isset($data['exam_id']) ? (int)$data['exam_id'] : 0;
             $student = null;
+
+            // Jika ada exam_id, pastikan login_type sesuai metode_login ujian
+            if ($exam_id > 0) {
+                $stmtExamCheck = db()->prepare("SELECT id, judul, metode_login FROM exam_ujian WHERE id = ?");
+                $stmtExamCheck->execute([$exam_id]);
+                $examObj = $stmtExamCheck->fetch(PDO::FETCH_ASSOC);
+                if ($examObj && !empty($examObj['metode_login'])) {
+                    if ($examObj['metode_login'] !== $login_type) {
+                        $methodName = $examObj['metode_login'] === 'examcard' ? 'Kartu Ujian (E-xam Card)' : 'NIS & Tanggal Lahir';
+                        throw new Exception("Ujian ini mewajibkan login menggunakan {$methodName}.", 400);
+                    }
+                }
+            }
 
             if ($login_type === 'examcard') {
                 $username = trim($data['username'] ?? '');

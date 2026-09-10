@@ -89,6 +89,8 @@ try {
                 throw new Exception('Pilih minimal satu kelas peserta', 400);
             }
 
+            $metode_login = in_array(($data['metode_login'] ?? ''), ['nis_dob', 'examcard']) ? $data['metode_login'] : 'nis_dob';
+
             // Get bank jenis
             $stmtBank = db()->prepare("SELECT jenis FROM exam_bank_soal WHERE id = ?");
             $stmtBank->execute([$bank_id]);
@@ -99,13 +101,14 @@ try {
                 db()->beginTransaction();
 
                 $stmt = db()->prepare("
-                    INSERT INTO exam_ujian (judul, bank_soal_id, jenis, durasi_menit, acak_soal, acak_opsi, tampil_nilai, status, created_by)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, 'draft', ?)
+                    INSERT INTO exam_ujian (judul, bank_soal_id, jenis, metode_login, durasi_menit, acak_soal, acak_opsi, tampil_nilai, status, created_by)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)
                 ");
                 $stmt->execute([
                     $judul,
                     $bank_id,
                     $jenis,
+                    $metode_login,
                     $durasi,
                     isset($data['acak_soal']) && $data['acak_soal'] ? 1 : 0,
                     isset($data['acak_opsi']) && $data['acak_opsi'] ? 1 : 0,
@@ -137,6 +140,7 @@ try {
             $id = (int)($data['id'] ?? 0);
             $judul = trim($data['judul'] ?? '');
             $durasi = (int)($data['durasi_menit'] ?? 60);
+            $metode_login = in_array(($data['metode_login'] ?? ''), ['nis_dob', 'examcard']) ? $data['metode_login'] : 'nis_dob';
             $kelasArr = $data['kelas'] ?? [];
 
             if (!$id || empty($judul)) throw new Exception('Data tidak valid', 400);
@@ -155,11 +159,12 @@ try {
 
                 $stmt = db()->prepare("
                     UPDATE exam_ujian SET 
-                        judul = ?, durasi_menit = ?, acak_soal = ?, acak_opsi = ?, tampil_nilai = ?
+                        judul = ?, metode_login = ?, durasi_menit = ?, acak_soal = ?, acak_opsi = ?, tampil_nilai = ?
                     WHERE id = ?
                 ");
                 $stmt->execute([
                     $judul,
+                    $metode_login,
                     $durasi,
                     isset($data['acak_soal']) && $data['acak_soal'] ? 1 : 0,
                     isset($data['acak_opsi']) && $data['acak_opsi'] ? 1 : 0,

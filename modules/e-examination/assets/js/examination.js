@@ -1161,9 +1161,12 @@ const Exam = {
                         </button>
                         <button class="ex-btn-icon" style="display:inline-flex;margin-left:4px;" onclick="Exam.shareUjian(${u.id}, '${u.token}', '${this.esc(u.judul)}')" title="Bagikan Tautan & QR">
                             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-                        </button>
-                       </div>` 
+                                              </div>` 
                     : '-';
+
+                const loginBadge = (u.metode_login === 'examcard')
+                    ? `<span class="badge" style="background:#eff6ff;color:#1d4ed8;border:1px solid #bfdbfe;font-size:11.5px;padding:3px 8px;border-radius:6px;font-weight:600;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:3px;vertical-align:-1px;"><rect x="3" y="4" width="18" height="16" rx="2"/></svg>Kartu Ujian</span>`
+                    : `<span class="badge" style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;font-size:11.5px;padding:3px 8px;border-radius:6px;font-weight:600;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:3px;vertical-align:-1px;"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/></svg>NIS & Tgl Lahir</span>`;
 
                 return `
                 <tr>
@@ -1172,6 +1175,7 @@ const Exam = {
                         <strong>${this.esc(u.judul)}</strong><br>
                         <span style="font-size:0.8rem;color:var(--text-secondary);">${this.esc(u.nama_bank_soal)}</span>
                     </td>
+                    <td>${loginBadge}</td>
                     <td>${this.esc(u.kelas_peserta || '-')}</td>
                     <td>${u.durasi_menit} Menit</td>
                     <td>${statusBadge}</td>
@@ -1192,7 +1196,7 @@ const Exam = {
                 </tr>`;
             }).join('');
 
-            if (!rows) rows = '<tr><td colspan="8" style="text-align:center;padding:40px;color:var(--text-muted);">Belum ada jadwal ujian</td></tr>';
+            if (!rows) rows = '<tr><td colspan="9" style="text-align:center;padding:40px;color:var(--text-muted);">Belum ada jadwal ujian</td></tr>';
 
             $c.html(`
                 <div class="ex-card ex-slide-up">
@@ -1211,7 +1215,7 @@ const Exam = {
                     <div class="ex-card-body" style="padding:0;">
                         <div class="ex-table-wrapper">
                             <table class="ex-table">
-                                <thead><tr><th style="width:40px">#</th><th>Judul & Bank Soal</th><th>Kelas Peserta</th><th>Durasi</th><th>Status</th><th>TOKEN</th><th>Peserta</th><th style="width:120px">Aksi</th></tr></thead>
+                                <thead><tr><th style="width:40px">#</th><th>Judul & Bank Soal</th><th>Metode Login</th><th>Kelas Peserta</th><th>Durasi</th><th>Status</th><th>TOKEN</th><th>Peserta</th><th style="width:120px">Aksi</th></tr></thead>
                                 <tbody>${rows}</tbody>
                             </table>
                         </div>
@@ -1238,6 +1242,14 @@ const Exam = {
                         <div class="form-group"><label class="form-label">Bank Soal *</label><select class="form-select" id="fUjianBank"><option value="">-- Pilih Bank Soal --</option>${bankOpts}</select></div>
                         <div class="form-group"><label class="form-label">Durasi (Menit) *</label><input type="number" class="form-input" id="fUjianDurasi" value="60" min="1"></div>
                     </div>
+                    <div class="form-group">
+                        <label class="form-label">Metode Login Siswa *</label>
+                        <select class="form-select" id="fUjianMetodeLogin">
+                            <option value="nis_dob">NIS / NISN & Tanggal Lahir (DDMMYYYY)</option>
+                            <option value="examcard">Kartu Ujian (E-xam Card: Username & Password)</option>
+                        </select>
+                        <small style="color:var(--text-muted);display:block;margin-top:4px;">Siswa otomatis langsung login sesuai metode ini tanpa harus memilih opsi login lagi.</small>
+                    </div>
                     <div class="form-group"><label class="form-label">Kelas Peserta *</label><div>${classOpts}</div></div>
                     <div class="ex-form-row three" style="margin-top:16px;">
                         <label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" id="fUjianAcakSoal" checked> Acak Urutan Soal</label>
@@ -1249,6 +1261,7 @@ const Exam = {
                     const bank_soal_id = $('#fUjianBank').val();
                     const judul = $('#fUjianJudul').val().trim();
                     const durasi_menit = $('#fUjianDurasi').val();
+                    const metode_login = $('#fUjianMetodeLogin').val() || 'nis_dob';
                     let kelas = [];
                     $('.ex-ujian-kelas-cb:checked').each(function(){ kelas.push($(this).val()); });
 
@@ -1257,7 +1270,7 @@ const Exam = {
                     }
 
                     const data = {
-                        judul, bank_soal_id, durasi_menit, kelas,
+                        judul, bank_soal_id, durasi_menit, metode_login, kelas,
                         acak_soal: $('#fUjianAcakSoal').is(':checked'),
                         acak_opsi: $('#fUjianAcakOpsi').is(':checked'),
                         tampil_nilai: $('#fUjianTampilNilai').is(':checked')
@@ -1296,6 +1309,14 @@ const Exam = {
                         <div class="form-group"><label class="form-label">Bank Soal (Readonly)</label><input type="text" class="form-input" value="${this.esc(u.nama_bank_soal)}" readonly style="background:#f1f5f9;"></div>
                         <div class="form-group"><label class="form-label">Durasi (Menit) *</label><input type="number" class="form-input" id="fUjianDurasi" value="${u.durasi_menit}" min="1"></div>
                     </div>
+                    <div class="form-group">
+                        <label class="form-label">Metode Login Siswa *</label>
+                        <select class="form-select" id="fUjianMetodeLogin">
+                            <option value="nis_dob" ${u.metode_login === 'nis_dob' ? 'selected' : ''}>NIS / NISN & Tanggal Lahir (DDMMYYYY)</option>
+                            <option value="examcard" ${u.metode_login === 'examcard' ? 'selected' : ''}>Kartu Ujian (E-xam Card: Username & Password)</option>
+                        </select>
+                        <small style="color:var(--text-muted);display:block;margin-top:4px;">Siswa otomatis langsung login sesuai metode ini tanpa harus memilih opsi login lagi.</small>
+                    </div>
                     <div class="form-group"><label class="form-label">Kelas Peserta *</label><div>${classOpts}</div></div>
                     <div class="ex-form-row three" style="margin-top:16px;">
                         <label style="display:flex;align-items:center;gap:6px;"><input type="checkbox" id="fUjianAcakSoal" ${u.acak_soal ? 'checked':''}> Acak Urutan Soal</label>
@@ -1306,6 +1327,7 @@ const Exam = {
                 onConfirm: () => {
                     const judul = $('#fUjianJudul').val().trim();
                     const durasi_menit = $('#fUjianDurasi').val();
+                    const metode_login = $('#fUjianMetodeLogin').val() || 'nis_dob';
                     let kelas = [];
                     $('.ex-ujian-kelas-cb:checked').each(function(){ kelas.push($(this).val()); });
 
@@ -1314,7 +1336,7 @@ const Exam = {
                     }
 
                     const data = {
-                        id, judul, durasi_menit, kelas,
+                        id, judul, durasi_menit, metode_login, kelas,
                         acak_soal: $('#fUjianAcakSoal').is(':checked'),
                         acak_opsi: $('#fUjianAcakOpsi').is(':checked'),
                         tampil_nilai: $('#fUjianTampilNilai').is(':checked')

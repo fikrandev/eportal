@@ -1,7 +1,9 @@
 <?php
 /**
  * E-Examination — Student Login
- * Mendukung 2 metode: Akun Kartu Ujian (Examcard) & NIS + Tanggal Lahir
+ * Otomatis menyesuaikan metode login sesuai pengaturan Ujian oleh Admin:
+ * 1. NIS & Tanggal Lahir
+ * 2. Kartu Ujian (Exam Card: Username & Password)
  */
 require_once __DIR__ . '/../../../api/config.php';
 
@@ -18,6 +20,23 @@ if (isset($_SESSION['exam_student'])) {
 
 $exam_id = isset($_GET['exam_id']) ? (int)$_GET['exam_id'] : 0;
 $token = isset($_GET['token']) ? trim($_GET['token']) : '';
+
+$examInfo = null;
+$requiredMethod = '';
+if ($exam_id > 0) {
+    $stmtExam = db()->prepare("SELECT id, judul, metode_login, token, status FROM exam_ujian WHERE id = ?");
+    $stmtExam->execute([$exam_id]);
+    $examInfo = $stmtExam->fetch(PDO::FETCH_ASSOC);
+    if ($examInfo) {
+        $requiredMethod = $examInfo['metode_login'] ?? 'nis_dob';
+        if (empty($token) && !empty($examInfo['token'])) {
+            $token = $examInfo['token'];
+        }
+    }
+}
+
+// Default mode jika tidak spesifik ke ujian tertentu
+$initialMode = $requiredMethod ?: 'nis_dob';
 ?>
 <!DOCTYPE html>
 <html lang="id">
@@ -59,7 +78,7 @@ $token = isset($_GET['token']) ? trim($_GET['token']) : '';
         .login-card {
             background: #ffffff;
             width: 100%;
-            max-width: 420px;
+            max-width: 430px;
             border-radius: 20px;
             box-shadow: 0 20px 35px -10px rgba(15, 23, 42, 0.1), 0 8px 16px -6px rgba(15, 23, 42, 0.05);
             padding: 36px 28px;
@@ -76,108 +95,117 @@ $token = isset($_GET['token']) ? trim($_GET['token']) : '';
         }
         .login-header {
             text-align: center;
-            margin-bottom: 24px;
+            margin-bottom: 20px;
         }
         .logo-box {
-            width: 64px;
-            height: 64px;
+            width: 60px;
+            height: 60px;
             background: #eff6ff;
             border-radius: 16px;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin: 0 auto 14px;
+            margin: 0 auto 12px;
             border: 1px solid #dbeafe;
         }
         .logo-box svg {
-            width: 32px;
-            height: 32px;
+            width: 30px;
+            height: 30px;
             color: #2563EB;
         }
         .login-header h1 {
             font-family: 'Outfit', sans-serif;
-            font-size: 24px;
+            font-size: 23px;
             font-weight: 700;
             color: var(--text-main);
-            margin: 0 0 4px 0;
-            letter-spacing: -0.5px;
+            margin-bottom: 4px;
         }
         .login-header p {
+            font-size: 13.5px;
             color: var(--text-muted);
-            font-size: 13px;
-            margin: 0;
         }
 
-        /* Session Badge if from Share Link */
-        .session-badge {
-            background: #ecfdf5;
-            border: 1px solid #a7f3d0;
-            color: #065f46;
-            padding: 8px 12px;
-            border-radius: 10px;
-            font-size: 12px;
+        .exam-banner {
+            background: #eff6ff;
+            border: 1px solid #bfdbfe;
+            border-radius: 12px;
+            padding: 12px 14px;
+            margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            text-align: left;
+        }
+        .exam-banner-title {
             display: flex;
             align-items: center;
-            justify-content: center;
             gap: 6px;
-            margin-bottom: 20px;
-            font-weight: 500;
+            font-weight: 700;
+            font-size: 13.5px;
+            color: #1e3a8a;
         }
-        .session-badge strong {
-            font-family: monospace;
-            letter-spacing: 1px;
-            color: #047857;
-            background: #d1fae5;
-            padding: 2px 6px;
-            border-radius: 4px;
+        .exam-banner-meta {
+            font-size: 12px;
+            color: #2563eb;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .exam-banner-badge {
+            background: #dbeafe;
+            color: #1d4ed8;
+            font-weight: 600;
+            padding: 2px 8px;
+            border-radius: 6px;
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
         }
 
-        /* Dual Choice Tabs */
         .tab-wrapper {
+            display: flex;
             background: #f1f5f9;
             padding: 4px;
             border-radius: 12px;
-            display: flex;
+            margin-bottom: 20px;
             gap: 4px;
-            margin-bottom: 22px;
         }
         .tab-btn {
             flex: 1;
-            padding: 10px 8px;
-            border: none;
-            background: transparent;
-            color: var(--text-muted);
-            font-size: 13px;
+            padding: 9px 12px;
+            font-size: 12.5px;
             font-weight: 600;
-            border-radius: 9px;
+            color: var(--text-muted);
+            background: transparent;
+            border: none;
+            border-radius: 8px;
             cursor: pointer;
-            transition: all 0.2s ease;
+            transition: all 0.2s;
             display: flex;
             align-items: center;
             justify-content: center;
             gap: 6px;
-        }
-        .tab-btn svg {
-            width: 16px;
-            height: 16px;
-            flex-shrink: 0;
         }
         .tab-btn.active {
             background: #ffffff;
             color: var(--primary);
-            box-shadow: 0 2px 6px rgba(0,0,0,0.06);
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06);
+        }
+        .tab-btn svg {
+            width: 15px;
+            height: 15px;
         }
 
         .form-group {
             margin-bottom: 18px;
-            text-align: left;
         }
         .form-label {
             display: block;
             font-size: 13px;
             font-weight: 600;
-            color: #334155;
-            margin-bottom: 6px;
+            color: var(--text-main);
+            margin-bottom: 7px;
         }
         .input-group {
             position: relative;
@@ -186,11 +214,11 @@ $token = isset($_GET['token']) ? trim($_GET['token']) : '';
         }
         .form-input {
             width: 100%;
-            padding: 12px 14px;
+            height: 44px;
+            padding: 10px 14px;
             border: 1.5px solid var(--border-color);
             border-radius: 10px;
             font-size: 14px;
-            font-family: inherit;
             color: var(--text-main);
             background: #ffffff;
             transition: all 0.2s ease;
@@ -308,35 +336,72 @@ $token = isset($_GET['token']) ? trim($_GET['token']) : '';
             <p><?php echo htmlspecialchars($school_name); ?></p>
         </div>
 
-        <?php if ($token): ?>
-        <div class="session-badge">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
-            <span>Sesi Terhubung &bull; Token: <strong><?php echo htmlspecialchars($token); ?></strong></span>
+        <?php if ($examInfo): ?>
+        <div class="exam-banner">
+            <div class="exam-banner-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                <span><?php echo htmlspecialchars($examInfo['judul']); ?></span>
+            </div>
+            <div class="exam-banner-meta">
+                <?php if ($token): ?>
+                <span>Token: <strong><?php echo htmlspecialchars($token); ?></strong></span>
+                &bull;
+                <?php endif; ?>
+                <span>Metode: <strong class="exam-banner-badge"><?php echo $requiredMethod === 'examcard' ? 'Kartu Ujian (E-xam Card)' : 'NIS & Tgl Lahir'; ?></strong></span>
+            </div>
+        </div>
+        <?php elseif ($token): ?>
+        <div class="exam-banner">
+            <div class="exam-banner-title">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                <span>Sesi Terhubung &bull; Token: <strong><?php echo htmlspecialchars($token); ?></strong></span>
+            </div>
         </div>
         <?php endif; ?>
 
-        <!-- Choice Tabs: Examcard vs NIS & Tanggal Lahir -->
+        <?php if (!$requiredMethod): ?>
+        <!-- Choice Tabs: Jika belum terhubung ke sesi ujian spesifik, siswa bisa pilih tab -->
         <div class="tab-wrapper">
-            <button type="button" class="tab-btn active" id="tabExamcard" onclick="switchLoginMode('examcard')">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="7" y1="8" x2="17" y2="8"/><line x1="7" y1="12" x2="12" y2="12"/><line x1="7" y1="16" x2="9" y2="16"/></svg>
-                Kartu Ujian
-            </button>
-            <button type="button" class="tab-btn" id="tabNisDob" onclick="switchLoginMode('nis_dob')">
+            <button type="button" class="tab-btn <?php echo $initialMode === 'nis_dob' ? 'active' : ''; ?>" id="tabNisDob" onclick="switchLoginMode('nis_dob')">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                 NIS & Tgl Lahir
             </button>
+            <button type="button" class="tab-btn <?php echo $initialMode === 'examcard' ? 'active' : ''; ?>" id="tabExamcard" onclick="switchLoginMode('examcard')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="7" y1="8" x2="17" y2="8"/><line x1="7" y1="12" x2="12" y2="12"/><line x1="7" y1="16" x2="9" y2="16"/></svg>
+                Kartu Ujian
+            </button>
         </div>
+        <?php endif; ?>
 
         <form id="loginForm">
             <div id="errorAlert" class="alert error" style="display:none;"></div>
-            <input type="hidden" id="loginType" value="examcard">
+            <input type="hidden" id="loginType" value="<?php echo htmlspecialchars($initialMode); ?>">
 
-            <!-- MODE 1: EXAMCARD -->
-            <div id="sectionExamcard">
+            <!-- MODE: NIS & TANGGAL LAHIR -->
+            <div id="sectionNisDob" style="<?php echo $initialMode === 'nis_dob' ? 'display:block;' : 'display:none;'; ?>">
+                <div class="form-group">
+                    <label class="form-label">Nomor Induk Siswa (NIS)</label>
+                    <div class="input-group">
+                        <input type="text" class="form-input" id="nisUsername" placeholder="Masukkan NIS Siswa" <?php echo $initialMode === 'nis_dob' ? 'autofocus' : ''; ?>>
+                    </div>
+                    <div class="input-hint">Nomor Induk Siswa yang terdaftar di sekolah.</div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Tanggal Lahir</label>
+                    <div class="input-group">
+                        <input type="text" class="form-input" id="dobPassword" placeholder="Contoh: 12052006 (DDMMYYYY)">
+                    </div>
+                    <div class="input-hint">Format 8 digit: HariBulanTahun (contoh: 12052006).</div>
+                </div>
+            </div>
+
+            <!-- MODE: EXAMCARD -->
+            <div id="sectionExamcard" style="<?php echo $initialMode === 'examcard' ? 'display:block;' : 'display:none;'; ?>">
                 <div class="form-group">
                     <label class="form-label">Username Kartu Ujian</label>
                     <div class="input-group">
-                        <input type="text" class="form-input" id="cardUsername" placeholder="Contoh: 123456" autocomplete="username" autofocus>
+                        <input type="text" class="form-input" id="cardUsername" placeholder="Contoh: 123456" autocomplete="username" <?php echo $initialMode === 'examcard' ? 'autofocus' : ''; ?>>
                     </div>
                     <div class="input-hint">Masukkan username / nomor akun pada Kartu Peserta Ujian.</div>
                 </div>
@@ -350,25 +415,6 @@ $token = isset($_GET['token']) ? trim($_GET['token']) : '';
                         </button>
                     </div>
                     <div class="input-hint">Password tertera pada Kartu Peserta Ujian (E-xam Card).</div>
-                </div>
-            </div>
-
-            <!-- MODE 2: NIS & TANGGAL LAHIR -->
-            <div id="sectionNisDob" style="display:none;">
-                <div class="form-group">
-                    <label class="form-label">Nomor Induk Siswa (NIS)</label>
-                    <div class="input-group">
-                        <input type="text" class="form-input" id="nisUsername" placeholder="Masukkan NIS Siswa">
-                    </div>
-                    <div class="input-hint">Nomor Induk Siswa yang terdaftar di sekolah.</div>
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">Tanggal Lahir</label>
-                    <div class="input-group">
-                        <input type="text" class="form-input" id="dobPassword" placeholder="Contoh: 12052006 (DDMMYYYY)">
-                    </div>
-                    <div class="input-hint">Format 8 digit: HariBulanTahun (contoh: 12052006).</div>
                 </div>
             </div>
             
@@ -388,7 +434,7 @@ $token = isset($_GET['token']) ? trim($_GET['token']) : '';
 
     <script src="<?php echo BASE_URL; ?>assets/vendor/jquery-3.7.1.min.js"></script>
     <script>
-        let currentMode = 'examcard';
+        let currentMode = '<?php echo htmlspecialchars($initialMode); ?>';
 
         function switchLoginMode(mode) {
             currentMode = mode;
@@ -420,7 +466,10 @@ $token = isset($_GET['token']) ? trim($_GET['token']) : '';
             e.preventDefault();
             
             const mode = $('#loginType').val();
-            let payload = { login_type: mode };
+            let payload = { 
+                login_type: mode,
+                exam_id: <?php echo (int)$exam_id; ?>
+            };
 
             if (mode === 'examcard') {
                 const username = $('#cardUsername').val().trim();
