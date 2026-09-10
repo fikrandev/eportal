@@ -122,12 +122,12 @@ if (!$session_id) {
         .sidebar-backdrop {
             display: none;
             position: fixed;
-            inset: 0;
+            top: 0; left: 0; right: 0; bottom: 0;
             background: rgba(15, 23, 42, 0.6);
             backdrop-filter: blur(2px);
-            z-index: 49;
+            z-index: 1040;
             opacity: 0;
-            transition: opacity 0.3s ease;
+            transition: opacity 0.25s ease;
         }
         .sidebar-backdrop.active {
             display: block;
@@ -151,15 +151,52 @@ if (!$session_id) {
             justify-content: space-between;
             align-items: center;
         }
+        .sidebar-legend {
+            display: flex;
+            justify-content: space-around;
+            padding: 8px 12px;
+            background: #f8fafc;
+            border-bottom: 1px solid var(--border-color);
+            font-size: 11.5px;
+            color: #64748b;
+        }
+        .legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            font-weight: 500;
+        }
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 3px;
+            border: 1px solid var(--border-color);
+            background: white;
+            display: inline-block;
+        }
+        .legend-dot.answered {
+            background: #2563EB;
+            border-color: #2563EB;
+        }
+        .legend-dot.doubt {
+            background: #eab308;
+            border-color: #eab308;
+        }
         .btn-close-sidebar-mobile {
             display: none;
-            background: none;
-            border: none;
-            font-size: 22px;
+            background: #f1f5f9;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-size: 18px;
             line-height: 1;
             color: #64748b;
             cursor: pointer;
-            padding: 2px 6px;
+            padding: 4px 8px;
+            transition: 0.2s;
+        }
+        .btn-close-sidebar-mobile:hover {
+            background: #fee2e2;
+            color: #dc2626;
         }
         .nav-grid {
             padding: 16px;
@@ -183,6 +220,7 @@ if (!$session_id) {
             color: #475569;
             transition: 0.2s;
             position: relative;
+            touch-action: manipulation;
         }
         .nav-btn.answered {
             background: #2563EB;
@@ -377,7 +415,7 @@ if (!$session_id) {
         }
 
         /* ===== MOBILE RESPONSIVE DESIGN ===== */
-        @media (max-width: 768px) {
+        @media (max-width: 992px) {
             .exam-header {
                 padding: 10px 12px;
                 gap: 8px;
@@ -406,15 +444,32 @@ if (!$session_id) {
             }
 
             /* Off-canvas sidebar drawer */
+            .sidebar-backdrop {
+                display: none;
+                position: fixed;
+                inset: 0;
+                background: rgba(15, 23, 42, 0.6);
+                backdrop-filter: blur(2px);
+                z-index: 1040;
+                opacity: 0;
+                transition: opacity 0.25s ease;
+            }
+            .sidebar-backdrop.active {
+                display: block;
+                opacity: 1;
+            }
             .exam-sidebar {
                 position: fixed;
                 top: 0;
                 bottom: 0;
                 left: 0;
-                width: 300px;
-                max-width: 85vw;
-                box-shadow: 6px 0 24px rgba(0,0,0,0.2);
+                width: 310px;
+                max-width: 86vw;
+                height: 100vh;
+                height: 100dvh;
+                box-shadow: 6px 0 24px rgba(0,0,0,0.25);
                 transform: translateX(-100%);
+                z-index: 1050;
             }
             .exam-sidebar.mobile-open {
                 transform: translateX(0);
@@ -573,6 +628,11 @@ if (!$session_id) {
                     <span>Daftar Nomor Soal</span>
                 </div>
                 <button class="btn-close-sidebar-mobile" onclick="closeSidebarMobile()" aria-label="Tutup">&times;</button>
+            </div>
+            <div class="sidebar-legend">
+                <div class="legend-item"><span class="legend-dot answered"></span> Terjawab</div>
+                <div class="legend-item"><span class="legend-dot doubt"></span> Ragu-ragu</div>
+                <div class="legend-item"><span class="legend-dot"></span> Belum</div>
             </div>
             <div class="nav-grid" id="uiNavGrid">
                 <!-- Buttons injected by JS -->
