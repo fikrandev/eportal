@@ -446,6 +446,18 @@ try {
                         $opsi = $opsiBaru;
                     }
                 }
+
+                // Normalize option properties so both 'text' and 'teks' always exist
+                if (is_array($opsi) && in_array($s['tipe_soal'], ['pilihan_satu', 'pilihan_banyak', 'benar_salah'])) {
+                    foreach ($opsi as &$optItem) {
+                        if (is_array($optItem)) {
+                            $t = $optItem['text'] ?? $optItem['teks'] ?? $optItem['isi'] ?? '';
+                            $optItem['text'] = $t;
+                            $optItem['teks'] = $t;
+                        }
+                    }
+                    unset($optItem);
+                }
                 
                 if ($s['tipe_soal'] === 'menjodohkan') {
                     $kiri = [];

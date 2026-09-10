@@ -723,6 +723,6 @@ if (!$session_id) {
     <script>
         const EXAM_SESSION_ID = <?php echo $session_id; ?>;
     </script>
-    <script src="../assets/js/student_exam.js"></script>
+    <script src="../assets/js/student_exam.js?v=<?php echo time(); ?>"></script>
 </body>
 </html>
