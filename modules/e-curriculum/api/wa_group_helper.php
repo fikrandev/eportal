@@ -283,38 +283,35 @@ function checkAndSendWaGroupGuruAbsensiBatch($tanggal = null) {
 
     // 1. PERIODE PAGI (MASUK): Sebelum jam 12:00
     if ($currentTime < '12:00:00') {
-        // STRICT CUTOFF: Jika waktu sekarang melebihi cutoff masuk (default 06:30), jangan kirim update otomatis lagi
-        if ($currentTime > $cutoffMasuk) {
-            return false;
+        // TAMPUNG SEMUA dan hanya kirim SATU KALI saat jam sudah mencapai batas waktu masuk (cutoffMasuk) e.g. 06:30
+        if ($currentTime >= $cutoffMasuk) {
+            // Cek apakah laporan masuk sudah terkirim hari ini
+            $lastDateMasuk = get_setting('wa_guru_last_sent_date_masuk');
+            if ($lastDateMasuk === $tanggal) {
+                return false; // Sudah dikirim hari ini
+            }
+
+            // Cek hari Minggu (hanya skip jika hari Minggu dan benar-benar tidak ada data apapun)
+            $dayOfWeek = (int)date('w', strtotime($tanggal)); // 0 = Sunday
+            if ($dayOfWeek === 0) {
+                $stmtLogsCheck = db()->prepare("SELECT COUNT(*) FROM absen_logs WHERE DATE(waktu_absen) = ? AND TIME(waktu_absen) < '12:00:00'");
+                $stmtLogsCheck->execute([$tanggal]);
+                $totalLogsHariIni = (int)$stmtLogsCheck->fetchColumn();
+
+                if ($totalLogsHariIni === 0) {
+                    return false;
+                }
+            }
+
+            // Kirim laporan WA masuk secara lengkap (semua guru)
+            $result = sendWaGroupAbsensiGuruDirect($tanggal, 'masuk');
+
+            if (!empty($result['success'])) {
+                upsert_setting('wa_guru_last_sent_date_masuk', $tanggal, 'text', 'Tanggal terakhir WA absen masuk guru dikirim');
+                return true;
+            }
         }
-
-        // Hitung jumlah guru yang sudah tap masuk pagi hari (sebelum 12:00:00)
-        $stmtCount = db()->prepare("
-            SELECT COUNT(DISTINCT TRIM(LEADING '0' FROM l.mesin_pin))
-            FROM absen_logs l
-            WHERE DATE(l.waktu_absen) = ? AND TIME(l.waktu_absen) < '12:00:00'
-        ");
-        $stmtCount->execute([$tanggal]);
-        $totalTeachersTapped = (int)$stmtCount->fetchColumn();
-
-        if ($totalTeachersTapped < 10) return false;
-
-        $currentBatch = (int)floor($totalTeachersTapped / 10);
-
-        // Cek settings untuk batch terakhir yang dikirim pada tanggal ini
-        $lastDate = get_setting('wa_guru_last_batch_date_masuk');
-        $lastBatch = ($lastDate === $tanggal) ? (int)get_setting('wa_guru_last_batch_num_masuk', 0) : 0;
-
-        if ($currentBatch > $lastBatch || $lastDate !== $tanggal) {
-            // Kirim laporan WA masuk
-            sendWaGroupAbsensiGuruDirect($tanggal, 'masuk');
-
-            // Simpan status batch di settings
-            upsert_setting('wa_guru_last_batch_date_masuk', $tanggal, 'text', 'Tanggal batch terakhir WA absen pagi guru');
-            upsert_setting('wa_guru_last_batch_num_masuk', $currentBatch, 'number', 'Batch nomor terakhir WA absen pagi guru');
-
-            return true;
-        }
+        return false;
     } 
     // 2. PERIODE PULANG: Kirim jika sudah mencapai jam cutoff pulang (default 17:00)
     else if ($currentTime >= $jamKirimPulang) {
