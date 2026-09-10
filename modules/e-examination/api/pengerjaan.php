@@ -291,22 +291,27 @@ try {
             if (!$ujian) throw new Exception('Ujian tidak ditemukan, tidak aktif, atau bukan untuk kelas Anda (' . htmlspecialchars($student['kelas']) . ')', 404);
             if (trim($ujian['token']) !== $token) throw new Exception('TOKEN SALAH. Silakan periksa token ujian.', 401);
 
-            // Optional: Check if student has exam card suspension
-            try {
-                $stmtCheckSuspended = db()->prepare("
-                    SELECT status, suspension_note 
-                    FROM xam_exam_students 
-                    WHERE student_id = ? 
-                    ORDER BY id DESC LIMIT 1
-                ");
-                $stmtCheckSuspended->execute([$student['id']]);
-                $susp = $stmtCheckSuspended->fetch();
-                if ($susp && $susp['status'] === 'DITANGGUHKAN') {
-                    $note = $susp['suspension_note'] ? " ({$susp['suspension_note']})" : "";
-                    throw new Exception("Status ujian Anda ditangguhkan{$note}. Harap hubungi panitia ujian/keuangan.", 403);
+            // Optional: Check if student has exam card suspension ONLY if ujian requires examcard or student logged in via examcard
+            $metodeLoginUjian = $ujian['metode_login'] ?? 'nis_dob';
+            $studentLoginType = $student['login_type'] ?? 'nis_dob';
+
+            if ($metodeLoginUjian === 'examcard' || $studentLoginType === 'examcard') {
+                try {
+                    $stmtCheckSuspended = db()->prepare("
+                        SELECT status, suspension_note 
+                        FROM xam_exam_students 
+                        WHERE student_id = ? 
+                        ORDER BY id DESC LIMIT 1
+                    ");
+                    $stmtCheckSuspended->execute([$student['id']]);
+                    $susp = $stmtCheckSuspended->fetch();
+                    if ($susp && $susp['status'] === 'DITANGGUHKAN') {
+                        $note = $susp['suspension_note'] ? " ({$susp['suspension_note']})" : "";
+                        throw new Exception("Status ujian Kartu Ujian Anda ditangguhkan{$note}. Harap hubungi panitia ujian/keuangan.", 403);
+                    }
+                } catch (Exception $e) {
+                    if ($e->getCode() === 403) throw $e;
                 }
-            } catch (Exception $e) {
-                if ($e->getCode() === 403) throw $e;
             }
 
             // 2. Check existing session

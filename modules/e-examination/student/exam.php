@@ -331,7 +331,7 @@ if (!$session_id) {
         <p style="color:#64748b; margin-bottom:32px; font-size:13px; max-width:450px;">
             ⚠ Keluar dari mode layar penuh, berpindah tab, atau membuka aplikasi lain akan dicatat sebagai <strong style="color:#fca5a5;">pelanggaran</strong>. Pelanggaran 3× = ujian dihentikan otomatis.
         </p>
-        <button onclick="ExamApp.enterFullscreen()">
+        <button id="btnEnterFullscreen" onclick="(function(){ if(window.ExamApp && typeof window.ExamApp.enterFullscreen === 'function'){ window.ExamApp.enterFullscreen(); } else { const el = document.getElementById('fullscreenOverlay'); if(el) el.style.display='none'; } })()">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:8px;">
                 <polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/>
             </svg>

@@ -93,18 +93,33 @@ const ExamApp = {
         }, 10000);
 
         // ===== 2. FULLSCREEN ENFORCEMENT =====
-        document.addEventListener('fullscreenchange', () => {
-            if (!document.fullscreenElement) {
-                $('#fullscreenOverlay').css('display', 'flex');
-                this.reportCheating('exit_fullscreen');
+        const getFullscreenElement = () => {
+            return document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || document.msFullscreenElement || null;
+        };
+
+        const handleFsChange = () => {
+            if (!getFullscreenElement()) {
+                if (this._hasEnteredFullscreen) {
+                    $('#fullscreenOverlay').css('display', 'flex');
+                    this.reportCheating('exit_fullscreen');
+                }
             } else {
+                this._hasEnteredFullscreen = true;
                 $('#fullscreenOverlay').hide();
             }
+        };
+
+        ['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange'].forEach(evt => {
+            document.addEventListener(evt, handleFsChange);
         });
 
-        if (!document.fullscreenElement) {
+        if (!getFullscreenElement()) {
             $('#fullscreenOverlay').css('display', 'flex');
         }
+
+        $(document).on('click', '#btnEnterFullscreen, #fullscreenOverlay button', () => {
+            this.enterFullscreen();
+        });
 
         // ===== 3. VISIBILITY CHANGE (Switch tab) =====
         document.addEventListener('visibilitychange', () => {
@@ -204,15 +219,25 @@ const ExamApp = {
     },
 
     enterFullscreen() {
+        this._hasEnteredFullscreen = true;
+        $('#fullscreenOverlay').hide();
+
         const docElm = document.documentElement;
-        if (docElm.requestFullscreen) {
-            docElm.requestFullscreen();
-        } else if (docElm.mozRequestFullScreen) {
-            docElm.mozRequestFullScreen();
-        } else if (docElm.webkitRequestFullScreen) {
-            docElm.webkitRequestFullScreen();
-        } else if (docElm.msRequestFullscreen) {
-            docElm.msRequestFullscreen();
+        const req = docElm.requestFullscreen || docElm.webkitRequestFullScreen || docElm.webkitRequestFullscreen || docElm.mozRequestFullScreen || docElm.msRequestFullscreen;
+        
+        if (req) {
+            try {
+                const res = req.call(docElm);
+                if (res && typeof res.catch === 'function') {
+                    res.catch(err => {
+                        console.warn('Fullscreen request dismissed or not allowed:', err);
+                        $('#fullscreenOverlay').hide();
+                    });
+                }
+            } catch(e) {
+                console.warn('Fullscreen exception:', e);
+                $('#fullscreenOverlay').hide();
+            }
         }
     },
 
@@ -870,5 +895,7 @@ const ExamApp = {
         });
     }
 };
+
+window.ExamApp = ExamApp;
 
 $(document).ready(() => ExamApp.init());
