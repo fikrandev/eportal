@@ -551,7 +551,7 @@ try {
             $session_id = (int)($data['session_id'] ?? 0);
             if (!$session_id) throw new Exception('Data tidak valid', 400);
 
-            $stmt = db()->prepare("UPDATE exam_sesi SET status = 'selesai', waktu_selesai = NOW() WHERE id = ? AND student_id = ? AND status = 'mengerjakan'");
+            $stmt = db()->prepare("UPDATE exam_sesi SET status = 'selesai', waktu_selesai = NOW() WHERE id = ? AND student_id = ? AND status IN ('mengerjakan', 'berlangsung')");
             $stmt->execute([$session_id, $_SESSION['exam_student']['id']]);
 
             if ($stmt->rowCount() > 0) {

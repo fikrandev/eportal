@@ -1580,14 +1580,14 @@ const Exam = {
                 let nilaiCol = '';
                 if (isPsikologi) {
                     if (s.psikologi_hasil) {
-                        nilaiCol = `<span class="ex-badge" style="background:#f3e8ff;color:#6b21a8;font-weight:700;">${this.esc(s.psikologi_hasil)}</span><br><span style="font-size:11px;color:#64748b;">Skor: ${s.skor !== null ? parseFloat(s.skor).toFixed(2) : '-'}</span>`;
+                        nilaiCol = `<span class="ex-badge" style="background:#f3e8ff;color:#6b21a8;font-weight:700;">${this.esc(s.psikologi_hasil)}</span><br><span style="font-size:11px;color:#64748b;">Skor: ${s.skor !== null ? Math.round(s.skor) : '-'}</span>`;
                     } else if (s.skor !== null) {
-                        nilaiCol = `<strong>${parseFloat(s.skor).toFixed(2)}</strong>`;
+                        nilaiCol = `<strong>${Math.round(s.skor)}</strong>`;
                     } else {
                         nilaiCol = '<span style="color:#94a3b8">Belum Selesai</span>';
                     }
                 } else {
-                    nilaiCol = s.skor !== null ? `<strong>${parseFloat(s.skor).toFixed(2)}</strong>` : '<span style="color:#94a3b8">Belum Dinilai</span>';
+                    nilaiCol = s.skor !== null ? `<strong>${Math.round(s.skor)}</strong>` : '<span style="color:#94a3b8">Belum Dinilai</span>';
                 }
 
                 return `

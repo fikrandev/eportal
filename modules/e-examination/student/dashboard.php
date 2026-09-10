@@ -208,7 +208,7 @@ $pastExams = $stmtPast->fetchAll();
                                     ?>
                                         <span class="score-badge" style="background:#f3e8ff;color:#6b21a8;"><?php echo htmlspecialchars($outcome); ?></span>
                                     <?php else: ?>
-                                        <span class="score-badge"><?php echo round($p['skor'], 2); ?></span>
+                                        <span class="score-badge"><?php echo round($p['skor'], 0); ?></span>
                                     <?php endif; ?>
                                 <?php else: ?>
                                     <span style="color:#94a3b8;">Tidak ditampilkan / Menunggu AI</span>

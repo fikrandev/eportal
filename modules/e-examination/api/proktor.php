@@ -210,6 +210,14 @@ try {
             ");
             $stmt->execute($studentIds);
 
+            // Jika sebelumnya ujian dihentikan karena pelanggaran, ubah statusnya kembali agar siswa bisa melanjutkan
+            $stmtUnterminate = db()->prepare("
+                UPDATE exam_sesi 
+                SET status = 'mengerjakan' 
+                WHERE student_id IN ($placeholders) AND status = 'dihentikan'
+            ");
+            $stmtUnterminate->execute($studentIds);
+
             // Also check student names for feedback message
             $stmtNames = db()->prepare("SELECT nama FROM students WHERE id IN ($placeholders) LIMIT 3");
             $stmtNames->execute($studentIds);
