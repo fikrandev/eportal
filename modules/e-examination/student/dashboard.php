@@ -235,42 +235,29 @@ $pastExams = $stmtPast->fetchAll();
 
         function showTokenModal(ujianId, defaultToken = '') {
             EModal.form({
-                title: 'Masukkan Token & Kartu Ujian',
+                title: 'Konfirmasi Mulai Ujian',
                 form: `
                     <p style="font-size:14px;color:var(--text-secondary);margin-bottom:16px;">
-                        Silakan masukkan token ujian beserta kredensial dari E-xam Card Anda.
+                        Silakan masukkan <strong>Token Ujian</strong> yang diberikan oleh Pengawas / Proktor untuk memulai.
                     </p>
-                    <div class="form-group">
-                        <label class="form-label">TOKEN UJIAN</label>
-                        <input type="text" id="fToken" class="form-input" style="font-family:monospace;font-size:20px;text-align:center;letter-spacing:4px;text-transform:uppercase;" maxlength="6" autofocus placeholder="TOKEN" value="${defaultToken}">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">USERNAME CARD</label>
-                        <input type="text" id="fUsernameCard" class="form-input" placeholder="Username E-xam Card" autocomplete="off">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">PASSWORD CARD</label>
-                        <input type="password" id="fPasswordCard" class="form-input" placeholder="Password E-xam Card" autocomplete="off">
+                    <div class="form-group" style="text-align:center;">
+                        <label class="form-label" style="text-align:center; font-weight:700; color:#1e293b;">TOKEN UJIAN</label>
+                        <input type="text" id="fToken" class="form-input" style="font-family:monospace;font-size:22px;text-align:center;letter-spacing:6px;text-transform:uppercase;font-weight:700;color:#2563EB;max-width:240px;margin:0 auto;display:block;" maxlength="6" autofocus placeholder="------" value="${defaultToken}">
                     </div>
                 `,
-                confirmText: 'Verifikasi & Mulai',
+                confirmText: '🚀 Mulai Kerjakan',
                 onConfirm: () => {
                     const token = $('#fToken').val().trim().toUpperCase();
-                    const username_card = $('#fUsernameCard').val().trim();
-                    const password_card = $('#fPasswordCard').val().trim();
                     
-                    if (!token) { EModal.toast({type:'error', title:'Token wajib diisi'}); return false; }
-                    if (!username_card || !password_card) { EModal.toast({type:'error', title:'Kredensial E-xam Card wajib diisi'}); return false; }
+                    if (!token) { EModal.toast({type:'error', title:'Token ujian wajib diisi'}); return false; }
                     
-                    const loader = EModal.loading('Memverifikasi kredensial...');
+                    const loader = EModal.loading('Memverifikasi token & menyiapkan ujian...');
                     $.ajax({
                         url: '../api/pengerjaan.php?action=start',
                         method: 'POST',
                         data: JSON.stringify({ 
                             ujian_id: ujianId, 
-                            token: token,
-                            username_card: username_card,
-                            password_card: password_card
+                            token: token
                         }),
                         contentType: 'application/json',
                         success: function(r) {
@@ -278,14 +265,14 @@ $pastExams = $stmtPast->fetchAll();
                             if (r.success) {
                                 window.location.href = 'exam.php?session_id=' + r.data.session_id;
                             } else {
-                                EModal.alert('Gagal', r.message);
+                                EModal.alert('Gagal Memulai Ujian', r.message);
                             }
                         },
                         error: function(xhr) {
                             EModal.close(loader);
-                            let msg = 'Terjadi kesalahan';
+                            let msg = 'Terjadi kesalahan pada server';
                             try { msg = xhr.responseJSON.message || msg; } catch(e){}
-                            EModal.alert('Gagal', msg);
+                            EModal.alert('Gagal Memulai Ujian', msg);
                         }
                     });
                 }

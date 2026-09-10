@@ -1381,34 +1381,93 @@ const Exam = {
     },
 
     shareUjian(id, token, judul) {
-        const link = `${this.state.moduleUrl}student/login.php?exam_id=${id}&token=${token}`;
-        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(link)}`;
+        let fullLink = '';
+        try {
+            fullLink = new URL(this.state.moduleUrl + `student/login.php?exam_id=${id}&token=${token}`, window.location.origin).href;
+        } catch(e) {
+            fullLink = window.location.origin + this.state.moduleUrl + `student/login.php?exam_id=${id}&token=${token}`;
+        }
         
         EModal.form({
-            title: 'Bagikan Tautan Ujian',
+            title: 'Bagikan Tautan & QR Sesi Ujian',
             form: `
-                <div style="text-align:center; padding: 10px 20px;">
-                    <h3 style="margin-top:0; font-size:16px; color:var(--text-main);">${this.esc(judul)}</h3>
-                    <div style="margin: 20px 0; display: flex; justify-content: center;">
-                        <img src="${qrUrl}" alt="QR Code" style="border-radius: 8px; border: 1px solid #e2e8f0; padding: 10px; background: white; width:200px; height:200px; object-fit:contain;">
+                <div style="text-align:center; padding: 10px 15px;">
+                    <h3 style="margin-top:0; font-size:16px; font-weight:700; color:var(--text-main); margin-bottom:12px;">${this.esc(judul)}</h3>
+                    
+                    <div style="margin: 16px 0; display: flex; flex-direction:column; align-items: center; justify-content: center;">
+                        <div id="examQrContainer" style="background: white; padding: 14px; border-radius: 12px; border: 1.5px solid #e2e8f0; display: inline-block; box-shadow: 0 4px 12px rgba(0,0,0,0.06); min-width:200px; min-height:200px; display:flex; align-items:center; justify-content:center;">
+                            <div id="examQrTarget"></div>
+                        </div>
+                        <div style="margin-top:8px;">
+                            <button type="button" class="btn btn-outline btn-sm" onclick="Exam.downloadQR('${this.esc(judul)}')" style="font-size:12px; padding:4px 12px; border-radius:6px; cursor:pointer;">
+                                📥 Simpan Gambar QR
+                            </button>
+                        </div>
                     </div>
-                    <p style="font-size:12px; color:var(--text-secondary); margin-bottom:8px;">Bagikan tautan ini ke siswa, token otomatis terisi:</p>
+
+                    <p style="font-size:12px; color:var(--text-secondary); margin-bottom:8px;">Bagikan tautan ini ke siswa, token otomatis terisi pada sesi:</p>
                     <div style="display:flex; gap: 8px; align-items:center;">
-                        <input type="text" id="fShareLink" class="form-input" value="${link}" readonly style="background:#f8fafc; font-size: 13px;">
-                        <button type="button" class="ex-btn primary" onclick="Exam.copyLink()" style="white-space:nowrap; padding: 8px 16px;">Copy Link</button>
+                        <input type="text" id="fShareLink" class="form-input" value="${fullLink}" readonly style="background:#f8fafc; font-size: 13px; font-family:monospace; color:#1e40af; font-weight:500;">
+                        <button type="button" class="ex-btn primary" onclick="Exam.copyLink()" style="white-space:nowrap; padding: 8px 16px;">Salin Link</button>
                     </div>
                 </div>
             `,
             confirmText: 'Tutup',
-            onConfirm: () => { return true; } // close
+            onConfirm: () => { return true; }
         });
+
+        setTimeout(() => {
+            const target = document.getElementById('examQrTarget');
+            if (target && typeof QRCode !== 'undefined') {
+                target.innerHTML = '';
+                new QRCode(target, {
+                    text: fullLink,
+                    width: 190,
+                    height: 190,
+                    colorDark: "#0f172a",
+                    colorLight: "#ffffff",
+                    correctLevel: QRCode.CorrectLevel.M
+                });
+            } else if (target) {
+                target.innerHTML = `<img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(fullLink)}" alt="QR Code" style="width:190px;height:190px;object-fit:contain;">`;
+            }
+        }, 50);
+    },
+
+    downloadQR(title) {
+        const canvas = document.querySelector('#examQrTarget canvas');
+        const img = document.querySelector('#examQrTarget img');
+        let dataUrl = '';
+        if (canvas) {
+            dataUrl = canvas.toDataURL('image/png');
+        } else if (img && img.src) {
+            dataUrl = img.src;
+        }
+
+        if (dataUrl) {
+            const a = document.createElement('a');
+            a.href = dataUrl;
+            a.download = `QR_Ujian_${(title || 'CBT').replace(/[^a-zA-Z0-9]/g, '_')}.png`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            EModal.toast({ type: 'success', title: 'Gambar QR berhasil diunduh' });
+        } else {
+            EModal.toast({ type: 'error', title: 'Gagal mengambil gambar QR' });
+        }
     },
 
     copyLink() {
         const input = document.getElementById('fShareLink');
-        input.select();
-        document.execCommand('copy');
-        EModal.toast({type: 'success', title: 'Tautan disalin!'});
+        if (input) {
+            input.select();
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(input.value);
+            } else {
+                document.execCommand('copy');
+            }
+            EModal.toast({type: 'success', title: 'Tautan disalin!'});
+        }
     },
 
     // ==========================================

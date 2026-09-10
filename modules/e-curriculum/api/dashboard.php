@@ -26,7 +26,7 @@ if ($action === 'stats') {
 
         // 1. Core Summary Metrics
         $total_guru = (int)$pdo->query("SELECT COUNT(*) FROM users WHERE role = 'guru' AND status = 1")->fetchColumn();
-        $total_siswa = (int)$pdo->query("SELECT COUNT(*) FROM students WHERE status = 1")->fetchColumn();
+        $total_siswa = (int)$pdo->query("SELECT COUNT(*) FROM students WHERE status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '')")->fetchColumn();
         
         $total_kelas = (int)$pdo->query("SELECT COUNT(*) FROM sch_kelas")->fetchColumn();
         if ($total_kelas === 0) {

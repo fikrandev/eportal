@@ -54,14 +54,26 @@ switch ($action) {
 }
 
 /**
- * List absensi for a class on a given date (merging E-Absen logs and acad_absensi)
+ * List absensi for a class on a given date (merging E-Absen logs and acad_absensi for 3 sessions)
  */
 function listAbsensi($user) {
     try {
         $tanggal = isset($_GET['tanggal']) ? $_GET['tanggal'] : date('Y-m-d');
         $kelas_id = isset($_GET['kelas_id']) ? (int)$_GET['kelas_id'] : 0;
-        $jam_ke = isset($_GET['jam_ke']) ? (int)$_GET['jam_ke'] : 0;
-        $waktu_terlambat = get_setting('waktu_terlambat_siswa', '07:15:00');
+        $jam_ke = isset($_GET['jam_ke']) ? (int)$_GET['jam_ke'] : 1;
+        if ($jam_ke <= 0) $jam_ke = 1;
+
+        $waktu_terlambat = get_setting('waktu_terlambat_siswa', '06:30:00');
+        $waktu_istirahat_mulai = get_setting('waktu_istirahat_siswa_mulai', '09:30:00');
+        $waktu_istirahat_selesai = get_setting('waktu_istirahat_siswa_selesai', '10:15:00');
+        $waktu_pulang = get_setting('waktu_pulang_siswa', '15:30:00');
+        $waktu_pulang_mulai = get_setting('waktu_pulang_siswa_mulai', '13:30:00');
+
+        if (strlen($waktu_terlambat) === 5) $waktu_terlambat .= ':00';
+        if (strlen($waktu_istirahat_mulai) === 5) $waktu_istirahat_mulai .= ':00';
+        if (strlen($waktu_istirahat_selesai) === 5) $waktu_istirahat_selesai .= ':00';
+        if (strlen($waktu_pulang) === 5) $waktu_pulang .= ':00';
+        if (strlen($waktu_pulang_mulai) === 5) $waktu_pulang_mulai .= ':00';
 
         if ($kelas_id <= 0) json_response(400, false, 'Kelas wajib dipilih.');
 
@@ -71,8 +83,8 @@ function listAbsensi($user) {
         $kelas = $stmtK->fetch();
         if (!$kelas) json_response(404, false, 'Kelas tidak ditemukan.');
 
-        // Get students in this class
-        $stmtS = db()->prepare("SELECT id, nis, nama FROM students WHERE kelas = ? AND status = 1 ORDER BY nama");
+        // Get students in this class (filter active & not graduated)
+        $stmtS = db()->prepare("SELECT id, nis, nama FROM students WHERE kelas = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY nama");
         $stmtS->execute([$kelas['nama_kelas']]);
         $students = $stmtS->fetchAll();
 
@@ -80,57 +92,95 @@ function listAbsensi($user) {
         $stmtA = db()->prepare("
             SELECT student_id, status, keterangan 
             FROM acad_absensi 
-            WHERE tanggal = ? AND kelas_id = ? AND jam_ke = ?
+            WHERE tanggal = ? AND kelas_id = ? AND (jam_ke = ? " . ($jam_ke == 1 ? "OR jam_ke = 0" : "") . ")
+            ORDER BY jam_ke DESC
         ");
         $stmtA->execute([$tanggal, $kelas_id, $jam_ke]);
         $existingManual = [];
         while ($row = $stmtA->fetch()) {
-            $existingManual[$row['student_id']] = $row;
+            if (!isset($existingManual[$row['student_id']])) {
+                $existingManual[$row['student_id']] = $row;
+            }
         }
 
-        // Get E-Absen logs for this date
+        // Get E-Absen logs for this date partitioned into 3 sessions
         $stmtLogs = db()->prepare("
             SELECT TRIM(LEADING '0' FROM mesin_pin) COLLATE utf8mb4_unicode_ci as clean_pin, 
-                   MIN(TIME(waktu_absen)) as jam_masuk
+                   MIN(CASE WHEN TIME(waktu_absen) < ? THEN TIME(waktu_absen) END) as jam_masuk,
+                   MIN(CASE WHEN TIME(waktu_absen) >= ? AND TIME(waktu_absen) < ? THEN TIME(waktu_absen) END) as jam_istirahat,
+                   MAX(CASE WHEN TIME(waktu_absen) >= ? THEN TIME(waktu_absen) END) as jam_pulang
             FROM absen_logs 
             WHERE DATE(waktu_absen) = ? 
             GROUP BY clean_pin
         ");
-        $stmtLogs->execute([$tanggal]);
+        $stmtLogs->execute([$waktu_istirahat_mulai, $waktu_istirahat_mulai, $waktu_pulang_mulai, $waktu_pulang_mulai, $tanggal]);
         $eAbsenLogs = [];
         while ($l = $stmtLogs->fetch()) {
-            $eAbsenLogs[$l['clean_pin']] = $l['jam_masuk'];
+            $eAbsenLogs[$l['clean_pin']] = $l;
         }
 
-        // Merge student list with E-Absen log and manual override
+        $waktu_terlambat_short = substr($waktu_terlambat, 0, 5);
+
+        // Merge student list with E-Absen log and manual override based on active session (jam_ke)
         $result = [];
         foreach ($students as $s) {
             $cleanNis = ltrim($s['nis'], '0');
-            $jamMasuk = isset($eAbsenLogs[$cleanNis]) ? $eAbsenLogs[$cleanNis] : null;
+            $log = isset($eAbsenLogs[$cleanNis]) ? $eAbsenLogs[$cleanNis] : null;
+            $jamMasuk = ($log && !empty($log['jam_masuk'])) ? $log['jam_masuk'] : null;
+            $jamIstirahat = ($log && !empty($log['jam_istirahat'])) ? $log['jam_istirahat'] : null;
+            $jamPulang = ($log && !empty($log['jam_pulang'])) ? $log['jam_pulang'] : null;
 
-            // Determine default status based on E-Absen log if available
-            $calculatedStatus = 'H';
-            $scanInfo = 'Belum Absen Mesin';
+            $calculatedStatus = 'A'; // Default jika belum scan adalah Alpha
+            $scanInfo = 'Belum Scan Mesin';
+            $jamScanSesi = null;
 
-            if ($jamMasuk !== null) {
-                if ($jamMasuk <= $waktu_terlambat) {
-                    $calculatedStatus = 'H';
-                    $scanInfo = "Hadir (" . substr($jamMasuk, 0, 5) . ")";
+            if ($jam_ke == 1) { // 1. Absen Masuk
+                $jamScanSesi = $jamMasuk;
+                if ($jamMasuk !== null) {
+                    $masukShort = substr($jamMasuk, 0, 5);
+                    if ($masukShort <= $waktu_terlambat_short) {
+                        $calculatedStatus = 'H';
+                        $scanInfo = "Hadir ({$masukShort})";
+                    } else {
+                        $calculatedStatus = 'T';
+                        $scanInfo = "Terlambat ({$masukShort})";
+                    }
                 } else {
-                    $calculatedStatus = 'T';
-                    $scanInfo = "Terlambat (" . substr($jamMasuk, 0, 5) . ")";
+                    $calculatedStatus = 'A';
+                    $scanInfo = 'Belum Scan Mesin';
+                }
+            } else if ($jam_ke == 2) { // 2. Absen Istirahat (tampilan jam saja)
+                $jamScanSesi = $jamIstirahat;
+                if ($jamIstirahat !== null) {
+                    $calculatedStatus = 'H';
+                    $scanInfo = substr($jamIstirahat, 0, 5);
+                } else {
+                    $calculatedStatus = 'A';
+                    $scanInfo = 'Belum Scan';
+                }
+            } else if ($jam_ke == 3) { // 3. Absen Pulang (tampilan jam saja)
+                $jamScanSesi = $jamPulang;
+                if ($jamPulang !== null) {
+                    $calculatedStatus = 'H';
+                    $scanInfo = substr($jamPulang, 0, 5);
+                } else {
+                    $calculatedStatus = 'A';
+                    $scanInfo = 'Belum Scan';
                 }
             }
 
-            // Manual override takes precedence if recorded in acad_absensi
-            $finalStatus = isset($existingManual[$s['id']]) ? $existingManual[$s['id']]['status'] : ($jamMasuk !== null ? $calculatedStatus : 'H');
-            $keterangan = isset($existingManual[$s['id']]) ? $existingManual[$s['id']]['keterangan'] : ($jamMasuk !== null ? "Fingerprint: $jamMasuk" : '');
+            // Manual override takes precedence if recorded in acad_absensi for this session
+            $finalStatus = isset($existingManual[$s['id']]) ? $existingManual[$s['id']]['status'] : $calculatedStatus;
+            $keterangan = isset($existingManual[$s['id']]) ? $existingManual[$s['id']]['keterangan'] : ($jamScanSesi !== null ? "Fingerprint: $jamScanSesi" : '');
 
             $result[] = [
                 'student_id' => $s['id'],
                 'nis' => $s['nis'],
                 'nama' => $s['nama'],
+                'jam_scan' => $jamScanSesi,
                 'jam_masuk' => $jamMasuk,
+                'jam_istirahat' => $jamIstirahat,
+                'jam_pulang' => $jamPulang,
                 'scan_info' => $scanInfo,
                 'status' => $finalStatus,
                 'keterangan' => $keterangan
@@ -138,7 +188,12 @@ function listAbsensi($user) {
         }
 
         json_response(200, true, 'Data absensi dimuat.', [
+            'jam_ke' => $jam_ke,
             'waktu_terlambat' => substr($waktu_terlambat, 0, 5),
+            'waktu_istirahat_mulai' => substr($waktu_istirahat_mulai, 0, 5),
+            'waktu_istirahat_selesai' => substr($waktu_istirahat_selesai, 0, 5),
+            'waktu_pulang' => substr($waktu_pulang, 0, 5),
+            'waktu_pulang_mulai' => substr($waktu_pulang_mulai, 0, 5),
             'students' => $result
         ]);
     } catch (PDOException $e) {
@@ -147,7 +202,7 @@ function listAbsensi($user) {
 }
 
 /**
- * Save/update absensi for a class on a date
+ * Save/update absensi for a class on a date per session
  */
 function saveAbsensi($user) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed.');
@@ -155,7 +210,8 @@ function saveAbsensi($user) {
     $input = get_input();
     $tanggal = isset($input['tanggal']) ? $input['tanggal'] : date('Y-m-d');
     $kelas_id = isset($input['kelas_id']) ? (int)$input['kelas_id'] : 0;
-    $jam_ke = isset($input['jam_ke']) ? (int)$input['jam_ke'] : 0;
+    $jam_ke = isset($input['jam_ke']) ? (int)$input['jam_ke'] : 1;
+    if ($jam_ke <= 0) $jam_ke = 1;
     $absensi = isset($input['absensi']) ? $input['absensi'] : [];
 
     $active_year = get_active_academic_year();
@@ -179,6 +235,13 @@ function saveAbsensi($user) {
             'A' => 'Alpa',
             'T' => 'Terlambat'
         ];
+
+        $sesiLabels = [
+            1 => 'Masuk',
+            2 => 'Istirahat',
+            3 => 'Pulang'
+        ];
+        $sesiText = $sesiLabels[$jam_ke] ?? 'Harian';
 
         foreach ($absensi as $a) {
             $student_id = (int)$a['student_id'];
@@ -207,8 +270,8 @@ function saveAbsensi($user) {
                 if ($siswa && !empty($siswa['no_hp_ortu'])) {
                     $statusText = $statusLabels[$status] ?? 'Hadir';
                     $msg = str_replace(
-                        ['{nama}', '{status_absen}', '{waktu}'], 
-                        [$siswa['nama'], $statusText, $tanggal], 
+                        ['{nama}', '{status_absen}', '{waktu}', '{sesi}'], 
+                        [$siswa['nama'], $statusText, $tanggal, $sesiText], 
                         $waTemplate
                     );
                     triggerWAGateway($siswa['no_hp_ortu'], $msg);
@@ -217,7 +280,7 @@ function saveAbsensi($user) {
         }
 
         db()->commit();
-        json_response(200, true, 'Absensi berhasil disimpan.');
+        json_response(200, true, "Absensi {$sesiText} berhasil disimpan.");
     } catch (PDOException $e) {
         db()->rollBack();
         json_response(500, false, 'Server error: ' . $e->getMessage());
@@ -237,7 +300,7 @@ function getStudentsByKelas($user) {
         $kelas = $stmtK->fetch();
         if (!$kelas) json_response(404, false, 'Kelas tidak ditemukan.');
 
-        $stmt = db()->prepare("SELECT id, nis, nisn, nama, jenis_kelamin FROM students WHERE kelas = ? AND status = 1 ORDER BY nama");
+        $stmt = db()->prepare("SELECT id, nis, nisn, nama, jenis_kelamin FROM students WHERE kelas = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY nama");
         $stmt->execute([$kelas['nama_kelas']]);
         json_response(200, true, 'Siswa dimuat.', $stmt->fetchAll());
     } catch (PDOException $e) {
@@ -266,12 +329,12 @@ function rekapAbsensi($user) {
             $nama_kelas_filter = $stmtK->fetchColumn();
         }
 
-        // 1. Get all relevant students
+        // 1. Get all relevant students (filter active & not graduated)
         if ($nama_kelas_filter) {
-            $stmtS = db()->prepare("SELECT id, nis, nama, kelas FROM students WHERE kelas = ? AND status = 1 ORDER BY kelas, nama");
+            $stmtS = db()->prepare("SELECT id, nis, nama, kelas FROM students WHERE kelas = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY kelas, nama");
             $stmtS->execute([$nama_kelas_filter]);
         } else {
-            $stmtS = db()->query("SELECT id, nis, nama, kelas FROM students WHERE status = 1 ORDER BY kelas, nama");
+            $stmtS = db()->query("SELECT id, nis, nama, kelas FROM students WHERE status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY kelas, nama");
         }
         $students = $stmtS->fetchAll();
 
@@ -395,17 +458,20 @@ function rekapAbsensi($user) {
 }
 
 /**
- * Get setting waktu terlambat
+ * Get setting waktu absensi siswa
  */
 function getSettings($user) {
-    $waktu_terlambat = get_setting('waktu_terlambat_siswa', '07:15:00');
     json_response(200, true, 'Setting dimuat.', [
-        'waktu_terlambat' => substr($waktu_terlambat, 0, 5)
+        'waktu_terlambat' => substr(get_setting('waktu_terlambat_siswa', '06:30:00'), 0, 5),
+        'waktu_istirahat_mulai' => substr(get_setting('waktu_istirahat_siswa_mulai', '09:30:00'), 0, 5),
+        'waktu_istirahat_selesai' => substr(get_setting('waktu_istirahat_siswa_selesai', '10:15:00'), 0, 5),
+        'waktu_pulang' => substr(get_setting('waktu_pulang_siswa', '15:30:00'), 0, 5),
+        'waktu_pulang_mulai' => substr(get_setting('waktu_pulang_siswa_mulai', '13:30:00'), 0, 5)
     ]);
 }
 
 /**
- * Save setting waktu terlambat
+ * Save setting waktu absensi siswa
  */
 function saveSettings($user) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed.');
@@ -414,13 +480,49 @@ function saveSettings($user) {
     }
 
     $input = get_input();
-    $waktu = isset($input['waktu_terlambat']) ? trim($input['waktu_terlambat']) : '07:15';
-
-    // Format HH:MM:SS
-    if (strlen($waktu) === 5) {
-        $waktu .= ':00';
+    
+    // Check if body was passed as raw JSON
+    if (!isset($input['waktu_terlambat']) && !isset($input['waktu_istirahat_mulai']) && !isset($input['waktu_pulang'])) {
+        $raw = file_get_contents('php://input');
+        if (!empty($raw)) {
+            $json = json_decode($raw, true);
+            if (is_array($json)) {
+                $input = array_merge($input, $json);
+            }
+        }
     }
 
-    upsert_setting('waktu_terlambat_siswa', $waktu, 'text', 'Batas jam terlambat absensi siswa');
-    json_response(200, true, 'Setting jam terlambat berhasil disimpan.');
+    if (isset($input['waktu_terlambat'])) {
+        $w = trim($input['waktu_terlambat']);
+        if (strlen($w) === 5) $w .= ':00';
+        upsert_setting('waktu_terlambat_siswa', $w, 'text', 'Batas jam masuk / terlambat absensi siswa');
+    }
+    if (isset($input['waktu_istirahat_mulai'])) {
+        $w = trim($input['waktu_istirahat_mulai']);
+        if (strlen($w) === 5) $w .= ':00';
+        upsert_setting('waktu_istirahat_siswa_mulai', $w, 'text', 'Jam mulai istirahat siswa');
+    }
+    if (isset($input['waktu_istirahat_selesai'])) {
+        $w = trim($input['waktu_istirahat_selesai']);
+        if (strlen($w) === 5) $w .= ':00';
+        upsert_setting('waktu_istirahat_siswa_selesai', $w, 'text', 'Jam selesai istirahat siswa');
+    }
+    if (isset($input['waktu_pulang'])) {
+        $w = trim($input['waktu_pulang']);
+        if (strlen($w) === 5) $w .= ':00';
+        upsert_setting('waktu_pulang_siswa', $w, 'text', 'Jam batas pulang siswa');
+    }
+    if (isset($input['waktu_pulang_mulai'])) {
+        $w = trim($input['waktu_pulang_mulai']);
+        if (strlen($w) === 5) $w .= ':00';
+        upsert_setting('waktu_pulang_siswa_mulai', $w, 'text', 'Jam mulai tap mesin untuk absen pulang siswa');
+    }
+
+    json_response(200, true, 'Pengaturan jam absensi siswa berhasil disimpan.', [
+        'waktu_terlambat' => substr(get_setting('waktu_terlambat_siswa', '06:30:00'), 0, 5),
+        'waktu_istirahat_mulai' => substr(get_setting('waktu_istirahat_siswa_mulai', '09:30:00'), 0, 5),
+        'waktu_istirahat_selesai' => substr(get_setting('waktu_istirahat_siswa_selesai', '10:15:00'), 0, 5),
+        'waktu_pulang' => substr(get_setting('waktu_pulang_siswa', '15:30:00'), 0, 5),
+        'waktu_pulang_mulai' => substr(get_setting('waktu_pulang_siswa_mulai', '13:30:00'), 0, 5)
+    ]);
 }

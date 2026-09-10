@@ -437,7 +437,7 @@ function getJurnalMeta($user) {
 
             // Map sch_kelas nama to students.kelas
             $placeholders = implode(',', array_fill(0, count($classNames), '?'));
-            $stmt = db()->prepare("SELECT id, nis, nama, kelas FROM students WHERE kelas IN ($placeholders) AND status = 1 ORDER BY kelas, nama");
+            $stmt = db()->prepare("SELECT id, nis, nama, kelas FROM students WHERE kelas IN ($placeholders) AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY kelas, nama");
             $stmt->execute(array_values($classNames));
             $students = $stmt->fetchAll();
         }
@@ -619,7 +619,7 @@ function getStudentsByKelas($user) {
         $kelas = $stmtK->fetch();
         if (!$kelas) json_response(404, false, 'Kelas tidak ditemukan.');
         
-        $stmt = db()->prepare("SELECT id, nis, nama FROM students WHERE kelas = ? AND status = 1 ORDER BY nama");
+        $stmt = db()->prepare("SELECT id, nis, nama FROM students WHERE kelas = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY nama");
         $stmt->execute([$kelas['nama_kelas']]);
         json_response(200, true, 'Siswa dimuat.', $stmt->fetchAll());
     } catch (PDOException $e) {

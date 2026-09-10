@@ -1,6 +1,0 @@
-2026/09/09-00:16:47.050 68c Reusing MANIFEST E:\xampp\htdocs\eportal\wa-server\.wwebjs_auth\session\Default\Local Storage\leveldb/MANIFEST-000001
-2026/09/09-00:16:47.159 68c Recovering log #6
-2026/09/09-00:16:47.162 68c Reusing old log E:\xampp\htdocs\eportal\wa-server\.wwebjs_auth\session\Default\Local Storage\leveldb/000006.log 
-2026/09/09-00:17:09.786 58bc Level-0 table #10: started
-2026/09/09-00:17:09.795 58bc Level-0 table #10: 14451 bytes OK
-2026/09/09-00:17:09.799 58bc Delete type=0 #6

@@ -44,11 +44,13 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
     $currentTime = date('H:i') . ' WIB';
 
     $namaSekolah = get_setting('nama_sekolah', 'SMAS Wachid Hasyim 1 Surabaya');
-    $headerTitle = ($tipe === 'masuk') ? '📋 *LAPORAN ABSENSI PAGI GURU*' : '📋 *LAPORAN ABSENSI PULANG GURU*';
+    $headerTitle = ($tipe === 'masuk') ? '📋 *LAPORAN ABSENSI PAGI GURU*' : (($tipe === 'istirahat') ? '📋 *LAPORAN ABSENSI ISTIRAHAT GURU*' : '📋 *LAPORAN ABSENSI PULANG GURU*');
 
     // Fetch teachers with mapped PINs ordered by PIN numerical value ASC
     $jamMulaiPulang = get_setting('wa_guru_mulai_pulang', '13:00:00');
     if (strlen($jamMulaiPulang) === 5) $jamMulaiPulang .= ':00';
+    $waktuIstirahatMulai = get_setting('waktu_istirahat_guru_mulai', '12:00:00');
+    if (strlen($waktuIstirahatMulai) === 5) $waktuIstirahatMulai .= ':00';
 
     // Fetch teachers with mapped PINs ordered by PIN numerical value ASC
     $stmtG = db()->query("
@@ -66,25 +68,24 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
     $teachers = $stmtG->fetchAll();
 
     // Fetch logs from absen_logs for date:
-    // jam_masuk : finger pagi pertama (< jam_mulai_pulang / 13:00)
-    // jam_pulang: finger pulang terakhir (>= jam_mulai_pulang / 13:00)
     $stmtLogs = db()->prepare("
         SELECT TRIM(LEADING '0' FROM mesin_pin) COLLATE utf8mb4_unicode_ci as clean_pin, 
                MIN(CASE WHEN TIME(waktu_absen) < ? THEN TIME(waktu_absen) END) as jam_masuk,
+               MIN(CASE WHEN TIME(waktu_absen) >= ? AND TIME(waktu_absen) < ? THEN TIME(waktu_absen) END) as jam_istirahat,
                MAX(CASE WHEN TIME(waktu_absen) >= ? THEN TIME(waktu_absen) END) as jam_pulang
         FROM absen_logs 
         WHERE DATE(waktu_absen) = ? 
         GROUP BY clean_pin
     ");
-    $stmtLogs->execute([$jamMulaiPulang, $jamMulaiPulang, $tanggal]);
+    $stmtLogs->execute([$waktuIstirahatMulai, $waktuIstirahatMulai, $jamMulaiPulang, $jamMulaiPulang, $tanggal]);
     $eAbsenLogs = [];
     while ($l = $stmtLogs->fetch()) {
         $eAbsenLogs[$l['clean_pin']] = $l;
     }
 
     // Manual overrides
-    $stmtA = db()->prepare("SELECT guru_id, status, keterangan FROM acad_absensi_guru WHERE tanggal = ?");
-    $stmtA->execute([$tanggal]);
+    $stmtA = db()->prepare("SELECT guru_id, status, keterangan FROM acad_absensi_guru WHERE tanggal = ? AND sesi = ?");
+    $stmtA->execute([$tanggal, $tipe]);
     $manualMap = [];
     while ($row = $stmtA->fetch()) {
         $manualMap[$row['guru_id']] = $row;
@@ -97,6 +98,7 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
     $countIzin = 0;
     $countAlpha = 0;
     $countPulang = 0;
+    $countIstirahat = 0;
 
     foreach ($teachers as $t) {
         $tid = $t['id'];
@@ -106,6 +108,7 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
         $numPadded = sprintf('%02d.', (int)$displayNo);
 
         $jamMasuk = ($cleanPin && isset($eAbsenLogs[$cleanPin]) && !empty($eAbsenLogs[$cleanPin]['jam_masuk'])) ? substr($eAbsenLogs[$cleanPin]['jam_masuk'], 0, 5) : null;
+        $jamIstirahat = ($cleanPin && isset($eAbsenLogs[$cleanPin]) && !empty($eAbsenLogs[$cleanPin]['jam_istirahat'])) ? substr($eAbsenLogs[$cleanPin]['jam_istirahat'], 0, 5) : null;
         $jamPulang = ($cleanPin && isset($eAbsenLogs[$cleanPin]) && !empty($eAbsenLogs[$cleanPin]['jam_pulang'])) ? substr($eAbsenLogs[$cleanPin]['jam_pulang'], 0, 5) : null;
 
         $manualStatus = isset($manualMap[$tid]) ? $manualMap[$tid]['status'] : null;
@@ -145,6 +148,20 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
             } else {
                 $countAlpha++;
                 $lines[] = "*{$numPadded}* *{$nama}*\n      ❌ *NN / TH / TA / BA*";
+            }
+        } elseif ($tipe === 'istirahat') {
+            if ($jamIstirahat && $manualStatus !== 'A' && $manualStatus !== 'S' && $manualStatus !== 'I') {
+                $countIstirahat++;
+                $lines[] = "*{$numPadded}* *{$nama}*\n      ☕ *{$jamIstirahat}* WIB  •  *HADIR ISTIRAHAT*";
+            } elseif ($manualStatus === 'S') {
+                $countSakit++;
+                $lines[] = "*{$numPadded}* *{$nama}*\n      🏥 *SAKIT (S)*";
+            } elseif ($manualStatus === 'I') {
+                $countIzin++;
+                $lines[] = "*{$numPadded}* *{$nama}*\n      📝 *IZIN (I)*";
+            } else {
+                $countAlpha++;
+                $lines[] = "*{$numPadded}* *{$nama}*\n      ❌ *BELUM SCAN ISTIRAHAT*";
             }
         } else {
             // Tipe Pulang
@@ -190,6 +207,14 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
         if ($countSakit > 0) $footer .= "🏥 *Sakit* : {$countSakit} Orang\n";
         if ($countIzin > 0) $footer .= "📝 *Izin* : {$countIzin} Orang\n";
         if ($countAlpha > 0) $footer .= "❌ *NN / TH / TA / BA* : {$countAlpha} Orang\n";
+    } elseif ($tipe === 'istirahat') {
+        $footer .= "*📊 RINGKASAN ISTIRAHAT:*\n";
+        $footer .= "👥 *Total Guru* : {$totalGuru} Orang\n";
+        $footer .= "☕ *Hadir Istirahat* : {$countIstirahat} Orang\n";
+        $belumIstirahat = $totalGuru - $countIstirahat - $countSakit - $countIzin;
+        if ($belumIstirahat > 0) $footer .= "⏳ *Belum Istirahat* : {$belumIstirahat} Orang\n";
+        if ($countSakit > 0) $footer .= "🏥 *Sakit* : {$countSakit} Orang\n";
+        if ($countIzin > 0) $footer .= "📝 *Izin* : {$countIzin} Orang\n";
     } else {
         $footer .= "*📊 RINGKASAN KEPULANGAN:*\n";
         $footer .= "👥 *Total Guru* : {$totalGuru} Orang\n";
@@ -223,7 +248,8 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
     if ($response) {
         $resData = json_decode($response, true);
         if ($resData && !empty($resData['success'])) {
-            return ['success' => true, 'message' => "Laporan " . ($tipe === 'masuk' ? 'Absen Pagi' : 'Absen Pulang') . " berhasil terkirim ke Grup WA!"];
+            $labelSesi = ($tipe === 'masuk') ? 'Absen Pagi' : (($tipe === 'istirahat') ? 'Absen Istirahat' : 'Absen Pulang');
+            return ['success' => true, 'message' => "Laporan {$labelSesi} berhasil terkirim ke Grup WA!"];
         } else {
             $msg = isset($resData['message']) ? $resData['message'] : 'Gagal mengirim ke WA Gateway.';
             return ['success' => false, 'message' => $msg];
@@ -266,9 +292,7 @@ function checkAndSendWaGroupGuruAbsensiBatch($tanggal = null) {
         $stmtCount = db()->prepare("
             SELECT COUNT(DISTINCT TRIM(LEADING '0' FROM l.mesin_pin))
             FROM absen_logs l
-            JOIN absen_user_map m ON TRIM(LEADING '0' FROM l.mesin_pin) = TRIM(LEADING '0' FROM m.mesin_pin)
-            JOIN users u ON u.id = m.user_id
-            WHERE DATE(l.waktu_absen) = ? AND TIME(l.waktu_absen) < '12:00:00' AND u.role = 'guru' AND u.status = 1
+            WHERE DATE(l.waktu_absen) = ? AND TIME(l.waktu_absen) < '12:00:00'
         ");
         $stmtCount->execute([$tanggal]);
         $totalTeachersTapped = (int)$stmtCount->fetchColumn();
@@ -292,7 +316,7 @@ function checkAndSendWaGroupGuruAbsensiBatch($tanggal = null) {
             return true;
         }
     } 
-    // 2. PERIODE PULANG: Kirim HANYA pada jam 19:00 (atau mulai jam 19:00 jika belum terkirim hari ini)
+    // 2. PERIODE PULANG: Kirim jika sudah mencapai jam cutoff pulang (default 17:00)
     else if ($currentTime >= $jamKirimPulang) {
         // Cek apakah laporan pulang sudah terkirim hari ini
         $lastDatePulang = get_setting('wa_guru_last_sent_date_pulang');
@@ -300,23 +324,20 @@ function checkAndSendWaGroupGuruAbsensiBatch($tanggal = null) {
             return false; // Sudah dikirim hari ini
         }
 
-        // Cek apakah ada aktivitas absensi guru hari ini (mencegah kirim di hari libur/kosong)
-        $stmtLogsCheck = db()->prepare("
-            SELECT COUNT(*) 
-            FROM absen_logs l
-            JOIN absen_user_map m ON TRIM(LEADING '0' FROM l.mesin_pin) = TRIM(LEADING '0' FROM m.mesin_pin)
-            JOIN users u ON u.id = m.user_id
-            WHERE DATE(l.waktu_absen) = ? AND u.role = 'guru' AND u.status = 1
-        ");
-        $stmtLogsCheck->execute([$tanggal]);
-        $totalLogsHariIni = (int)$stmtLogsCheck->fetchColumn();
+        // Cek hari Minggu (hanya skip jika hari Minggu dan benar-benar tidak ada data apapun)
+        $dayOfWeek = (int)date('w', strtotime($tanggal)); // 0 = Sunday
+        if ($dayOfWeek === 0) {
+            $stmtLogsCheck = db()->prepare("SELECT COUNT(*) FROM absen_logs WHERE DATE(waktu_absen) = ?");
+            $stmtLogsCheck->execute([$tanggal]);
+            $totalLogsHariIni = (int)$stmtLogsCheck->fetchColumn();
 
-        $stmtManualCheck = db()->prepare("SELECT COUNT(*) FROM acad_absensi_guru WHERE tanggal = ?");
-        $stmtManualCheck->execute([$tanggal]);
-        $totalManualHariIni = (int)$stmtManualCheck->fetchColumn();
+            $stmtManualCheck = db()->prepare("SELECT COUNT(*) FROM acad_absensi_guru WHERE tanggal = ?");
+            $stmtManualCheck->execute([$tanggal]);
+            $totalManualHariIni = (int)$stmtManualCheck->fetchColumn();
 
-        if ($totalLogsHariIni === 0 && $totalManualHariIni === 0) {
-            return false;
+            if ($totalLogsHariIni === 0 && $totalManualHariIni === 0) {
+                return false;
+            }
         }
 
         // Kirim laporan WA absen pulang lengkap

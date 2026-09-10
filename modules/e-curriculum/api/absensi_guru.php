@@ -9,6 +9,11 @@ require_once __DIR__ . '/wa_group_helper.php';
 $user = acad_auth();
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
+// Opportunistic auto-broadcast check (e.g. afternoon cutoff at 17:00)
+try {
+    checkAndSendWaGroupGuruAbsensiBatch();
+} catch (Exception $e) {}
+
 switch ($action) {
     case 'list':
         listAbsensiGuru($user);
@@ -33,27 +38,36 @@ switch ($action) {
 }
 
 /**
- * List absensi for all teachers on a given date (merging E-Absen logs and acad_absensi_guru)
+ * List absensi for all teachers on a given date (merging E-Absen logs and acad_absensi_guru for 3 sessions)
  */
 function listAbsensiGuru($user) {
     try {
         $tanggal = isset($_GET['tanggal']) ? $_GET['tanggal'] : date('Y-m-d');
-        $waktu_terlambat = get_setting('waktu_terlambat_guru', '07:15:00');
+        $sesi = isset($_GET['sesi']) && in_array($_GET['sesi'], ['masuk', 'istirahat', 'pulang']) ? $_GET['sesi'] : 'masuk';
 
+        $waktu_terlambat = get_setting('waktu_terlambat_guru', '06:30:00');
+        $waktu_istirahat_mulai = get_setting('waktu_istirahat_guru_mulai', '12:00:00');
+        $waktu_istirahat_selesai = get_setting('waktu_istirahat_guru_selesai', '13:00:00');
+        $waktu_pulang = get_setting('waktu_pulang_guru', '15:30:00');
         $jam_mulai_pulang = get_setting('wa_guru_mulai_pulang', '13:00:00');
+
+        if (strlen($waktu_terlambat) === 5) $waktu_terlambat .= ':00';
+        if (strlen($waktu_istirahat_mulai) === 5) $waktu_istirahat_mulai .= ':00';
+        if (strlen($waktu_istirahat_selesai) === 5) $waktu_istirahat_selesai .= ':00';
+        if (strlen($waktu_pulang) === 5) $waktu_pulang .= ':00';
         if (strlen($jam_mulai_pulang) === 5) $jam_mulai_pulang .= ':00';
 
         // Get all active teachers
         $stmtG = db()->query("SELECT id, kode_guru, nama_lengkap as nama FROM users WHERE role = 'guru' AND status = 1 ORDER BY nama_lengkap");
         $teachers = $stmtG->fetchAll();
 
-        // Get existing manual absensi from acad_absensi_guru
+        // Get existing manual absensi from acad_absensi_guru for active session
         $stmtA = db()->prepare("
             SELECT guru_id, status, keterangan 
             FROM acad_absensi_guru 
-            WHERE tanggal = ?
+            WHERE tanggal = ? AND sesi = ?
         ");
-        $stmtA->execute([$tanggal]);
+        $stmtA->execute([$tanggal, $sesi]);
         $existingManual = [];
         while ($row = $stmtA->fetch()) {
             $existingManual[$row['guru_id']] = $row;
@@ -69,64 +83,81 @@ function listAbsensiGuru($user) {
         $stmtLogs = db()->prepare("
             SELECT TRIM(LEADING '0' FROM mesin_pin) COLLATE utf8mb4_unicode_ci as clean_pin, 
                    MIN(CASE WHEN TIME(waktu_absen) < ? THEN TIME(waktu_absen) END) as jam_masuk,
+                   MIN(CASE WHEN TIME(waktu_absen) >= ? AND TIME(waktu_absen) < ? THEN TIME(waktu_absen) END) as jam_istirahat,
                    MAX(CASE WHEN TIME(waktu_absen) >= ? THEN TIME(waktu_absen) END) as jam_pulang
             FROM absen_logs 
             WHERE DATE(waktu_absen) = ? 
             GROUP BY clean_pin
         ");
-        $stmtLogs->execute([$jam_mulai_pulang, $jam_mulai_pulang, $tanggal]);
+        $stmtLogs->execute([$waktu_istirahat_mulai, $waktu_istirahat_mulai, $jam_mulai_pulang, $jam_mulai_pulang, $tanggal]);
         $eAbsenLogs = [];
         while ($l = $stmtLogs->fetch()) {
             $eAbsenLogs[$l['clean_pin']] = $l;
         }
 
-        // Merge teacher list with E-Absen log and manual override
+        $waktu_terlambat_short = substr($waktu_terlambat, 0, 5);
+
+        // Merge teacher list with E-Absen log and manual override for active session
         $result = [];
         foreach ($teachers as $t) {
             $tid = $t['id'];
             $cleanPin = isset($userMap[$tid]) ? $userMap[$tid] : null;
             $logData = ($cleanPin && isset($eAbsenLogs[$cleanPin])) ? $eAbsenLogs[$cleanPin] : null;
             $jamMasuk = ($logData && !empty($logData['jam_masuk'])) ? $logData['jam_masuk'] : null;
+            $jamIstirahat = ($logData && !empty($logData['jam_istirahat'])) ? $logData['jam_istirahat'] : null;
             $jamPulang = ($logData && !empty($logData['jam_pulang'])) ? $logData['jam_pulang'] : null;
 
-            // Determine default status based on E-Absen log if available
-            $calculatedStatus = 'H';
-            $scanInfo = 'Belum Absen Mesin';
+            // Determine default status based on active session
+            $calculatedStatus = 'A'; // Default jika belum scan adalah Alpha
+            $scanInfo = 'Belum Scan Mesin';
+            $jamScanSesi = null;
 
-            if ($jamMasuk !== null && $jamPulang !== null) {
-                $masukFormatted = substr($jamMasuk, 0, 5);
-                $pulangFormatted = substr($jamPulang, 0, 5);
-                if ($jamMasuk <= $waktu_terlambat) {
-                    $calculatedStatus = 'H';
-                    $scanInfo = "Hadir ({$masukFormatted}) • Pulang ({$pulangFormatted})";
+            if ($sesi === 'masuk') {
+                $jamScanSesi = $jamMasuk;
+                if ($jamMasuk !== null) {
+                    $masukFormatted = substr($jamMasuk, 0, 5);
+                    if ($masukFormatted <= $waktu_terlambat_short) {
+                        $calculatedStatus = 'H';
+                        $scanInfo = "Hadir ({$masukFormatted})";
+                    } else {
+                        $calculatedStatus = 'T';
+                        $scanInfo = "Terlambat ({$masukFormatted})";
+                    }
                 } else {
-                    $calculatedStatus = 'T';
-                    $scanInfo = "Terlambat ({$masukFormatted}) • Pulang ({$pulangFormatted})";
+                    $calculatedStatus = 'A';
+                    $scanInfo = 'Belum Scan Mesin';
                 }
-            } else if ($jamMasuk !== null) {
-                $masukFormatted = substr($jamMasuk, 0, 5);
-                if ($jamMasuk <= $waktu_terlambat) {
+            } else if ($sesi === 'istirahat') { // Absen Istirahat (tampilan jam saja)
+                $jamScanSesi = $jamIstirahat;
+                if ($jamIstirahat !== null) {
                     $calculatedStatus = 'H';
-                    $scanInfo = "Hadir ({$masukFormatted})";
+                    $scanInfo = substr($jamIstirahat, 0, 5);
                 } else {
-                    $calculatedStatus = 'T';
-                    $scanInfo = "Terlambat ({$masukFormatted})";
+                    $calculatedStatus = 'A';
+                    $scanInfo = 'Belum Scan';
                 }
-            } else if ($jamPulang !== null) {
-                $pulangFormatted = substr($jamPulang, 0, 5);
-                $calculatedStatus = 'H';
-                $scanInfo = "Pulang ({$pulangFormatted})";
+            } else if ($sesi === 'pulang') { // Absen Pulang (tampilan jam saja)
+                $jamScanSesi = $jamPulang;
+                if ($jamPulang !== null) {
+                    $calculatedStatus = 'H';
+                    $scanInfo = substr($jamPulang, 0, 5);
+                } else {
+                    $calculatedStatus = 'A';
+                    $scanInfo = 'Belum Scan';
+                }
             }
 
             // Manual override takes precedence if recorded in acad_absensi_guru
-            $finalStatus = isset($existingManual[$tid]) ? $existingManual[$tid]['status'] : (($jamMasuk !== null || $jamPulang !== null) ? $calculatedStatus : 'H');
-            $keterangan = isset($existingManual[$tid]) ? $existingManual[$tid]['keterangan'] : (($jamMasuk !== null) ? "Fingerprint Masuk: $jamMasuk" . ($jamPulang ? ", Pulang: $jamPulang" : "") : ($jamPulang ? "Fingerprint Pulang: $jamPulang" : ''));
+            $finalStatus = isset($existingManual[$tid]) ? $existingManual[$tid]['status'] : $calculatedStatus;
+            $keterangan = isset($existingManual[$tid]) ? $existingManual[$tid]['keterangan'] : ($jamScanSesi !== null ? "Fingerprint: $jamScanSesi" : '');
 
             $result[] = [
                 'guru_id' => $tid,
                 'kode_guru' => $t['kode_guru'],
                 'nama' => $t['nama'],
+                'jam_scan' => $jamScanSesi,
                 'jam_masuk' => $jamMasuk,
+                'jam_istirahat' => $jamIstirahat,
                 'jam_pulang' => $jamPulang,
                 'scan_info' => $scanInfo,
                 'status' => $finalStatus,
@@ -135,7 +166,12 @@ function listAbsensiGuru($user) {
         }
 
         json_response(200, true, 'Data absensi guru dimuat.', [
+            'sesi' => $sesi,
             'waktu_terlambat' => substr($waktu_terlambat, 0, 5),
+            'waktu_istirahat_mulai' => substr($waktu_istirahat_mulai, 0, 5),
+            'waktu_istirahat_selesai' => substr($waktu_istirahat_selesai, 0, 5),
+            'waktu_pulang' => substr($waktu_pulang, 0, 5),
+            'wa_mulai_pulang' => substr($jam_mulai_pulang, 0, 5),
             'teachers' => $result
         ]);
     } catch (PDOException $e) {
@@ -144,13 +180,14 @@ function listAbsensiGuru($user) {
 }
 
 /**
- * Save/update absensi guru on a date
+ * Save/update absensi guru on a date per session
  */
 function saveAbsensiGuru($user) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed.');
 
     $input = get_input();
     $tanggal = isset($input['tanggal']) ? $input['tanggal'] : date('Y-m-d');
+    $sesi = isset($input['sesi']) && in_array($input['sesi'], ['masuk', 'istirahat', 'pulang']) ? $input['sesi'] : 'masuk';
     $absensi = isset($input['absensi']) ? $input['absensi'] : [];
 
     $active_year = get_active_academic_year();
@@ -163,21 +200,28 @@ function saveAbsensiGuru($user) {
     try {
         db()->beginTransaction();
 
+        $sesiLabels = [
+            'masuk' => 'Masuk',
+            'istirahat' => 'Istirahat',
+            'pulang' => 'Pulang'
+        ];
+        $sesiText = $sesiLabels[$sesi] ?? 'Harian';
+
         foreach ($absensi as $a) {
             $guru_id = (int)$a['guru_id'];
             $status = in_array($a['status'], ['H','S','I','A','T']) ? $a['status'] : 'H';
             $keterangan = isset($a['keterangan']) ? trim($a['keterangan']) : '';
 
             $stmt = db()->prepare("
-                INSERT INTO acad_absensi_guru (guru_id, academic_year_id, tanggal, status, keterangan, dicatat_oleh)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO acad_absensi_guru (guru_id, academic_year_id, tanggal, sesi, status, keterangan, dicatat_oleh)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE status = VALUES(status), keterangan = VALUES(keterangan), dicatat_oleh = VALUES(dicatat_oleh)
             ");
-            $stmt->execute([$guru_id, $year_id, $tanggal, $status, $keterangan, $user['user_id']]);
+            $stmt->execute([$guru_id, $year_id, $tanggal, $sesi, $status, $keterangan, $user['user_id']]);
         }
 
         db()->commit();
-        json_response(200, true, 'Absensi guru berhasil disimpan.');
+        json_response(200, true, "Absensi Guru {$sesiText} berhasil disimpan.");
     } catch (PDOException $e) {
         db()->rollBack();
         json_response(500, false, 'Server error: ' . $e->getMessage());
@@ -328,23 +372,22 @@ function rekapAbsensiGuru($user) {
 }
 
 /**
- * Get setting waktu terlambat guru & batas kirim WA
+ * Get setting waktu absensi guru & batas kirim WA
  */
 function getSettingsGuru($user) {
-    $waktu_terlambat = get_setting('waktu_terlambat_guru', '07:15:00');
-    $cutoff_masuk = get_setting('wa_guru_cutoff_masuk', '06:30:00');
-    $cutoff_pulang = get_setting('wa_guru_cutoff_pulang', '17:00:00');
-    $mulai_pulang = get_setting('wa_guru_mulai_pulang', '13:00:00');
     json_response(200, true, 'Setting dimuat.', [
-        'waktu_terlambat' => substr($waktu_terlambat, 0, 5),
-        'wa_cutoff_masuk' => substr($cutoff_masuk, 0, 5),
-        'wa_cutoff_pulang' => substr($cutoff_pulang, 0, 5),
-        'wa_mulai_pulang' => substr($mulai_pulang, 0, 5)
+        'waktu_terlambat' => substr(get_setting('waktu_terlambat_guru', '06:30:00'), 0, 5),
+        'waktu_istirahat_mulai' => substr(get_setting('waktu_istirahat_guru_mulai', '12:00:00'), 0, 5),
+        'waktu_istirahat_selesai' => substr(get_setting('waktu_istirahat_guru_selesai', '13:00:00'), 0, 5),
+        'waktu_pulang' => substr(get_setting('waktu_pulang_guru', '15:30:00'), 0, 5),
+        'wa_cutoff_masuk' => substr(get_setting('wa_guru_cutoff_masuk', '06:30:00'), 0, 5),
+        'wa_cutoff_pulang' => substr(get_setting('wa_guru_cutoff_pulang', '17:00:00'), 0, 5),
+        'wa_mulai_pulang' => substr(get_setting('wa_guru_mulai_pulang', '13:00:00'), 0, 5)
     ]);
 }
 
 /**
- * Save setting waktu terlambat guru & batas kirim WA
+ * Save setting waktu absensi guru & batas kirim WA
  */
 function saveSettingsGuru($user) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed.');
@@ -355,8 +398,7 @@ function saveSettingsGuru($user) {
     $input = get_input();
     
     // Check if the server mistakenly parsed JSON as form-urlencoded
-    // where the entire JSON string becomes the first key of $_POST
-    if (!isset($input['waktu_terlambat']) && !isset($input['wa_cutoff_masuk']) && !isset($input['wa_cutoff_pulang']) && !isset($input['wa_mulai_pulang'])) {
+    if (!isset($input['waktu_terlambat']) && !isset($input['waktu_istirahat_mulai']) && !isset($input['waktu_pulang'])) {
         $raw = file_get_contents('php://input');
         if (!empty($raw)) {
             $json = json_decode($raw, true);
@@ -369,7 +411,25 @@ function saveSettingsGuru($user) {
     if (isset($input['waktu_terlambat'])) {
         $waktu = trim($input['waktu_terlambat']);
         if (strlen($waktu) === 5) $waktu .= ':00';
-        upsert_setting('waktu_terlambat_guru', $waktu, 'text', 'Batas jam terlambat absensi guru');
+        upsert_setting('waktu_terlambat_guru', $waktu, 'text', 'Batas jam masuk / terlambat absensi guru');
+    }
+
+    if (isset($input['waktu_istirahat_mulai'])) {
+        $waktu = trim($input['waktu_istirahat_mulai']);
+        if (strlen($waktu) === 5) $waktu .= ':00';
+        upsert_setting('waktu_istirahat_guru_mulai', $waktu, 'text', 'Jam mulai istirahat guru');
+    }
+
+    if (isset($input['waktu_istirahat_selesai'])) {
+        $waktu = trim($input['waktu_istirahat_selesai']);
+        if (strlen($waktu) === 5) $waktu .= ':00';
+        upsert_setting('waktu_istirahat_guru_selesai', $waktu, 'text', 'Jam selesai istirahat guru');
+    }
+
+    if (isset($input['waktu_pulang'])) {
+        $waktu = trim($input['waktu_pulang']);
+        if (strlen($waktu) === 5) $waktu .= ':00';
+        upsert_setting('waktu_pulang_guru', $waktu, 'text', 'Jam batas pulang guru');
     }
 
     if (isset($input['wa_cutoff_masuk'])) {
@@ -390,10 +450,13 @@ function saveSettingsGuru($user) {
         upsert_setting('wa_guru_mulai_pulang', $mulaiP, 'text', 'Jam mulai tap mesin ditampung sebagai absen pulang');
     }
 
-    json_response(200, true, 'Setting berhasil disimpan.', [
-        'waktu_terlambat' => substr(get_setting('waktu_terlambat_guru', '07:15:00'), 0, 5),
+    json_response(200, true, 'Pengaturan jam absensi guru berhasil disimpan.', [
+        'waktu_terlambat' => substr(get_setting('waktu_terlambat_guru', '06:30:00'), 0, 5),
+        'waktu_istirahat_mulai' => substr(get_setting('waktu_istirahat_guru_mulai', '12:00:00'), 0, 5),
+        'waktu_istirahat_selesai' => substr(get_setting('waktu_istirahat_guru_selesai', '13:00:00'), 0, 5),
+        'waktu_pulang' => substr(get_setting('waktu_pulang_guru', '15:30:00'), 0, 5),
         'wa_cutoff_masuk' => substr(get_setting('wa_guru_cutoff_masuk', '06:30:00'), 0, 5),
-        'wa_cutoff_pulang' => substr(get_setting('wa_guru_cutoff_pulang', '19:00:00'), 0, 5),
+        'wa_cutoff_pulang' => substr(get_setting('wa_guru_cutoff_pulang', '17:00:00'), 0, 5),
         'wa_mulai_pulang' => substr(get_setting('wa_guru_mulai_pulang', '13:00:00'), 0, 5)
     ]);
 }

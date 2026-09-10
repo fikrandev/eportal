@@ -6,7 +6,7 @@
 require_once __DIR__ . '/config.php';
 
 function run_auto_migrations() {
-    $target_version = 12;
+    $target_version = 13;
     
     // 1. Get current version (default to 0 if not set or if table settings doesn't exist yet)
     $current_version = 0;
@@ -637,6 +637,58 @@ function run_auto_migrations() {
         try {
             $pdo->exec("ALTER TABLE `exam_jawaban` MODIFY COLUMN `jawaban` LONGTEXT DEFAULT NULL");
         } catch (PDOException $e) {}
+    }
+
+    // Version 13 migrations (3 Sesi Absensi: Masuk, Istirahat, Pulang untuk Siswa & Guru)
+    if ($current_version < 13) {
+        // 1. Update acad_absensi_guru to support sesi
+        try {
+            $cols = $pdo->query("SHOW COLUMNS FROM acad_absensi_guru")->fetchAll(PDO::FETCH_COLUMN);
+            if (!in_array('sesi', $cols)) {
+                $pdo->exec("ALTER TABLE `acad_absensi_guru` ADD COLUMN `sesi` ENUM('masuk', 'istirahat', 'pulang') NOT NULL DEFAULT 'masuk' AFTER `tanggal`");
+            }
+        } catch (Exception $e) {}
+
+        // Ensure status column has 'T' in acad_absensi_guru
+        try {
+            $pdo->exec("ALTER TABLE `acad_absensi_guru` MODIFY COLUMN `status` ENUM('H','S','I','A','T') NOT NULL DEFAULT 'H'");
+        } catch (Exception $e) {}
+
+        // Replace unique key in acad_absensi_guru to include sesi
+        try {
+            $indexes = $pdo->query("SHOW INDEX FROM acad_absensi_guru")->fetchAll();
+            $indexNames = array_unique(array_column($indexes, 'Key_name'));
+            if (in_array('uk_guru_tanggal', $indexNames)) {
+                $pdo->exec("ALTER TABLE `acad_absensi_guru` DROP INDEX `uk_guru_tanggal`");
+            }
+            if (in_array('unique_guru_tanggal', $indexNames)) {
+                $pdo->exec("ALTER TABLE `acad_absensi_guru` DROP INDEX `unique_guru_tanggal`");
+            }
+            if (!in_array('uk_guru_tgl_sesi', $indexNames)) {
+                $pdo->exec("ALTER TABLE `acad_absensi_guru` ADD UNIQUE KEY `uk_guru_tgl_sesi` (`guru_id`, `tanggal`, `sesi`)");
+            }
+            if (!in_array('idx_guru_tgl_sesi', $indexNames)) {
+                $pdo->exec("ALTER TABLE `acad_absensi_guru` ADD INDEX `idx_guru_tgl_sesi` (`tanggal`, `sesi`)");
+            }
+        } catch (Exception $e) {}
+
+        // Ensure acad_absensi has status 'T'
+        try {
+            $pdo->exec("ALTER TABLE `acad_absensi` MODIFY COLUMN `status` ENUM('H','S','I','A','T') NOT NULL DEFAULT 'H'");
+        } catch (Exception $e) {}
+
+        // Default settings for Siswa & Guru
+        upsert_setting('waktu_terlambat_siswa', '06:30:00', 'text', 'Batas jam masuk / terlambat absensi siswa');
+        upsert_setting('waktu_istirahat_siswa_mulai', '09:30:00', 'text', 'Jam mulai istirahat siswa');
+        upsert_setting('waktu_istirahat_siswa_selesai', '10:15:00', 'text', 'Jam selesai istirahat siswa');
+        upsert_setting('waktu_pulang_siswa', '15:30:00', 'text', 'Jam batas pulang siswa');
+        upsert_setting('waktu_pulang_siswa_mulai', '13:30:00', 'text', 'Jam mulai tap mesin untuk absen pulang siswa');
+
+        upsert_setting('waktu_terlambat_guru', '06:30:00', 'text', 'Batas jam masuk / terlambat absensi guru');
+        upsert_setting('waktu_istirahat_guru_mulai', '12:00:00', 'text', 'Jam mulai istirahat guru');
+        upsert_setting('waktu_istirahat_guru_selesai', '13:00:00', 'text', 'Jam selesai istirahat guru');
+        upsert_setting('waktu_pulang_guru', '15:30:00', 'text', 'Jam pulang guru');
+        upsert_setting('wa_guru_mulai_pulang', '13:00:00', 'text', 'Jam mulai tap mesin untuk absen pulang guru');
     }
 
     // Update DB migration version to target_version

@@ -650,6 +650,13 @@ body {
     color: #059669;
 }
 
+.absensi-radio.active-t {
+    border-color: #F59E0B;
+    background: rgba(245, 158, 11, 0.15);
+    color: #D97706;
+    font-weight: 600;
+}
+
 .absensi-radio.active-s {
     border-color: #F59E0B;
     background: rgba(245, 158, 11, 0.1);

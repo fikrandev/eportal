@@ -2565,22 +2565,23 @@ const Curriculum = {
     renderAbsensi($container) {
         const today = new Date().toISOString().split('T')[0];
         const firstDayOfMonth = today.substring(0, 8) + '01';
+        this.state.absensiSesi = 1; // 1 = Masuk, 2 = Istirahat, 3 = Pulang
 
         $container.html(`
             <div class="acad-card">
                 <div class="acad-card-header" style="display:flex; justify-content:space-between; align-items:center;">
                     <div>
                         <h3>✅ Absensi Siswa</h3>
-                        <p class="acad-subtitle">Terintegrasi otomatis dengan mesin E-Absen & Rekapitulasi Kehadiran.</p>
+                        <p class="acad-subtitle">Terintegrasi otomatis dengan mesin E-Absen & Rekapitulasi Kehadiran 3 Sesi (Masuk, Istirahat, Pulang).</p>
                     </div>
                     <div style="display:flex; gap:8px;">
                         <button class="btn-acad btn-acad-outline" onclick="Curriculum.showSettingWaktuModal()">
-                            ⚙️ Setting Jam Terlambat
+                            ⚙️ Setting Jam Absensi Siswa
                         </button>
                     </div>
                 </div>
                 <div class="acad-card-body">
-                    <!-- Navigation Tabs -->
+                    <!-- Main Navigation Tabs -->
                     <div style="margin-bottom: 20px; border-bottom: 1px solid #e2e8f0; display: flex; gap: 16px;">
                         <button class="absensi-tab-btn active" data-tab="harian" onclick="Curriculum.switchAbsensiTab('harian')" style="background: none; border: none; padding: 10px 16px; cursor: pointer; border-bottom: 2px solid #7C3AED; font-weight: 600; color: #7C3AED;">
                             📌 Absensi Harian
@@ -2590,15 +2591,29 @@ const Curriculum = {
                         </button>
                     </div>
 
-                    <!-- Tab 1: Absensi Harian -->
+                    <!-- Tab 1: Absensi Harian (3 Sesi) -->
                     <div id="absensiTabHarian" class="absensi-tab-content">
+                        <!-- 3 Sesi Sub-Tabs -->
+                        <div class="absensi-sesi-nav" style="display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap;">
+                            <button class="btn-acad absensi-sesi-btn active" data-sesi="1" onclick="Curriculum.switchAbsensiSesi(1)" style="padding:8px 18px; border-radius:20px; font-weight:600; font-size:0.875rem; background:#7C3AED; color:white; border:1px solid #7C3AED; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.2s;">
+                                🌅 <span>Absen Masuk</span>
+                            </button>
+                            <button class="btn-acad absensi-sesi-btn" data-sesi="2" onclick="Curriculum.switchAbsensiSesi(2)" style="padding:8px 18px; border-radius:20px; font-weight:600; font-size:0.875rem; background:#F1F5F9; color:#475569; border:1px solid #CBD5E1; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.2s;">
+                                ☕ <span>Absen Istirahat</span>
+                            </button>
+                            <button class="btn-acad absensi-sesi-btn" data-sesi="3" onclick="Curriculum.switchAbsensiSesi(3)" style="padding:8px 18px; border-radius:20px; font-weight:600; font-size:0.875rem; background:#F1F5F9; color:#475569; border:1px solid #CBD5E1; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.2s;">
+                                🏠 <span>Absen Pulang</span>
+                            </button>
+                        </div>
+
                         <div class="filter-bar">
                             <div class="filter-item"><label>Tanggal</label><input type="date" class="form-input-acad" id="absensiTanggal" value="${today}"></div>
                             <div class="filter-item"><label>Kelas</label><select class="form-select-acad" id="absensiKelas"><option value="">Pilih Kelas...</option></select></div>
                             <div class="filter-item" style="display:flex; flex-direction:row; align-items:flex-end;"><button class="btn-acad btn-acad-primary" onclick="Curriculum.loadAbsensiTable()">🔍 Tampilkan</button></div>
                         </div>
-                        <div id="absensiInfoBanner" style="margin-bottom:16px; padding:10px 14px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; color:#1e40af; font-size:0.875rem; display:flex; justify-content:space-between; align-items:center;">
-                            <span>📌 Data otomatis menyelaraskan jam tap dari E-Absen. <strong>Batas Jam Terlambat: <span id="lblJamTerlambat">07:15</span></strong></span>
+
+                        <div id="absensiInfoBanner" style="margin-bottom:16px; padding:12px 16px; background:#EFF6FF; border:1px solid #BFDBFE; border-radius:10px; color:#1E40AF; font-size:0.875rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                            <span id="absensiBannerText">📌 Sesi <strong>Absen Masuk</strong>: Menyelaraskan tap pagi E-Absen. <strong>Batas Terlambat: <span id="lblJamTerlambat">06:30</span></strong></span>
                         </div>
                         <div id="absensiTableWrapper"></div>
                     </div>
@@ -2628,10 +2643,11 @@ const Curriculum = {
             $('#rekapAbsensiKelas').append(opts);
         });
 
-        // Load current late setting
+        // Load current time settings
         this.api('absensi.php?action=get_settings').done(res => {
-            if (res.data && res.data.waktu_terlambat) {
-                $('#lblJamTerlambat').text(res.data.waktu_terlambat);
+            if (res.data) {
+                this.state.siswaSettings = res.data;
+                this.updateAbsensiBannerText();
             }
         });
     },
@@ -2651,35 +2667,100 @@ const Curriculum = {
         }
     },
 
+    switchAbsensiSesi(sesi) {
+        this.state.absensiSesi = parseInt(sesi) || 1;
+        $('.absensi-sesi-btn').each(function() {
+            const btnSesi = parseInt($(this).data('sesi'));
+            if (btnSesi === sesi) {
+                $(this).addClass('active').css({ 'background': '#7C3AED', 'color': 'white', 'border-color': '#7C3AED' });
+            } else {
+                $(this).removeClass('active').css({ 'background': '#F1F5F9', 'color': '#475569', 'border-color': '#CBD5E1' });
+            }
+        });
+
+        this.updateAbsensiBannerText();
+        if ($('#absensiKelas').val()) {
+            this.loadAbsensiTable();
+        }
+    },
+
+    updateAbsensiBannerText() {
+        const sesi = this.state.absensiSesi || 1;
+        const cfg = this.state.siswaSettings || {};
+        const jamMasuk = cfg.waktu_terlambat || '06:30';
+        const jamIstMulai = cfg.waktu_istirahat_mulai || '09:30';
+        const jamIstSelesai = cfg.waktu_istirahat_selesai || '10:15';
+        const jamPulang = cfg.waktu_pulang || '15:30';
+
+        let bannerHtml = '';
+        if (sesi === 1) {
+            bannerHtml = `<span>🌅 Sesi <strong>Absen Masuk Siswa</strong>: Menyelaraskan tap pagi E-Absen. <strong>Batas Masuk / Terlambat: <span id="lblJamTerlambat">${jamMasuk}</span></strong></span>`;
+        } else if (sesi === 2) {
+            bannerHtml = `<span>☕ Sesi <strong>Absen Istirahat Siswa</strong>: Menyelaraskan tap istirahat E-Absen. <strong>Waktu Istirahat: <span id="lblJamIstirahat">${jamIstMulai} - ${jamIstSelesai}</span></strong></span>`;
+        } else if (sesi === 3) {
+            bannerHtml = `<span>🏠 Sesi <strong>Absen Pulang Siswa</strong>: Menyelaraskan tap pulang E-Absen. <strong>Jam Batas Pulang: <span id="lblJamPulang">${jamPulang}</span></strong></span>`;
+        }
+        $('#absensiBannerText').html(bannerHtml);
+    },
+
+    setAllAbsensiStatus(status) {
+        $(`#absensiDataTable input[type=radio][value="${status}"]`).each(function() {
+            $(this).prop('checked', true).trigger('change');
+        });
+        EModal.toast({ type: 'info', message: `Semua siswa di-set ${status === 'H' ? 'Hadir' : status}.` });
+    },
+
     loadAbsensiTable() {
         const tanggal = $('#absensiTanggal').val();
         const kelas_id = $('#absensiKelas').val();
+        const sesi = this.state.absensiSesi || 1;
         if (!kelas_id) { EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Pilih kelas terlebih dahulu.' }); return; }
 
-        this.api(`absensi.php?action=list&tanggal=${tanggal}&kelas_id=${kelas_id}&jam_ke=0`).done(res => {
+        const sesiLabels = { 1: 'Masuk', 2: 'Istirahat', 3: 'Pulang' };
+        const labelSesi = sesiLabels[sesi] || 'Harian';
+
+        $('#absensiTableWrapper').html('<div class="skeleton-module" style="height:200px;"></div>');
+
+        this.api(`absensi.php?action=list&tanggal=${tanggal}&kelas_id=${kelas_id}&jam_ke=${sesi}`).done(res => {
             const data = res.data ? res.data.students || [] : [];
-            const jamTerlambat = res.data ? res.data.waktu_terlambat : '07:15';
-            $('#lblJamTerlambat').text(jamTerlambat);
+            if (res.data) {
+                this.state.siswaSettings = res.data;
+                this.updateAbsensiBannerText();
+            }
 
             if (!data.length) {
-                $('#absensiTableWrapper').html(`<div class="acad-empty"><h3>Tidak Ada Siswa</h3><p>Tidak ditemukan siswa untuk kelas ini.</p></div>`);
+                $('#absensiTableWrapper').html(`<div class="acad-empty"><h3>Tidak Ada Siswa</h3><p>Tidak ditemukan siswa aktif untuk kelas ini.</p></div>`);
                 return;
             }
 
-            const rows = data.map((s, idx) => `
+            const rows = data.map((s, idx) => {
+                let scanBadge = '';
+                if (sesi === 1) {
+                    if (s.jam_scan) {
+                        scanBadge = `<span class="badge ${s.status === 'T' ? 'badge-warning' : 'badge-success'}" style="font-size:0.8rem; background:${s.status === 'T' ? '#FEF3C7; color:#92400E; border:1px solid #FCD34D' : '#DCFCE7; color:#166534; border:1px solid #86EFAC'};">${this.escapeHtml(s.scan_info)}</span>`;
+                    } else {
+                        scanBadge = `<span class="badge badge-secondary" style="font-size:0.8rem; background:#F1F5F9; color:#64748B; border:1px solid #CBD5E1;">Belum Scan Mesin</span>`;
+                    }
+                } else {
+                    // Sesi 2 (Istirahat) & Sesi 3 (Pulang): Hanya tampilkan jam saja
+                    if (s.jam_scan) {
+                        const timeStr = s.scan_info || s.jam_scan.substring(0, 5);
+                        scanBadge = `<span style="font-weight:600; font-size:0.85rem; color:#1E293B; background:#F8FAFC; padding:4px 10px; border-radius:6px; border:1px solid #CBD5E1; display:inline-flex; align-items:center; gap:4px;">🕒 ${this.escapeHtml(timeStr)}</span>`;
+                    } else {
+                        scanBadge = `<span style="font-size:0.8rem; color:#94A3B8; background:#F8FAFC; padding:4px 10px; border-radius:6px; border:1px dashed #CBD5E1;">Belum Scan</span>`;
+                    }
+                }
+
+                return `
                 <tr class="fade-in">
-                    <td>${idx + 1}</td>
+                    <td style="text-align:center;">${idx + 1}</td>
                     <td>${this.escapeHtml(s.nis)}</td>
                     <td><strong>${this.escapeHtml(s.nama)}</strong></td>
-                    <td>
-                        <span class="badge ${s.jam_masuk ? 'badge-info' : 'badge-secondary'}" style="font-size:0.8rem;">
-                            ${s.scan_info}
-                        </span>
-                    </td>
+                    <td>${scanBadge}</td>
                     <td>
                         <div class="absensi-radio-group">
                             <label class="absensi-radio ${s.status === 'H' ? 'active-h' : ''}"><input type="radio" name="abs_${s.student_id}" value="H" ${s.status === 'H' ? 'checked' : ''}> Hadir</label>
-                            <label class="absensi-radio ${s.status === 'T' ? 'active-t' : ''}" style="${s.status === 'T' ? 'background:#F59E0B; color:white;' : ''}"><input type="radio" name="abs_${s.student_id}" value="T" ${s.status === 'T' ? 'checked' : ''}> Terlambat</label>
+                            <label class="absensi-radio ${s.status === 'T' ? 'active-t' : ''}"><input type="radio" name="abs_${s.student_id}" value="T" ${s.status === 'T' ? 'checked' : ''}> Terlambat</label>
                             <label class="absensi-radio ${s.status === 'S' ? 'active-s' : ''}"><input type="radio" name="abs_${s.student_id}" value="S" ${s.status === 'S' ? 'checked' : ''}> Sakit</label>
                             <label class="absensi-radio ${s.status === 'I' ? 'active-i' : ''}"><input type="radio" name="abs_${s.student_id}" value="I" ${s.status === 'I' ? 'checked' : ''}> Izin</label>
                             <label class="absensi-radio ${s.status === 'A' ? 'active-a' : ''}"><input type="radio" name="abs_${s.student_id}" value="A" ${s.status === 'A' ? 'checked' : ''}> Alpha</label>
@@ -2689,30 +2770,41 @@ const Curriculum = {
                         <input type="text" class="form-input-acad abs-keterangan" data-studentid="${s.student_id}" value="${this.escapeHtml(s.keterangan || '')}" placeholder="Keterangan..." style="width:100%; font-size:0.85rem;">
                     </td>
                 </tr>
-            `).join('');
+            `;
+            }).join('');
 
             $('#absensiTableWrapper').html(`
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <div style="display:flex; gap:8px;">
+                        <button class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.setAllAbsensiStatus('H')" style="font-size:0.8rem; border-color:#10B981; color:#059669;">
+                            ✅ Set Semua Hadir
+                        </button>
+                        <button class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.setAllAbsensiStatus('A')" style="font-size:0.8rem; border-color:#EF4444; color:#DC2626;">
+                            ❌ Set Semua Alpha
+                        </button>
+                        <button class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.loadAbsensiTable()" style="font-size:0.8rem;">
+                            🔄 Reset Sesuai Mesin
+                        </button>
+                    </div>
+                    <div style="font-size:0.85rem; color:#64748B;">Total: <strong>${data.length} Siswa</strong></div>
+                </div>
                 <div class="data-table-wrapper">
                     <table class="data-table" id="absensiDataTable">
-                        <thead><tr><th width="50">No</th><th>NIS</th><th>Nama Siswa</th><th>Log E-Absen</th><th>Status Kehadiran</th><th>Keterangan</th></tr></thead>
+                        <thead><tr><th width="45" style="text-align:center;">No</th><th>NIS</th><th>Nama Siswa</th><th>Log Mesin (${labelSesi})</th><th>Status Kehadiran</th><th>Keterangan</th></tr></thead>
                         <tbody>${rows}</tbody>
                     </table>
                 </div>
                 <div style="margin-top:16px; display:flex; justify-content:flex-end;">
-                    <button class="btn-acad btn-acad-primary" onclick="Curriculum.saveAbsensi()">💾 Simpan Absensi</button>
+                    <button class="btn-acad btn-acad-primary" onclick="Curriculum.saveAbsensi()">💾 Simpan Absensi ${labelSesi}</button>
                 </div>
             `);
 
             // Radio change handler for visual feedback
             $('#absensiDataTable input[type=radio]').on('change', function() {
                 const $group = $(this).closest('.absensi-radio-group');
-                $group.find('.absensi-radio').removeClass('active-h active-s active-i active-a active-t').css('background','').css('color','');
+                $group.find('.absensi-radio').removeClass('active-h active-s active-i active-a active-t');
                 const val = $(this).val();
-                if (val === 'T') {
-                    $(this).parent().css('background','#F59E0B').css('color','white');
-                } else {
-                    $(this).parent().addClass(`active-${val.toLowerCase()}`);
-                }
+                $(this).parent().addClass(`active-${val.toLowerCase()}`);
             });
         });
     },
@@ -2720,6 +2812,7 @@ const Curriculum = {
     saveAbsensi() {
         const tanggal = $('#absensiTanggal').val();
         const kelas_id = $('#absensiKelas').val();
+        const sesi = this.state.absensiSesi || 1;
         const absensi = [];
 
         $('#absensiDataTable tbody tr').each(function() {
@@ -2738,7 +2831,7 @@ const Curriculum = {
 
         if (!absensi.length) { EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Tidak ada data absensi.' }); return; }
 
-        this.api('absensi.php?action=save', { method: 'POST', data: { tanggal, kelas_id: parseInt(kelas_id), jam_ke: 0, absensi } }).done(res => {
+        this.api('absensi.php?action=save', { method: 'POST', data: { tanggal, kelas_id: parseInt(kelas_id), jam_ke: sesi, absensi } }).done(res => {
             EModal.toast({ type: 'success', title: 'Berhasil', message: res.message });
         }).fail(xhr => { EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menyimpan.' }); });
     },
@@ -2760,7 +2853,7 @@ const Curriculum = {
 
             const rows = data.map((r, idx) => `
                 <tr>
-                    <td>${idx + 1}</td>
+                    <td style="text-align:center;">${idx + 1}</td>
                     <td>${this.escapeHtml(r.nis)}</td>
                     <td><strong>${this.escapeHtml(r.nama)}</strong></td>
                     <td><span class="badge badge-info">${this.escapeHtml(r.kelas)}</span></td>
@@ -2786,7 +2879,7 @@ const Curriculum = {
                     <table class="data-table" id="tableExportRekapAbsensi">
                         <thead>
                             <tr>
-                                <th width="40">No</th>
+                                <th width="40" style="text-align:center;">No</th>
                                 <th>NIS</th>
                                 <th>Nama Siswa</th>
                                 <th>Kelas</th>
@@ -2821,40 +2914,86 @@ const Curriculum = {
 
     showSettingWaktuModal() {
         this.api('absensi.php?action=get_settings').done(res => {
-            const currentWaktu = res.data ? res.data.waktu_terlambat : '07:15';
-            const uniqueId = 'settingJamSiswa_' + Date.now();
+            const data = res.data || {};
+            const curMasuk = data.waktu_terlambat || '06:30';
+            const curIstMulai = data.waktu_istirahat_mulai || '09:30';
+            const curIstSelesai = data.waktu_istirahat_selesai || '10:15';
+            const curPulang = data.waktu_pulang || '15:30';
+            const curPulangMulai = data.waktu_pulang_mulai || '13:30';
+
+            const idMasuk = 'settingMasukSiswa_' + Date.now();
+            const idIstMulai = 'settingIstMulaiSiswa_' + Date.now();
+            const idIstSelesai = 'settingIstSelesaiSiswa_' + Date.now();
+            const idPulang = 'settingPulangSiswa_' + Date.now();
+            const idPulangMulai = 'settingPulangMulaiSiswa_' + Date.now();
 
             EModal.form({
-                title: '⚙️ Setting Jam Batas Terlambat Siswa',
-                size: 'sm',
+                title: '⚙️ Pengaturan Jam Absensi Siswa (3 Sesi)',
+                size: 'md',
                 form: `
-                    <div class="form-group-acad">
-                        <label class="form-label-acad">Batas Jam Masuk / Terlambat (Wajib Format 24 Jam)</label>
-                        <input type="text" class="form-input-acad" id="${uniqueId}" value="${currentWaktu}" placeholder="Contoh: 07:15 atau 14:30" maxlength="5">
-                        <small class="text-muted" style="margin-top:6px; display:block;">
-                            Ketik dalam format <strong>HH:MM</strong> (misal: 07:15 untuk pagi, 14:30 untuk siang). <br>
-                            Siswa yang melakukan tap di E-Absen <strong>setelah jam ini</strong> akan otomatis dikategorikan sebagai <strong>Terlambat</strong>.
-                        </small>
+                    <!-- Sesi 1: Masuk -->
+                    <div style="background:#f8fafc; padding:12px 14px; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:14px;">
+                        <h4 style="margin:0 0 8px 0; color:#1e293b; font-size:0.95rem;">🌅 Sesi Absen Masuk</h4>
+                        <div class="form-group-acad" style="margin-bottom:0;">
+                            <label class="form-label-acad">Batas Jam Masuk / Terlambat (Format HH:MM 24 Jam)</label>
+                            <input type="text" class="form-input-acad" id="${idMasuk}" value="${curMasuk}" placeholder="06:30" maxlength="5">
+                            <small class="text-muted" style="margin-top:4px; display:block;">Siswa tap setelah jam ini otomatis berstatus <strong>Terlambat</strong>.</small>
+                        </div>
+                    </div>
+
+                    <!-- Sesi 2: Istirahat -->
+                    <div style="background:#f8fafc; padding:12px 14px; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:14px;">
+                        <h4 style="margin:0 0 8px 0; color:#1e293b; font-size:0.95rem;">☕ Sesi Absen Istirahat</h4>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                            <div class="form-group-acad" style="margin-bottom:0;">
+                                <label class="form-label-acad">Jam Mulai Istirahat</label>
+                                <input type="text" class="form-input-acad" id="${idIstMulai}" value="${curIstMulai}" placeholder="09:30" maxlength="5">
+                            </div>
+                            <div class="form-group-acad" style="margin-bottom:0;">
+                                <label class="form-label-acad">Jam Selesai Istirahat</label>
+                                <input type="text" class="form-input-acad" id="${idIstSelesai}" value="${curIstSelesai}" placeholder="10:15" maxlength="5">
+                            </div>
+                        </div>
+                        <small class="text-muted" style="margin-top:4px; display:block;">Tap mesin pada rentang ini ditampung sebagai <strong>Absen Istirahat</strong>.</small>
+                    </div>
+
+                    <!-- Sesi 3: Pulang -->
+                    <div style="background:#f8fafc; padding:12px 14px; border:1px solid #e2e8f0; border-radius:8px;">
+                        <h4 style="margin:0 0 8px 0; color:#1e293b; font-size:0.95rem;">🏠 Sesi Absen Pulang</h4>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                            <div class="form-group-acad" style="margin-bottom:0;">
+                                <label class="form-label-acad">Jam Batas Pulang Sekolah</label>
+                                <input type="text" class="form-input-acad" id="${idPulang}" value="${curPulang}" placeholder="15:30" maxlength="5">
+                            </div>
+                            <div class="form-group-acad" style="margin-bottom:0;">
+                                <label class="form-label-acad">Mulai Tap Mesin Pulang</label>
+                                <input type="text" class="form-input-acad" id="${idPulangMulai}" value="${curPulangMulai}" placeholder="13:30" maxlength="5">
+                            </div>
+                        </div>
+                        <small class="text-muted" style="margin-top:4px; display:block;">Tap mesin mulai jam ini ditampung sebagai <strong>Jam Pulang</strong> siswa.</small>
                     </div>
                 `,
-                confirmText: 'Simpan Setting',
+                confirmText: 'Simpan Semua Pengaturan',
                 cancelText: 'Batal',
                 onConfirm: () => {
-                    let waktu = $('#' + uniqueId).val().trim();
-                    if (!waktu) {
-                        EModal.toast({ type: 'warning', message: 'Jam batas wajib diisi.' });
-                        return false;
-                    }
-                    
-                    // Validasi format 24 jam (HH:MM)
+                    const masuk = $('#' + idMasuk).val().trim();
+                    const istMulai = $('#' + idIstMulai).val().trim();
+                    const istSelesai = $('#' + idIstSelesai).val().trim();
+                    const pulang = $('#' + idPulang).val().trim();
+                    const pulangMulai = $('#' + idPulangMulai).val().trim();
+
                     const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
-                    if (!timeRegex.test(waktu)) {
-                        EModal.toast({ type: 'error', title: 'Format Salah', message: 'Harap gunakan format 24 jam yang valid, contoh: 07:15 atau 14:30' });
+                    if (!timeRegex.test(masuk) || !timeRegex.test(istMulai) || !timeRegex.test(istSelesai) || !timeRegex.test(pulang) || !timeRegex.test(pulangMulai)) {
+                        EModal.toast({ type: 'error', title: 'Format Salah', message: 'Harap gunakan format 24 jam yang valid (HH:MM), contoh: 06:30 atau 15:30' });
                         return false;
                     }
 
                     const fd = new FormData();
-                    fd.append('waktu_terlambat', waktu);
+                    fd.append('waktu_terlambat', masuk);
+                    fd.append('waktu_istirahat_mulai', istMulai);
+                    fd.append('waktu_istirahat_selesai', istSelesai);
+                    fd.append('waktu_pulang', pulang);
+                    fd.append('waktu_pulang_mulai', pulangMulai);
 
                     this.api('absensi.php?action=save_settings', { 
                         method: 'POST', 
@@ -2863,45 +3002,46 @@ const Curriculum = {
                         processData: false
                     }).done(res => {
                         EModal.toast({ type: 'success', title: 'Berhasil', message: res.message });
-                        $('#lblJamTerlambat').text(waktu);
-                        this.loadAbsensiTable();
+                        this.state.siswaSettings = res.data;
+                        this.updateAbsensiBannerText();
+                        if ($('#absensiKelas').val()) {
+                            this.loadAbsensiTable();
+                        }
                         EModal.closeAll();
                     }).fail(xhr => {
                         EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menyimpan.' });
                     });
                     
-                    return false; // Mencegah modal tertutup otomatis sebelum AJAX selesai
+                    return false;
                 }
             });
         });
     },
 
-    // ==================== ABSENSI GURU VIEW ====================
+    // ==================== ABSENSI GURU VIEW (3 SESI) ====================
     renderAbsensiGuru($container) {
         const today = new Date().toISOString().split('T')[0];
         const firstDayOfMonth = today.substring(0, 8) + '01';
+        this.state.absensiGuruSesi = 'masuk'; // 'masuk', 'istirahat', 'pulang'
 
         $container.html(`
             <div class="acad-card">
                 <div class="acad-card-header" style="display:flex; justify-content:space-between; align-items:center;">
                     <div>
                         <h3>📋 Absensi Guru</h3>
-                        <p class="acad-subtitle">Terintegrasi otomatis dengan mesin E-Absen & Rekapitulasi Kehadiran.</p>
+                        <p class="acad-subtitle">Terintegrasi otomatis dengan mesin E-Absen & Rekapitulasi Kehadiran 3 Sesi (Masuk, Istirahat, Pulang).</p>
                     </div>
                     <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                        <button class="btn-acad btn-acad-outline" onclick="Curriculum.sendWaGroupAbsenGuru('masuk')" style="border-color:#10B981; color:#059669;" title="Kirim Laporan WA Absen Pagi Sekarang">
-                            🌅 Kirim WA Pagi
-                        </button>
-                        <button class="btn-acad btn-acad-outline" onclick="Curriculum.sendWaGroupAbsenGuru('pulang')" style="border-color:#7C3AED; color:#7C3AED;" title="Kirim Laporan WA Absen Pulang Sekarang">
-                            🌆 Kirim WA Pulang
+                        <button class="btn-acad btn-acad-outline" id="btnWaGroupGuru" onclick="Curriculum.sendWaGroupAbsenGuruActive()" style="border-color:#10B981; color:#059669;" title="Kirim Laporan WA ke Grup">
+                            📲 <span id="lblBtnWaGuru">Kirim WA Masuk</span>
                         </button>
                         <button class="btn-acad btn-acad-outline" onclick="Curriculum.showSettingWaktuGuruModal()">
-                            ⚙️ Setting Jam & WA
+                            ⚙️ Setting Jam & WA Guru
                         </button>
                     </div>
                 </div>
                 <div class="acad-card-body">
-                    <!-- Navigation Tabs -->
+                    <!-- Main Navigation Tabs -->
                     <div style="margin-bottom: 20px; border-bottom: 1px solid #e2e8f0; display: flex; gap: 16px;">
                         <button class="absensi-guru-tab-btn active" data-tab="harian" onclick="Curriculum.switchAbsensiGuruTab('harian')" style="background: none; border: none; padding: 10px 16px; cursor: pointer; border-bottom: 2px solid #7C3AED; font-weight: 600; color: #7C3AED;">
                             📌 Absensi Harian
@@ -2911,14 +3051,28 @@ const Curriculum = {
                         </button>
                     </div>
 
-                    <!-- Tab 1: Absensi Harian -->
+                    <!-- Tab 1: Absensi Harian (3 Sesi) -->
                     <div id="absensiGuruTabHarian" class="absensi-guru-tab-content">
+                        <!-- 3 Sesi Sub-Tabs -->
+                        <div class="absensi-guru-sesi-nav" style="display:flex; gap:8px; margin-bottom:18px; flex-wrap:wrap;">
+                            <button class="btn-acad absensi-guru-sesi-btn active" data-sesi="masuk" onclick="Curriculum.switchAbsensiGuruSesi('masuk')" style="padding:8px 18px; border-radius:20px; font-weight:600; font-size:0.875rem; background:#7C3AED; color:white; border:1px solid #7C3AED; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.2s;">
+                                🌅 <span>Absen Masuk</span>
+                            </button>
+                            <button class="btn-acad absensi-guru-sesi-btn" data-sesi="istirahat" onclick="Curriculum.switchAbsensiGuruSesi('istirahat')" style="padding:8px 18px; border-radius:20px; font-weight:600; font-size:0.875rem; background:#F1F5F9; color:#475569; border:1px solid #CBD5E1; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.2s;">
+                                ☕ <span>Absen Istirahat</span>
+                            </button>
+                            <button class="btn-acad absensi-guru-sesi-btn" data-sesi="pulang" onclick="Curriculum.switchAbsensiGuruSesi('pulang')" style="padding:8px 18px; border-radius:20px; font-weight:600; font-size:0.875rem; background:#F1F5F9; color:#475569; border:1px solid #CBD5E1; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all 0.2s;">
+                                🏠 <span>Absen Pulang</span>
+                            </button>
+                        </div>
+
                         <div class="filter-bar">
                             <div class="filter-item"><label>Tanggal</label><input type="date" class="form-input-acad" id="absensiGuruTanggal" value="${today}"></div>
                             <div class="filter-item" style="display:flex; flex-direction:row; align-items:flex-end;"><button class="btn-acad btn-acad-primary" onclick="Curriculum.loadAbsensiGuruTable()">🔍 Tampilkan</button></div>
                         </div>
-                        <div id="absensiGuruInfoBanner" style="margin-bottom:16px; padding:10px 14px; background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; color:#1e40af; font-size:0.875rem; display:flex; justify-content:space-between; align-items:center;">
-                            <span>📌 Data otomatis menyelaraskan jam tap dari E-Absen. <strong>Batas Jam Terlambat: <span id="lblJamTerlambatGuru">07:15</span></strong></span>
+
+                        <div id="absensiGuruInfoBanner" style="margin-bottom:16px; padding:12px 16px; background:#EFF6FF; border:1px solid #BFDBFE; border-radius:10px; color:#1E40AF; font-size:0.875rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                            <span id="absensiGuruBannerText">📌 Sesi <strong>Absen Masuk Guru</strong>: Menyelaraskan tap pagi E-Absen. <strong>Batas Terlambat: <span id="lblJamTerlambatGuru">06:30</span></strong></span>
                         </div>
                         <div id="absensiGuruTableWrapper"></div>
                     </div>
@@ -2941,8 +3095,9 @@ const Curriculum = {
 
         // Load current late setting
         this.api('absensi_guru.php?action=get_settings').done(res => {
-            if (res.data && res.data.waktu_terlambat) {
-                $('#lblJamTerlambatGuru').text(res.data.waktu_terlambat);
+            if (res.data) {
+                this.state.guruSettings = res.data;
+                this.updateAbsensiGuruBannerText();
             }
         });
 
@@ -2950,9 +3105,65 @@ const Curriculum = {
         this.loadAbsensiGuruTable();
     },
 
+    switchAbsensiGuruTab(tabName) {
+        $('.absensi-guru-tab-btn').removeClass('active').css({ 'border-bottom-color': 'transparent', 'color': '#64748b' });
+        $(`.absensi-guru-tab-btn[data-tab="${tabName}"]`).addClass('active').css({ 'border-bottom-color': '#7C3AED', 'color': '#7C3AED' });
+        $('.absensi-guru-tab-content').hide();
+        
+        if (tabName === 'harian') {
+            $('#absensiGuruTabHarian').fadeIn();
+        } else {
+            $('#absensiGuruTabRekap').fadeIn();
+        }
+    },
+
+    switchAbsensiGuruSesi(sesi) {
+        this.state.absensiGuruSesi = sesi;
+        $('.absensi-guru-sesi-btn').each(function() {
+            const btnSesi = $(this).data('sesi');
+            if (btnSesi === sesi) {
+                $(this).addClass('active').css({ 'background': '#7C3AED', 'color': 'white', 'border-color': '#7C3AED' });
+            } else {
+                $(this).removeClass('active').css({ 'background': '#F1F5F9', 'color': '#475569', 'border-color': '#CBD5E1' });
+            }
+        });
+
+        // Update WA button label
+        const labels = { 'masuk': 'Kirim WA Masuk', 'istirahat': 'Kirim WA Istirahat', 'pulang': 'Kirim WA Pulang' };
+        $('#lblBtnWaGuru').text(labels[sesi] || 'Kirim WA');
+
+        this.updateAbsensiGuruBannerText();
+        this.loadAbsensiGuruTable();
+    },
+
+    updateAbsensiGuruBannerText() {
+        const sesi = this.state.absensiGuruSesi || 'masuk';
+        const cfg = this.state.guruSettings || {};
+        const jamMasuk = cfg.waktu_terlambat || '06:30';
+        const jamIstMulai = cfg.waktu_istirahat_mulai || '12:00';
+        const jamIstSelesai = cfg.waktu_istirahat_selesai || '13:00';
+        const jamPulang = cfg.waktu_pulang || '15:30';
+
+        let bannerHtml = '';
+        if (sesi === 'masuk') {
+            bannerHtml = `<span>🌅 Sesi <strong>Absen Masuk Guru</strong>: Menyelaraskan tap pagi E-Absen. <strong>Batas Masuk / Terlambat: <span id="lblJamTerlambatGuru">${jamMasuk}</span></strong></span>`;
+        } else if (sesi === 'istirahat') {
+            bannerHtml = `<span>☕ Sesi <strong>Absen Istirahat Guru</strong>: Menyelaraskan tap istirahat E-Absen. <strong>Waktu Istirahat: <span id="lblJamIstirahatGuru">${jamIstMulai} - ${jamIstSelesai}</span></strong></span>`;
+        } else if (sesi === 'pulang') {
+            bannerHtml = `<span>🏠 Sesi <strong>Absen Pulang Guru</strong>: Menyelaraskan tap pulang E-Absen. <strong>Jam Batas Pulang: <span id="lblJamPulangGuru">${jamPulang}</span></strong></span>`;
+        }
+        $('#absensiGuruBannerText').html(bannerHtml);
+    },
+
+    sendWaGroupAbsenGuruActive() {
+        const sesi = this.state.absensiGuruSesi || 'masuk';
+        this.sendWaGroupAbsenGuru(sesi);
+    },
+
     sendWaGroupAbsenGuru(tipe = 'masuk') {
         const tanggal = $('#absensiGuruTanggal').val() || new Date().toISOString().split('T')[0];
-        const label = tipe === 'masuk' ? 'Absen Pagi' : 'Absen Pulang';
+        const labelMap = { 'masuk': 'Absen Pagi', 'istirahat': 'Absen Istirahat', 'pulang': 'Absen Pulang' };
+        const label = labelMap[tipe] || 'Absen';
         
         EModal.confirm({
             title: `Kirim ${label} ke Grup WA`,
@@ -2975,48 +3186,63 @@ const Curriculum = {
         });
     },
 
-    switchAbsensiGuruTab(tabName) {
-        $('.absensi-guru-tab-btn').removeClass('active').css({ 'border-bottom-color': 'transparent', 'color': '#64748b' });
-        $(`.absensi-guru-tab-btn[data-tab="${tabName}"]`).addClass('active').css({ 'border-bottom-color': '#7C3AED', 'color': '#7C3AED' });
-        $('.absensi-guru-tab-content').hide();
-        
-        if (tabName === 'harian') {
-            $('#absensiGuruTabHarian').fadeIn();
-        } else {
-            $('#absensiGuruTabRekap').fadeIn();
-        }
+    setAllAbsensiGuruStatus(status) {
+        $('.absensi-guru-status').val(status).trigger('change');
+        EModal.toast({ type: 'info', message: `Semua guru di-set ${status === 'H' ? 'Hadir' : status}.` });
     },
 
     loadAbsensiGuruTable() {
         const tanggal = $('#absensiGuruTanggal').val();
+        const sesi = this.state.absensiGuruSesi || 'masuk';
         if (!tanggal) return;
+
+        const sesiLabels = { 'masuk': 'Masuk', 'istirahat': 'Istirahat', 'pulang': 'Pulang' };
+        const labelSesi = sesiLabels[sesi] || 'Harian';
 
         const $wrapper = $('#absensiGuruTableWrapper');
         $wrapper.html('<div style="padding:20px; text-align:center;">Memuat data absensi...</div>');
 
-        this.api(`absensi_guru.php?action=list&tanggal=${tanggal}`).done(res => {
+        this.api(`absensi_guru.php?action=list&tanggal=${tanggal}&sesi=${sesi}`).done(res => {
             if (!res.success) {
                 $wrapper.html(`<div style="color:red; padding:20px;">Error: ${res.message}</div>`);
                 return;
             }
 
-            const data = res.data.teachers;
+            if (res.data) {
+                this.state.guruSettings = res.data;
+                this.updateAbsensiGuruBannerText();
+            }
+
+            const data = res.data.teachers || [];
             if (data.length === 0) {
-                $wrapper.html('<div style="padding:20px; text-align:center; color:gray;">Tidak ada data guru.</div>');
+                $wrapper.html('<div style="padding:20px; text-align:center; color:gray;">Tidak ada data guru aktif.</div>');
                 return;
             }
 
             let trs = '';
             data.forEach((t, i) => {
-                const isLate = t.status === 'T';
-                const hasScan = t.jam_masuk !== null;
+                const hasScan = t.jam_scan !== null;
                 const statusColor = t.status === 'H' ? '#10B981' : (t.status === 'T' ? '#F59E0B' : (t.status === 'A' ? '#EF4444' : '#3B82F6'));
                 
                 let scanBadge = '';
-                if (hasScan) {
-                    scanBadge = `<span style="font-size:0.75rem; padding:2px 6px; background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; border-radius:4px;">${this.escapeHtml(t.scan_info)}</span>`;
+                if (sesi === 'masuk') {
+                    if (hasScan) {
+                        if (t.status === 'T') {
+                            scanBadge = `<span style="font-size:0.75rem; padding:2px 8px; background:#fef3c7; color:#92400e; border:1px solid #fcd34d; border-radius:4px; font-weight:600;">${this.escapeHtml(t.scan_info)}</span>`;
+                        } else {
+                            scanBadge = `<span style="font-size:0.75rem; padding:2px 8px; background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; border-radius:4px; font-weight:600;">${this.escapeHtml(t.scan_info)}</span>`;
+                        }
+                    } else {
+                        scanBadge = `<span style="font-size:0.75rem; padding:2px 8px; background:#f8fafc; color:#64748b; border:1px solid #cbd5e1; border-radius:4px;">Belum Scan Mesin</span>`;
+                    }
                 } else {
-                    scanBadge = `<span style="font-size:0.75rem; padding:2px 6px; background:#fef2f2; color:#991b1b; border:1px solid #fecaca; border-radius:4px;">Belum Scan Mesin</span>`;
+                    // Sesi istirahat & pulang: Hanya tampilkan jam saja
+                    if (hasScan) {
+                        const timeStr = t.scan_info || t.jam_scan.substring(0, 5);
+                        scanBadge = `<span style="font-size:0.8rem; font-weight:600; padding:2px 8px; background:#f8fafc; color:#1e293b; border:1px solid #cbd5e1; border-radius:4px; display:inline-flex; align-items:center; gap:4px;">🕒 ${this.escapeHtml(timeStr)}</span>`;
+                    } else {
+                        scanBadge = `<span style="font-size:0.75rem; padding:2px 8px; background:#f8fafc; color:#94a3b8; border:1px dashed #cbd5e1; border-radius:4px;">Belum Scan</span>`;
+                    }
                 }
 
                 trs += `
@@ -3045,13 +3271,24 @@ const Curriculum = {
             });
 
             $wrapper.html(`
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <div style="display:flex; gap:8px;">
+                        <button class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.setAllAbsensiGuruStatus('H')" style="font-size:0.8rem; border-color:#10B981; color:#059669;">
+                            ✅ Set Semua Hadir
+                        </button>
+                        <button class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.loadAbsensiGuruTable()" style="font-size:0.8rem;">
+                            🔄 Reset Sesuai Mesin
+                        </button>
+                    </div>
+                    <div style="font-size:0.85rem; color:#64748B;">Total: <strong>${data.length} Guru</strong></div>
+                </div>
                 <div class="data-table-wrapper">
                     <table class="data-table">
                         <thead>
                             <tr>
                                 <th style="width:50px; text-align:center;">No</th>
                                 <th style="width:120px;">Kode Guru</th>
-                                <th>Nama Guru & Info Scan</th>
+                                <th>Nama Guru & Info Scan (${labelSesi})</th>
                                 <th style="width:150px;">Status</th>
                                 <th>Keterangan (Manual)</th>
                             </tr>
@@ -3060,7 +3297,7 @@ const Curriculum = {
                     </table>
                 </div>
                 <div style="margin-top:16px; text-align:right;">
-                    <button class="btn-acad btn-acad-primary" onclick="Curriculum.saveAbsensiGuru()">💾 Simpan Data Absensi Guru</button>
+                    <button class="btn-acad btn-acad-primary" onclick="Curriculum.saveAbsensiGuru()">💾 Simpan Data Absensi Guru ${labelSesi}</button>
                 </div>
             `);
         });
@@ -3068,6 +3305,7 @@ const Curriculum = {
 
     saveAbsensiGuru() {
         const tanggal = $('#absensiGuruTanggal').val();
+        const sesi = this.state.absensiGuruSesi || 'masuk';
         if (!tanggal) {
             EModal.toast({ type: 'warning', message: 'Tanggal absensi tidak valid.' });
             return;
@@ -3091,7 +3329,7 @@ const Curriculum = {
 
         this.api('absensi_guru.php?action=save', {
             method: 'POST',
-            data: { tanggal, absensi }
+            data: { tanggal, sesi, absensi }
         }).done(res => {
             if (res.success) {
                 EModal.toast({ type: 'success', title: 'Berhasil', message: res.message });
@@ -3191,78 +3429,101 @@ const Curriculum = {
 
     showSettingWaktuGuruModal() {
         this.api('absensi_guru.php?action=get_settings').done(res => {
-            const currentWaktu = res.data ? (res.data.waktu_terlambat || '07:15') : '07:15';
-            const cutoffMasuk = res.data ? (res.data.wa_cutoff_masuk || '06:30') : '06:30';
-            const cutoffPulang = res.data ? (res.data.wa_cutoff_pulang || '17:00') : '17:00';
-            const mulaiPulang = res.data ? (res.data.wa_mulai_pulang || '13:00') : '13:00';
+            const data = res.data || {};
+            const curMasuk = data.waktu_terlambat || '06:30';
+            const curIstMulai = data.waktu_istirahat_mulai || '12:00';
+            const curIstSelesai = data.waktu_istirahat_selesai || '13:00';
+            const curPulang = data.waktu_pulang || '15:30';
+            const curMulPulang = data.wa_mulai_pulang || '13:00';
+            const curCutMasuk = data.wa_cutoff_masuk || '06:30';
+            const curCutPulang = data.wa_cutoff_pulang || '17:00';
+
             const uniqueId = 'settingJamGuru_' + Date.now();
+            const idIstMulai = 'settingIstMulaiGuru_' + Date.now();
+            const idIstSelesai = 'settingIstSelesaiGuru_' + Date.now();
+            const idPulang = 'settingPulangGuru_' + Date.now();
             const idCutoffMasuk = 'settingCutoffMasuk_' + Date.now();
             const idCutoffPulang = 'settingCutoffPulang_' + Date.now();
             const idMulaiPulang = 'settingMulaiPulang_' + Date.now();
 
             EModal.form({
-                title: '⚙️ Setting Jam Batas Terlambat & Broadcast WA Guru',
+                title: '⚙️ Pengaturan Jam Absensi & Broadcast WA Guru (3 Sesi)',
                 size: 'md',
                 form: `
-                    <div class="form-group-acad" style="margin-bottom:14px;">
-                        <label class="form-label-acad">⏰ Batas Jam Masuk / Terlambat (Format 24 Jam)</label>
-                        <input type="text" class="form-input-acad" id="${uniqueId}" value="${currentWaktu}" placeholder="07:15" maxlength="5">
-                        <small class="text-muted" style="margin-top:4px; display:block;">
-                            Guru yang tap absen setelah jam ini akan otomatis berstatus <strong>Terlambat</strong>.
-                        </small>
-                    </div>
-                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px;">
-                        <div class="form-group-acad">
-                            <label class="form-label-acad">🌅 Batas Auto WA Pagi</label>
-                            <input type="text" class="form-input-acad" id="${idCutoffMasuk}" value="${cutoffMasuk}" placeholder="06:30" maxlength="5">
-                            <small class="text-muted" style="margin-top:4px; display:block;">
-                                Laporan absen pagi dikirim per batch 10 guru hingga batas jam ini (Default: <strong>06:30</strong>).
-                            </small>
+                    <!-- Sesi 1: Masuk -->
+                    <div style="background:#f8fafc; padding:12px 14px; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:14px;">
+                        <h4 style="margin:0 0 8px 0; color:#1e293b; font-size:0.95rem;">🌅 Sesi Absen Masuk Guru</h4>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                            <div class="form-group-acad" style="margin-bottom:0;">
+                                <label class="form-label-acad">Batas Jam Masuk / Terlambat</label>
+                                <input type="text" class="form-input-acad" id="${uniqueId}" value="${curMasuk}" placeholder="06:30" maxlength="5">
+                            </div>
+                            <div class="form-group-acad" style="margin-bottom:0;">
+                                <label class="form-label-acad">Batas Auto WA Pagi</label>
+                                <input type="text" class="form-input-acad" id="${idCutoffMasuk}" value="${curCutMasuk}" placeholder="06:30" maxlength="5">
+                            </div>
                         </div>
-                        <div class="form-group-acad">
-                            <label class="form-label-acad">🏠 Mulai Absen Pulang Mesin</label>
-                            <input type="text" class="form-input-acad" id="${idMulaiPulang}" value="${mulaiPulang}" placeholder="13:00" maxlength="5">
-                            <small class="text-muted" style="margin-top:4px; display:block;">
-                                Scan mesin mulai jam ini ditampung sebagai <strong>Jam Pulang</strong> (Default: <strong>13:00</strong>).
-                            </small>
-                        </div>
+                        <small class="text-muted" style="margin-top:4px; display:block;">Guru tap setelah jam ini otomatis berstatus <strong>Terlambat</strong>.</small>
                     </div>
-                    <div class="form-group-acad" style="margin-bottom:14px;">
-                        <label class="form-label-acad">🌆 Waktu Kirim WA Absen Pulang</label>
-                        <input type="text" class="form-input-acad" id="${idCutoffPulang}" value="${cutoffPulang}" placeholder="17:00" maxlength="5">
-                        <small class="text-muted" style="margin-top:4px; display:block;">
-                            Laporan absen pulang akan dikirim otomatis ke grup WA <strong>hanya sekali pada jam ini</strong> (Default: <strong>17:00</strong>).
-                        </small>
+
+                    <!-- Sesi 2: Istirahat -->
+                    <div style="background:#f8fafc; padding:12px 14px; border:1px solid #e2e8f0; border-radius:8px; margin-bottom:14px;">
+                        <h4 style="margin:0 0 8px 0; color:#1e293b; font-size:0.95rem;">☕ Sesi Absen Istirahat Guru</h4>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                            <div class="form-group-acad" style="margin-bottom:0;">
+                                <label class="form-label-acad">Jam Mulai Istirahat</label>
+                                <input type="text" class="form-input-acad" id="${idIstMulai}" value="${curIstMulai}" placeholder="12:00" maxlength="5">
+                            </div>
+                            <div class="form-group-acad" style="margin-bottom:0;">
+                                <label class="form-label-acad">Jam Selesai Istirahat</label>
+                                <input type="text" class="form-input-acad" id="${idIstSelesai}" value="${curIstSelesai}" placeholder="13:00" maxlength="5">
+                            </div>
+                        </div>
+                        <small class="text-muted" style="margin-top:4px; display:block;">Tap mesin pada rentang ini ditampung sebagai <strong>Absen Istirahat Guru</strong>.</small>
+                    </div>
+
+                    <!-- Sesi 3: Pulang -->
+                    <div style="background:#f8fafc; padding:12px 14px; border:1px solid #e2e8f0; border-radius:8px;">
+                        <h4 style="margin:0 0 8px 0; color:#1e293b; font-size:0.95rem;">🏠 Sesi Absen Pulang Guru</h4>
+                        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:10px;">
+                            <div class="form-group-acad" style="margin-bottom:0;">
+                                <label class="form-label-acad">Jam Pulang Guru</label>
+                                <input type="text" class="form-input-acad" id="${idPulang}" value="${curPulang}" placeholder="15:30" maxlength="5">
+                            </div>
+                            <div class="form-group-acad" style="margin-bottom:0;">
+                                <label class="form-label-acad">Mulai Tap Pulang Mesin</label>
+                                <input type="text" class="form-input-acad" id="${idMulaiPulang}" value="${curMulPulang}" placeholder="13:00" maxlength="5">
+                            </div>
+                        </div>
+                        <div class="form-group-acad" style="margin-bottom:0;">
+                            <label class="form-label-acad">Waktu Auto Broadcast WA Pulang</label>
+                            <input type="text" class="form-input-acad" id="${idCutoffPulang}" value="${curCutPulang}" placeholder="17:00" maxlength="5">
+                            <small class="text-muted" style="margin-top:4px; display:block;">Laporan WA sore dikirim otomatis ke grup pada jam ini.</small>
+                        </div>
                     </div>
                 `,
-                confirmText: 'Simpan Setting',
+                confirmText: 'Simpan Semua Pengaturan',
                 cancelText: 'Batal',
                 onConfirm: () => {
-                    let waktu = $('#' + uniqueId).val().trim();
-                    let cutMasuk = $('#' + idCutoffMasuk).val().trim();
-                    let cutPulang = $('#' + idCutoffPulang).val().trim();
-                    let mulPulang = $('#' + idMulaiPulang).val().trim();
+                    const waktu = $('#' + uniqueId).val().trim();
+                    const istMulai = $('#' + idIstMulai).val().trim();
+                    const istSelesai = $('#' + idIstSelesai).val().trim();
+                    const pulang = $('#' + idPulang).val().trim();
+                    const cutMasuk = $('#' + idCutoffMasuk).val().trim();
+                    const cutPulang = $('#' + idCutoffPulang).val().trim();
+                    const mulPulang = $('#' + idMulaiPulang).val().trim();
 
                     const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
-                    if (!timeRegex.test(waktu)) {
-                        EModal.toast({ type: 'error', title: 'Format Salah', message: 'Harap gunakan format 24 jam yang valid untuk Jam Terlambat (HH:MM), contoh: 07:15' });
-                        return false;
-                    }
-                    if (cutMasuk && !timeRegex.test(cutMasuk)) {
-                        EModal.toast({ type: 'error', title: 'Format Salah', message: 'Harap gunakan format 24 jam yang valid untuk Batas WA Pagi (HH:MM), contoh: 06:30' });
-                        return false;
-                    }
-                    if (cutPulang && !timeRegex.test(cutPulang)) {
-                        EModal.toast({ type: 'error', title: 'Format Salah', message: 'Harap gunakan format 24 jam yang valid untuk Waktu Kirim WA Pulang (HH:MM), contoh: 19:00' });
-                        return false;
-                    }
-                    if (mulPulang && !timeRegex.test(mulPulang)) {
-                        EModal.toast({ type: 'error', title: 'Format Salah', message: 'Harap gunakan format 24 jam yang valid untuk Mulai Absen Pulang (HH:MM), contoh: 13:00' });
+                    if (!timeRegex.test(waktu) || !timeRegex.test(istMulai) || !timeRegex.test(istSelesai) || !timeRegex.test(pulang)) {
+                        EModal.toast({ type: 'error', title: 'Format Salah', message: 'Harap gunakan format 24 jam yang valid (HH:MM), contoh: 06:30 atau 15:30' });
                         return false;
                     }
 
                     const fd = new FormData();
                     fd.append('waktu_terlambat', waktu);
+                    fd.append('waktu_istirahat_mulai', istMulai);
+                    fd.append('waktu_istirahat_selesai', istSelesai);
+                    fd.append('waktu_pulang', pulang);
                     if (cutMasuk) fd.append('wa_cutoff_masuk', cutMasuk);
                     if (cutPulang) fd.append('wa_cutoff_pulang', cutPulang);
                     if (mulPulang) fd.append('wa_mulai_pulang', mulPulang);
@@ -3274,7 +3535,8 @@ const Curriculum = {
                         processData: false
                     }).done(res => {
                         EModal.toast({ type: 'success', title: 'Berhasil', message: res.message });
-                        $('#lblJamTerlambatGuru').text(waktu);
+                        this.state.guruSettings = res.data;
+                        this.updateAbsensiGuruBannerText();
                         this.loadAbsensiGuruTable();
                         if ($('#absensiGuruTabRekap').is(':visible')) {
                             this.loadAbsensiGuruRekapTable();

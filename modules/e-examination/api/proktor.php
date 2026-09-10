@@ -257,7 +257,10 @@ try {
             exam_require_proktor();
 
             $ujian_id = (int)($_GET['ujian_id'] ?? 0);
-            $loginUrl = BASE_URL . 'modules/e-examination/student/login.php';
+            
+            $protocol = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' || ($_SERVER['SERVER_PORT'] ?? 80) == 443) ? "https://" : "http://";
+            $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+            $loginUrl = rtrim($protocol . $host . BASE_URL, '/') . '/modules/e-examination/student/login.php';
 
             $examInfo = null;
             if ($ujian_id > 0) {
@@ -271,6 +274,10 @@ try {
                 $examInfo = $stmt->fetch(PDO::FETCH_ASSOC);
             }
 
+            if ($examInfo && !empty($examInfo['token'])) {
+                $loginUrl .= '?exam_id=' . $examInfo['id'] . '&token=' . urlencode($examInfo['token']);
+            }
+
             $shareText = "📋 *INFORMASI UJIAN CBT*\n";
             if ($examInfo) {
                 $shareText .= "📌 *Ujian:* " . $examInfo['judul'] . "\n";
@@ -279,7 +286,7 @@ try {
                 $shareText .= "👥 *Kelas:* " . ($examInfo['kelas_peserta'] ?: 'Semua') . "\n";
             }
             $shareText .= "🔗 *Link Pengerjaan:* " . $loginUrl . "\n\n";
-            $shareText .= "⚠️ *Catatan:* Masuk menggunakan NIS dan Password akun siswa. Jangan keluar aplikasi selama ujian berlangsung.";
+            $shareText .= "⚠️ *Catatan:* Masuk menggunakan Kartu Ujian (Examcard) atau NIS & Tanggal Lahir. Jangan keluar aplikasi selama ujian berlangsung.";
 
             json_response(200, true, 'Link ujian berhasil digenerate', [
                 'login_url'  => $loginUrl,

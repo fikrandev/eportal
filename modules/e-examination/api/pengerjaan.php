@@ -19,24 +19,116 @@ try {
         // ==========================================
         case 'login':
             if ($method !== 'POST') throw new Exception('Method not allowed', 405);
-            $data = json_decode(file_get_contents('php://input'), true);
-            $username = sanitize($data['username'] ?? '');
-            $password = $data['password'] ?? '';
+            $data = json_decode(file_get_contents('php://input'), true) ?: $_POST;
+            $login_type = sanitize($data['login_type'] ?? 'nis_dob');
+            $student = null;
 
-            if (!$username || !$password) throw new Exception('NIS dan Password wajib diisi', 400);
+            if ($login_type === 'examcard') {
+                $username = trim($data['username'] ?? '');
+                $password = trim($data['password'] ?? '');
 
-            // Fetch from students
-            $stmt = db()->prepare("SELECT id, nis, nama, kelas, tanggal_lahir FROM students WHERE nis = ? AND status = 1 LIMIT 1");
-            $stmt->execute([$username]);
-            $student = $stmt->fetch();
+                if (!$username || !$password) {
+                    throw new Exception('Username dan Password Kartu Ujian wajib diisi', 400);
+                }
 
-            if (!$student) throw new Exception('NIS tidak ditemukan atau tidak aktif', 404);
+                // Check in xam_exam_students joined with students
+                $stmtCard = db()->prepare("
+                    SELECT xs.id as card_id, xs.student_id, xs.username, xs.password_plain, xs.password_hash, xs.status as card_status, xs.suspension_note,
+                           s.id, s.nis, s.nama, s.kelas, s.tanggal_lahir, s.status as student_status, s.status_siswa
+                    FROM xam_exam_students xs
+                    JOIN students s ON s.id = xs.student_id
+                    WHERE xs.username = ?
+                    ORDER BY xs.id DESC
+                    LIMIT 1
+                ");
+                $stmtCard->execute([$username]);
+                $cardRow = $stmtCard->fetch(PDO::FETCH_ASSOC);
 
-            $dbDob = $student['tanggal_lahir'] ?? '';
-            $expectedPassword = $dbDob ? date('dmY', strtotime($dbDob)) : '';
+                if (!$cardRow) {
+                    throw new Exception('Akun Kartu Ujian (Username) tidak ditemukan', 404);
+                }
 
-            if ($password !== $expectedPassword && $password !== $student['nis']) {
-                throw new Exception('Password salah', 401);
+                // Check password (plain or hash)
+                $passPlain = (string)($cardRow['password_plain'] ?? '');
+                $passHash = (string)($cardRow['password_hash'] ?? '');
+                $matched = false;
+                if ($password === $passPlain) {
+                    $matched = true;
+                } elseif (!empty($passHash) && password_verify($password, $passHash)) {
+                    $matched = true;
+                }
+
+                if (!$matched) {
+                    throw new Exception('Password Kartu Ujian salah. Silakan periksa kartu ujian Anda.', 401);
+                }
+
+                if (($cardRow['card_status'] ?? '') === 'DITANGGUHKAN') {
+                    $note = $cardRow['suspension_note'] ? " ({$cardRow['suspension_note']})" : "";
+                    throw new Exception("Status Kartu Ujian Anda DITANGGUHKAN{$note}. Harap hubungi panitia ujian/keuangan.", 403);
+                }
+
+                $student = [
+                    'id' => $cardRow['id'],
+                    'nis' => $cardRow['nis'],
+                    'nama' => $cardRow['nama'],
+                    'kelas' => $cardRow['kelas'],
+                    'login_type' => 'examcard',
+                    'card_username' => $username
+                ];
+            } else {
+                // NIS & Tanggal Lahir (or Password)
+                $nis = sanitize($data['nis'] ?? $data['username'] ?? '');
+                $dob = trim($data['dob'] ?? $data['password'] ?? '');
+
+                if (!$nis || !$dob) {
+                    throw new Exception('NIS dan Tanggal Lahir wajib diisi', 400);
+                }
+
+                $stmt = db()->prepare("SELECT id, nis, nama, kelas, tanggal_lahir, status, status_siswa FROM students WHERE nis = ? LIMIT 1");
+                $stmt->execute([$nis]);
+                $studentRow = $stmt->fetch(PDO::FETCH_ASSOC);
+
+                if (!$studentRow) {
+                    throw new Exception('NIS tidak ditemukan', 404);
+                }
+
+                if (isset($studentRow['status']) && (int)$studentRow['status'] === 0 && ($studentRow['status_siswa'] ?? '') === 'Keluar') {
+                    throw new Exception('Akun siswa tidak aktif', 403);
+                }
+
+                $dbDob = $studentRow['tanggal_lahir'] ?? '';
+                $matched = false;
+
+                if ($dbDob) {
+                    $ts = strtotime($dbDob);
+                    $dob_dmY = $ts ? date('dmY', $ts) : '';
+                    $dob_Ymd = $ts ? date('Y-m-d', $ts) : '';
+                    $dob_dmy_dashed = $ts ? date('d-m-Y', $ts) : '';
+                    $dob_dmy_slashed = $ts ? date('d/m/Y', $ts) : '';
+
+                    $cleanInput = str_replace(['-', '/', ' '], '', $dob);
+                    $cleanExpected = str_replace(['-', '/', ' '], '', $dob_dmY);
+
+                    if ($dob === $dob_dmY || $dob === $dob_Ymd || $dob === $dob_dmy_dashed || $dob === $dob_dmy_slashed || $cleanInput === $cleanExpected || $dob === $studentRow['nis']) {
+                        $matched = true;
+                    }
+                } else {
+                    if ($dob === $studentRow['nis']) {
+                        $matched = true;
+                    }
+                }
+
+                if (!$matched) {
+                    throw new Exception('Tanggal lahir salah. Format: DDMMYYYY (contoh: 12052005)', 401);
+                }
+
+                $student = [
+                    'id' => $studentRow['id'],
+                    'nis' => $studentRow['nis'],
+                    'nama' => $studentRow['nama'],
+                    'kelas' => $studentRow['kelas'],
+                    'login_type' => 'nis_dob'
+                ];
             }
 
             // ===== CHECK PROCTOR LOCK STATUS =====
@@ -51,15 +143,9 @@ try {
                 }
             } catch (Exception $e) {
                 if ($e->getCode() === 403) throw $e;
-                // Table might not exist yet if not migrated, ignore other errors
             }
 
-            $_SESSION['exam_student'] = [
-                'id' => $student['id'],
-                'nis' => $student['nis'],
-                'nama' => $student['nama'],
-                'kelas' => $student['kelas']
-            ];
+            $_SESSION['exam_student'] = $student;
 
             // Record login status in exam_student_login
             try {
@@ -80,7 +166,7 @@ try {
                 $stmtLog->execute([$student['id'], $ip, $ua]);
             } catch (Exception $e) {}
 
-            json_response(200, true, 'Login berhasil');
+            json_response(200, true, 'Login berhasil', ['student' => $student]);
             break;
 
         case 'logout':
@@ -157,32 +243,15 @@ try {
             if (!isset($_SESSION['exam_student'])) throw new Exception('Silakan login kembali', 401);
             if ($method !== 'POST') throw new Exception('Method not allowed', 405);
             
-            $data = json_decode(file_get_contents('php://input'), true);
+            $data = json_decode(file_get_contents('php://input'), true) ?: $_POST;
             $ujian_id = (int)($data['ujian_id'] ?? 0);
             $token = strtoupper(trim($data['token'] ?? ''));
-            $username_card = trim($data['username_card'] ?? '');
-            $password_card = trim($data['password_card'] ?? '');
 
             if (!$ujian_id || !$token) throw new Exception('Ujian ID dan Token wajib diisi', 400);
-            if (empty($username_card) || empty($password_card)) {
-                throw new Exception('Username dan Password E-xam Card wajib diisi', 400);
-            }
             
             $student = $_SESSION['exam_student'];
 
-            // Verify E-xam Card credentials for the student
-            $stmtCard = db()->prepare("
-                SELECT COUNT(*) 
-                FROM xam_exam_students 
-                WHERE student_id = ? AND username = ? AND password_plain = ?
-            ");
-            $stmtCard->execute([$student['id'], $username_card, $password_card]);
-            $cardValid = $stmtCard->fetchColumn() > 0;
-            if (!$cardValid) {
-                throw new Exception('Username atau Password E-xam Card salah.', 401);
-            }
-
-            // 1. Verify Ujian and Token
+            // 1. Verify Ujian and Token and Class Access
             $stmt = db()->prepare("
                 SELECT u.*, uk.kelas 
                 FROM exam_ujian u
@@ -192,8 +261,26 @@ try {
             $stmt->execute([$ujian_id, $student['kelas']]);
             $ujian = $stmt->fetch();
 
-            if (!$ujian) throw new Exception('Ujian tidak ditemukan, tidak aktif, atau bukan untuk kelas Anda', 404);
-            if ($ujian['token'] !== $token) throw new Exception('TOKEN SALAH. Silakan periksa kembali.', 401);
+            if (!$ujian) throw new Exception('Ujian tidak ditemukan, tidak aktif, atau bukan untuk kelas Anda (' . htmlspecialchars($student['kelas']) . ')', 404);
+            if (trim($ujian['token']) !== $token) throw new Exception('TOKEN SALAH. Silakan periksa token ujian.', 401);
+
+            // Optional: Check if student has exam card suspension
+            try {
+                $stmtCheckSuspended = db()->prepare("
+                    SELECT status, suspension_note 
+                    FROM xam_exam_students 
+                    WHERE student_id = ? 
+                    ORDER BY id DESC LIMIT 1
+                ");
+                $stmtCheckSuspended->execute([$student['id']]);
+                $susp = $stmtCheckSuspended->fetch();
+                if ($susp && $susp['status'] === 'DITANGGUHKAN') {
+                    $note = $susp['suspension_note'] ? " ({$susp['suspension_note']})" : "";
+                    throw new Exception("Status ujian Anda ditangguhkan{$note}. Harap hubungi panitia ujian/keuangan.", 403);
+                }
+            } catch (Exception $e) {
+                if ($e->getCode() === 403) throw $e;
+            }
 
             // 2. Check existing session
             $stmtSesi = db()->prepare("SELECT * FROM exam_sesi WHERE ujian_id = ? AND student_id = ?");

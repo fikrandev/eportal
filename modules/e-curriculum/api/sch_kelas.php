@@ -29,7 +29,7 @@ switch ($action) {
 
             // Fallback 2: load distinct from students
             if (empty($data)) {
-                $stmtStd = db()->query("SELECT DISTINCT kelas as nama_kelas, kelas as rombel FROM students WHERE kelas IS NOT NULL AND kelas != '' ORDER BY kelas ASC");
+                $stmtStd = db()->query("SELECT DISTINCT kelas as nama_kelas, kelas as rombel FROM students WHERE kelas IS NOT NULL AND kelas != '' AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY kelas ASC");
                 $raw = $stmtStd->fetchAll(PDO::FETCH_ASSOC);
                 $data = array_map(function($idx, $r) {
                     return ['id' => $idx + 1, 'rombel' => $r['rombel'], 'nama_kelas' => $r['nama_kelas']];
@@ -137,8 +137,8 @@ switch ($action) {
             $existing = $stmtExist->fetchAll(PDO::FETCH_COLUMN);
             $existingLower = array_map('strtolower', $existing);
 
-            // Fetch distinct classes from students table
-            $stmtPortal = db()->query("SELECT DISTINCT kelas FROM students WHERE kelas != '' AND kelas IS NOT NULL");
+            // Fetch distinct classes from active students table
+            $stmtPortal = db()->query("SELECT DISTINCT kelas FROM students WHERE kelas != '' AND kelas IS NOT NULL AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '')");
             $portalClasses = $stmtPortal->fetchAll(PDO::FETCH_COLUMN);
 
             $insertedCount = 0;

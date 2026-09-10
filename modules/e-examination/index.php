@@ -195,6 +195,7 @@ $school_icon = get_setting('icon_sekolah', '');
 
     <!-- Vendor Scripts -->
     <script src="<?php echo BASE_URL; ?>assets/vendor/jquery-3.7.1.min.js"></script>
+    <script src="<?php echo BASE_URL; ?>assets/vendor/qrcode.min.js"></script>
     <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=<?php echo time(); ?>"></script>
     
     <!-- Module Script -->
