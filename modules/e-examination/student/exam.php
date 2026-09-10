@@ -135,12 +135,15 @@ if (!$session_id) {
         }
         .exam-sidebar {
             width: 320px;
+            max-width: 100%;
             background: white;
             border-right: 1px solid var(--border-color);
             display: flex;
             flex-direction: column;
             transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             z-index: 50;
+            overflow: hidden;
+            box-sizing: border-box;
         }
         .sidebar-header {
             padding: 16px;
@@ -199,15 +202,26 @@ if (!$session_id) {
             color: #dc2626;
         }
         .nav-grid {
-            padding: 16px;
+            padding: 12px;
             display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 10px;
+            grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+            gap: 8px;
             overflow-y: auto;
+            overflow-x: hidden;
             flex: 1;
+            width: 100%;
+            box-sizing: border-box;
+            align-content: start;
         }
         .nav-btn {
-            aspect-ratio: 1;
+            width: 100% !important;
+            aspect-ratio: 1 / 1 !important;
+            min-width: 0 !important;
+            min-height: 0 !important;
+            max-width: 100% !important;
+            padding: 0 !important;
+            margin: 0 !important;
+            box-sizing: border-box !important;
             border: 1px solid var(--border-color);
             background: white;
             border-radius: 8px;
@@ -218,9 +232,10 @@ if (!$session_id) {
             align-items: center;
             justify-content: center;
             color: #475569;
-            transition: 0.2s;
+            transition: 0.15s ease;
             position: relative;
             touch-action: manipulation;
+            line-height: 1;
         }
         .nav-btn.answered {
             background: #2563EB;
@@ -463,13 +478,17 @@ if (!$session_id) {
                 top: 0;
                 bottom: 0;
                 left: 0;
-                width: 310px;
-                max-width: 86vw;
+                width: 300px;
+                max-width: 85vw;
                 height: 100vh;
                 height: 100dvh;
                 box-shadow: 6px 0 24px rgba(0,0,0,0.25);
                 transform: translateX(-100%);
                 z-index: 1050;
+                display: flex;
+                flex-direction: column;
+                overflow: hidden;
+                box-sizing: border-box;
             }
             .exam-sidebar.mobile-open {
                 transform: translateX(0);
@@ -478,13 +497,28 @@ if (!$session_id) {
                 display: block;
             }
             .nav-grid {
-                grid-template-columns: repeat(5, 1fr);
+                grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
                 gap: 8px;
                 padding: 12px;
+                width: 100%;
+                box-sizing: border-box;
+                overflow-x: hidden;
+                align-content: start;
             }
             .nav-btn {
+                width: 100% !important;
+                aspect-ratio: 1 / 1 !important;
                 font-size: 13px;
                 border-radius: 6px;
+                min-width: 0 !important;
+                min-height: 0 !important;
+                max-width: 100% !important;
+                padding: 0 !important;
+                margin: 0 !important;
+                box-sizing: border-box !important;
+                display: flex;
+                align-items: center;
+                justify-content: center;
             }
 
             /* Main question container */
