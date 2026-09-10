@@ -243,6 +243,8 @@ const ExamApp = {
 
     reportCheating(type) {
         if (this.isSubmitting) return;
+        // Don't report if exam is already stopped
+        if (this._examStopped) return;
         
         // Show big red violation overlay immediately
         this.showViolationOverlay(type);
@@ -254,9 +256,18 @@ const ExamApp = {
             contentType: 'application/json',
             success: (r) => {
                 if (r.success) {
+                    if (r.data.action === 'already_stopped') {
+                        // Session already ended, redirect to dashboard
+                        $('#violationOverlay').remove();
+                        this._examStopped = true;
+                        window.location.href = 'dashboard.php';
+                        return;
+                    }
+
                     this.violations = r.data.violations;
                     if (r.data.action === 'stop') {
                         // Fatal — exam terminated
+                        this._examStopped = true;
                         $('#violationOverlay').remove();
                         EModal.alert(
                             'UJIAN DIHENTIKAN',
@@ -341,6 +352,7 @@ const ExamApp = {
                 if (r.success) {
                     this.soalList = r.data.soal_list;
                     this.remainingSeconds = r.data.remaining_seconds;
+                    this.violations = r.data.violations || 0;
                     $('#uiUjianJudul').text(r.data.ujian_judul);
                     
                     this.startTimer();
@@ -563,7 +575,7 @@ const ExamApp = {
                     $opts.append(`
                         <label class="option-item ${selectedClass}" for="${uid}">
                             <input type="radio" name="ans_${s.id}" id="${uid}" value="${this.esc(optLabel)}" ${isChecked} onchange="ExamApp.handleInput()">
-                            <div class="option-label"><strong>${this.esc(optLabel)}.</strong> ${optText}</div>
+                            <div class="option-label">${optText}</div>
                         </label>
                     `);
                 });
@@ -582,7 +594,7 @@ const ExamApp = {
                     $opts.append(`
                         <label class="option-item ${selectedClass}" for="${uid}">
                             <input type="checkbox" name="ans_${s.id}[]" id="${uid}" value="${this.esc(optLabel)}" ${isChecked} onchange="ExamApp.handleInput()">
-                            <div class="option-label"><strong>${this.esc(optLabel)}.</strong> ${optText}</div>
+                            <div class="option-label">${optText}</div>
                         </label>
                     `);
                 });
@@ -816,6 +828,10 @@ const ExamApp = {
     },
 
     doSubmit() {
+        if (this._examStopped) {
+            window.location.href = 'dashboard.php';
+            return;
+        }
         this.isSubmitting = true;
         const loader = EModal.loading('Menyimpan hasil ujian...');
         $.ajax({
@@ -826,6 +842,12 @@ const ExamApp = {
             success: (r) => {
                 EModal.close(loader);
                 if (r.success) {
+                    this._examStopped = true;
+                    // Clean up anti-cheat intervals
+                    if (this._lockInterval) clearInterval(this._lockInterval);
+                    if (this._heartbeatInterval) clearInterval(this._heartbeatInterval);
+                    if (this._devtoolsCheckInterval) clearInterval(this._devtoolsCheckInterval);
+                    if (this.timerInterval) clearInterval(this.timerInterval);
                     window.location.href = 'dashboard.php';
                 } else {
                     EModal.alert('Gagal', r.message);

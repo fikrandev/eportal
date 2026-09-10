@@ -971,8 +971,8 @@ const Exam = {
         } else if (tipe === 'benar_salah') {
             opsiHtml = '';
             kunciHtml = `<div class="form-group"><label class="form-label">Kunci Jawaban *</label><select class="form-select" id="fSoalKunci">
-                <option value="Benar" ${kunci==='Benar'?'selected':''}>Benar</option>
-                <option value="Salah" ${kunci==='Salah'?'selected':''}>Salah</option>
+                <option value="Benar / True" ${kunci==='Benar / True' || kunci==='Benar'?'selected':''}>Benar / True</option>
+                <option value="Salah / False" ${kunci==='Salah / False' || kunci==='Salah'?'selected':''}>Salah / False</option>
             </select></div>`;
         } else if (tipe === 'jawaban_singkat') {
             kunciHtml = `<div class="form-group"><label class="form-label">Kunci Jawaban *</label><input type="text" class="form-input" id="fSoalKunci" value="${this.esc(typeof kunci === 'string' ? kunci : '')}" placeholder="Jawaban yang benar"></div>`;
@@ -1068,7 +1068,7 @@ const Exam = {
                 }
             }
         } else if (tipe === 'benar_salah') {
-            opsi = [{label:'Benar',text:'Benar'},{label:'Salah',text:'Salah'}];
+            opsi = [{label:'Benar / True',text:'Benar / True'},{label:'Salah / False',text:'Salah / False'}];
             kunci_jawaban = $('#fSoalKunci').val();
         } else if (tipe === 'jawaban_singkat') {
             kunci_jawaban = $('#fSoalKunci').val().trim();
@@ -2142,6 +2142,12 @@ const Exam = {
                             </div>
                             <div class="ex-stat-info"><h4 id="statTerkunci" style="color:#b91c1c;">0</h4><p>Terkunci (Butuh Reset)</p></div>
                         </div>
+                        <div class="ex-stat-card" style="padding:14px;border-left:4px solid #dc2626;">
+                            <div class="ex-stat-icon" style="background:#fef2f2; color:#dc2626;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                            </div>
+                            <div class="ex-stat-info"><h4 id="statTerminated" style="color:#dc2626;">0</h4><p>Dihentikan (Pelanggaran)</p></div>
+                        </div>
                         <div class="ex-stat-card" style="padding:14px;border-left:4px solid #8B5CF6;">
                             <div class="ex-stat-icon" style="background:#f5f3ff; color:#8B5CF6;">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/></svg>
@@ -2179,6 +2185,11 @@ const Exam = {
                             Siswa Terkunci
                             <span class="ex-tab-badge" id="tabBadgeTerkunci" style="background:#fee2e2;color:#b91c1c;">0</span>
                         </button>
+                        <button class="ex-tab-btn" data-tab="tab-terminated">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                            Dihentikan
+                            <span class="ex-tab-badge" id="tabBadgeTerminated" style="background:#fee2e2;color:#dc2626;">0</span>
+                        </button>
                         <button class="ex-tab-btn" data-tab="tab-login">
                             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                             Status Login Siswa
@@ -2192,6 +2203,9 @@ const Exam = {
                     </div>
                     <div id="tab-terkunci" class="ex-tab-content" style="display:none;">
                         <div class="ex-table-wrapper" id="tableTerkunciContainer"><div class="loading-spinner"></div></div>
+                    </div>
+                    <div id="tab-terminated" class="ex-tab-content" style="display:none;">
+                        <div class="ex-table-wrapper" id="tableTerminatedContainer"><div class="loading-spinner"></div></div>
                     </div>
                     <div id="tab-login" class="ex-tab-content" style="display:none;">
                         <div class="ex-table-wrapper" id="tableLoginContainer"><div class="loading-spinner"></div></div>
@@ -2247,19 +2261,24 @@ const Exam = {
             $('#statMengerjakan').text(d.stats.total_mengerjakan || 0);
             $('#statLogin').text(d.stats.total_login || 0);
             $('#statTerkunci').text(d.stats.total_terkunci || 0);
+            $('#statTerminated').text(d.stats.total_terminated || 0);
             if (d.server_time) $('#statServerTime').text(d.server_time.split(' ')[1] || d.server_time);
 
             $('#tabBadgeMengerjakan').text(d.mengerjakan.length);
             $('#tabBadgeLogin').text(d.login.length);
             $('#tabBadgeTerkunci').text(d.terkunci.length);
+            $('#tabBadgeTerminated').text((d.terminated && d.terminated.length) || 0);
 
             // 1. Render Table Mengerjakan
             this.renderTableMengerjakan(d.mengerjakan);
 
             // 2. Render Table Terkunci
             this.renderTableTerkunci(d.terkunci);
+            
+            // 3. Render Table Terminated
+            this.renderTableTerminated(d.terminated);
 
-            // 3. Render Table Login
+            // 4. Render Table Login
             this.renderTableLogin(d.login);
         }).catch(() => {});
     },
@@ -2401,6 +2420,59 @@ const Exam = {
                         <th>Ujian</th>
                         <th>Alasan & Waktu Terkunci</th>
                         <th style="width:140px;">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `);
+    },
+
+    renderTableTerminated(list) {
+        if (!list || !list.length) {
+            $('#tableTerminatedContainer').html(`
+                <div style="text-align:center;padding:40px;color:var(--text-secondary);">
+                    <svg viewBox="0 0 24 24" width="48" height="48" fill="none" stroke="#64748b" stroke-width="1.5" style="opacity:0.6;margin-bottom:12px;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    <p style="color:#475569;font-weight:600;">Tidak ada ujian siswa yang dihentikan karena pelanggaran.</p>
+                </div>
+            `);
+            return;
+        }
+
+        const rows = list.map((t, i) => `
+            <tr style="background:#fef2f2;">
+                <td style="width:40px;text-align:center;">${i+1}</td>
+                <td>
+                    <div style="display:flex;align-items:center;gap:10px;">
+                        <div class="ex-user-avatar-sm" style="background:#fee2e2;color:#dc2626;">${this.getInitials(t.nama_siswa)}</div>
+                        <div>
+                            <div style="font-weight:700;color:#0f172a;">${this.esc(t.nama_siswa)}</div>
+                            <div style="font-size:12px;color:var(--text-secondary);"><code style="font-family:monospace;background:#fee2e2;padding:1px 4px;border-radius:4px;color:#dc2626;">${this.esc(t.nis)}</code> • Kelas ${this.esc(t.kelas)}</div>
+                        </div>
+                    </div>
+                </td>
+                <td><strong style="color:#334155;">${this.esc(t.nama_ujian || 'Ujian CBT')}</strong></td>
+                <td>
+                    <div style="color:#dc2626;font-weight:600;font-size:12px;">⚠ ${t.pelanggaran} Pelanggaran Anti-Cheat</div>
+                    <div style="font-size:11px;color:#64748b;">${t.waktu_selesai ? t.waktu_selesai : '-'}</div>
+                </td>
+                <td>
+                    <button class="btn btn-outline btn-sm" onclick="Exam.proktorResetLogin(${t.student_id}, '${this.esc(t.nama_siswa)}')" style="color:#dc2626; border-color:#fca5a5; display:inline-flex;align-items:center;gap:6px;">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>
+                        Reset & Buka Akses
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+
+        $('#tableTerminatedContainer').html(`
+            <table class="ex-table">
+                <thead>
+                    <tr>
+                        <th style="width:40px;text-align:center;">#</th>
+                        <th>Siswa & NIS</th>
+                        <th>Ujian</th>
+                        <th>Pelanggaran & Waktu Dihentikan</th>
+                        <th style="width:170px;">Aksi</th>
                     </tr>
                 </thead>
                 <tbody>${rows}</tbody>

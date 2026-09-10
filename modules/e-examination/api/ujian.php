@@ -194,19 +194,42 @@ try {
             $id = (int)($data['id'] ?? 0);
             if (!$id) throw new Exception('ID tidak valid', 400);
 
-            // Cek apakah sudah ada yang mengerjakan
-            $check = db()->prepare("SELECT COUNT(*) FROM exam_sesi WHERE ujian_id = ?");
-            $check->execute([$id]);
-            if ($check->fetchColumn() > 0) {
-                throw new Exception('Tidak bisa menghapus ujian karena sudah ada siswa yang mengerjakan/menyelesaikan ujian ini.', 400);
+            // Check ujian status
+            $stmtStatus = db()->prepare("SELECT status FROM exam_ujian WHERE id = ?");
+            $stmtStatus->execute([$id]);
+            $ujianStatus = $stmtStatus->fetchColumn();
+
+            if (!$ujianStatus) throw new Exception('Ujian tidak ditemukan', 404);
+
+            // Only prevent deletion if ujian is 'aktif' and has active sessions
+            if ($ujianStatus === 'aktif') {
+                $checkActive = db()->prepare("SELECT COUNT(*) FROM exam_sesi WHERE ujian_id = ? AND status = 'mengerjakan'");
+                $checkActive->execute([$id]);
+                if ($checkActive->fetchColumn() > 0) {
+                    throw new Exception('Tidak bisa menghapus ujian yang sedang aktif dan masih ada siswa yang mengerjakan. Selesaikan ujian terlebih dahulu.', 400);
+                }
             }
 
             try {
                 db()->beginTransaction();
+
+                // Delete cheat logs for sessions of this ujian
+                db()->prepare("DELETE cl FROM exam_cheat_log cl INNER JOIN exam_sesi es ON cl.sesi_id = es.id WHERE es.ujian_id = ?")->execute([$id]);
+
+                // Delete jawaban for sessions of this ujian
+                db()->prepare("DELETE ej FROM exam_jawaban ej INNER JOIN exam_sesi es ON ej.sesi_id = es.id WHERE es.ujian_id = ?")->execute([$id]);
+
+                // Delete sessions
+                db()->prepare("DELETE FROM exam_sesi WHERE ujian_id = ?")->execute([$id]);
+
+                // Delete class assignments
                 db()->prepare("DELETE FROM exam_ujian_kelas WHERE ujian_id = ?")->execute([$id]);
+
+                // Delete the ujian itself
                 db()->prepare("DELETE FROM exam_ujian WHERE id = ?")->execute([$id]);
+
                 db()->commit();
-                json_response(200, true, 'Ujian berhasil dihapus');
+                json_response(200, true, 'Ujian berhasil dihapus beserta seluruh data terkait');
             } catch (Exception $e) {
                 db()->rollBack();
                 throw $e;

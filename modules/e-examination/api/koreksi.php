@@ -295,6 +295,9 @@ function processGrading($session_id) {
             $skorAkhir = ($totalSkor / $maxSkor) * 100;
         }
     }
+    
+    // Bulatkan agar selalu angka bulat sesuai permintaan (tidak ada desimal)
+    $skorAkhir = round($skorAkhir, 0);
 
     // Simpan ke sesi
     db()->prepare("UPDATE exam_sesi SET nilai_akhir = ? WHERE id = ?")->execute([$skorAkhir, $session_id]);

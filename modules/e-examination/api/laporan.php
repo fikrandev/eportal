@@ -114,7 +114,7 @@ try {
 
             $stmt = db()->prepare("
                 SELECT s.nis, s.nama as nama_siswa, s.kelas,
-                       es.status, es.waktu_mulai, es.waktu_selesai, es.nilai_akhir as skor, es.pelanggaran
+                       es.id as sesi_id, es.status, es.waktu_mulai, es.waktu_selesai, es.nilai_akhir as skor, es.pelanggaran
                 FROM exam_ujian_kelas uk
                 JOIN students s ON s.kelas COLLATE utf8mb4_unicode_ci = uk.kelas COLLATE utf8mb4_unicode_ci 
                                AND s.status = 1 
@@ -149,11 +149,40 @@ try {
             fputcsv($output, ['Jenis Ujian', $isPsikologi ? 'Tes Psikologi' : 'Tes Penilaian']);
             fputcsv($output, []); // blank line
             
-            if ($isPsikologi) {
-                fputcsv($output, ['No', 'NIS', 'Nama Siswa', 'Kelas', 'Status Pengerjaan', 'Waktu Mulai', 'Waktu Selesai', 'Skor Raw', 'Hasil Psikologi', 'Deskripsi']);
-            } else {
-                fputcsv($output, ['No', 'NIS', 'Nama Siswa', 'Kelas', 'Status Pengerjaan', 'Waktu Mulai', 'Waktu Selesai', 'Skor (0-100)']);
+            // Ambil semua soal dari bank soal ujian ini
+            $stmtSoal = db()->prepare("SELECT id, pertanyaan FROM exam_soal WHERE bank_soal_id = ? ORDER BY urutan ASC, id ASC");
+            $stmtSoal->execute([$ujian['bank_soal_id']]);
+            $soalList = $stmtSoal->fetchAll(PDO::FETCH_ASSOC);
+
+            // Ambil semua jawaban untuk seluruh sesi ujian ini agar tidak query di dalam loop
+            $stmtAllAns = db()->prepare("
+                SELECT j.sesi_id, j.soal_id, j.jawaban, j.skor
+                FROM exam_jawaban j
+                JOIN exam_sesi s ON j.sesi_id = s.id
+                WHERE s.ujian_id = ?
+            ");
+            $stmtAllAns->execute([$ujian_id]);
+            $allAns = $stmtAllAns->fetchAll(PDO::FETCH_ASSOC);
+            $ansMap = [];
+            foreach ($allAns as $ans) {
+                $ansMap[$ans['sesi_id']][$ans['soal_id']] = $ans;
             }
+
+            $headers = ['No', 'NIS', 'Nama Siswa', 'Kelas', 'Status Pengerjaan', 'Waktu Mulai', 'Waktu Selesai'];
+            if ($isPsikologi) {
+                $headers[] = 'Skor Raw';
+                $headers[] = 'Hasil Psikologi';
+                $headers[] = 'Deskripsi';
+            } else {
+                $headers[] = 'Total Nilai (Bulat)';
+            }
+
+            foreach ($soalList as $i => $soal) {
+                $headers[] = "Soal " . ($i + 1) . " (Jawaban)";
+                $headers[] = "Soal " . ($i + 1) . " (Skor)";
+            }
+
+            fputcsv($output, $headers);
             
             $no = 1;
             foreach ($results as $r) {
@@ -162,7 +191,19 @@ try {
                 elseif (in_array($r['status'], ['dihentikan', 'didiskualifikasi'])) $status = 'Dihentikan (Curang)';
                 elseif ($r['status'] === 'selesai') $status = 'Selesai';
 
-                $skor = $r['skor'] !== null ? round($r['skor'], 2) : '';
+                // Bulatkan skor ke angka integer (tanpa desimal)
+                $skor = $r['skor'] !== null ? round($r['skor'], 0) : '';
+
+                $row = [
+                    $no++,
+                    $r['nis'],
+                    $r['nama_siswa'],
+                    $r['kelas'],
+                    $status,
+                    $r['waktu_mulai'],
+                    $r['waktu_selesai'],
+                    $skor
+                ];
 
                 if ($isPsikologi) {
                     $hasil = '';
@@ -177,30 +218,25 @@ try {
                             }
                         }
                     }
-                    fputcsv($output, [
-                        $no++,
-                        $r['nis'],
-                        $r['nama_siswa'],
-                        $r['kelas'],
-                        $status,
-                        $r['waktu_mulai'],
-                        $r['waktu_selesai'],
-                        $skor,
-                        $hasil,
-                        $deskripsi
-                    ]);
-                } else {
-                    fputcsv($output, [
-                        $no++,
-                        $r['nis'],
-                        $r['nama_siswa'],
-                        $r['kelas'],
-                        $status,
-                        $r['waktu_mulai'],
-                        $r['waktu_selesai'],
-                        $skor
-                    ]);
+                    $row[] = $hasil;
+                    $row[] = $deskripsi;
                 }
+
+                // Tambahkan jawaban dan skor tiap soal untuk peserta ini
+                $sesi_id = $r['sesi_id'] ?? null;
+                foreach ($soalList as $soal) {
+                    $jawabanSiswa = '-';
+                    $skorSoal = '0';
+                    if ($sesi_id && isset($ansMap[$sesi_id][$soal['id']])) {
+                        $ansData = $ansMap[$sesi_id][$soal['id']];
+                        $jawabanSiswa = $ansData['jawaban'] ?: '-';
+                        $skorSoal = round((float)$ansData['skor'], 0);
+                    }
+                    $row[] = $jawabanSiswa;
+                    $row[] = $skorSoal;
+                }
+
+                fputcsv($output, $row);
             }
             
             fclose($output);

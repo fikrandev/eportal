@@ -117,16 +117,33 @@ try {
                        el.ip_address, el.updated_at as waktu_terkunci, el.ujian_id,
                        s.nis, s.nama as nama_siswa, s.kelas,
                        u.judul as nama_ujian,
-                       es.id as sesi_id
+                       es.id as sesi_id, es.pelanggaran, es.status as sesi_status
                 FROM exam_student_login el
                 JOIN students s ON el.student_id = s.id
                 LEFT JOIN exam_ujian u ON el.ujian_id = u.id
-                LEFT JOIN exam_sesi es ON (es.student_id = s.id AND es.ujian_id = el.ujian_id AND es.status = 'mengerjakan')
+                LEFT JOIN exam_sesi es ON (es.student_id = s.id AND es.ujian_id = el.ujian_id)
                 WHERE $whereLockedSql
                 ORDER BY el.updated_at DESC
             ");
             $stmtLocked->execute($paramLocked);
             $listLocked = $stmtLocked->fetchAll(PDO::FETCH_ASSOC);
+
+            // 3b. Data Siswa Yang Ujiannya Dihentikan (Pelanggaran >= 3)
+            $stmtTerminated = db()->prepare("
+                SELECT es.id as sesi_id, es.student_id, es.pelanggaran, es.waktu_selesai, es.status as sesi_status,
+                       s.nis, s.nama as nama_siswa, s.kelas,
+                       u.judul as nama_ujian, u.id as ujian_id,
+                       COALESCE(el.is_locked, 0) as is_locked, el.lock_reason
+                FROM exam_sesi es
+                JOIN students s ON es.student_id = s.id
+                JOIN exam_ujian u ON es.ujian_id = u.id
+                LEFT JOIN exam_student_login el ON el.student_id = s.id
+                WHERE es.status = 'dihentikan' AND u.status = 'aktif'
+                ORDER BY es.waktu_selesai DESC
+                LIMIT 50
+            ");
+            $stmtTerminated->execute();
+            $listTerminated = $stmtTerminated->fetchAll(PDO::FETCH_ASSOC);
 
             // 4. Data Ujian Aktif untuk filter & generator
             $stmtExams = db()->query("
@@ -146,6 +163,7 @@ try {
                 'total_mengerjakan' => count($listMengerjakan),
                 'total_login'       => count($listLogin),
                 'total_terkunci'    => count($listLocked),
+                'total_terminated'  => count($listTerminated),
             ];
 
             json_response(200, true, 'Data monitoring live berhasil dimuat', [
@@ -153,6 +171,7 @@ try {
                 'mengerjakan'      => $listMengerjakan,
                 'login'            => $listLogin,
                 'terkunci'         => $listLocked,
+                'terminated'       => $listTerminated,
                 'active_exams'     => $activeExams,
                 'classes'          => $classes,
                 'server_time'      => date('Y-m-d H:i:s')

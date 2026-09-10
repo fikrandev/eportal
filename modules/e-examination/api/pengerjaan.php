@@ -495,11 +495,17 @@ try {
                 ];
             }
 
+            // Count existing violations for this session
+            $stmtViol = db()->prepare("SELECT COUNT(*) FROM exam_cheat_log WHERE sesi_id = ?");
+            $stmtViol->execute([$session_id]);
+            $currentViolations = (int)$stmtViol->fetchColumn();
+
             json_response(200, true, 'Soal berhasil dimuat', [
                 'session_id' => $session_id,
                 'ujian_judul' => $sesi['nama_ujian'],
                 'remaining_seconds' => $remainingSeconds,
-                'soal_list' => $formattedSoal
+                'soal_list' => $formattedSoal,
+                'violations' => $currentViolations
             ]);
             break;
 
@@ -550,12 +556,25 @@ try {
 
             if ($stmt->rowCount() > 0) {
                 try {
-                    db()->prepare("UPDATE exam_student_login SET status = 'selesai', is_locked = 0, updated_at = NOW() WHERE student_id = ?")->execute([$_SESSION['exam_student']['id']]);
+                    db()->prepare("UPDATE exam_student_login SET status = 'selesai', is_locked = 0, lock_reason = NULL, updated_at = NOW() WHERE student_id = ?")->execute([$_SESSION['exam_student']['id']]);
                 } catch (Exception $e) {}
 
                 json_response(200, true, 'Ujian berhasil diselesaikan');
             } else {
-                json_response(400, false, 'Gagal menyelesaikan ujian atau ujian sudah selesai');
+                // Check if session exists but is already finished
+                $stmtCheck = db()->prepare("SELECT status FROM exam_sesi WHERE id = ? AND student_id = ?");
+                $stmtCheck->execute([$session_id, $_SESSION['exam_student']['id']]);
+                $sesiStatus = $stmtCheck->fetchColumn();
+                
+                if ($sesiStatus === 'selesai' || $sesiStatus === 'dihentikan') {
+                    // Already finished, just redirect successfully
+                    try {
+                        db()->prepare("UPDATE exam_student_login SET status = 'selesai', is_locked = 0, lock_reason = NULL, updated_at = NOW() WHERE student_id = ?")->execute([$_SESSION['exam_student']['id']]);
+                    } catch (Exception $e) {}
+                    json_response(200, true, 'Ujian sudah diselesaikan sebelumnya');
+                } else {
+                    json_response(400, false, 'Gagal menyelesaikan ujian');
+                }
             }
             break;
 
@@ -569,17 +588,33 @@ try {
  
             if (!$session_id) throw new Exception('Data tidak valid', 400);
  
+            // Verify session belongs to this student and is still active
+            $stmtSesiCheck = db()->prepare("SELECT status FROM exam_sesi WHERE id = ? AND student_id = ?");
+            $stmtSesiCheck->execute([$session_id, $_SESSION['exam_student']['id']]);
+            $sesiStatus = $stmtSesiCheck->fetchColumn();
+
+            if ($sesiStatus !== 'mengerjakan') {
+                // Session is already finished/stopped, don't count more violations
+                json_response(200, true, 'Sesi ujian sudah berakhir', ['action' => 'already_stopped', 'violations' => 0]);
+                break;
+            }
+
             $stmt = db()->prepare("INSERT INTO exam_cheat_log (sesi_id, jenis) VALUES (?, ?)");
             $stmt->execute([$session_id, $cheat_type]);
  
-            // Check total violations
+            // Check total violations for THIS session only
             $stmtCount = db()->prepare("SELECT COUNT(*) FROM exam_cheat_log WHERE sesi_id = ?");
             $stmtCount->execute([$session_id]);
-            $totalViolations = $stmtCount->fetchColumn();
+            $totalViolations = (int)$stmtCount->fetchColumn();
+
+            // Also update pelanggaran counter on exam_sesi
+            try {
+                db()->prepare("UPDATE exam_sesi SET pelanggaran = ? WHERE id = ?")->execute([$totalViolations, $session_id]);
+            } catch (Exception $e) {}
  
             // Stop exam if >= 3 violations
             if ($totalViolations >= 3) {
-                db()->prepare("UPDATE exam_sesi SET status = 'dihentikan', waktu_selesai = NOW() WHERE id = ? AND student_id = ?")->execute([$session_id, $_SESSION['exam_student']['id']]);
+                db()->prepare("UPDATE exam_sesi SET status = 'dihentikan', waktu_selesai = NOW(), pelanggaran = ? WHERE id = ? AND student_id = ?")->execute([$totalViolations, $session_id, $_SESSION['exam_student']['id']]);
                 try {
                     db()->prepare("UPDATE exam_student_login SET status = 'logged_out', is_locked = 1, lock_reason = 'Ujian dihentikan karena 3 kali pelanggaran anti-cheat', updated_at = NOW() WHERE student_id = ?")->execute([$_SESSION['exam_student']['id']]);
                 } catch (Exception $e) {}
