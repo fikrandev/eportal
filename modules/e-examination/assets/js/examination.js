@@ -768,10 +768,13 @@ const Exam = {
                     <div class="form-group"><label class="form-label">Tipe Soal *</label><select class="form-select" id="fSoalTipe" ${isPsikologi ? 'disabled' : ''} onchange="Exam.toggleSoalForm()">${tipeSelect}</select></div>
                     <div class="form-group"><label class="form-label">Bobot</label><input type="number" class="form-input" id="fSoalBobot" value="${bobot}" min="0.1" step="0.1"></div>
                 </div>
-                <div class="form-group"><label class="form-label">Pertanyaan *</label><textarea class="form-input" id="fSoalPertanyaan" rows="4" placeholder="Tulis pertanyaan di sini...">${this.esc(pertanyaan)}</textarea></div>
+                <div class="form-group">
+                    <label class="form-label">Pertanyaan * <span style="font-size:0.75rem; font-weight:normal; color:#64748b;">(Format Word: Tebal, Miring, Garis Bawah, Pangkat, Enter, Gambar, Rumus)</span></label>
+                    <div id="fSoalPertanyaanEditor" style="background:#fff;"></div>
+                </div>
                 <div class="ex-form-row">
                     <div class="form-group">
-                        <label class="form-label">Gambar Soal (opsional)</label>
+                        <label class="form-label">Gambar Lampiran Utama (opsional)</label>
                         <input type="file" class="form-input" id="fSoalGambarFile" accept="image/*">
                         ${existing && existing.gambar ? `<div style="margin-top:6px; font-size:12px; color:#3b82f6;">Saat ini: ${existing.gambar}</div>` : ''}
                     </div>
@@ -783,11 +786,100 @@ const Exam = {
                 </div>
                 <div id="fSoalOpsiContainer" style="margin-top:16px;"></div>
                 <div id="fSoalKunciContainer"></div>
-                <div class="form-group"><label class="form-label">Pembahasan (opsional)</label><textarea class="form-input" id="fSoalPembahasan" rows="2">${this.esc(pembahasan)}</textarea></div>
+                <div class="form-group"><label class="form-label">Pembahasan (opsional)</label><textarea class="form-input" id="fSoalPembahasan" rows="2" placeholder="Tulis pembahasan soal...">${this.esc(pembahasan)}</textarea></div>
             `,
             onOpen: () => {
                 window._examSoalOpsi = opsi;
                 window._examSoalKunci = kunci;
+                
+                // Initialize Quill Editor for Pertanyaan
+                if (window.Quill) {
+                    const toolbarOptions = [
+                        [{ 'header': [1, 2, 3, false] }],
+                        ['bold', 'italic', 'underline', 'strike'],
+                        [{ 'script': 'sub'}, { 'script': 'super' }],
+                        [{ 'color': [] }, { 'background': [] }],
+                        [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+                        [{ 'align': [] }],
+                        ['blockquote', 'code-block'],
+                        ['link', 'image', 'formula'],
+                        ['clean']
+                    ];
+
+                    const quill = new Quill('#fSoalPertanyaanEditor', {
+                        theme: 'snow',
+                        placeholder: 'Tulis pertanyaan lengkap di sini... (Mendukung format Word, Enter ganti baris, paste gambar, & rumus)',
+                        modules: {
+                            toolbar: {
+                                container: toolbarOptions,
+                                handlers: {
+                                    image: function() {
+                                        const fileInput = document.createElement('input');
+                                        fileInput.setAttribute('type', 'file');
+                                        fileInput.setAttribute('accept', 'image/*');
+                                        fileInput.click();
+                                        fileInput.onchange = () => {
+                                            const file = fileInput.files[0];
+                                            if (file) {
+                                                const ldr = EModal.loading('Mengunggah gambar...');
+                                                Exam.uploadFile(file, 'image').then(res => {
+                                                    EModal.close(ldr);
+                                                    if (res.success && res.data && res.data.url) {
+                                                        const range = quill.getSelection(true);
+                                                        quill.insertEmbed(range.index, 'image', res.data.url);
+                                                        quill.setSelection(range.index + 1);
+                                                    } else {
+                                                        EModal.toast({ type: 'error', title: 'Gagal', message: res.message || 'Gagal mengunggah gambar' });
+                                                    }
+                                                }).catch(() => {
+                                                    EModal.close(ldr);
+                                                    EModal.toast({ type: 'error', title: 'Error', message: 'Gagal mengunggah gambar' });
+                                                });
+                                            }
+                                        };
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                    // Set existing content if available
+                    if (pertanyaan) {
+                        quill.root.innerHTML = pertanyaan;
+                    }
+
+                    // Handle paste of image from clipboard
+                    quill.root.addEventListener('paste', function(e) {
+                        const items = (e.clipboardData || window.clipboardData)?.items;
+                        if (items) {
+                            for (let i = 0; i < items.length; i++) {
+                                if (items[i].type.indexOf('image') !== -1) {
+                                    const file = items[i].getAsFile();
+                                    if (file) {
+                                        e.preventDefault();
+                                        const ldr = EModal.loading('Mengunggah gambar yang di-paste...');
+                                        Exam.uploadFile(file, 'image').then(res => {
+                                            EModal.close(ldr);
+                                            if (res.success && res.data && res.data.url) {
+                                                const range = quill.getSelection(true);
+                                                quill.insertEmbed(range.index, 'image', res.data.url);
+                                                quill.setSelection(range.index + 1);
+                                            }
+                                        }).catch(() => {
+                                            EModal.close(ldr);
+                                        });
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                    });
+
+                    window._examQuillPertanyaan = quill;
+                } else {
+                    $('#fSoalPertanyaanEditor').replaceWith(`<textarea class="form-input" id="fSoalPertanyaan" rows="4">${this.esc(pertanyaan)}</textarea>`);
+                }
+
                 this.toggleSoalForm();
             },
             onConfirm: () => {
@@ -800,8 +892,8 @@ const Exam = {
                     data.audio = existing.audio;
                 }
 
-                const imgFile = document.getElementById('fSoalGambarFile').files[0];
-                const audFile = document.getElementById('fSoalAudioFile').files[0];
+                const imgFile = document.getElementById('fSoalGambarFile')?.files[0];
+                const audFile = document.getElementById('fSoalAudioFile')?.files[0];
 
                 const uploadPromises = [];
                 const loader = EModal.loading('Menyimpan Soal...');
@@ -922,7 +1014,18 @@ const Exam = {
 
     collectSoalFormData() {
         const tipe = $('#fSoalTipe').val();
-        const pertanyaan = $('#fSoalPertanyaan').val().trim();
+        let pertanyaan = '';
+        if (window._examQuillPertanyaan) {
+            pertanyaan = window._examQuillPertanyaan.root.innerHTML.trim();
+            const textOnly = window._examQuillPertanyaan.getText().trim();
+            const hasImage = pertanyaan.includes('<img');
+            if (!textOnly && !hasImage) {
+                pertanyaan = '';
+            }
+        } else {
+            pertanyaan = ($('#fSoalPertanyaan').val() || '').trim();
+        }
+
         let bobot = parseFloat($('#fSoalBobot').val()) || 1;
         const pembahasan = $('#fSoalPembahasan').val().trim();
         const isPsikologi = (Exam.state.currentBankJenis === 'psikologi');

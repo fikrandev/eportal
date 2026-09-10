@@ -765,3 +765,148 @@
 .badge-locked { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
 .badge-active { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }
 
+/* ============ QUILL RICH TEXT EDITOR ============ */
+.ql-toolbar.ql-snow {
+    border: 1.5px solid #e2e8f0;
+    border-top-left-radius: 8px;
+    border-top-right-radius: 8px;
+    background: #f8fafc;
+    padding: 8px;
+}
+.ql-container.ql-snow {
+    border: 1.5px solid #e2e8f0;
+    border-top: none;
+    border-bottom-left-radius: 8px;
+    border-bottom-right-radius: 8px;
+    font-family: 'Inter', -apple-system, sans-serif;
+    font-size: 0.95rem;
+    color: #0f172a;
+    background: #ffffff;
+}
+.ql-editor {
+    min-height: 140px;
+    max-height: 320px;
+    overflow-y: auto;
+    line-height: 1.6;
+    padding: 12px 16px;
+}
+.ql-editor.ql-blank::before {
+    font-style: normal;
+    color: #94a3b8;
+    left: 16px;
+    right: 16px;
+}
+.ql-snow .ql-picker {
+    color: #475569;
+}
+.ql-snow .ql-stroke {
+    stroke: #475569;
+}
+.ql-snow .ql-fill {
+    fill: #475569;
+}
+.ql-snow .ql-active .ql-stroke,
+.ql-snow .ql-picker-label.ql-active .ql-stroke {
+    stroke: #2563EB;
+}
+.ql-snow .ql-active,
+.ql-snow .ql-picker-label.ql-active {
+    color: #2563EB;
+}
+
+/* ============ RICH CONTENT DISPLAY (SOAL, OPSI, PEMBAHASAN) ============ */
+.ex-soal-pertanyaan,
+.question-text,
+#uiSoalText,
+.ex-soal-content {
+    line-height: 1.65;
+    color: #0f172a;
+    word-break: break-word;
+}
+.ex-soal-pertanyaan p,
+.question-text p,
+#uiSoalText p {
+    margin: 0 0 8px 0;
+}
+.ex-soal-pertanyaan p:last-child,
+.question-text p:last-child,
+#uiSoalText p:last-child {
+    margin-bottom: 0;
+}
+.ex-soal-pertanyaan img,
+.question-text img,
+#uiSoalText img {
+    max-width: 100%;
+    height: auto;
+    border-radius: 8px;
+    margin: 8px 0;
+    display: inline-block;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+.ex-soal-pertanyaan table,
+.question-text table,
+#uiSoalText table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 12px 0;
+    font-size: 0.9rem;
+    border-radius: 6px;
+    overflow: hidden;
+}
+.ex-soal-pertanyaan table th,
+.ex-soal-pertanyaan table td,
+.question-text table th,
+.question-text table td,
+#uiSoalText table th,
+#uiSoalText table td {
+    border: 1px solid #cbd5e1;
+    padding: 8px 12px;
+    text-align: left;
+}
+.ex-soal-pertanyaan table th,
+.question-text table th,
+#uiSoalText table th {
+    background-color: #f1f5f9;
+    font-weight: 600;
+}
+.ex-soal-pertanyaan ul,
+.ex-soal-pertanyaan ol,
+.question-text ul,
+.question-text ol,
+#uiSoalText ul,
+#uiSoalText ol {
+    margin: 8px 0;
+    padding-left: 24px;
+}
+.ex-soal-pertanyaan blockquote,
+.question-text blockquote,
+#uiSoalText blockquote {
+    border-left: 4px solid #2563EB;
+    margin: 8px 0;
+    padding: 6px 12px;
+    background: #f8fafc;
+    color: #475569;
+    border-radius: 0 6px 6px 0;
+}
+.ex-soal-pertanyaan sub,
+.question-text sub,
+#uiSoalText sub,
+.ex-soal-pertanyaan sup,
+.question-text sup,
+#uiSoalText sup {
+    font-size: 75%;
+    line-height: 0;
+    position: relative;
+    vertical-align: baseline;
+}
+.ex-soal-pertanyaan sup,
+.question-text sup,
+#uiSoalText sup {
+    top: -0.5em;
+}
+.ex-soal-pertanyaan sub,
+.question-text sub,
+#uiSoalText sub {
+    bottom: -0.25em;
+}
+

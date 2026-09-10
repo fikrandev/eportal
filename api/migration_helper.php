@@ -6,7 +6,7 @@
 require_once __DIR__ . '/config.php';
 
 function run_auto_migrations() {
-    $target_version = 11;
+    $target_version = 12;
     
     // 1. Get current version (default to 0 if not set or if table settings doesn't exist yet)
     $current_version = 0;
@@ -472,6 +472,170 @@ function run_auto_migrations() {
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
             ");
             $pdo->exec("ALTER TABLE `acad_buku_penghubung` MODIFY COLUMN `jenis` VARCHAR(100) NOT NULL DEFAULT 'Konsultasi'");
+        } catch (PDOException $e) {}
+    }
+
+    // Version 12 migrations (Complete E-Examination CBT schema & Rich Text support)
+    if ($current_version < 12) {
+        $v12_tables = [
+            "exam_mapel" => "
+                CREATE TABLE IF NOT EXISTS `exam_mapel` (
+                  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                  `nama_mapel` VARCHAR(150) NOT NULL,
+                  `kode` VARCHAR(20) DEFAULT NULL,
+                  `status` TINYINT(1) NOT NULL DEFAULT 1,
+                  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  PRIMARY KEY (`id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            ",
+            "exam_bank_soal" => "
+                CREATE TABLE IF NOT EXISTS `exam_bank_soal` (
+                  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                  `mapel_id` INT UNSIGNED NOT NULL,
+                  `judul` VARCHAR(200) NOT NULL,
+                  `jenis` ENUM('penilaian','psikologi') NOT NULL DEFAULT 'penilaian',
+                  `kategori_ujian` VARCHAR(50) DEFAULT NULL,
+                  `tahun_ajaran` VARCHAR(20) DEFAULT NULL,
+                  `semester` ENUM('1','2') DEFAULT '1',
+                  `kelas` VARCHAR(30) DEFAULT NULL,
+                  `created_by` INT UNSIGNED DEFAULT NULL,
+                  `status` TINYINT(1) NOT NULL DEFAULT 1,
+                  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  PRIMARY KEY (`id`),
+                  KEY `idx_mapel` (`mapel_id`),
+                  KEY `idx_jenis` (`jenis`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            ",
+            "exam_soal" => "
+                CREATE TABLE IF NOT EXISTS `exam_soal` (
+                  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                  `bank_soal_id` INT UNSIGNED NOT NULL,
+                  `tipe_soal` ENUM('benar_salah','menjodohkan','pilihan_satu','pilihan_banyak','jawaban_singkat','esai') NOT NULL,
+                  `pertanyaan` LONGTEXT NOT NULL,
+                  `opsi` JSON DEFAULT NULL,
+                  `kunci_jawaban` JSON DEFAULT NULL,
+                  `pembahasan` LONGTEXT DEFAULT NULL,
+                  `bobot` DECIMAL(5,2) NOT NULL DEFAULT 1.00,
+                  `gambar` VARCHAR(255) DEFAULT NULL,
+                  `audio` VARCHAR(255) DEFAULT NULL,
+                  `urutan` INT NOT NULL DEFAULT 0,
+                  `status` TINYINT(1) NOT NULL DEFAULT 1,
+                  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  PRIMARY KEY (`id`),
+                  KEY `idx_bank` (`bank_soal_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            ",
+            "exam_psikologi_hasil" => "
+                CREATE TABLE IF NOT EXISTS `exam_psikologi_hasil` (
+                  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                  `bank_soal_id` INT UNSIGNED NOT NULL,
+                  `kode_hasil` VARCHAR(50) NOT NULL,
+                  `deskripsi` TEXT NOT NULL,
+                  `rentang_min` DECIMAL(5,2) NOT NULL DEFAULT 0,
+                  `rentang_max` DECIMAL(5,2) NOT NULL DEFAULT 100,
+                  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  PRIMARY KEY (`id`),
+                  KEY `idx_bank` (`bank_soal_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            ",
+            "exam_ujian" => "
+                CREATE TABLE IF NOT EXISTS `exam_ujian` (
+                  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                  `judul` VARCHAR(200) NOT NULL,
+                  `bank_soal_id` INT UNSIGNED NOT NULL,
+                  `jenis` ENUM('penilaian','psikologi') NOT NULL DEFAULT 'penilaian',
+                  `durasi_menit` INT NOT NULL DEFAULT 60,
+                  `acak_soal` TINYINT(1) NOT NULL DEFAULT 0,
+                  `acak_opsi` TINYINT(1) NOT NULL DEFAULT 0,
+                  `tampil_nilai` TINYINT(1) NOT NULL DEFAULT 1,
+                  `token` VARCHAR(10) DEFAULT NULL,
+                  `tgl_mulai` DATETIME DEFAULT NULL,
+                  `tgl_selesai` DATETIME DEFAULT NULL,
+                  `status` ENUM('draft','aktif','selesai') NOT NULL DEFAULT 'draft',
+                  `created_by` INT UNSIGNED DEFAULT NULL,
+                  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  PRIMARY KEY (`id`),
+                  KEY `idx_bank` (`bank_soal_id`),
+                  KEY `idx_status` (`status`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            ",
+            "exam_ujian_kelas" => "
+                CREATE TABLE IF NOT EXISTS `exam_ujian_kelas` (
+                  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                  `ujian_id` INT UNSIGNED NOT NULL,
+                  `kelas` VARCHAR(30) NOT NULL,
+                  PRIMARY KEY (`id`),
+                  UNIQUE KEY `uk_ujian_kelas` (`ujian_id`, `kelas`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            ",
+            "exam_sesi" => "
+                CREATE TABLE IF NOT EXISTS `exam_sesi` (
+                  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                  `ujian_id` INT UNSIGNED NOT NULL,
+                  `student_id` INT UNSIGNED NOT NULL,
+                  `waktu_mulai` DATETIME NOT NULL,
+                  `waktu_selesai` DATETIME DEFAULT NULL,
+                  `sisa_detik` INT DEFAULT NULL,
+                  `status` ENUM('mengerjakan','berlangsung','selesai','dihentikan','didiskualifikasi') NOT NULL DEFAULT 'mengerjakan',
+                  `ip_address` VARCHAR(45) DEFAULT NULL,
+                  `user_agent` TEXT DEFAULT NULL,
+                  `pelanggaran` INT NOT NULL DEFAULT 0,
+                  `nilai_akhir` DECIMAL(5,2) DEFAULT NULL,
+                  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  PRIMARY KEY (`id`),
+                  UNIQUE KEY `uk_sesi` (`ujian_id`, `student_id`),
+                  KEY `idx_ujian` (`ujian_id`),
+                  KEY `idx_student` (`student_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            ",
+            "exam_jawaban" => "
+                CREATE TABLE IF NOT EXISTS `exam_jawaban` (
+                  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                  `sesi_id` INT UNSIGNED NOT NULL,
+                  `soal_id` INT UNSIGNED NOT NULL,
+                  `urutan` INT NOT NULL DEFAULT 0,
+                  `opsi_acak` TEXT DEFAULT NULL,
+                  `jawaban` LONGTEXT DEFAULT NULL,
+                  `jawaban_voice` VARCHAR(255) DEFAULT NULL,
+                  `is_ragu` TINYINT(1) NOT NULL DEFAULT 0,
+                  `skor` DECIMAL(5,2) DEFAULT NULL,
+                  `ai_feedback` TEXT DEFAULT NULL,
+                  `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  PRIMARY KEY (`id`),
+                  UNIQUE KEY `uk_jawaban` (`sesi_id`, `soal_id`),
+                  KEY `idx_sesi` (`sesi_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            ",
+            "exam_cheat_log" => "
+                CREATE TABLE IF NOT EXISTS `exam_cheat_log` (
+                  `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                  `sesi_id` INT UNSIGNED NOT NULL,
+                  `jenis` VARCHAR(50) NOT NULL,
+                  `detail` TEXT DEFAULT NULL,
+                  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                  PRIMARY KEY (`id`),
+                  KEY `idx_sesi` (`sesi_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            "
+        ];
+
+        foreach ($v12_tables as $tbl => $sql) {
+            try {
+                $pdo->exec($sql);
+            } catch (PDOException $e) {}
+        }
+
+        // Ensure column types support long HTML & rich text
+        try {
+            $pdo->exec("ALTER TABLE `exam_soal` MODIFY COLUMN `pertanyaan` LONGTEXT NOT NULL");
+        } catch (PDOException $e) {}
+        try {
+            $pdo->exec("ALTER TABLE `exam_soal` MODIFY COLUMN `pembahasan` LONGTEXT DEFAULT NULL");
+        } catch (PDOException $e) {}
+        try {
+            $pdo->exec("ALTER TABLE `exam_jawaban` MODIFY COLUMN `jawaban` LONGTEXT DEFAULT NULL");
         } catch (PDOException $e) {}
     }
 
