@@ -13,6 +13,16 @@ run_auto_migrations();
  * Auto-ensure E-Examination tables exist in database
  */
 function exam_ensure_tables() {
+    try {
+        $pdo = db();
+        $checkTable = $pdo->query("SHOW TABLES LIKE 'exam_ujian'")->fetch();
+        if ($checkTable) {
+            $cols = $pdo->query("SHOW COLUMNS FROM `exam_ujian` LIKE 'metode_login'")->fetchAll();
+            if (empty($cols)) {
+                $pdo->exec("ALTER TABLE `exam_ujian` ADD COLUMN `metode_login` ENUM('nis_dob','examcard') NOT NULL DEFAULT 'nis_dob' AFTER `jenis`");
+            }
+        }
+    } catch (Throwable $e) {}
     run_auto_migrations();
 }
 

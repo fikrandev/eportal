@@ -6,7 +6,7 @@
 require_once __DIR__ . '/config.php';
 
 function run_auto_migrations() {
-    $target_version = 14;
+    $target_version = 15;
     
     // 1. Get current version (default to 0 if not set or if table settings doesn't exist yet)
     $current_version = 0;
@@ -691,8 +691,8 @@ function run_auto_migrations() {
         upsert_setting('wa_guru_mulai_pulang', '13:00:00', 'text', 'Jam mulai tap mesin untuk absen pulang guru');
     }
 
-    // Version 14 migrations (E-Examination metode_login in exam_ujian)
-    if ($current_version < 14) {
+    // Version 15 migrations (E-Examination metode_login in exam_ujian)
+    if ($current_version < 15) {
         try {
             $checkTable = $pdo->query("SHOW TABLES LIKE 'exam_ujian'")->fetch();
             if ($checkTable) {
