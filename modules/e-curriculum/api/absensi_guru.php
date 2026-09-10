@@ -333,7 +333,7 @@ function rekapAbsensiGuru($user) {
 function getSettingsGuru($user) {
     $waktu_terlambat = get_setting('waktu_terlambat_guru', '07:15:00');
     $cutoff_masuk = get_setting('wa_guru_cutoff_masuk', '06:30:00');
-    $cutoff_pulang = get_setting('wa_guru_cutoff_pulang', '19:00:00');
+    $cutoff_pulang = get_setting('wa_guru_cutoff_pulang', '17:00:00');
     $mulai_pulang = get_setting('wa_guru_mulai_pulang', '13:00:00');
     json_response(200, true, 'Setting dimuat.', [
         'waktu_terlambat' => substr($waktu_terlambat, 0, 5),

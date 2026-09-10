@@ -236,7 +236,7 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
 /**
  * Check if teacher attendance reports should be broadcasted to WA Group:
  * - Absen Masuk (Pagi)  : Broadcast in batches of 10 teachers up until cutoff (default: 06:30:59)
- * - Absen Pulang (Sore) : Broadcast ONLY at 19:00 (default: 19:00:00) once per day
+ * - Absen Pulang (Sore) : Broadcast ONLY once at 17:00 (default: 17:00:00) per day
  */
 function checkAndSendWaGroupGuruAbsensiBatch($tanggal = null) {
     if (!$tanggal) $tanggal = date('Y-m-d');
@@ -249,7 +249,7 @@ function checkAndSendWaGroupGuruAbsensiBatch($tanggal = null) {
     $cutoffMasuk = get_setting('wa_guru_cutoff_masuk', '06:30:59');
     if (strlen($cutoffMasuk) === 5) $cutoffMasuk .= ':59';
 
-    $jamKirimPulang = get_setting('wa_guru_cutoff_pulang', '19:00:00');
+    $jamKirimPulang = get_setting('wa_guru_cutoff_pulang', '17:00:00');
     if (strlen($jamKirimPulang) === 5) $jamKirimPulang .= ':00';
 
     $jamMulaiPulang = get_setting('wa_guru_mulai_pulang', '13:00:00');

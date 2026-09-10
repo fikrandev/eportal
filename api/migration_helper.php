@@ -230,10 +230,14 @@ function run_auto_migrations() {
                 CREATE TABLE IF NOT EXISTS `acad_izin_siswa` (
                   `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
                   `student_id` int(11) unsigned NOT NULL,
+                  `academic_year_id` int(11) unsigned DEFAULT NULL,
                   `tanggal` date NOT NULL,
                   `jenis` enum('Sakit','Izin','Lainnya') NOT NULL DEFAULT 'Izin',
                   `keterangan` text DEFAULT NULL,
-                  `status` enum('Pending','Approved','Rejected') NOT NULL DEFAULT 'Pending',
+                  `lampiran` varchar(255) DEFAULT NULL,
+                  `status` enum('Pending','Disetujui','Ditolak','Approved','Rejected') NOT NULL DEFAULT 'Pending',
+                  `disetujui_oleh` int(11) unsigned DEFAULT NULL,
+                  `alasan_tolak` text DEFAULT NULL,
                   `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
                   `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
                   PRIMARY KEY (`id`),
@@ -241,6 +245,21 @@ function run_auto_migrations() {
                   KEY `idx_izin_siswa_student` (`student_id`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             ");
+            
+            $cols = $pdo->query("SHOW COLUMNS FROM acad_izin_siswa")->fetchAll(PDO::FETCH_COLUMN);
+            if (!in_array('academic_year_id', $cols)) {
+                $pdo->exec("ALTER TABLE `acad_izin_siswa` ADD COLUMN `academic_year_id` INT(11) UNSIGNED DEFAULT NULL AFTER `student_id`");
+            }
+            if (!in_array('lampiran', $cols)) {
+                $pdo->exec("ALTER TABLE `acad_izin_siswa` ADD COLUMN `lampiran` VARCHAR(255) DEFAULT NULL AFTER `keterangan`");
+            }
+            if (!in_array('disetujui_oleh', $cols)) {
+                $pdo->exec("ALTER TABLE `acad_izin_siswa` ADD COLUMN `disetujui_oleh` INT(11) UNSIGNED DEFAULT NULL AFTER `status`");
+            }
+            if (!in_array('alasan_tolak', $cols)) {
+                $pdo->exec("ALTER TABLE `acad_izin_siswa` ADD COLUMN `alasan_tolak` TEXT DEFAULT NULL AFTER `disetujui_oleh`");
+            }
+            $pdo->exec("ALTER TABLE `acad_izin_siswa` MODIFY COLUMN `status` ENUM('Pending','Disetujui','Ditolak','Approved','Rejected') NOT NULL DEFAULT 'Pending'");
         } catch (PDOException $e) {
             // Ignore if table already exists
         }

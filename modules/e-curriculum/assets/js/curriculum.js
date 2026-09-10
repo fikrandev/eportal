@@ -3193,7 +3193,7 @@ const Curriculum = {
         this.api('absensi_guru.php?action=get_settings').done(res => {
             const currentWaktu = res.data ? (res.data.waktu_terlambat || '07:15') : '07:15';
             const cutoffMasuk = res.data ? (res.data.wa_cutoff_masuk || '06:30') : '06:30';
-            const cutoffPulang = res.data ? (res.data.wa_cutoff_pulang || '19:00') : '19:00';
+            const cutoffPulang = res.data ? (res.data.wa_cutoff_pulang || '17:00') : '17:00';
             const mulaiPulang = res.data ? (res.data.wa_mulai_pulang || '13:00') : '13:00';
             const uniqueId = 'settingJamGuru_' + Date.now();
             const idCutoffMasuk = 'settingCutoffMasuk_' + Date.now();
@@ -3229,9 +3229,9 @@ const Curriculum = {
                     </div>
                     <div class="form-group-acad" style="margin-bottom:14px;">
                         <label class="form-label-acad">🌆 Waktu Kirim WA Absen Pulang</label>
-                        <input type="text" class="form-input-acad" id="${idCutoffPulang}" value="${cutoffPulang}" placeholder="19:00" maxlength="5">
+                        <input type="text" class="form-input-acad" id="${idCutoffPulang}" value="${cutoffPulang}" placeholder="17:00" maxlength="5">
                         <small class="text-muted" style="margin-top:4px; display:block;">
-                            Laporan absen pulang akan dikirim otomatis ke grup WA <strong>hanya pada jam ini</strong> (Default: <strong>19:00</strong>).
+                            Laporan absen pulang akan dikirim otomatis ke grup WA <strong>hanya sekali pada jam ini</strong> (Default: <strong>17:00</strong>).
                         </small>
                     </div>
                 `,
