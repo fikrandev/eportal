@@ -100,6 +100,18 @@ $pastExams = $stmtPast->fetchAll();
         .history-table th, .history-table td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 14px; }
         .history-table th { background: #f8fafc; font-weight: 600; color: #475569; }
         .score-badge { display: inline-block; padding: 4px 12px; border-radius: 20px; font-weight: 700; background: #dcfce7; color: #166534; }
+
+        @media (max-width: 640px) {
+            .std-nav { padding: 12px 16px; }
+            .std-nav h1 { font-size: 16px; }
+            .std-user-name { font-size: 13px; }
+            .std-user-kelas { font-size: 11px; }
+            .std-container { margin: 16px auto; padding: 0 12px; }
+            .exam-grid { grid-template-columns: 1fr; gap: 14px; }
+            .exam-card { padding: 16px; }
+            .std-section-title { font-size: 16px; }
+            .history-table th, .history-table td { padding: 10px 12px; font-size: 13px; }
+        }
     </style>
 </head>
 <body>

@@ -440,6 +440,11 @@ const ExamApp = {
         const currentData = this.soalList[index];
         const s = currentData.soal;
 
+        // Auto-close mobile sidebar if open
+        if (typeof closeSidebarMobile === 'function') {
+            closeSidebarMobile();
+        }
+
         // Update Nav
         $(`#navBtn_${this.currentIndex}`).addClass('active');
         
