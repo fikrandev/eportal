@@ -484,8 +484,13 @@ const ExamApp = {
 
         // Action bar buttons
         $('#btnPrev').prop('disabled', index === 0).css('opacity', index === 0 ? '0.5' : '1');
-        $('#btnNext').prop('disabled', index === this.soalList.length - 1).css('opacity', index === this.soalList.length - 1 ? '0.5' : '1');
-
+        if (index === this.soalList.length - 1) {
+            $('#btnNext').hide();
+            $('#btnFinish').show();
+        } else {
+            $('#btnNext').show().prop('disabled', false).css('opacity', '1');
+            $('#btnFinish').hide();
+        }
         // Media
         this.audioPlayCount = this.audioPlayCount || {};
         let mediaHtml = '';
