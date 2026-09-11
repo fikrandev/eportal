@@ -24,8 +24,8 @@ try {
 
     if ($action === 'audio') {
         // Audio upload for listening
-        $allowed = ['mp3', 'ogg', 'wav', 'webm', 'm4a'];
-        $maxSize = 10 * 1024 * 1024; // 10MB
+        $allowed = ['mp3', 'ogg', 'wav', 'webm', 'm4a', 'aac', 'flac', 'mp4'];
+        $maxSize = 20 * 1024 * 1024; // 20MB
         $uploadDir = __DIR__ . '/../uploads/audio/';
     } else {
         // Image upload for soal

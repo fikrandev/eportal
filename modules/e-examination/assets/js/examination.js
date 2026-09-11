@@ -899,18 +899,20 @@ const Exam = {
                 const loader = EModal.loading('Menyimpan Soal...');
 
                 if (imgFile) {
-                    uploadPromises.push(
+                    uploadPromises.push(new Promise((resolve, reject) => {
                         this.uploadFile(imgFile, 'image').then(r => {
-                            if (r.success) data.gambar = r.data.path;
-                        })
-                    );
+                            if (r.success) { data.gambar = r.data.path; resolve(); }
+                            else { reject(r.message || 'Gagal upload gambar'); }
+                        }).fail(() => reject('Gagal koneksi upload gambar'));
+                    }));
                 }
                 if (audFile) {
-                    uploadPromises.push(
+                    uploadPromises.push(new Promise((resolve, reject) => {
                         this.uploadFile(audFile, 'audio').then(r => {
-                            if (r.success) data.audio = r.data.path;
-                        })
-                    );
+                            if (r.success) { data.audio = r.data.path; resolve(); }
+                            else { reject(r.message || 'Gagal upload audio'); }
+                        }).fail(() => reject('Gagal koneksi upload audio'));
+                    }));
                 }
 
                 Promise.all(uploadPromises).then(() => {
@@ -923,9 +925,9 @@ const Exam = {
                         EModal.close(loader);
                         EModal.toast({type:'error',title:'Gagal menyimpan soal'});
                     });
-                }).catch(() => {
+                }).catch((err) => {
                     EModal.close(loader);
-                    EModal.toast({type:'error',title:'Gagal mengupload media'});
+                    EModal.toast({type:'error',title:'Gagal', message: (typeof err === 'string' ? err : 'Gagal mengupload media')});
                 });
                 return false;
             }
@@ -971,8 +973,10 @@ const Exam = {
         } else if (tipe === 'benar_salah') {
             opsiHtml = '';
             kunciHtml = `<div class="form-group"><label class="form-label">Kunci Jawaban *</label><select class="form-select" id="fSoalKunci">
-                <option value="Benar / True" ${kunci==='Benar / True' || kunci==='Benar'?'selected':''}>Benar / True</option>
-                <option value="Salah / False" ${kunci==='Salah / False' || kunci==='Salah'?'selected':''}>Salah / False</option>
+                <option value="Benar" ${kunci==='Benar'?'selected':''}>Benar</option>
+                <option value="Salah" ${kunci==='Salah'?'selected':''}>Salah</option>
+                <option value="True" ${kunci==='True'?'selected':''}>True</option>
+                <option value="False" ${kunci==='False'?'selected':''}>False</option>
             </select></div>`;
         } else if (tipe === 'jawaban_singkat') {
             kunciHtml = `<div class="form-group"><label class="form-label">Kunci Jawaban *</label><input type="text" class="form-input" id="fSoalKunci" value="${this.esc(typeof kunci === 'string' ? kunci : '')}" placeholder="Jawaban yang benar"></div>`;
@@ -1068,8 +1072,12 @@ const Exam = {
                 }
             }
         } else if (tipe === 'benar_salah') {
-            opsi = [{label:'Benar / True',text:'Benar / True'},{label:'Salah / False',text:'Salah / False'}];
             kunci_jawaban = $('#fSoalKunci').val();
+            if (kunci_jawaban === 'Benar' || kunci_jawaban === 'Salah') {
+                opsi = [{label:'Benar',text:'Benar'},{label:'Salah',text:'Salah'}];
+            } else {
+                opsi = [{label:'True',text:'True'},{label:'False',text:'False'}];
+            }
         } else if (tipe === 'jawaban_singkat') {
             kunci_jawaban = $('#fSoalKunci').val().trim();
         } else if (tipe === 'esai') {

@@ -498,7 +498,7 @@ const ExamApp = {
                 mediaHtml += `
                     <div style="margin-bottom:12px;">
                         <audio id="audio_player_${s.id}" controls controlsList="nodownload noplaybackrate" style="width:100%;">
-                            <source src="../${s.audio}" type="audio/mpeg">
+                            <source src="../${s.audio}">
                         </audio>
                         <div style="font-size:12px;color:#64748b;margin-top:4px;text-align:right;">Sisa pemutaran: <strong id="audio_remaining_${s.id}">${2 - playedCount}</strong> kali</div>
                     </div>

@@ -556,7 +556,7 @@ if (!$session_id) {
 
             /* Action bar buttons on mobile */
             .action-bar {
-                padding: 8px 10px;
+                padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
                 gap: 6px;
                 background: rgba(255,255,255,0.98);
                 backdrop-filter: blur(8px);
