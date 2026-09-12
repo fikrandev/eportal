@@ -20,6 +20,13 @@ const Sarpras = {
         return div.innerHTML;
     },
 
+    filterTable(input, tableId) {
+        const query = input.value.toLowerCase();
+        $(`#${tableId} tbody tr`).filter(function() {
+            $(this).toggle($(this).text().toLowerCase().indexOf(query) > -1);
+        });
+    },
+
     permissionAliases: {
         dashboard_view: ['dashboard_view'],
         tanah_manage: ['tanah_manage'],
@@ -1546,6 +1553,7 @@ const Sarpras = {
                     <div class="sp-card-header">
                         <h3>${judul}</h3>
                         <div class="sp-toolbar">
+                            <input type="text" class="form-input form-input-sm" style="width:200px; padding: 6px 12px; height: 32px;" placeholder="Cari ruang..." onkeyup="Sarpras.filterTable(this, 'ruangTableData')">
                             <button class="btn btn-primary btn-sm" onclick="Sarpras.formRuang(null, ${bangunanId || 'null'})">Tambah Ruang</button>
                         </div>
                     </div>
@@ -1581,7 +1589,7 @@ const Sarpras = {
                     </tr>
                 `).join('');
                 $('#ruangTable').html(`
-                    <table class="sp-table">
+                    <table class="sp-table" id="ruangTableData">
                         <thead>
                             <tr>
                                 <th>Ruang (Bangunan & Tanah)</th>
@@ -1760,6 +1768,7 @@ const Sarpras = {
                             ${pjHtml}
                         </div>
                         <div class="sp-toolbar">
+                            <input type="text" class="form-input form-input-sm" style="width:200px; padding: 6px 12px; height: 32px;" placeholder="Cari barang..." onkeyup="Sarpras.filterTable(this, 'sarprasTableData')">
                             ${canImportBuku ? `<button class="btn btn-secondary btn-sm" onclick="Sarpras.formImportBuku(${ruangId})">Import Buku</button>` : ''}
                             <button class="btn btn-secondary btn-sm" onclick="Sarpras.formCopySarpras(${ruangId})">Salin Aset</button>
                             
@@ -1802,7 +1811,7 @@ const Sarpras = {
                     </tr>
                 `;
                 }).join('');
-                $('#sarprasTable').html(`<table class="sp-table"><thead><tr><th>Nama / Kode</th><th>Kategori</th><th>Jml</th><th>Kondisi</th><th>Aksi</th></tr></thead><tbody>${rows}</tbody></table>`);
+                $('#sarprasTable').html(`<table class="sp-table" id="sarprasTableData"><thead><tr><th>Nama / Kode</th><th>Kategori</th><th>Jml</th><th>Kondisi</th><th>Aksi</th></tr></thead><tbody>${rows}</tbody></table>`);
             });
         });
     },
