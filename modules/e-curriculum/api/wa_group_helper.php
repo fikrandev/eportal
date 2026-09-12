@@ -97,6 +97,7 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
     $countSakit = 0;
     $countIzin = 0;
     $countAlpha = 0;
+    $countIstirahat = 0;
     $countPulang = 0;
     $countIstirahat = 0;
 

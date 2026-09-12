@@ -16,56 +16,55 @@ try {
     $mesins = $stmt->fetchAll();
     
     if (empty($mesins)) {
-        echo "Tidak ada mesin fingerprint yang aktif.\n";
-        exit;
-    }
-    
-    $stmtInsert = db()->prepare("
-        INSERT IGNORE INTO absen_logs (mesin_id, mesin_pin, waktu_absen, status_absen, verify_type)
-        VALUES (?, ?, ?, ?, ?)
-    ");
-    
-    foreach ($mesins as $mesin) {
-        echo "Menghubungkan ke mesin: {$mesin['nama_mesin']} ({$mesin['ip_address']}:{$mesin['port']})...\n";
+        echo "Tidak ada mesin fingerprint yang aktif (melewati penarikan data).\n";
+    } else {
+        $stmtInsert = db()->prepare("
+            INSERT IGNORE INTO absen_logs (mesin_id, mesin_pin, waktu_absen, status_absen, verify_type)
+            VALUES (?, ?, ?, ?, ?)
+        ");
         
-        $zk = new ZKLibrary($mesin['ip_address'], $mesin['port']);
-        $connected = $zk->connect();
-        
-        if ($connected) {
-            $attendance = $zk->getAttendance();
-            $zk->disconnect();
+        foreach ($mesins as $mesin) {
+            echo "Menghubungkan ke mesin: {$mesin['nama_mesin']} ({$mesin['ip_address']}:{$mesin['port']})...\n";
             
-            if ($attendance && is_array($attendance)) {
-                $newLogsCount = 0;
-                db()->beginTransaction();
+            $zk = new ZKLibrary($mesin['ip_address'], $mesin['port']);
+            $connected = $zk->connect();
+            
+            if ($connected) {
+                $attendance = $zk->getAttendance();
+                $zk->disconnect();
                 
-                foreach ($attendance as $log) {
-                    $stmtInsert->execute([
-                        $mesin['id'],
-                        $log['uid'],
-                        $log['timestamp'],
-                        $log['state'],
-                        $log['type']
-                    ]);
+                if ($attendance && is_array($attendance)) {
+                    $newLogsCount = 0;
+                    db()->beginTransaction();
                     
-                    if ($stmtInsert->rowCount() > 0) {
-                        $newLogsCount++;
+                    foreach ($attendance as $log) {
+                        $stmtInsert->execute([
+                            $mesin['id'],
+                            $log['uid'],
+                            $log['timestamp'],
+                            $log['state'],
+                            $log['type']
+                        ]);
+                        
+                        if ($stmtInsert->rowCount() > 0) {
+                            $newLogsCount++;
+                        }
                     }
+                    
+                    db()->query("UPDATE absen_mesin SET last_sync = NOW() WHERE id = " . $mesin['id']);
+                    db()->commit();
+                    
+                    echo "-> Selesai! $newLogsCount data baru berhasil ditarik.\n";
+                } else {
+                    echo "-> Tidak ada data baru atau memori log kosong.\n";
                 }
-                
-                db()->query("UPDATE absen_mesin SET last_sync = NOW() WHERE id = " . $mesin['id']);
-                db()->commit();
-                
-                echo "-> Selesai! $newLogsCount data baru berhasil ditarik.\n";
             } else {
-                echo "-> Tidak ada data baru atau memori log kosong.\n";
+                echo "-> Gagal terhubung ke mesin (Offline / Jaringan Terputus).\n";
             }
-        } else {
-            echo "-> Gagal terhubung ke mesin (Offline / Jaringan Terputus).\n";
         }
     }
 
-    // Check WA Group Guru batch & 19:00 evening notification
+    // Check WA Group Guru batch & evening notification
     try {
         require_once __DIR__ . '/../modules/e-curriculum/api/wa_group_helper.php';
         checkAndSendWaGroupGuruAbsensiBatch();
