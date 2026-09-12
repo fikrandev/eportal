@@ -7,22 +7,21 @@ require_once __DIR__ . '/auth_helper.php';
 $user = acad_auth();
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
-switch ($action) {
-    case 'list':
-        listHariLibur();
-        break;
-    case 'save':
-        saveHariLibur($user);
-        break;
-    case 'delete':
-        deleteHariLibur($user);
-        break;
-    default:
-        // When included as a helper, it doesn't need to return JSON
-        if (basename($_SERVER['PHP_SELF']) == 'hari_libur.php') {
+if (basename($_SERVER['SCRIPT_FILENAME']) === 'hari_libur.php') {
+    switch ($action) {
+        case 'list':
+            listHariLibur();
+            break;
+        case 'save':
+            saveHariLibur($user);
+            break;
+        case 'delete':
+            deleteHariLibur($user);
+            break;
+        default:
             json_response(400, false, 'Action tidak valid.');
-        }
-        break;
+            break;
+    }
 }
 
 function listHariLibur() {
