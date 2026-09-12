@@ -269,17 +269,18 @@ const ExamApp = {
                         // Fatal — exam terminated
                         this._examStopped = true;
                         $('#violationOverlay').remove();
-                        EModal.alert(
-                            'UJIAN DIHENTIKAN',
-                            `<div style="text-align:center;">
+                        EModal.info({
+                            title: 'UJIAN DIHENTIKAN',
+                            message: `<div style="text-align:center;">
                                 <svg viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="#ef4444" stroke-width="2" style="margin:0 auto 16px;">
                                     <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
                                 </svg>
                                 <p style="font-size:16px;color:#0f172a;font-weight:600;">Ujian Anda dihentikan karena melakukan <strong>${this.violations} pelanggaran</strong>.</p>
                                 <p style="color:#64748b;">Silakan hubungi pengawas ujian.</p>
                             </div>`,
-                            () => { window.location.href = 'dashboard.php'; }
-                        );
+                            type: 'error',
+                            onClose: () => { window.location.href = 'dashboard.php'; }
+                        });
                     } else {
                         // Update the overlay counter
                         this.updateViolationOverlay();
