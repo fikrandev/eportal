@@ -282,17 +282,18 @@ function rekapAbsensiGuru($user) {
         
         $stmtL = false;
         if (count($pins) > 0) {
+            $tanggal_akhir_full = $tanggal_akhir . ' 23:59:59';
             $placeholdersPins = implode(',', array_fill(0, count($pins), '?'));
             $stmtL = db()->prepare("
                 SELECT TRIM(LEADING '0' FROM mesin_pin) COLLATE utf8mb4_unicode_ci as clean_pin,
                        DATE(waktu_absen) as tgl,
                        MIN(TIME(waktu_absen)) as jam_masuk
                 FROM absen_logs 
-                WHERE DATE(waktu_absen) BETWEEN ? AND ?
+                WHERE waktu_absen BETWEEN ? AND ?
                   AND TRIM(LEADING '0' FROM mesin_pin) COLLATE utf8mb4_unicode_ci IN ($placeholdersPins)
                 GROUP BY clean_pin, tgl
             ");
-            $paramsL = array_merge([$tanggal_awal, $tanggal_akhir], $pins);
+            $paramsL = array_merge([$tanggal_awal, $tanggal_akhir_full], $pins);
             $stmtL->execute($paramsL);
         }
 

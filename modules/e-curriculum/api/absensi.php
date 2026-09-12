@@ -396,22 +396,28 @@ function rekapAbsensi($user) {
         }
 
         // 3. Fetch E-Absen logs for date range
-        $placeholdersNis = implode(',', array_fill(0, count($nisList), '?'));
-        $stmtL = db()->prepare("
-            SELECT TRIM(LEADING '0' FROM mesin_pin) COLLATE utf8mb4_unicode_ci as clean_pin,
-                   DATE(waktu_absen) as tgl,
-                   MIN(TIME(waktu_absen)) as jam_masuk
-            FROM absen_logs
-            WHERE TRIM(LEADING '0' FROM mesin_pin) COLLATE utf8mb4_unicode_ci IN ($placeholdersNis)
-              AND DATE(waktu_absen) BETWEEN ? AND ?
-            GROUP BY clean_pin, tgl
-        ");
-        $paramsL = array_merge($nisList, [$tanggal_awal, $tanggal_akhir]);
-        $stmtL->execute($paramsL);
+        $stmtL = false;
+        if (count($nisList) > 0) {
+            $placeholdersNis = implode(',', array_fill(0, count($nisList), '?'));
+            $tanggal_akhir_full = $tanggal_akhir . ' 23:59:59';
+            $stmtL = db()->prepare("
+                SELECT TRIM(LEADING '0' FROM mesin_pin) COLLATE utf8mb4_unicode_ci as clean_pin,
+                       DATE(waktu_absen) as tgl,
+                       MIN(TIME(waktu_absen)) as jam_masuk
+                FROM absen_logs
+                WHERE waktu_absen BETWEEN ? AND ?
+                  AND TRIM(LEADING '0' FROM mesin_pin) COLLATE utf8mb4_unicode_ci IN ($placeholdersNis)
+                GROUP BY clean_pin, tgl
+            ");
+            $paramsL = array_merge([$tanggal_awal, $tanggal_akhir_full], $nisList);
+            $stmtL->execute($paramsL);
+        }
 
         $eAbsenMap = []; // [clean_pin][tgl] = jam_masuk
-        while ($l = $stmtL->fetch()) {
-            $eAbsenMap[$l['clean_pin']][$l['tgl']] = $l['jam_masuk'];
+        if ($stmtL) {
+            while ($l = $stmtL->fetch()) {
+                $eAbsenMap[$l['clean_pin']][$l['tgl']] = $l['jam_masuk'];
+            }
         }
 
         // 4. Calculate attendance per student
