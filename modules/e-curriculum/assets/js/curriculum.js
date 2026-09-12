@@ -5643,6 +5643,29 @@ const Curriculum = {
                         });
                     };
 
+                    const updateDisabledClasses = () => {
+                        const checkedIds = [];
+                        $('.block-kelas-checkbox:checked').each(function() {
+                            checkedIds.push($(this).val());
+                        });
+
+                        $('.block-kelas-checkbox').each(function() {
+                            const val = $(this).val();
+                            if (!$(this).is(':checked')) {
+                                if (checkedIds.includes(val)) {
+                                    $(this).prop('disabled', true);
+                                    $(this).next('label').css({'opacity': '0.4', 'cursor': 'not-allowed'});
+                                } else {
+                                    $(this).prop('disabled', false);
+                                    $(this).next('label').css({'opacity': '1', 'cursor': 'pointer'});
+                                }
+                            } else {
+                                $(this).prop('disabled', false);
+                                $(this).next('label').css({'opacity': '1', 'cursor': 'pointer'});
+                            }
+                        });
+                    };
+
                     const addBlock = () => {
                         blockCounter++;
                         const bId = blockCounter;
@@ -5681,6 +5704,7 @@ const Curriculum = {
 
                         $('#teacherBlockContainer').append(blockHtml);
                         updateBlockHeaders();
+                        updateDisabledClasses();
 
                         // Bind Teacher Select for this block
                         $(`#csBtnG_${bId}`).on('click', function(e) {
@@ -5726,6 +5750,11 @@ const Curriculum = {
                     $('#teacherBlockContainer').on('click', '.btn-remove-block', function() {
                         $(this).closest('.teacher-block-card').remove();
                         updateBlockHeaders();
+                        updateDisabledClasses();
+                    });
+
+                    $('#teacherBlockContainer').on('change', '.block-kelas-checkbox', function() {
+                        updateDisabledClasses();
                     });
 
                     $(document).on('click.csDropdown', function(e) {
