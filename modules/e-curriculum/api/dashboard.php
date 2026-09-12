@@ -33,6 +33,7 @@ if ($action === 'stats') {
             $total_siswa = (int)$pdo->query("SELECT COUNT(*) FROM students WHERE status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '')")->fetchColumn();
         }
         
+        $total_guru = (int)$pdo->query("SELECT COUNT(*) FROM users WHERE role = 'guru' OR acad_role IS NOT NULL")->fetchColumn();
         $total_kelas = (int)$pdo->query("SELECT COUNT(*) FROM sch_kelas")->fetchColumn();
         if ($total_kelas === 0) {
             $total_kelas = (int)$pdo->query("SELECT COUNT(*) FROM ref_kelas")->fetchColumn();
