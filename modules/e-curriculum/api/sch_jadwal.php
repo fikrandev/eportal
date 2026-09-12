@@ -130,8 +130,10 @@ switch ($action) {
                     }
                 }
 
-                // Place each block
-                foreach ($blocks as $blockSize) {
+                // Place each block using a queue (to allow breaking down if unplaceable)
+                $blocksQueue = $blocks;
+                while (!empty($blocksQueue)) {
+                    $blockSize = array_shift($blocksQueue);
                     $placed = false;
                     
                     // Shuffle hari to ensure randomness in schedule
@@ -143,17 +145,23 @@ switch ($action) {
                         
                         $hariJams = $jamByHari[$hari];
                         
-                        // Find consecutive slots of length $blockSize
-                        for ($i = 0; $i <= count($hariJams) - $blockSize; $i++) {
+                        // Find consecutive slots of length $blockSize (skipping Non-Pembelajaran)
+                        for ($i = 0; $i < count($hariJams); $i++) {
+                            // Starting slot must be Pembelajaran
+                            if ($hariJams[$i]['tipe'] !== 'Pembelajaran') continue;
+
                             $canPlace = true;
                             $candidateSlots = [];
+                            $foundBlocks = 0;
 
-                            for ($step = 0; $step < $blockSize; $step++) {
-                                $slot = $hariJams[$i + $step];
+                            for ($j = $i; $j < count($hariJams) && $foundBlocks < $blockSize; $j++) {
+                                $slot = $hariJams[$j];
                                 
-                                // Check tipe
-                                if ($slot['tipe'] !== 'Pembelajaran') { $canPlace = false; break; }
-                                
+                                if ($slot['tipe'] !== 'Pembelajaran') {
+                                    // Breaks don't interrupt the continuous block, they just pause it
+                                    continue;
+                                }
+
                                 // Check overlap kelas
                                 if (isset($schedule[$kId][$slot['id']])) { $canPlace = false; break; }
                                 
@@ -161,18 +169,15 @@ switch ($action) {
                                 if (isset($guruBusy[$gId][$slot['id']])) { $canPlace = false; break; }
                                 
                                 // Check guru kesediaan (if kesediaan is strict)
-                                // If Kesediaan is empty, assume they are free. Else must exist:
                                 if (!empty($kesediaanMap[$gId])) {
                                     if (!isset($kesediaanMap[$gId][$slot['id']])) { $canPlace = false; break; }
                                 }
 
-                                // PJOK Rule: Check if previous slot or next slot across this block is Istirahat.
-                                // Simplification: Ensure no 'Istirahat' divides the block (already checked by tipe='Pembelajaran').
-                                
                                 $candidateSlots[] = $slot['id'];
+                                $foundBlocks++;
                             }
 
-                            if ($canPlace) {
+                            if ($canPlace && $foundBlocks == $blockSize) {
                                 // Place it!
                                 foreach ($candidateSlots as $cSlotId) {
                                     $schedule[$kId][$cSlotId] = $dId;
@@ -185,7 +190,21 @@ switch ($action) {
                         }
                     }
                     if (!$placed) {
-                        $unplaced[] = ['distribusi_id' => $dId, 'block' => $blockSize];
+                        // If it failed to place, break it down if possible
+                        if ($blockSize > 1) {
+                            if ($blockSize == 3) {
+                                $blocksQueue[] = 2;
+                                $blocksQueue[] = 1;
+                            } else if ($blockSize == 2) {
+                                $blocksQueue[] = 1;
+                                $blocksQueue[] = 1;
+                            } else {
+                                $blocksQueue[] = $blockSize - 1;
+                                $blocksQueue[] = 1;
+                            }
+                        } else {
+                            $unplaced[] = ['distribusi_id' => $dId, 'block' => $blockSize];
+                        }
                     }
                 }
             }
