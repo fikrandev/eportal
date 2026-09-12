@@ -5,6 +5,7 @@
  */
 require_once __DIR__ . '/auth_helper.php';
 require_once __DIR__ . '/wa_group_helper.php';
+require_once __DIR__ . '/hari_libur.php';
 
 $user = acad_auth();
 $action = isset($_GET['action']) ? $_GET['action'] : '';
@@ -304,6 +305,8 @@ function rekapAbsensiGuru($user) {
 
         // 4. Calculate attendance per teacher
         $rekap = [];
+        $hari_efektif = get_hari_efektif($tanggal_awal, $tanggal_akhir);
+
         foreach ($teachers as $t) {
             $tid = $t['id'];
 
@@ -342,8 +345,14 @@ function rekapAbsensiGuru($user) {
             }
 
             $totalHadir = $countH + $countT;
-            $totalHariRecorded = count($dates);
-            $persentase = $totalHariRecorded > 0 ? round(($totalHadir / $totalHariRecorded) * 100, 1) : 0;
+            $recordedDaysCount = $countH + $countT + $countS + $countI + $countA;
+            $unrecordedDays = $hari_efektif - $recordedDaysCount;
+            if ($unrecordedDays > 0) {
+                $countA += $unrecordedDays;
+            }
+            
+            $persentase = $hari_efektif > 0 ? round(($totalHadir / $hari_efektif) * 100, 1) : 0;
+            if ($persentase > 100) $persentase = 100;
 
             $rekap[] = [
                 'guru_id' => $tid,
@@ -355,7 +364,7 @@ function rekapAbsensiGuru($user) {
                 'izin' => $countI,
                 'alpha' => $countA,
                 'total_hadir' => $totalHadir,
-                'total_hari' => $totalHariRecorded,
+                'total_hari' => $hari_efektif,
                 'persentase' => $persentase
             ];
         }
@@ -364,6 +373,7 @@ function rekapAbsensiGuru($user) {
             'waktu_terlambat' => substr($waktu_terlambat, 0, 5),
             'tanggal_awal' => $tanggal_awal,
             'tanggal_akhir' => $tanggal_akhir,
+            'hari_efektif' => $hari_efektif,
             'rekap' => $rekap
         ]);
     } catch (PDOException $e) {

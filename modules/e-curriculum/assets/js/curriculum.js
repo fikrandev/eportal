@@ -2575,6 +2575,9 @@ const Curriculum = {
                         <p class="acad-subtitle">Terintegrasi otomatis dengan mesin E-Absen & Rekapitulasi Kehadiran 3 Sesi (Masuk, Istirahat, Pulang).</p>
                     </div>
                     <div style="display:flex; gap:8px;">
+                        <button class="btn-acad btn-acad-outline" onclick="Curriculum.showHariLiburModal()">
+                            🏖️ Pengaturan Hari Libur
+                        </button>
                         <button class="btn-acad btn-acad-outline" onclick="Curriculum.showSettingWaktuModal()">
                             ⚙️ Setting Jam Absensi Siswa
                         </button>
@@ -3032,6 +3035,9 @@ const Curriculum = {
                         <p class="acad-subtitle">Terintegrasi otomatis dengan mesin E-Absen & Rekapitulasi Kehadiran 3 Sesi (Masuk, Istirahat, Pulang).</p>
                     </div>
                     <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                        <button class="btn-acad btn-acad-outline" onclick="Curriculum.showHariLiburModal()">
+                            🏖️ Pengaturan Hari Libur
+                        </button>
                         <button class="btn-acad btn-acad-outline" id="btnWaGroupGuru" onclick="Curriculum.sendWaGroupAbsenGuruActive()" style="border-color:#10B981; color:#059669;" title="Kirim Laporan WA ke Grup">
                             📲 <span id="lblBtnWaGuru">Kirim WA Masuk</span>
                         </button>
@@ -7476,6 +7482,131 @@ const Curriculum = {
                         if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
                     } catch(e) {}
                     this.toast('Gagal', msg, 'error');
+                });
+            }
+        });
+    },
+
+    // ==================== HARI LIBUR ====================
+    showHariLiburModal() {
+        const modalId = 'modalHariLibur_' + Date.now();
+        EModal.form({
+            title: '🏖️ Pengaturan Hari Libur (Non-Efektif)',
+            width: '600px',
+            form: `
+                <div class="acad-card" style="margin-bottom: 15px; background: #F8FAFC; border: 1px solid #E2E8F0;">
+                    <div class="acad-card-body">
+                        <div class="form-group">
+                            <label>Tanggal Libur</label>
+                            <input type="date" id="fTanggalLibur" class="form-input">
+                        </div>
+                        <div class="form-group" style="margin-bottom: 10px;">
+                            <label>Keterangan</label>
+                            <input type="text" id="fKetLibur" class="form-input" placeholder="Misal: Libur Nasional / Cuti Bersama">
+                        </div>
+                        <button type="button" class="btn-acad btn-acad-primary" onclick="Curriculum.saveHariLibur()" style="width: 100%;">
+                            ➕ Tambah Hari Libur
+                        </button>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="acad-table" id="tableHariLibur">
+                        <thead>
+                            <tr>
+                                <th>Tanggal</th>
+                                <th>Keterangan</th>
+                                <th width="80">Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td colspan="3" class="text-center" style="padding:20px;">Memuat data...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            `,
+            onOpen: () => {
+                this.loadHariLiburList();
+            },
+            onConfirm: () => {
+                // Return true to just close the modal
+                return true;
+            },
+            confirmText: 'Tutup'
+        });
+    },
+
+    loadHariLiburList() {
+        this.api('hari_libur.php?action=list').done(res => {
+            if (!res.success) return;
+            const data = res.data || [];
+            let html = '';
+            if (data.length === 0) {
+                html = '<tr><td colspan="3" class="text-center" style="padding:20px; color:#64748B;">Belum ada data hari libur.</td></tr>';
+            } else {
+                data.forEach(item => {
+                    const tglParts = item.tanggal.split('-');
+                    const tglIndo = tglParts[2] + '-' + tglParts[1] + '-' + tglParts[0];
+                    html += `
+                        <tr>
+                            <td style="font-weight:600;">${tglIndo}</td>
+                            <td>${item.keterangan}</td>
+                            <td>
+                                <button class="sch-btn-icon danger" onclick="Curriculum.deleteHariLibur(${item.id})" title="Hapus">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+                    `;
+                });
+            }
+            $('#tableHariLibur tbody').html(html);
+        });
+    },
+
+    saveHariLibur() {
+        const tanggal = $('#fTanggalLibur').val();
+        const keterangan = $('#fKetLibur').val();
+
+        if (!tanggal || !keterangan) {
+            EModal.toast({type: 'error', title: 'Error', message: 'Tanggal dan Keterangan harus diisi.'});
+            return;
+        }
+
+        this.api('hari_libur.php?action=save', {
+            method: 'POST',
+            data: { tanggal, keterangan }
+        }).done(res => {
+            EModal.toast({type: 'success', title: 'Berhasil', message: res.message});
+            $('#fTanggalLibur').val('');
+            $('#fKetLibur').val('');
+            this.loadHariLiburList();
+            
+            // Reload absensi UI if they are open
+            if ($('#absenDate').length) {
+                this.loadAbsensi(true);
+            }
+        });
+    },
+
+    deleteHariLibur(id) {
+        EModal.confirm({
+            title: 'Hapus Hari Libur',
+            message: 'Yakin ingin menghapus hari libur ini?',
+            onConfirm: () => {
+                this.api('hari_libur.php?action=delete', {
+                    method: 'POST',
+                    data: { id: id }
+                }).done(res => {
+                    EModal.toast({type: 'success', title: 'Berhasil', message: res.message});
+                    this.loadHariLiburList();
+                    
+                    // Reload absensi UI if they are open
+                    if ($('#absenDate').length) {
+                        this.loadAbsensi(true);
+                    }
                 });
             }
         });

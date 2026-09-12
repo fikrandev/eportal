@@ -4,6 +4,8 @@
  * Manages student attendance integrated with E-Absen logs & manual overrides
  */
 require_once __DIR__ . '/auth_helper.php';
+require_once __DIR__ . '/wa_group_helper.php';
+require_once __DIR__ . '/hari_libur.php';
 
 $user = acad_auth();
 $action = isset($_GET['action']) ? $_GET['action'] : '';
@@ -414,6 +416,8 @@ function rekapAbsensi($user) {
 
         // 4. Calculate attendance per student
         $rekap = [];
+        $hari_efektif = get_hari_efektif($tanggal_awal, $tanggal_akhir);
+
         foreach ($students as $s) {
             $sid = $s['id'];
             $cleanNis = ltrim($s['nis'], '0');
@@ -453,8 +457,14 @@ function rekapAbsensi($user) {
             }
 
             $totalHadir = $countH + $countT;
-            $totalHariRecorded = count($dates);
-            $persentase = $totalHariRecorded > 0 ? round(($totalHadir / $totalHariRecorded) * 100, 1) : 0;
+            $recordedDaysCount = $countH + $countT + $countS + $countI + $countA;
+            $unrecordedDays = $hari_efektif - $recordedDaysCount;
+            if ($unrecordedDays > 0) {
+                $countA += $unrecordedDays;
+            }
+            
+            $persentase = $hari_efektif > 0 ? round(($totalHadir / $hari_efektif) * 100, 1) : 0;
+            if ($persentase > 100) $persentase = 100;
 
             $rekap[] = [
                 'student_id' => $sid,
@@ -467,7 +477,7 @@ function rekapAbsensi($user) {
                 'izin' => $countI,
                 'alpha' => $countA,
                 'total_hadir' => $totalHadir,
-                'total_hari' => $totalHariRecorded,
+                'total_hari' => $hari_efektif,
                 'persentase' => $persentase
             ];
         }
@@ -476,6 +486,7 @@ function rekapAbsensi($user) {
             'waktu_terlambat' => substr($waktu_terlambat, 0, 5),
             'tanggal_awal' => $tanggal_awal,
             'tanggal_akhir' => $tanggal_akhir,
+            'hari_efektif' => $hari_efektif,
             'rekap' => $rekap
         ]);
     } catch (PDOException $e) {
