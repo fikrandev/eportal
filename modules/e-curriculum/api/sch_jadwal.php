@@ -102,118 +102,138 @@ switch ($action) {
                 $jamList[$j['id']] = $j;
             }
 
-            // Placing blocks solver - Heuristic Iteration
-            // Since this is a simple heuristic, we loop through assignments and try to place them
-            $unplaced = [];
-            $stmtInsert = db()->prepare("INSERT INTO sch_jadwal (kelas_id, jam_belajar_id, distribusi_id) VALUES (?, ?, ?)");
+            // Placing blocks solver - Multi-Start Randomized Heuristic
+            // We simulate multiple placements (up to 50 iterations or 45 seconds)
+            // and keep the schedule with the fewest unplaced slots.
+            
+            $bestUnplacedCount = PHP_INT_MAX;
+            $bestScheduleData = [];
+            
+            $maxIterations = 100; // Increased iterations for better results
+            $startTime = microtime(true);
+            $maxTimeSeconds = 45; // Max 45 seconds to prevent request timeout
 
-            foreach ($distribusiRows as $dist) {
-                $kId = $dist['kelas_id'];
-                $gId = $dist['guru_id'];
-                $dId = $dist['id'];
-                $jp = (int)$dist['jp'];
-                $mapelStr = strtolower($dist['nama_mapel']);
+            for ($iter = 0; $iter < $maxIterations; $iter++) {
+                if (microtime(true) - $startTime > $maxTimeSeconds) break;
 
-                // Rule Breakdown
-                $blocks = [];
-                if ($jp == 1) $blocks = [1];
-                elseif ($jp == 2) $blocks = [2];
-                elseif ($jp == 3) $blocks = [3]; // Prefer 3, fallback 2+1 (simplified to 3 for heuristic)
-                elseif ($jp == 4) $blocks = [2, 2];
-                elseif ($jp == 5) $blocks = [3, 2];
-                else {
-                    // For anything > 5, split into 2s and 1s
-                    $rem = $jp;
-                    while($rem > 0) {
-                        if ($rem >= 2) { $blocks[] = 2; $rem -= 2; }
-                        else { $blocks[] = 1; $rem -= 1; }
-                    }
-                }
+                $schedule = []; // Memory tracking for overlap
+                $guruBusy = [];
+                $currentUnplaced = [];
+                $currentScheduleData = []; // Array of [kelas_id, jam_id, distribusi_id]
 
-                // Place each block using a queue (to allow breaking down if unplaceable)
-                $blocksQueue = $blocks;
-                while (!empty($blocksQueue)) {
-                    $blockSize = array_shift($blocksQueue);
-                    $placed = false;
+                // Shuffle distribusi but prefer larger JPs first
+                $shuffledDistribusi = $distribusiRows;
+                shuffle($shuffledDistribusi);
+                usort($shuffledDistribusi, function($a, $b) {
+                    // Small random factor so it's not identical every loop
+                    $scoreA = (int)$a['jp'] + (rand(0, 20) / 100);
+                    $scoreB = (int)$b['jp'] + (rand(0, 20) / 100);
+                    return $scoreB <=> $scoreA;
+                });
+
+                foreach ($shuffledDistribusi as $dist) {
+                    $kId = $dist['kelas_id'];
+                    $gId = $dist['guru_id'];
+                    $dId = $dist['id'];
+                    $jp = (int)$dist['jp'];
                     
-                    // Shuffle hari to ensure randomness in schedule
-                    $haris = array_keys($jamByHari);
-                    shuffle($haris);
-
-                    foreach ($haris as $hari) {
-                        if ($placed) break;
-                        
-                        $hariJams = $jamByHari[$hari];
-                        
-                        // Find consecutive slots of length $blockSize (skipping Non-Pembelajaran)
-                        for ($i = 0; $i < count($hariJams); $i++) {
-                            // Starting slot must be Pembelajaran
-                            if ($hariJams[$i]['tipe'] !== 'Pembelajaran') continue;
-
-                            $canPlace = true;
-                            $candidateSlots = [];
-                            $foundBlocks = 0;
-
-                            for ($j = $i; $j < count($hariJams) && $foundBlocks < $blockSize; $j++) {
-                                $slot = $hariJams[$j];
-                                
-                                if ($slot['tipe'] !== 'Pembelajaran') {
-                                    // Breaks don't interrupt the continuous block, they just pause it
-                                    continue;
-                                }
-
-                                // Check overlap kelas
-                                if (isset($schedule[$kId][$slot['id']])) { $canPlace = false; break; }
-                                
-                                // Check guru busy
-                                if (isset($guruBusy[$gId][$slot['id']])) { $canPlace = false; break; }
-                                
-                                // Check guru kesediaan (if kesediaan is strict)
-                                if (!empty($kesediaanMap[$gId])) {
-                                    if (!isset($kesediaanMap[$gId][$slot['id']])) { $canPlace = false; break; }
-                                }
-
-                                $candidateSlots[] = $slot['id'];
-                                $foundBlocks++;
-                            }
-
-                            if ($canPlace && $foundBlocks == $blockSize) {
-                                // Place it!
-                                foreach ($candidateSlots as $cSlotId) {
-                                    $schedule[$kId][$cSlotId] = $dId;
-                                    $guruBusy[$gId][$cSlotId] = true;
-                                    $stmtInsert->execute([$kId, $cSlotId, $dId]);
-                                }
-                                $placed = true;
-                                break;
-                            }
+                    // Rule Breakdown
+                    $blocks = [];
+                    if ($jp == 1) $blocks = [1];
+                    elseif ($jp == 2) $blocks = [2];
+                    elseif ($jp == 3) $blocks = [3];
+                    elseif ($jp == 4) $blocks = [2, 2];
+                    elseif ($jp == 5) $blocks = [3, 2];
+                    else {
+                        $rem = $jp;
+                        while($rem > 0) {
+                            if ($rem >= 2) { $blocks[] = 2; $rem -= 2; }
+                            else { $blocks[] = 1; $rem -= 1; }
                         }
                     }
-                    if (!$placed) {
-                        // If it failed to place, break it down if possible
-                        if ($blockSize > 1) {
-                            if ($blockSize == 3) {
-                                $blocksQueue[] = 2;
-                                $blocksQueue[] = 1;
-                            } else if ($blockSize == 2) {
-                                $blocksQueue[] = 1;
-                                $blocksQueue[] = 1;
-                            } else {
-                                $blocksQueue[] = $blockSize - 1;
-                                $blocksQueue[] = 1;
+
+                    $blocksQueue = $blocks;
+                    while (!empty($blocksQueue)) {
+                        $blockSize = array_shift($blocksQueue);
+                        $placed = false;
+                        
+                        $haris = array_keys($jamByHari);
+                        shuffle($haris); // Randomize day order
+
+                        foreach ($haris as $hari) {
+                            if ($placed) break;
+                            $hariJams = $jamByHari[$hari];
+                            
+                            for ($i = 0; $i < count($hariJams); $i++) {
+                                if ($hariJams[$i]['tipe'] !== 'Pembelajaran') continue;
+
+                                $canPlace = true;
+                                $candidateSlots = [];
+                                $foundBlocks = 0;
+
+                                for ($j = $i; $j < count($hariJams) && $foundBlocks < $blockSize; $j++) {
+                                    $slot = $hariJams[$j];
+                                    if ($slot['tipe'] !== 'Pembelajaran') continue;
+
+                                    if (isset($schedule[$kId][$slot['id']])) { $canPlace = false; break; }
+                                    if (isset($guruBusy[$gId][$slot['id']])) { $canPlace = false; break; }
+                                    if (!empty($kesediaanMap[$gId]) && !isset($kesediaanMap[$gId][$slot['id']])) { $canPlace = false; break; }
+
+                                    $candidateSlots[] = $slot['id'];
+                                    $foundBlocks++;
+                                }
+
+                                if ($canPlace && $foundBlocks == $blockSize) {
+                                    foreach ($candidateSlots as $cSlotId) {
+                                        $schedule[$kId][$cSlotId] = $dId;
+                                        $guruBusy[$gId][$cSlotId] = true;
+                                        $currentScheduleData[] = [$kId, $cSlotId, $dId];
+                                    }
+                                    $placed = true;
+                                    break;
+                                }
                             }
-                        } else {
-                            $unplaced[] = ['distribusi_id' => $dId, 'block' => $blockSize];
+                        }
+
+                        if (!$placed) {
+                            if ($blockSize > 1) {
+                                if ($blockSize == 3) {
+                                    $blocksQueue[] = 2; $blocksQueue[] = 1;
+                                } else if ($blockSize == 2) {
+                                    $blocksQueue[] = 1; $blocksQueue[] = 1;
+                                } else {
+                                    $blocksQueue[] = $blockSize - 1; $blocksQueue[] = 1;
+                                }
+                            } else {
+                                $currentUnplaced[] = ['distribusi_id' => $dId, 'block' => $blockSize];
+                            }
                         }
                     }
                 }
+
+                // Score this iteration
+                $unplacedCount = count($currentUnplaced);
+                if ($unplacedCount < $bestUnplacedCount) {
+                    $bestUnplacedCount = $unplacedCount;
+                    $bestScheduleData = $currentScheduleData;
+                    
+                    if ($bestUnplacedCount === 0) {
+                        break; // Perfect schedule found!
+                    }
+                }
+            }
+
+            // Insert best schedule into DB
+            $stmtInsert = db()->prepare("INSERT INTO sch_jadwal (kelas_id, jam_belajar_id, distribusi_id) VALUES (?, ?, ?)");
+            foreach ($bestScheduleData as $row) {
+                $stmtInsert->execute($row);
             }
             
             db()->commit();
             
-            if (count($unplaced) > 0) {
-                json_response(200, true, 'Jadwal di-generate sebagian, ada konflik / kekurangan slot jam.', [
-                    'unplaced_blocks' => count($unplaced)
+            if ($bestUnplacedCount > 0) {
+                json_response(200, true, 'Jadwal di-generate sebagian, ada konflik / kekurangan slot jam. (Heuristic limit tercapai)', [
+                    'unplaced_blocks' => $bestUnplacedCount
                 ]);
             } else {
                 json_response(200, true, 'Jadwal berhasil di-generate secara utuh 100%.');

@@ -5,6 +5,7 @@
  * Supports dual auth: eportal token (admin) + perf_sessions token (PTK/siswa)
  */
 require_once __DIR__ . '/../../api/config.php';
+require_once __DIR__ . '/../../api/theme_helper.php';
 
 // ============================================
 // AUTH: Validate token
@@ -80,7 +81,7 @@ $active_academic_year = get_active_academic_year();
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="description" content="E-Performance — Sistem Penilaian Kinerja PTK">
-    <meta name="theme-color" content="#10B981">
+    
     <title>E-Performance — Penilaian Kinerja</title>
 
     <?php if($school_icon): ?>
@@ -116,6 +117,7 @@ $active_academic_year = get_active_academic_year();
             academicYear: <?php echo json_encode($active_academic_year, JSON_UNESCAPED_UNICODE); ?>
         };
     </script>
+    <?php echo get_module_theme_css('e-performance'); ?>
 </head>
 <body>
     <!-- Global Loading -->

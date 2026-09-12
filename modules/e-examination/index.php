@@ -67,7 +67,7 @@ $school_icon = get_setting('icon_sekolah', '');
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="description" content="E-Examination — Sistem Ujian Digital CBT">
-    <meta name="theme-color" content="#2563EB">
+    
     <title>E-Examination — CBT</title>
 
     <?php if($school_icon): ?>
@@ -111,6 +111,7 @@ $school_icon = get_setting('icon_sekolah', '');
             }
         };
     </script>
+    <?php echo get_module_theme_css('e-examination'); ?>
 </head>
 <body>
     <!-- Global Loading -->

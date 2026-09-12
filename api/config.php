@@ -259,6 +259,27 @@ function get_setting($key, $default = null)
 }
 
 /**
+ * Darken a hex color (e.g. for generating gradients)
+ */
+function darken_hex($hex, $percent = 20) {
+    $hex = ltrim($hex, '#');
+    if (strlen($hex) == 3) {
+        $hex = $hex[0].$hex[0].$hex[1].$hex[1].$hex[2].$hex[2];
+    }
+    if (strlen($hex) != 6) return '#0D47A1'; // Fallback
+    
+    $r = hexdec(substr($hex, 0, 2));
+    $g = hexdec(substr($hex, 2, 2));
+    $b = hexdec(substr($hex, 4, 2));
+    
+    $r = max(0, $r - ($r * ($percent / 100)));
+    $g = max(0, $g - ($g * ($percent / 100)));
+    $b = max(0, $b - ($b * ($percent / 100)));
+    
+    return sprintf("#%02x%02x%02x", $r, $g, $b);
+}
+
+/**
  * Update a setting value
  */
 function update_setting($key, $value)

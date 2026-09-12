@@ -3,6 +3,7 @@
  * E-Graduation Module - Entry Point
  */
 require_once __DIR__ . '/../../api/config.php';
+require_once __DIR__ . '/../../api/theme_helper.php';
 
 $token = isset($_GET['token']) ? $_GET['token'] : '';
 $user = null;
@@ -23,7 +24,8 @@ if (!empty($token)) {
 }
 
 if (!$user) {
-    echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Akses Ditolak</title></head><body style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:Inter,sans-serif;background:#F5F7FA;"><div style="text-align:center;padding:40px;"><h2 style="color:#EF4444;">Sesi Tidak Valid</h2><p style="color:#6B7280;margin:16px 0;">Token sesi tidak ditemukan atau telah kadaluarsa.</p><a href="' . BASE_URL . '#/login" style="display:inline-block;padding:12px 24px;background:linear-gradient(135deg,#0F766E,#0d9488);color:white;border-radius:12px;text-decoration:none;font-weight:600;">Login Kembali</a></div></body></html>';
+    echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Akses Ditolak</title>    <?php echo get_module_theme_css('e-graduation'); ?>
+</head><body style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:Inter,sans-serif;background:#F5F7FA;"><div style="text-align:center;padding:40px;"><h2 style="color:#EF4444;">Sesi Tidak Valid</h2><p style="color:#6B7280;margin:16px 0;">Token sesi tidak ditemukan atau telah kadaluarsa.</p><a href="' . BASE_URL . '#/login" style="display:inline-block;padding:12px 24px;background:linear-gradient(135deg,#0F766E,#0d9488);color:white;border-radius:12px;text-decoration:none;font-weight:600;">Login Kembali</a></div></body></html>';
     exit;
 }
 
@@ -49,7 +51,8 @@ if ($user['role'] !== 'superadmin') {
 }
 
 if (!$user) {
-    echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Akses Ditolak</title></head><body style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:Inter,sans-serif;background:#F5F7FA;"><div style="text-align:center;padding:40px;"><h2 style="color:#EF4444;">Akses Ditolak</h2><p style="color:#6B7280;margin:16px 0;">Anda belum terdaftar dalam Akses Modul E-Graduation.</p><a href="' . BASE_URL . '#/dashboard" style="display:inline-block;padding:12px 24px;background:linear-gradient(135deg,#0F766E,#0d9488);color:white;border-radius:12px;text-decoration:none;font-weight:600;">Kembali ke Dashboard</a></div></body></html>';
+    echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Akses Ditolak</title>    <?php echo get_module_theme_css('e-graduation'); ?>
+</head><body style="display:flex;align-items:center;justify-content:center;min-height:100vh;font-family:Inter,sans-serif;background:#F5F7FA;"><div style="text-align:center;padding:40px;"><h2 style="color:#EF4444;">Akses Ditolak</h2><p style="color:#6B7280;margin:16px 0;">Anda belum terdaftar dalam Akses Modul E-Graduation.</p><a href="' . BASE_URL . '#/dashboard" style="display:inline-block;padding:12px 24px;background:linear-gradient(135deg,#0F766E,#0d9488);color:white;border-radius:12px;text-decoration:none;font-weight:600;">Kembali ke Dashboard</a></div></body></html>';
     exit;
 }
 
@@ -151,6 +154,7 @@ $shades = getThemeShades($module_color);
             academicYear: <?php echo json_encode($active_academic_year, JSON_UNESCAPED_UNICODE); ?>
         };
     </script>
+    <?php echo get_module_theme_css('e-graduation'); ?>
 </head>
 <body>
     <div id="globalLoader" class="global-loader">
