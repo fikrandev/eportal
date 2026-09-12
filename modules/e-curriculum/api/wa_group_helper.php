@@ -271,6 +271,12 @@ function checkAndSendWaGroupGuruAbsensiBatch($tanggal = null) {
     $groupId = get_setting('wa_group_guru_id');
     if (empty($groupId)) return false;
 
+    // Batasi pengiriman otomatis HANYA untuk hari Senin (1) s/d Jumat (5)
+    $dayOfWeek = (int)date('w', strtotime($tanggal)); // 0 = Minggu, 6 = Sabtu
+    if ($dayOfWeek === 0 || $dayOfWeek === 6) {
+        return false;
+    }
+
     $currentTime = date('H:i:s');
 
     $cutoffMasuk = get_setting('wa_guru_cutoff_masuk', '06:30:59');
@@ -292,18 +298,6 @@ function checkAndSendWaGroupGuruAbsensiBatch($tanggal = null) {
                 return false; // Sudah dikirim hari ini
             }
 
-            // Cek hari Minggu (hanya skip jika hari Minggu dan benar-benar tidak ada data apapun)
-            $dayOfWeek = (int)date('w', strtotime($tanggal)); // 0 = Sunday
-            if ($dayOfWeek === 0) {
-                $stmtLogsCheck = db()->prepare("SELECT COUNT(*) FROM absen_logs WHERE DATE(waktu_absen) = ? AND TIME(waktu_absen) < '12:00:00'");
-                $stmtLogsCheck->execute([$tanggal]);
-                $totalLogsHariIni = (int)$stmtLogsCheck->fetchColumn();
-
-                if ($totalLogsHariIni === 0) {
-                    return false;
-                }
-            }
-
             // Kirim laporan WA masuk secara lengkap (semua guru)
             $result = sendWaGroupAbsensiGuruDirect($tanggal, 'masuk');
 
@@ -320,22 +314,6 @@ function checkAndSendWaGroupGuruAbsensiBatch($tanggal = null) {
         $lastDatePulang = get_setting('wa_guru_last_sent_date_pulang');
         if ($lastDatePulang === $tanggal) {
             return false; // Sudah dikirim hari ini
-        }
-
-        // Cek hari Minggu (hanya skip jika hari Minggu dan benar-benar tidak ada data apapun)
-        $dayOfWeek = (int)date('w', strtotime($tanggal)); // 0 = Sunday
-        if ($dayOfWeek === 0) {
-            $stmtLogsCheck = db()->prepare("SELECT COUNT(*) FROM absen_logs WHERE DATE(waktu_absen) = ?");
-            $stmtLogsCheck->execute([$tanggal]);
-            $totalLogsHariIni = (int)$stmtLogsCheck->fetchColumn();
-
-            $stmtManualCheck = db()->prepare("SELECT COUNT(*) FROM acad_absensi_guru WHERE tanggal = ?");
-            $stmtManualCheck->execute([$tanggal]);
-            $totalManualHariIni = (int)$stmtManualCheck->fetchColumn();
-
-            if ($totalLogsHariIni === 0 && $totalManualHariIni === 0) {
-                return false;
-            }
         }
 
         // Kirim laporan WA absen pulang lengkap
