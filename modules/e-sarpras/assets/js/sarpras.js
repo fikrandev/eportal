@@ -2641,8 +2641,10 @@ const Sarpras = {
         const isEdit = id !== null && id !== undefined && !isAddMore;
         const isTemplate = isAddMore && id !== null;
 
-        // If adding to room, we fetch from warehouse (ruang_id is NULL)
-        let catalogUrl = (ruangId && !isEdit) 
+        // If adding to room, we fetch from warehouse (ruang_id is NULL) for normal inventory.
+        // But for special groups (ahp-bhp, angkutan, buku), we always fetch from master catalog.
+        const isFromWarehouse = (ruangId && !isEdit && !['ahp-bhp', 'angkutan', 'buku'].includes(groupFilter));
+        let catalogUrl = isFromWarehouse 
             ? 'sarpras.php?action=list&ruang_id=0&per_page=500' 
             : 'master_sarpras.php?action=list';
 
@@ -2657,13 +2659,13 @@ const Sarpras = {
         ).done((resKat, resCatalog, resRuang) => {
             const kData = resKat[0].data || [];
             const rData = resRuang[0].data || [];
-            const mData = (ruangId && !isEdit) ? (resCatalog[0].data.data || []) : (resCatalog[0].data || []);
+            const mData = isFromWarehouse ? (resCatalog[0].data.data || []) : (resCatalog[0].data || []);
             
             const katOptions = kData.map(k => `<option value="${k.id}">${k.nama}</option>`).join('');
             const ruangOptions = rData.map(r => `<option value="${r.id}">${r.nama} (${r.bangunan_nama})</option>`).join('');
             
             let customSelectOptions = '';
-            if (ruangId && !isEdit) {
+            if (isFromWarehouse) {
                 // Catalog from Warehouse Stock
                 customSelectOptions = mData.map(m => `
                     <div class="sp-cs-option" data-id="${m.id}" data-nama="${m.nama}" data-source-id="${m.id}" data-kat="${m.kategori_id}" data-kode="${m.kode_inventaris}" data-merk="${m.merk||''}" data-manfaat="${m.masa_manfaat_tahun||5}" data-harga="${m.harga_perolehan||0}" data-tgl="${m.tanggal_perolehan||''}" data-available="${m.jumlah}">
