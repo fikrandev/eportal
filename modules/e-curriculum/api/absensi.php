@@ -334,7 +334,8 @@ function rekapAbsensi($user) {
         $kelas_id = isset($_GET['kelas_id']) ? (int)$_GET['kelas_id'] : 0;
         $tanggal_awal = isset($_GET['tanggal_awal']) ? $_GET['tanggal_awal'] : date('Y-m-01');
         $tanggal_akhir = isset($_GET['tanggal_akhir']) ? $_GET['tanggal_akhir'] : date('Y-m-d');
-        $waktu_terlambat = get_setting('waktu_terlambat_siswa', '07:15:00');
+        $waktu_terlambat = get_setting('waktu_terlambat_siswa', '07:15:00') ?: '07:15:00';
+        if (strlen($waktu_terlambat) === 5) $waktu_terlambat .= ':00';
 
         $active_year = get_active_academic_year();
         $year_id = (int)($active_year['id'] ?? 0);
@@ -371,6 +372,7 @@ function rekapAbsensi($user) {
                 'waktu_terlambat' => substr($waktu_terlambat, 0, 5),
                 'tanggal_awal' => $tanggal_awal,
                 'tanggal_akhir' => $tanggal_akhir,
+                'hari_efektif' => 0,
                 'rekap' => []
             ]);
         }
@@ -379,50 +381,51 @@ function rekapAbsensi($user) {
         $nisList = array_map(function($s) { return ltrim($s['nis'], '0'); }, $students);
 
         // 2. Fetch manual records from acad_absensi for date range
-        $placeholdersS = implode(',', array_fill(0, count($studentIds), '?'));
-        $stmtA = db()->prepare("
-            SELECT student_id, tanggal, status 
-            FROM acad_absensi 
-            WHERE student_id IN ($placeholdersS) 
-              AND tanggal BETWEEN ? AND ? 
-              AND jam_ke = 0
-        ");
-        $paramsA = array_merge($studentIds, [$tanggal_awal, $tanggal_akhir]);
-        $stmtA->execute($paramsA);
-        
         $manualMap = []; // [student_id][tanggal] = status
-        while ($row = $stmtA->fetch()) {
-            $manualMap[$row['student_id']][$row['tanggal']] = $row['status'];
-        }
+        try {
+            $placeholdersS = implode(',', array_fill(0, count($studentIds), '?'));
+            $stmtA = db()->prepare("
+                SELECT student_id, tanggal, status 
+                FROM acad_absensi 
+                WHERE student_id IN ($placeholdersS) 
+                  AND tanggal BETWEEN ? AND ? 
+                  AND jam_ke = 0
+            ");
+            $paramsA = array_merge($studentIds, [$tanggal_awal, $tanggal_akhir]);
+            $stmtA->execute($paramsA);
+            
+            while ($row = $stmtA->fetch()) {
+                $manualMap[$row['student_id']][$row['tanggal']] = $row['status'];
+            }
+        } catch (Exception $e) {}
 
         // 3. Fetch E-Absen logs for date range
-        $stmtL = false;
-        if (count($nisList) > 0) {
-            $placeholdersNis = implode(',', array_fill(0, count($nisList), '?'));
-            $tanggal_akhir_full = $tanggal_akhir . ' 23:59:59';
-            $stmtL = db()->prepare("
-                SELECT TRIM(LEADING '0' FROM mesin_pin) COLLATE utf8mb4_unicode_ci as clean_pin,
-                       DATE(waktu_absen) as tgl,
-                       MIN(TIME(waktu_absen)) as jam_masuk
-                FROM absen_logs
-                WHERE waktu_absen BETWEEN ? AND ?
-                  AND TRIM(LEADING '0' FROM mesin_pin) COLLATE utf8mb4_unicode_ci IN ($placeholdersNis)
-                GROUP BY clean_pin, tgl
-            ");
-            $paramsL = array_merge([$tanggal_awal, $tanggal_akhir_full], $nisList);
-            $stmtL->execute($paramsL);
-        }
-
         $eAbsenMap = []; // [clean_pin][tgl] = jam_masuk
-        if ($stmtL) {
-            while ($l = $stmtL->fetch()) {
-                $eAbsenMap[$l['clean_pin']][$l['tgl']] = $l['jam_masuk'];
-            }
+        if (count($nisList) > 0) {
+            try {
+                $placeholdersNis = implode(',', array_fill(0, count($nisList), '?'));
+                $tanggal_akhir_full = $tanggal_akhir . ' 23:59:59';
+                $stmtL = db()->prepare("
+                    SELECT TRIM(LEADING '0' FROM mesin_pin) as clean_pin,
+                           DATE(waktu_absen) as tgl,
+                           MIN(TIME(waktu_absen)) as jam_masuk
+                    FROM absen_logs
+                    WHERE waktu_absen BETWEEN ? AND ?
+                      AND TRIM(LEADING '0' FROM mesin_pin) IN ($placeholdersNis)
+                    GROUP BY clean_pin, tgl
+                ");
+                $paramsL = array_merge([$tanggal_awal, $tanggal_akhir_full], $nisList);
+                $stmtL->execute($paramsL);
+                while ($l = $stmtL->fetch()) {
+                    $eAbsenMap[$l['clean_pin']][$l['tgl']] = $l['jam_masuk'];
+                }
+            } catch (Exception $e) {}
         }
 
         // 4. Calculate attendance per student
         $rekap = [];
         $hari_efektif = get_hari_efektif($tanggal_awal, $tanggal_akhir);
+
 
         foreach ($students as $s) {
             $sid = $s['id'];

@@ -2899,8 +2899,24 @@ const Curriculum = {
                     </table>
                 </div>
             `);
+        }).fail(xhr => {
+            let msg = 'Gagal memuat rekap absensi siswa.';
+            try {
+                const res = JSON.parse(xhr.responseText);
+                if (res && res.message) msg = res.message;
+            } catch (e) {
+                if (xhr.statusText && xhr.statusText !== 'error') msg = xhr.statusText;
+            }
+            $('#rekapAbsensiTableWrapper').html(`
+                <div style="color:#DC2626; padding:24px; text-align:center; background:#FEF2F2; border:1px solid #FCA5A5; border-radius:10px; margin:15px 0;">
+                    <div style="font-size:1.1rem; font-weight:700; margin-bottom:6px;">⚠️ Gagal Memuat Rekap Siswa</div>
+                    <div style="font-size:0.875rem; margin-bottom:14px; color:#475569;">${this.escapeHtml(msg)}</div>
+                    <button class="btn-acad btn-acad-sm btn-acad-primary" onclick="Curriculum.loadAbsensiRekapTable()">🔄 Coba Lagi</button>
+                </div>
+            `);
         });
     },
+
 
     exportAbsensiExcel() {
         const table = document.getElementById('tableExportRekapAbsensi');
@@ -3120,8 +3136,12 @@ const Curriculum = {
             $('#absensiGuruTabHarian').fadeIn();
         } else {
             $('#absensiGuruTabRekap').fadeIn();
+            if (!$('#rekapAbsensiGuruTableWrapper').children().length) {
+                this.loadAbsensiGuruRekapTable();
+            }
         }
     },
+
 
     switchAbsensiGuruSesi(sesi) {
         this.state.absensiGuruSesi = sesi;
@@ -3357,17 +3377,17 @@ const Curriculum = {
         }
 
         const $wrapper = $('#rekapAbsensiGuruTableWrapper');
-        $wrapper.html('<div style="padding:20px; text-align:center;">Menghitung rekapitulasi...</div>');
+        $wrapper.html('<div style="padding:40px; text-align:center; color:#64748B;"><div class="acad-spinner" style="margin:0 auto 12px; width:28px; height:28px; border:3px solid #E2E8F0; border-top-color:#7C3AED; border-radius:50%; animation:acadSpin 0.8s linear infinite;"></div>Menghitung rekapitulasi absensi guru...</div>');
 
         this.api(`absensi_guru.php?action=rekap&tanggal_awal=${tgl_awal}&tanggal_akhir=${tgl_akhir}`).done(res => {
             if (!res.success) {
-                $wrapper.html(`<div style="color:red; padding:20px;">Error: ${res.message}</div>`);
+                $wrapper.html(`<div style="color:#DC2626; padding:20px; text-align:center; background:#FEF2F2; border:1px solid #FCA5A5; border-radius:8px; margin:15px 0;"><strong>Gagal memuat rekap:</strong> ${this.escapeHtml(res.message || 'Terjadi kesalahan.')}</div>`);
                 return;
             }
 
-            const data = res.data.rekap;
+            const data = res.data ? (res.data.rekap || []) : [];
             if (data.length === 0) {
-                $wrapper.html('<div style="padding:20px; text-align:center; color:gray;">Tidak ada data rekap guru.</div>');
+                $wrapper.html('<div style="padding:40px; text-align:center; color:#94A3B8;">Tidak ada data rekap guru pada rentang tanggal ini.</div>');
                 return;
             }
 
@@ -3417,8 +3437,24 @@ const Curriculum = {
                     </table>
                 </div>
             `);
+        }).fail(xhr => {
+            let msg = 'Gagal memuat rekap absensi guru.';
+            try {
+                const res = JSON.parse(xhr.responseText);
+                if (res && res.message) msg = res.message;
+            } catch (e) {
+                if (xhr.statusText && xhr.statusText !== 'error') msg = xhr.statusText;
+            }
+            $wrapper.html(`
+                <div style="color:#DC2626; padding:24px; text-align:center; background:#FEF2F2; border:1px solid #FCA5A5; border-radius:10px; margin:15px 0;">
+                    <div style="font-size:1.1rem; font-weight:700; margin-bottom:6px;">⚠️ Gagal Memuat Rekap Guru</div>
+                    <div style="font-size:0.875rem; margin-bottom:14px; color:#475569;">${this.escapeHtml(msg)}</div>
+                    <button class="btn-acad btn-acad-sm btn-acad-primary" onclick="Curriculum.loadAbsensiGuruRekapTable()">🔄 Coba Lagi</button>
+                </div>
+            `);
         });
     },
+
 
     exportAbsensiGuruExcel() {
         const table = document.getElementById('tableExportRekapAbsensiGuru');

@@ -46,11 +46,11 @@ function listAbsensiGuru($user) {
         $tanggal = isset($_GET['tanggal']) ? $_GET['tanggal'] : date('Y-m-d');
         $sesi = isset($_GET['sesi']) && in_array($_GET['sesi'], ['masuk', 'istirahat', 'pulang']) ? $_GET['sesi'] : 'masuk';
 
-        $waktu_terlambat = get_setting('waktu_terlambat_guru', '06:30:00');
-        $waktu_istirahat_mulai = get_setting('waktu_istirahat_guru_mulai', '12:00:00');
-        $waktu_istirahat_selesai = get_setting('waktu_istirahat_guru_selesai', '13:00:00');
-        $waktu_pulang = get_setting('waktu_pulang_guru', '15:30:00');
-        $jam_mulai_pulang = get_setting('wa_guru_mulai_pulang', '13:00:00');
+        $waktu_terlambat = get_setting('waktu_terlambat_guru', '06:30:00') ?: '06:30:00';
+        $waktu_istirahat_mulai = get_setting('waktu_istirahat_guru_mulai', '12:00:00') ?: '12:00:00';
+        $waktu_istirahat_selesai = get_setting('waktu_istirahat_guru_selesai', '13:00:00') ?: '13:00:00';
+        $waktu_pulang = get_setting('waktu_pulang_guru', '15:30:00') ?: '15:30:00';
+        $jam_mulai_pulang = get_setting('wa_guru_mulai_pulang', '13:00:00') ?: '13:00:00';
 
         if (strlen($waktu_terlambat) === 5) $waktu_terlambat .= ':00';
         if (strlen($waktu_istirahat_mulai) === 5) $waktu_istirahat_mulai .= ':00';
@@ -236,7 +236,8 @@ function rekapAbsensiGuru($user) {
     try {
         $tanggal_awal = isset($_GET['tanggal_awal']) ? $_GET['tanggal_awal'] : date('Y-m-01');
         $tanggal_akhir = isset($_GET['tanggal_akhir']) ? $_GET['tanggal_akhir'] : date('Y-m-d');
-        $waktu_terlambat = get_setting('waktu_terlambat_guru', '07:15:00');
+        $waktu_terlambat = get_setting('waktu_terlambat_guru', '07:15:00') ?: '07:15:00';
+        if (strlen($waktu_terlambat) === 5) $waktu_terlambat .= ':00';
 
         // 1. Get all relevant teachers
         $stmtG = db()->query("SELECT id, kode_guru, nama_lengkap as nama FROM users WHERE role = 'guru' AND status = 1 ORDER BY nama_lengkap");
@@ -247,6 +248,7 @@ function rekapAbsensiGuru($user) {
                 'waktu_terlambat' => substr($waktu_terlambat, 0, 5),
                 'tanggal_awal' => $tanggal_awal,
                 'tanggal_akhir' => $tanggal_akhir,
+                'hari_efektif' => 0,
                 'rekap' => []
             ]);
         }
@@ -254,59 +256,62 @@ function rekapAbsensiGuru($user) {
         $teacherIds = array_column($teachers, 'id');
 
         // 2. Fetch manual records from acad_absensi_guru for date range
-        $placeholdersT = implode(',', array_fill(0, count($teacherIds), '?'));
-        $stmtA = db()->prepare("
-            SELECT guru_id, tanggal, status 
-            FROM acad_absensi_guru 
-            WHERE guru_id IN ($placeholdersT) 
-              AND tanggal BETWEEN ? AND ? 
-        ");
-        $paramsA = array_merge($teacherIds, [$tanggal_awal, $tanggal_akhir]);
-        $stmtA->execute($paramsA);
-        
         $manualMap = []; // [guru_id][tanggal] = status
-        while ($row = $stmtA->fetch()) {
-            $manualMap[$row['guru_id']][$row['tanggal']] = $row['status'];
-        }
+        try {
+            $placeholdersT = implode(',', array_fill(0, count($teacherIds), '?'));
+            $stmtA = db()->prepare("
+                SELECT guru_id, tanggal, status 
+                FROM acad_absensi_guru 
+                WHERE guru_id IN ($placeholdersT) 
+                  AND tanggal BETWEEN ? AND ? 
+            ");
+            $paramsA = array_merge($teacherIds, [$tanggal_awal, $tanggal_akhir]);
+            $stmtA->execute($paramsA);
+            
+            while ($row = $stmtA->fetch()) {
+                $manualMap[$row['guru_id']][$row['tanggal']] = $row['status'];
+            }
+        } catch (Exception $e) {}
 
         // 3. Fetch E-Absen logs for date range efficiently
-        $stmtMap = db()->query("SELECT user_id, TRIM(LEADING '0' FROM mesin_pin) as clean_pin FROM absen_user_map");
         $userMap = [];
         $pins = [];
-        while($m = $stmtMap->fetch()) {
-             if (in_array($m['user_id'], $teacherIds)) {
-                 $userMap[$m['user_id']] = $m['clean_pin'];
-                 $pins[] = $m['clean_pin'];
-             }
-        }
-        
-        $stmtL = false;
-        if (count($pins) > 0) {
-            $tanggal_akhir_full = $tanggal_akhir . ' 23:59:59';
-            $placeholdersPins = implode(',', array_fill(0, count($pins), '?'));
-            $stmtL = db()->prepare("
-                SELECT TRIM(LEADING '0' FROM mesin_pin) COLLATE utf8mb4_unicode_ci as clean_pin,
-                       DATE(waktu_absen) as tgl,
-                       MIN(TIME(waktu_absen)) as jam_masuk
-                FROM absen_logs 
-                WHERE waktu_absen BETWEEN ? AND ?
-                  AND TRIM(LEADING '0' FROM mesin_pin) COLLATE utf8mb4_unicode_ci IN ($placeholdersPins)
-                GROUP BY clean_pin, tgl
-            ");
-            $paramsL = array_merge([$tanggal_awal, $tanggal_akhir_full], $pins);
-            $stmtL->execute($paramsL);
-        }
-
-        $eAbsenMap = []; // [clean_pin][tgl] = jam_masuk
-        if ($stmtL) {
-            while ($l = $stmtL->fetch()) {
-                $eAbsenMap[$l['clean_pin']][$l['tgl']] = $l['jam_masuk'];
+        try {
+            $stmtMap = db()->query("SELECT user_id, TRIM(LEADING '0' FROM mesin_pin) as clean_pin FROM absen_user_map");
+            while($m = $stmtMap->fetch()) {
+                 if (in_array($m['user_id'], $teacherIds)) {
+                     $userMap[$m['user_id']] = $m['clean_pin'];
+                     $pins[] = $m['clean_pin'];
+                 }
             }
+        } catch (Exception $e) {}
+        
+        $eAbsenMap = []; // [clean_pin][tgl] = jam_masuk
+        if (count($pins) > 0) {
+            try {
+                $tanggal_akhir_full = $tanggal_akhir . ' 23:59:59';
+                $placeholdersPins = implode(',', array_fill(0, count($pins), '?'));
+                $stmtL = db()->prepare("
+                    SELECT TRIM(LEADING '0' FROM mesin_pin) as clean_pin,
+                           DATE(waktu_absen) as tgl,
+                           MIN(TIME(waktu_absen)) as jam_masuk
+                    FROM absen_logs 
+                    WHERE waktu_absen BETWEEN ? AND ?
+                      AND TRIM(LEADING '0' FROM mesin_pin) IN ($placeholdersPins)
+                    GROUP BY clean_pin, tgl
+                ");
+                $paramsL = array_merge([$tanggal_awal, $tanggal_akhir_full], $pins);
+                $stmtL->execute($paramsL);
+                while ($l = $stmtL->fetch()) {
+                    $eAbsenMap[$l['clean_pin']][$l['tgl']] = $l['jam_masuk'];
+                }
+            } catch (Exception $e) {}
         }
 
         // 4. Calculate attendance per teacher
         $rekap = [];
         $hari_efektif = get_hari_efektif($tanggal_awal, $tanggal_akhir);
+
 
         foreach ($teachers as $t) {
             $tid = $t['id'];
@@ -387,13 +392,13 @@ function rekapAbsensiGuru($user) {
  */
 function getSettingsGuru($user) {
     json_response(200, true, 'Setting dimuat.', [
-        'waktu_terlambat' => substr(get_setting('waktu_terlambat_guru', '06:30:00'), 0, 5),
-        'waktu_istirahat_mulai' => substr(get_setting('waktu_istirahat_guru_mulai', '12:00:00'), 0, 5),
-        'waktu_istirahat_selesai' => substr(get_setting('waktu_istirahat_guru_selesai', '13:00:00'), 0, 5),
-        'waktu_pulang' => substr(get_setting('waktu_pulang_guru', '15:30:00'), 0, 5),
-        'wa_cutoff_masuk' => substr(get_setting('wa_guru_cutoff_masuk', '06:30:00'), 0, 5),
-        'wa_cutoff_pulang' => substr(get_setting('wa_guru_cutoff_pulang', '17:00:00'), 0, 5),
-        'wa_mulai_pulang' => substr(get_setting('wa_guru_mulai_pulang', '13:00:00'), 0, 5)
+        'waktu_terlambat' => substr(get_setting('waktu_terlambat_guru', '06:30:00') ?: '06:30:00', 0, 5),
+        'waktu_istirahat_mulai' => substr(get_setting('waktu_istirahat_guru_mulai', '12:00:00') ?: '12:00:00', 0, 5),
+        'waktu_istirahat_selesai' => substr(get_setting('waktu_istirahat_guru_selesai', '13:00:00') ?: '13:00:00', 0, 5),
+        'waktu_pulang' => substr(get_setting('waktu_pulang_guru', '15:30:00') ?: '15:30:00', 0, 5),
+        'wa_cutoff_masuk' => substr(get_setting('wa_guru_cutoff_masuk', '06:30:00') ?: '06:30:00', 0, 5),
+        'wa_cutoff_pulang' => substr(get_setting('wa_guru_cutoff_pulang', '17:00:00') ?: '17:00:00', 0, 5),
+        'wa_mulai_pulang' => substr(get_setting('wa_guru_mulai_pulang', '13:00:00') ?: '13:00:00', 0, 5)
     ]);
 }
 
@@ -462,15 +467,16 @@ function saveSettingsGuru($user) {
     }
 
     json_response(200, true, 'Pengaturan jam absensi guru berhasil disimpan.', [
-        'waktu_terlambat' => substr(get_setting('waktu_terlambat_guru', '06:30:00'), 0, 5),
-        'waktu_istirahat_mulai' => substr(get_setting('waktu_istirahat_guru_mulai', '12:00:00'), 0, 5),
-        'waktu_istirahat_selesai' => substr(get_setting('waktu_istirahat_guru_selesai', '13:00:00'), 0, 5),
-        'waktu_pulang' => substr(get_setting('waktu_pulang_guru', '15:30:00'), 0, 5),
-        'wa_cutoff_masuk' => substr(get_setting('wa_guru_cutoff_masuk', '06:30:00'), 0, 5),
-        'wa_cutoff_pulang' => substr(get_setting('wa_guru_cutoff_pulang', '17:00:00'), 0, 5),
-        'wa_mulai_pulang' => substr(get_setting('wa_guru_mulai_pulang', '13:00:00'), 0, 5)
+        'waktu_terlambat' => substr(get_setting('waktu_terlambat_guru', '06:30:00') ?: '06:30:00', 0, 5),
+        'waktu_istirahat_mulai' => substr(get_setting('waktu_istirahat_guru_mulai', '12:00:00') ?: '12:00:00', 0, 5),
+        'waktu_istirahat_selesai' => substr(get_setting('waktu_istirahat_guru_selesai', '13:00:00') ?: '13:00:00', 0, 5),
+        'waktu_pulang' => substr(get_setting('waktu_pulang_guru', '15:30:00') ?: '15:30:00', 0, 5),
+        'wa_cutoff_masuk' => substr(get_setting('wa_guru_cutoff_masuk', '06:30:00') ?: '06:30:00', 0, 5),
+        'wa_cutoff_pulang' => substr(get_setting('wa_guru_cutoff_pulang', '17:00:00') ?: '17:00:00', 0, 5),
+        'wa_mulai_pulang' => substr(get_setting('wa_guru_mulai_pulang', '13:00:00') ?: '13:00:00', 0, 5)
     ]);
 }
+
 
 /**
  * Send real-time / daily teacher attendance report to WA Group

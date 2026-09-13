@@ -4,10 +4,10 @@
  */
 require_once __DIR__ . '/auth_helper.php';
 
-$user = acad_auth();
-$action = isset($_GET['action']) ? $_GET['action'] : '';
-
 if (basename($_SERVER['SCRIPT_FILENAME']) === 'hari_libur.php') {
+    $user = acad_auth();
+    $action = isset($_GET['action']) ? $_GET['action'] : '';
+
     switch ($action) {
         case 'list':
             listHariLibur();
@@ -94,22 +94,30 @@ function deleteHariLibur($user) {
  * Skips Saturdays, Sundays, and dates listed in acad_hari_libur for the current academic year.
  */
 function get_hari_efektif($start_date, $end_date) {
-    $active_year = get_active_academic_year();
-    $year_id = $active_year['id'] ?? 0;
-
-    // Get all holidays in the range
-    $stmt = db()->prepare("
-        SELECT tanggal FROM acad_hari_libur 
-        WHERE academic_year_id = ? 
-          AND tanggal BETWEEN ? AND ?
-    ");
-    $stmt->execute([$year_id, $start_date, $end_date]);
-    $holidays = $stmt->fetchAll(PDO::FETCH_COLUMN);
-
-    $effective_days = 0;
+    if (empty($start_date) || empty($end_date)) return 0;
     $current = strtotime($start_date);
     $end = strtotime($end_date);
+    if (!$current || !$end || $current > $end) return 0;
 
+    $holidays = [];
+    try {
+        $active_year = get_active_academic_year();
+        $year_id = $active_year['id'] ?? 0;
+
+        // Get all holidays in the range
+        $stmt = db()->prepare("
+            SELECT tanggal FROM acad_hari_libur 
+            WHERE academic_year_id = ? 
+              AND tanggal BETWEEN ? AND ?
+        ");
+        $stmt->execute([$year_id, $start_date, $end_date]);
+        $holidays = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+    } catch (Exception $e) {
+        // Fallback gracefully if table not yet migrated or query fails
+        $holidays = [];
+    }
+
+    $effective_days = 0;
     while ($current <= $end) {
         $dayOfWeek = date('N', $current); // 1 (Mon) - 7 (Sun)
         $dateStr = date('Y-m-d', $current);
@@ -124,3 +132,4 @@ function get_hari_efektif($start_date, $end_date) {
 
     return $effective_days;
 }
+
