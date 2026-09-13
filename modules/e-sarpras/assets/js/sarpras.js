@@ -2650,49 +2650,50 @@ const Sarpras = {
         const isEdit = id !== null && id !== undefined && !isAddMore;
         const isTemplate = isAddMore && id !== null;
 
-        // If adding to room, we fetch from warehouse (ruang_id is NULL) for normal inventory.
-        // But for special groups (ahp-bhp, angkutan, buku), we always fetch from master catalog.
+        // If adding to room, we can distribute from warehouse stock or create new from master catalog
         const isFromWarehouse = (ruangId && !isEdit && !['ahp-bhp', 'angkutan', 'buku'].includes(groupFilter));
-        let catalogUrl = isFromWarehouse 
-            ? 'sarpras.php?action=list&ruang_id=0&per_page=500' 
-            : 'master_sarpras.php?action=list';
-
-        if (groupFilter && !isEdit) {
-            catalogUrl += `&grup=${groupFilter}`;
+        const reqs = [
+            this.api('manage.php?entity=kategori&action=list'),
+            this.api('master_sarpras.php?action=list' + (groupFilter && !isEdit ? `&grup=${groupFilter}` : '')),
+            this.api('ruang.php?action=list')
+        ];
+        if (isFromWarehouse) {
+            reqs.push(this.api('sarpras.php?action=list&ruang_id=0&per_page=500'));
         }
 
-        $.when(
-            this.api('manage.php?entity=kategori&action=list'),
-            this.api(catalogUrl),
-            this.api('ruang.php?action=list')
-        ).done((resKat, resCatalog, resRuang) => {
+        $.when(...reqs).done((resKat, resCatalog, resRuang, resWarehouse) => {
             const kData = resKat[0].data || [];
             const rData = resRuang[0].data || [];
-            const mData = isFromWarehouse ? (resCatalog[0].data.data || []) : (resCatalog[0].data || []);
+            const mData = resCatalog[0].data || [];
+            const wData = (isFromWarehouse && resWarehouse && resWarehouse[0] && resWarehouse[0].data) ? (resWarehouse[0].data.data || []) : [];
             
             const katOptions = kData.map(k => `<option value="${k.id}">${k.nama}</option>`).join('');
             const ruangOptions = rData.map(r => `<option value="${r.id}">${r.nama} (${r.bangunan_nama})</option>`).join('');
             
             let customSelectOptions = '';
-            if (isFromWarehouse) {
-                // Catalog from Warehouse Stock
-                customSelectOptions = mData.map(m => `
-                    <div class="sp-cs-option" data-id="${m.id}" data-nama="${m.nama}" data-source-id="${m.id}" data-kat="${m.kategori_id}" data-kode="${m.kode_inventaris}" data-merk="${m.merk||''}" data-manfaat="${m.masa_manfaat_tahun||5}" data-harga="${m.harga_perolehan||0}" data-tgl="${m.tanggal_perolehan||''}" data-available="${m.jumlah}">
-                        <div class="cs-opt-m">${m.nama}</div>
-                        <div class="cs-opt-k">${m.kode_inventaris} | ${m.kategori_nama}</div>
+            if (wData.length > 0) {
+                customSelectOptions += `<div style="font-size:0.75rem; font-weight:700; color:#1d4ed8; padding:8px 12px; background:#eff6ff; border-bottom:1px solid #bfdbfe; letter-spacing:0.5px;">STOK GUDANG (DISTRIBUSI KE RUANGAN)</div>`;
+                customSelectOptions += wData.map(w => `
+                    <div class="sp-cs-option" data-id="${w.id}" data-nama="${w.nama}" data-source-id="${w.id}" data-kat="${w.kategori_id}" data-kode="${w.kode_inventaris}" data-merk="${w.merk||''}" data-manfaat="${w.masa_manfaat_tahun||5}" data-harga="${w.harga_perolehan||0}" data-tgl="${w.tanggal_perolehan||''}" data-available="${w.jumlah}">
+                        <div class="cs-opt-m">${w.nama}</div>
+                        <div class="cs-opt-k">${w.kode_inventaris} | ${w.kategori_nama} — <span style="color:#1d4ed8; font-weight:600;">Stok Gudang: ${w.jumlah}</span></div>
                     </div>
                 `).join('');
-            } else {
-                // Catalog from Master Reference
-                customSelectOptions = mData.map(m => `
+            }
+            if (mData.length > 0) {
+                if (wData.length > 0) {
+                    customSelectOptions += `<div style="font-size:0.75rem; font-weight:700; color:#047857; padding:8px 12px; background:#ecfdf5; border-bottom:1px solid #a7f3d0; margin-top:6px; letter-spacing:0.5px;">KATALOG MASTER (PENGADAAN / BARANG BARU)</div>`;
+                }
+                customSelectOptions += mData.map(m => `
                     <div class="sp-cs-option" data-id="${m.id}" data-nama="${m.nama}" data-kat="${m.kategori_id}" data-kode="${m.kode||''}" data-merk="${m.merk_default||''}" data-manfaat="${m.masa_manfaat_default||5}" data-harga="${m.harga_perolehan||0}" data-tgl="${m.tanggal_perolehan||''}">
                         <div class="cs-opt-m">${m.nama}</div>
-                        <div class="cs-opt-k">${m.kategori_nama}</div>
+                        <div class="cs-opt-k">${m.kategori_nama} ${isFromWarehouse ? '— <span style="color:#059669; font-weight:600;">Barang Baru</span>' : ''}</div>
                     </div>
                 `).join('');
             }
             
-            const csFallback = customSelectOptions || `<div style="padding:15px; text-align:center; color:var(--text-muted); font-size:0.85rem;">Belum ada master data untuk kategori ini. Silakan tambahkan di menu Data Sarpras.</div>`;
+            const csFallback = (customSelectOptions ? customSelectOptions : `<div style="padding:15px; text-align:center; color:var(--text-muted); font-size:0.85rem;">Belum ada master data untuk kategori ini. Ketik nama di atas untuk input manual.</div>`) +
+                `<div class="sp-cs-option" id="csCustomOption" style="display:none; background:#f8fafc; border-top:2px dashed #cbd5e1; color:var(--primary); font-weight:600; padding:12px 15px; cursor:pointer;">+ Gunakan "<span class="custom-name"></span>" sebagai barang baru manual</div>`;
 
             let formTitle = isEdit ? 'Edit Barang' : (isAddMore ? 'Tambah Batch Baru' : 'Tambah Barang Baru');
             if (groupFilter === 'ahp-bhp') formTitle = 'Tambah Barang (AHP & BHP)';
@@ -2847,7 +2848,7 @@ const Sarpras = {
                             
                             <div class="sp-form-section-title" style="margin-top:10px; font-size:0.8rem; opacity:0.8;">Status Kondisi</div>
                             <div class="sp-form-grid-3">
-                                <div class="form-group"><label style="color:var(--success)">Kondisi Baik</label><input type="number" class="form-input" id="f_sBaik" value="0"></div>
+                                <div class="form-group"><label style="color:var(--success)">Kondisi Baik</label><input type="number" class="form-input" id="f_sBaik" value="1"></div>
                                 <div class="form-group"><label style="color:var(--warning)">Rusak Ringan</label><input type="number" class="form-input" id="f_sRR" value="0"></div>
                                 <div class="form-group"><label style="color:var(--danger)">Rusak Berat</label><input type="number" class="form-input" id="f_sRB" value="0"></div>
                             </div>
@@ -2898,14 +2899,19 @@ const Sarpras = {
                         });
 
                         $('#csSearchInput').on('input', function() {
-                            const term = $(this).val().toLowerCase();
-                            $('.sp-cs-option').each(function() {
+                            const term = $(this).val().toLowerCase().trim();
+                            $('.sp-cs-option:not(#csCustomOption)').each(function() {
                                 const text = $(this).text().toLowerCase();
                                 $(this).toggle(text.includes(term));
                             });
+                            if (term.length > 0) {
+                                $('#csCustomOption').show().find('.custom-name').text($(this).val().trim());
+                            } else {
+                                $('#csCustomOption').hide();
+                            }
                         });
 
-                        $('#csOptionsList').on('click', '.sp-cs-option', function() {
+                        $('#csOptionsList').on('click', '.sp-cs-option:not(#csCustomOption)', function() {
                             const d = $(this).data();
                             $('#f_sNamaHidden').val(d.nama);
                             $('#f_sMaster').val(d.id);
@@ -2926,15 +2932,59 @@ const Sarpras = {
                                 $('#csStockLabel').hide();
                             }
                             
-                            $('#f_sMerk').val(d.merk);
-                            $('#f_sManfaat').val(d.manfaat);
-                            $('#f_sHarga').val(Sarpras.formatNumber(d.harga));
+                            $('#f_sMerk').val(d.merk || '');
+                            $('#f_sManfaat').val(d.manfaat || 5);
+                            $('#f_sHarga').val(Sarpras.formatNumber(d.harga || 0));
                             $('#f_sTglPerolehan').val(d.tgl || new Date().toISOString().split('T')[0]);
                             
-                            $('#f_sKat').val(d.kat).trigger('change');
-                            $('#csSelectedText').html(`<div style="font-weight:600; font-size:0.9rem; color:#1e293b;">${d.nama}</div><div style="font-size:0.75rem; color:#64748b;">${d.kode}</div>`);
+                            if (d.kat) {
+                                $('#f_sKat').val(d.kat).trigger('change');
+                            }
+                            $('#f_sKat').prop('disabled', true);
+
+                            // Auto sync condition to match jumlah if condition is 0
+                            const currentJml = parseInt($('#f_sJml').val() || 1);
+                            const currentRR = parseInt($('#f_sRR').val() || 0);
+                            const currentRB = parseInt($('#f_sRB').val() || 0);
+                            if (currentRR === 0 && currentRB === 0) {
+                                $('#f_sBaik').val(currentJml);
+                            }
+
+                            $('#csSelectedText').html(`<div style="font-weight:600; font-size:0.9rem; color:#1e293b;">${d.nama}</div><div style="font-size:0.75rem; color:#64748b;">${d.kode || ''}</div>`);
                             $('#customSelectDropdown').hide();
                             $('#customSelectBtn').removeClass('active');
+                        });
+
+                        $('#csOptionsList').on('click', '#csCustomOption', function() {
+                            const term = $('#csSearchInput').val().trim();
+                            if (!term) return;
+                            $('#f_sNamaHidden').val(term);
+                            $('#f_sMaster').val('custom');
+                            $('#f_sSourceId').val('');
+                            $('#f_sKode').val('Otomatis');
+                            $('#csStockLabel').hide();
+                            $('#f_sKat').prop('disabled', false); // Allow picking category for custom item
+
+                            const currentJml = parseInt($('#f_sJml').val() || 1);
+                            const currentRR = parseInt($('#f_sRR').val() || 0);
+                            const currentRB = parseInt($('#f_sRB').val() || 0);
+                            if (currentRR === 0 && currentRB === 0) {
+                                $('#f_sBaik').val(currentJml);
+                            }
+
+                            $('#csSelectedText').html(`<div style="font-weight:600; font-size:0.9rem; color:#1e293b;">${term}</div><div style="font-size:0.75rem; color:#64748b;">(Input Manual)</div>`);
+                            $('#customSelectDropdown').hide();
+                            $('#customSelectBtn').removeClass('active');
+                        });
+
+                        // Live sync: quantity to condition baik
+                        $('#f_sJml').on('input change', function() {
+                            const jml = parseInt($(this).val() || 0);
+                            const rr = parseInt($('#f_sRR').val() || 0);
+                            const rb = parseInt($('#f_sRB').val() || 0);
+                            if (rr === 0 && rb === 0 && jml > 0) {
+                                $('#f_sBaik').val(jml);
+                            }
                         });
                         
                         if (ruangId) {
@@ -2997,21 +3047,38 @@ const Sarpras = {
                             finalNama = $('#f_sJudulBuku').val() || finalNama;
                         }
 
-                        if (!finalNama && !$('#f_sMaster').val()) { EModal.toast({type:'error', title:'Error', message:'Silakan pilih barang dari katalog atau isi judul buku'}); return false; }
+                        if (!finalNama && !$('#f_sMaster').val()) {
+                            EModal.toast({type:'error', title:'Error', message:'Silakan pilih barang dari katalog atau isi judul/nama barang'});
+                            return false;
+                        }
                         
                         const noLocationNeeded = !ruangId || ['ahp-bhp', 'angkutan', 'buku'].includes(this.state.currentRoute);
-                        if (!noLocationNeeded && !$('#f_sRuangIdSelect').val()) { EModal.toast({type:'error', title:'Error', message:'Silakan pilih lokasi/ruangan'}); return false; }
+                        const targetRuangId = noLocationNeeded ? '' : ($('#f_sRuangIdSelect').val() || $('#f_sRuangId').val() || '');
+                        if (!noLocationNeeded && !targetRuangId) {
+                            EModal.toast({type:'error', title:'Error', message:'Silakan pilih lokasi/ruangan'});
+                            return false;
+                        }
 
                         const sourceId = $('#f_sSourceId').val();
                         const available = parseInt($('#f_sAvailable').val() || 0);
                         const jml = parseInt($('#f_sJml').val() || 0);
-                        const baik = parseInt($('#f_sBaik').val() || 0);
+                        let baik = parseInt($('#f_sBaik').val() || 0);
                         const rr = parseInt($('#f_sRR').val() || 0);
                         const rb = parseInt($('#f_sRB').val() || 0);
+
+                        if (jml <= 0) {
+                            EModal.toast({type:'error', title:'Error', message:'Jumlah barang minimal 1'});
+                            return false;
+                        }
 
                         if (sourceId && jml > available) {
                             EModal.toast({type:'error', title:'Error', message:`Jumlah (${jml}) melebihi stok gudang (${available})`});
                             return false;
+                        }
+
+                        if ((baik + rr + rb) === 0 && jml > 0) {
+                            baik = jml;
+                            $('#f_sBaik').val(jml);
                         }
 
                         if ((baik + rr + rb) !== jml) {
@@ -3019,48 +3086,62 @@ const Sarpras = {
                             return false;
                         }
 
+                        let katId = $('#f_sKat').val();
+                        if (!katId) {
+                            katId = $('#f_sKat option:first').val() || '';
+                        }
+                        if (!katId && !['buku'].includes(this.state.currentRoute)) {
+                            EModal.toast({type:'error', title:'Error', message:'Kategori wajib dipilih'});
+                            return false;
+                        }
+
                         const fd = new FormData();
                         if (isEdit) fd.append('id', id);
-                        fd.append('ruang_id', noLocationNeeded ? '' : $('#f_sRuangIdSelect').val());
+                        fd.append('ruang_id', targetRuangId);
                         if (sourceId) fd.append('source_id', sourceId);
-                        fd.append('kategori_id', $('#f_sKat').val());
+                        fd.append('kategori_id', katId);
                         fd.append('nama', finalNama);
-                        fd.append('judul_buku', $('#f_sJudulBuku').val());
-                        fd.append('pengarang', $('#f_sPengarang').val());
-                        fd.append('penerbit', $('#f_sPenerbit').val());
-                        fd.append('kode_inventaris', $('#f_sKode').val());
-                        fd.append('merk', $('#f_sMerk').val());
-                        fd.append('spesifikasi', $('#f_sSpek').val());
-                        fd.append('jumlah', $('#f_sJml').val());
-                        fd.append('kondisi_baik', $('#f_sBaik').val());
-                        fd.append('kondisi_rusak_ringan', $('#f_sRR').val());
-                        fd.append('kondisi_rusak_berat', $('#f_sRB').val());
-                        fd.append('tanggal_perolehan', $('#f_sTglPerolehan').val());
+                        fd.append('judul_buku', $('#f_sJudulBuku').val() || '');
+                        fd.append('pengarang', $('#f_sPengarang').val() || '');
+                        fd.append('penerbit', $('#f_sPenerbit').val() || '');
+                        fd.append('kode_inventaris', $('#f_sKode').val() || 'Otomatis');
+                        fd.append('merk', $('#f_sMerk').val() || '');
+                        fd.append('spesifikasi', $('#f_sSpek').val() || '');
+                        fd.append('jumlah', jml);
+                        fd.append('kondisi_baik', baik);
+                        fd.append('kondisi_rusak_ringan', rr);
+                        fd.append('kondisi_rusak_berat', rb);
+                        fd.append('tanggal_perolehan', $('#f_sTglPerolehan').val() || new Date().toISOString().split('T')[0]);
                         const cleanedHarga = ($('#f_sHarga').val() || '0').replace(/\./g, '');
                         fd.append('harga_perolehan', cleanedHarga);
-                        fd.append('masa_manfaat_tahun', $('#f_sManfaat').val());
-                        fd.append('keterangan', $('#f_sKet').val());
+                        fd.append('masa_manfaat_tahun', $('#f_sManfaat').val() || 5);
+                        fd.append('keterangan', $('#f_sKet').val() || '');
                         
                         // Append Vehicle fields
-                        fd.append('no_polisi', $('#f_sNoPolisi').val());
-                        fd.append('no_bpkb', $('#f_sNoBPKB').val());
-                        fd.append('alamat', $('#f_sAlamat').val());
-                        fd.append('kepemilikan', $('#f_sKepemilikan').val());
+                        fd.append('no_polisi', $('#f_sNoPolisi').val() || '');
+                        fd.append('no_bpkb', $('#f_sNoBPKB').val() || '');
+                        fd.append('alamat', $('#f_sAlamat').val() || '');
+                        fd.append('kepemilikan', $('#f_sKepemilikan').val() || 'Milik Sendiri');
                         
                         if (['ahp-bhp', 'angkutan', 'buku'].includes(this.state.currentRoute)) {
                             fd.append('grup_pintasan', this.state.currentRoute);
                         }
 
                         const fileInput = document.getElementById('f_sFoto');
-                        if (fileInput.files.length > 0) fd.append('foto', fileInput.files[0]);
+                        if (fileInput && fileInput.files && fileInput.files.length > 0) fd.append('foto', fileInput.files[0]);
 
+                        const loader = EModal.loading(isEdit ? 'Memperbarui data...' : 'Menambahkan data sarpras...');
                         this.api(`sarpras.php?action=${isEdit?'update':'create'}`, { method: 'POST', data: fd }).done(() => {
+                            EModal.close(loader);
                             EModal.closeAll();
                             EModal.toast({ type: 'success', title: 'Berhasil', message: isEdit ? 'Data berhasil diperbarui' : 'Barang berhasil ditambahkan' });
                             if (ruangId) this.renderSarpras($('#mainContent'), ruangId);
                             else this.loadRouteFromHash(); // Refresh current global view
                             $(document).off('click.csDropdown');
-                        }).fail(xhr => EModal.toast({type:'error', title:'Gagal', message:xhr.responseJSON?.message}));
+                        }).fail(xhr => {
+                            EModal.close(loader);
+                            EModal.toast({type:'error', title:'Gagal', message: xhr.responseJSON?.message || 'Gagal menyimpan data.'});
+                        });
                         return false;
                     },
                     onClose: () => {
@@ -3720,6 +3801,9 @@ const Sarpras = {
                     </div>
                     <div class="sp-form-row">
                         <div class="form-group"><label>Kode Barang (Otomatis)</label><input class="form-input" id="f_msKode" placeholder="Pilih kategori dlu"></div>
+                        <div class="form-group"><label>Satuan</label><select class="form-select" id="f_msSatuan">${satOptions || '<option value="Unit">Unit</option>'}</select></div>
+                    </div>
+                    <div class="sp-form-row">
                         <div class="form-group"><label>Masa Manfaat (Tahun)</label><input type="number" class="form-input" id="f_msManfaat" value="5" required></div>
                     </div>
                     <div style="font-size:0.75rem; color:var(--text-muted); background:#f8fafc; padding:10px; border-radius:8px; border:1px solid #e2e8f0; margin-top:10px;">
@@ -3746,22 +3830,39 @@ const Sarpras = {
                         this.api('master_sarpras.php?action=list').done(res => {
                             const d = res.data.find(x => x.id == id);
                             if (d) {
-                                $('#f_msNama').val(d.nama); $('#f_msKode').val(d.kode); 
-                                $('#f_msKat').val(d.kategori_id); $('#f_msManfaat').val(d.masa_manfaat_default);
+                                $('#f_msNama').val(d.nama);
+                                $('#f_msKode').val(d.kode); 
+                                $('#f_msKat').val(d.kategori_id);
+                                if (d.satuan) $('#f_msSatuan').val(d.satuan);
+                                $('#f_msManfaat').val(d.masa_manfaat_default);
                             }
                         });
                     }
                 },
                 onConfirm: () => {
                     const data = {
-                        id, nama: $('#f_msNama').val(), kode: $('#f_msKode').val(), 
-                        kategori_id: $('#f_msKat').val(), masa_manfaat_default: $('#f_msManfaat').val()
+                        id,
+                        nama: $('#f_msNama').val() ? $('#f_msNama').val().trim() : '',
+                        kode: $('#f_msKode').val() ? $('#f_msKode').val().trim() : '', 
+                        satuan: $('#f_msSatuan').val() || 'Unit',
+                        kategori_id: $('#f_msKat').val(),
+                        masa_manfaat_default: $('#f_msManfaat').val() || 5
                     };
-                    if (!data.nama || !data.kategori_id) { EModal.toast({type:'error', title:'Error', message:'Nama dan Kategori wajib diisi'}); return false; }
+                    if (!data.nama || !data.kategori_id) {
+                        EModal.toast({type:'error', title:'Error', message:'Nama dan Kategori wajib diisi'});
+                        return false;
+                    }
 
+                    const loader = EModal.loading(isEdit ? 'Memperbarui sarpras...' : 'Menambahkan sarpras...');
                     this.api(`master_sarpras.php?action=${isEdit?'update':'create'}`, { method: 'POST', data }).done(() => {
-                        EModal.closeAll(); this.renderMasterSarpras($('#mainContent'));
-                    }).fail(xhr => EModal.toast({type:'error', title:'Gagal', message:xhr.responseJSON?.message}));
+                        EModal.close(loader);
+                        EModal.closeAll();
+                        EModal.toast({ type: 'success', title: 'Berhasil', message: isEdit ? 'Data sarpras berhasil diperbarui' : 'Data sarpras berhasil ditambahkan' });
+                        this.renderMasterSarpras($('#mainContent'));
+                    }).fail(xhr => {
+                        EModal.close(loader);
+                        EModal.toast({type:'error', title:'Gagal', message: xhr.responseJSON?.message || 'Gagal menyimpan data.'});
+                    });
                     return false;
                 }
             });

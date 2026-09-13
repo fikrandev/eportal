@@ -191,8 +191,16 @@ function createMaster() {
     if (!$nama || !$kat) json_response(400, false, 'Nama dan kategori wajib diisi');
 
     $kode = sanitize($d['kode'] ?? '');
-    $harga = $d['harga_perolehan'] ? floatval(str_replace(['Rp', '.', ' '], '', $d['harga_perolehan'])) : 0;
-    $tgl = sanitize($d['tanggal_perolehan'] ?? null);
+    if (empty($kode)) {
+        $stmtKat = db()->prepare("SELECT kode FROM kategori_sarpras WHERE id=?");
+        $stmtKat->execute([$kat]);
+        $katKode = $stmtKat->fetchColumn() ?: 'INV';
+        $next = next_master_code_seed($katKode) + 1;
+        $kode = $katKode . '.' . $next;
+    }
+
+    $harga = !empty($d['harga_perolehan']) ? floatval(str_replace(['Rp', '.', ' '], '', $d['harga_perolehan'])) : 0;
+    $tgl = !empty($d['tanggal_perolehan']) ? sanitize($d['tanggal_perolehan']) : null;
 
     try {
         db()->prepare("INSERT INTO master_sarpras (kategori_id, nama, kode, satuan, merk_default, spesifikasi_default, masa_manfaat_default, keterangan, harga_perolehan, tanggal_perolehan) VALUES (?,?,?,?,?,?,?,?,?,?)")
@@ -211,8 +219,8 @@ function updateMaster() {
     if (!$id || !$nama) json_response(400, false, 'Data tidak lengkap');
 
     $kode = sanitize($d['kode'] ?? '');
-    $harga = $d['harga_perolehan'] ? floatval(str_replace(['Rp', '.', ' '], '', $d['harga_perolehan'])) : 0;
-    $tgl = sanitize($d['tanggal_perolehan'] ?? null);
+    $harga = !empty($d['harga_perolehan']) ? floatval(str_replace(['Rp', '.', ' '], '', $d['harga_perolehan'])) : 0;
+    $tgl = !empty($d['tanggal_perolehan']) ? sanitize($d['tanggal_perolehan']) : null;
 
     try {
         db()->prepare("UPDATE master_sarpras SET kategori_id=?, nama=?, kode=?, satuan=?, merk_default=?, spesifikasi_default=?, masa_manfaat_default=?, keterangan=?, harga_perolehan=?, tanggal_perolehan=? WHERE id=?")

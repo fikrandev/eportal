@@ -257,8 +257,10 @@ function createSarpras() {
     $rr = (int)($d['kondisi_rusak_ringan'] ?? 0);
     $rb = (int)($d['kondisi_rusak_berat'] ?? 0);
 
-    // Validation: Kondisi must equal Jumlah
-    if (($baik + $rr + $rb) !== $jumlah) {
+    // Validation: If conditions are all 0 or empty, default all to Baik
+    if (($baik + $rr + $rb) === 0) {
+        $baik = $jumlah;
+    } elseif (($baik + $rr + $rb) !== $jumlah) {
         json_response(400, false, "Total kondisi ($baik+$rr+$rb) harus sama dengan Jumlah ($jumlah)");
     }
 
@@ -323,9 +325,13 @@ function createSarpras() {
     }
     
     $nama = sanitize($d['nama'] ?? '');
-    $tahun_perolehan = sanitize($d['tanggal_perolehan'] ?? date('Y-m-d'));
+    $rawDate = trim((string)($d['tanggal_perolehan'] ?? ''));
+    $tahun_perolehan = !empty($rawDate) ? sanitize($rawDate) : date('Y-m-d');
     $tahun_str = explode('-', $tahun_perolehan)[0];
-    if (strlen($tahun_str) !== 4) $tahun_str = date('Y'); // Fix year bug
+    if (strlen($tahun_str) !== 4 || !is_numeric($tahun_str)) {
+        $tahun_str = date('Y');
+        $tahun_perolehan = date('Y-m-d');
+    }
     
     $kode = sanitize($d['kode_inventaris'] ?? '');
     if (empty($kode) || $kode === 'Otomatis' || $kode === 'otomatis') {
@@ -382,11 +388,28 @@ function updateSarpras() {
         }
     }
 
+    $jumlah = max(1, (int)($d['jumlah'] ?? 1));
+    $baik = (int)($d['kondisi_baik'] ?? 0);
+    $rr = (int)($d['kondisi_rusak_ringan'] ?? 0);
+    $rb = (int)($d['kondisi_rusak_berat'] ?? 0);
+    if (($baik + $rr + $rb) === 0) {
+        $baik = $jumlah;
+    } elseif (($baik + $rr + $rb) !== $jumlah) {
+        json_response(400, false, "Total kondisi ($baik+$rr+$rb) harus sama dengan Jumlah ($jumlah)");
+    }
+
+    $rawDate = trim((string)($d['tanggal_perolehan'] ?? ''));
+    $tanggal_perolehan = !empty($rawDate) ? sanitize($rawDate) : date('Y-m-d');
+    $tahun_str = explode('-', $tanggal_perolehan)[0];
+    if (strlen($tahun_str) !== 4 || !is_numeric($tahun_str)) {
+        $tanggal_perolehan = date('Y-m-d');
+    }
+
     try {
         $set = "ruang_id=?,kategori_id=?,nama=?,kode_inventaris=?,merk=?,spesifikasi=?,jumlah=?,kondisi_baik=?,kondisi_rusak_ringan=?,kondisi_rusak_berat=?,tanggal_perolehan=?,harga_perolehan=?,asal_perolehan=?,masa_manfaat_tahun=?,keterangan=?,judul_buku=?,pengarang=?,penerbit=?,grup_pintasan=?,no_polisi=?,no_bpkb=?,alamat=?,kepemilikan=?,jenis_sarana=?";
         $stmt = db()->prepare("UPDATE sarpras SET $set WHERE id=?");
         $stmt->execute([
-            $ruang_id, (int)($d['kategori_id']??0), sanitize($d['nama']??''), sanitize($d['kode_inventaris']??''), sanitize($d['merk']??''), sanitize($d['spesifikasi']??''), max(1,(int)($d['jumlah']??1)), (int)($d['kondisi_baik']??0), (int)($d['kondisi_rusak_ringan']??0), (int)($d['kondisi_rusak_berat']??0), sanitize($d['tanggal_perolehan']??date('Y-m-d')), floatval($d['harga_perolehan']??0), sanitize($d['asal_perolehan']??'APBD'), (int)($d['masa_manfaat_tahun']??5), sanitize($d['keterangan']??''), sanitize($d['judul_buku']??null), sanitize($d['pengarang']??null), sanitize($d['penerbit']??null), sanitize($d['grup_pintasan']??null),
+            $ruang_id, (int)($d['kategori_id']??0), sanitize($d['nama']??''), sanitize($d['kode_inventaris']??''), sanitize($d['merk']??''), sanitize($d['spesifikasi']??''), $jumlah, $baik, $rr, $rb, $tanggal_perolehan, floatval($d['harga_perolehan']??0), sanitize($d['asal_perolehan']??'APBD'), (int)($d['masa_manfaat_tahun']??5), sanitize($d['keterangan']??''), sanitize($d['judul_buku']??null), sanitize($d['pengarang']??null), sanitize($d['penerbit']??null), sanitize($d['grup_pintasan']??null),
             sanitize($d['no_polisi']??''), sanitize($d['no_bpkb']??''), sanitize($d['alamat']??''), sanitize($d['kepemilikan']??''), sanitize($d['jenis_sarana']??null), $id
         ]);
         
