@@ -14,7 +14,7 @@ function get_module_theme_css($moduleSlug, $defaultColor = '#1565C0') {
         }
     } catch (Exception $e) {}
 
-    $darkColor = darken_hex($themeColor, 30);
+    $darkColor = function_exists('darken_hex') ? darken_hex($themeColor, 30) : $themeColor;
     
     // Some modules might use variables named differently, but we override the standard ones
     // We add !important to ensure they override the ones in the CSS files

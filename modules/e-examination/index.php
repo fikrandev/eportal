@@ -4,6 +4,7 @@
  * Sistem Ujian Digital (CBT)
  */
 require_once __DIR__ . '/api/config_exam.php';
+require_once __DIR__ . '/../../api/theme_helper.php';
 
 // ============================================
 // AUTH: Validate token

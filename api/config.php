@@ -503,4 +503,5 @@ function paginate($query, $params = [], $page = 1, $perPage = 10)
 // Auto-run database migrations on config load
 require_once __DIR__ . '/migration_helper.php';
 run_auto_migrations();
+require_once __DIR__ . '/theme_helper.php';
 
