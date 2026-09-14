@@ -1175,10 +1175,19 @@ const Sarpras = {
 
     delTanahFoto(fotoId, tanahId) {
         EModal.confirm({
-            title: 'Hapus Foto', message: 'Yakin hapus foto ini?', type: 'danger',
+            title: 'Hapus Foto',
+            message: 'Yakin hapus foto ini?',
+            type: 'danger',
+            confirmText: 'Ya, Hapus',
             onConfirm: () => {
-                this.api('tanah.php?action=delete-foto', { method: 'POST', data: { foto_id: fotoId } }).done(() => {
+                const loader = EModal.loading('Menghapus foto...');
+                this.api('tanah.php?action=delete-foto', { method: 'POST', data: { foto_id: fotoId } }).done(res => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'success', title: 'Berhasil Dihapus', message: res.message || 'Foto tanah berhasil dihapus.' });
                     this.api(`tanah.php?action=get-foto&id=${tanahId}`).done(res => this.renderTanahFotos(res.data, tanahId));
+                }).fail(xhr => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'error', title: 'Gagal Menghapus', message: xhr.responseJSON?.message || 'Gagal menghapus foto tanah.' });
                 });
             }
         });
@@ -1186,11 +1195,19 @@ const Sarpras = {
 
     delTanah(id, name) {
         EModal.confirm({
-            title: 'Hapus Data Tanah', message: `Yakin ingin menghapus <strong>${name}</strong>? Seluruh data bangunan dan ruang di dalamnya akan ikut terhapus.`,
-            type: 'danger', onConfirm: () => {
+            title: 'Hapus Data Tanah',
+            message: `Yakin ingin menghapus <strong>${name}</strong>? Seluruh data bangunan dan ruang di dalamnya akan ikut terhapus.`,
+            type: 'danger',
+            confirmText: 'Ya, Hapus',
+            onConfirm: () => {
+                const loader = EModal.loading('Menghapus data tanah...');
                 this.api('tanah.php?action=delete', { method: 'POST', data: { id } }).done(res => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'success', title: 'Berhasil Dihapus', message: res.message || `Data tanah "${name}" berhasil dihapus.` });
                     this.renderTanah($('#mainContent'));
-                    EModal.toast({ type: 'success', title: 'Data Dihapus' });
+                }).fail(xhr => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'error', title: 'Gagal Menghapus', message: xhr.responseJSON?.message || 'Gagal menghapus data tanah.' });
                 });
             }
         });
@@ -1508,39 +1525,69 @@ const Sarpras = {
 
     _delBgFoto(fotoId, bgId, tanahId) {
         EModal.confirm({
-            title: 'Hapus Foto', message: 'Yakin hapus foto ini?', type: 'danger',
+            title: 'Hapus Foto',
+            message: 'Yakin hapus foto ini?',
+            type: 'danger',
+            confirmText: 'Ya, Hapus',
             onConfirm: () => {
-                this.api('bangunan.php?action=delete-foto', { method: 'POST', data: { foto_id: fotoId } }).done(() => {
+                const loader = EModal.loading('Menghapus foto...');
+                this.api('bangunan.php?action=delete-foto', { method: 'POST', data: { foto_id: fotoId } }).done(res => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'success', title: 'Berhasil Dihapus', message: res.message || 'Foto bangunan berhasil dihapus.' });
                     this.api(`bangunan.php?action=get&id=${bgId}`).done(r => this._renderBgFotos(r.data.fotos || [], bgId, tanahId));
+                }).fail(xhr => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'error', title: 'Gagal Menghapus', message: xhr.responseJSON?.message || 'Gagal menghapus foto bangunan.' });
                 });
             }
         });
     },
 
-
     delBangunan(id, name, tanahId) {
         EModal.confirm({
-            title: 'Hapus Bangunan', message: `Yakin hapus <strong>${name}</strong>?`, type: 'danger',
-            onConfirm: () => this.api('bangunan.php?action=delete', { method: 'POST', data: { id } }).done(() => {
-                if (this.state.currentRoute === 'tanah') {
-                    this.refreshAccordionLevel('tanah', tanahId);
-                } else {
-                    this.renderBangunan($('#mainContent'), tanahId);
-                }
-            })
+            title: 'Hapus Bangunan',
+            message: `Yakin hapus <strong>${name}</strong>?`,
+            type: 'danger',
+            confirmText: 'Ya, Hapus',
+            onConfirm: () => {
+                const loader = EModal.loading('Menghapus bangunan...');
+                this.api('bangunan.php?action=delete', { method: 'POST', data: { id } }).done(res => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'success', title: 'Berhasil Dihapus', message: res.message || `Bangunan "${name}" berhasil dihapus.` });
+                    if (this.state.currentRoute === 'tanah') {
+                        this.refreshAccordionLevel('tanah', tanahId);
+                    } else {
+                        this.renderBangunan($('#mainContent'), tanahId);
+                    }
+                }).fail(xhr => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'error', title: 'Gagal Menghapus', message: xhr.responseJSON?.message || 'Gagal menghapus bangunan.' });
+                });
+            }
         });
     },
 
     delRuang(id, name, bangunanId) {
         EModal.confirm({
-            title: 'Hapus Ruang', message: `Yakin hapus <strong>${name}</strong>?`, type: 'danger',
-            onConfirm: () => this.api('ruang.php?action=delete', { method: 'POST', data: { id } }).done(() => {
-                if (this.state.currentRoute === 'tanah') {
-                    this.refreshAccordionLevel('bangunan', bangunanId);
-                } else {
-                    this.renderRuang($('#mainContent'), bangunanId);
-                }
-            })
+            title: 'Hapus Ruang',
+            message: `Yakin hapus <strong>${name}</strong>?`,
+            type: 'danger',
+            confirmText: 'Ya, Hapus',
+            onConfirm: () => {
+                const loader = EModal.loading('Menghapus ruang...');
+                this.api('ruang.php?action=delete', { method: 'POST', data: { id } }).done(res => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'success', title: 'Berhasil Dihapus', message: res.message || `Ruang "${name}" berhasil dihapus.` });
+                    if (this.state.currentRoute === 'tanah') {
+                        this.refreshAccordionLevel('bangunan', bangunanId);
+                    } else {
+                        this.renderRuang($('#mainContent'), bangunanId);
+                    }
+                }).fail(xhr => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'error', title: 'Gagal Menghapus', message: xhr.responseJSON?.message || 'Gagal menghapus ruang.' });
+                });
+            }
         });
     },
 
@@ -1731,19 +1778,6 @@ const Sarpras = {
                 }).fail(xhr => EModal.toast({type:'error', title:'Gagal', message:xhr.responseJSON?.message}));
                 return false;
             }
-        });
-    },
-
-    delRuang(id, name, bangunanId) {
-        EModal.confirm({
-            title: 'Hapus Ruang', message: `Yakin hapus <strong>${name}</strong>?`, type: 'danger',
-            onConfirm: () => this.api('ruang.php?action=delete', { method: 'POST', data: { id } }).done(() => {
-                if (this.state.currentRoute === 'tanah') {
-                    this.refreshAccordionLevel('bangunan', bangunanId);
-                } else {
-                    this.renderRuang($('#mainContent'), bangunanId);
-                }
-            })
         });
     },
 
@@ -2024,11 +2058,19 @@ const Sarpras = {
      */
     delSarprasGroup(id, name) {
         EModal.confirm({
-            title: 'Hapus Barang', message: `Yakin hapus <strong>${name}</strong>?`, type: 'danger',
+            title: 'Hapus Barang',
+            message: `Yakin hapus <strong>${name}</strong>?`,
+            type: 'danger',
+            confirmText: 'Ya, Hapus',
             onConfirm: () => {
-                this.api('sarpras.php?action=delete', { method: 'POST', data: { id } }).done(() => {
-                    EModal.toast({ type: 'success', title: 'Data Dihapus' });
+                const loader = EModal.loading('Menghapus data barang...');
+                this.api('sarpras.php?action=delete', { method: 'POST', data: { id } }).done(res => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'success', title: 'Berhasil Dihapus', message: res.message || `Barang "${name}" berhasil dihapus.` });
                     this.loadRouteFromHash(); // Refresh current group page
+                }).fail(xhr => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'error', title: 'Gagal Menghapus', message: xhr.responseJSON?.message || 'Gagal menghapus data barang.' });
                 });
             }
         });
@@ -3153,8 +3195,21 @@ const Sarpras = {
 
     delSarpras(id, name, ruangId) {
         EModal.confirm({
-            title: 'Hapus Barang', message: `Yakin hapus <strong>${name}</strong>?`, type: 'danger',
-            onConfirm: () => this.api('sarpras.php?action=delete', { method: 'POST', data: { id } }).done(() => this.renderSarpras($('#mainContent'), ruangId))
+            title: 'Hapus Barang',
+            message: `Yakin hapus <strong>${name}</strong>?`,
+            type: 'danger',
+            confirmText: 'Ya, Hapus',
+            onConfirm: () => {
+                const loader = EModal.loading('Menghapus data barang...');
+                this.api('sarpras.php?action=delete', { method: 'POST', data: { id } }).done(res => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'success', title: 'Berhasil Dihapus', message: res.message || `Barang "${name}" berhasil dihapus.` });
+                    this.renderSarpras($('#mainContent'), ruangId);
+                }).fail(xhr => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'error', title: 'Gagal Menghapus', message: xhr.responseJSON?.message || 'Gagal menghapus data barang.' });
+                });
+            }
         });
     },
 
@@ -3871,8 +3926,21 @@ const Sarpras = {
 
     delMasterSarpras(id, name) {
         EModal.confirm({
-            title: 'Hapus Jenis Aset', message: `Yakin hapus <strong>${name}</strong> dari katalog?`, type: 'danger',
-            onConfirm: () => this.api('master_sarpras.php?action=delete', { method: 'POST', data: { id } }).done(() => this.renderMasterSarpras($('#mainContent')))
+            title: 'Hapus Jenis Aset',
+            message: `Yakin hapus <strong>${name}</strong> dari katalog?`,
+            type: 'danger',
+            confirmText: 'Ya, Hapus',
+            onConfirm: () => {
+                const loader = EModal.loading('Menghapus data katalog...');
+                this.api('master_sarpras.php?action=delete', { method: 'POST', data: { id } }).done(res => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'success', title: 'Berhasil Dihapus', message: res.message || `Data sarpras "${name}" berhasil dihapus dari katalog.` });
+                    this.renderMasterSarpras($('#mainContent'));
+                }).fail(xhr => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'error', title: 'Gagal Menghapus', message: xhr.responseJSON?.message || 'Gagal menghapus data dari katalog.' });
+                });
+            }
         });
     },
 
@@ -3958,7 +4026,23 @@ const Sarpras = {
     },
 
     delSarprasFoto(fid, sid) {
-        EModal.confirm({ title: 'Hapus Foto', type: 'danger', onConfirm: () => this.api('sarpras.php?action=delete-foto', { method: 'POST', data: { foto_id: fid } }).done(() => this.api(`sarpras.php?action=get&id=${sid}`).done(res => $('#sFotos').html(this.renderSarprasFotosHtml(res.data.fotos, sid)))) });
+        EModal.confirm({
+            title: 'Hapus Foto',
+            message: 'Yakin hapus foto ini?',
+            type: 'danger',
+            confirmText: 'Ya, Hapus',
+            onConfirm: () => {
+                const loader = EModal.loading('Menghapus foto...');
+                this.api('sarpras.php?action=delete-foto', { method: 'POST', data: { foto_id: fid } }).done(res => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'success', title: 'Berhasil Dihapus', message: res.message || 'Foto barang berhasil dihapus.' });
+                    this.api(`sarpras.php?action=get&id=${sid}`).done(res2 => $('#sFotos').html(this.renderSarprasFotosHtml(res2.data.fotos, sid)));
+                }).fail(xhr => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'error', title: 'Gagal Menghapus', message: xhr.responseJSON?.message || 'Gagal menghapus foto.' });
+                });
+            }
+        });
     },
 
     renderRepairTable(repairs) {
@@ -4855,10 +4939,21 @@ const Sarpras = {
 
     deleteSarprasFoto(fotoId, sarprasId) {
         EModal.confirm({
-            title: 'Hapus Foto', message: 'Yakin hapus foto ini?', type: 'danger',
-            onConfirm: () => this.api('sarpras.php?action=delete-foto', { method: 'POST', data: { foto_id: fotoId } }).done(() => {
-                this.renderPage(this.state.currentRoute, this.state.params);
-            })
+            title: 'Hapus Foto',
+            message: 'Yakin hapus foto ini?',
+            type: 'danger',
+            confirmText: 'Ya, Hapus',
+            onConfirm: () => {
+                const loader = EModal.loading('Menghapus foto...');
+                this.api('sarpras.php?action=delete-foto', { method: 'POST', data: { foto_id: fotoId } }).done(res => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'success', title: 'Berhasil Dihapus', message: res.message || 'Foto barang berhasil dihapus.' });
+                    this.renderPage(this.state.currentRoute, this.state.params);
+                }).fail(xhr => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'error', title: 'Gagal Menghapus', message: xhr.responseJSON?.message || 'Gagal menghapus foto.' });
+                });
+            }
         });
     },
 
@@ -5013,8 +5108,21 @@ const Sarpras = {
 
     deleteReferensi(id, tabCat) {
         EModal.confirm({
-            title: 'Hapus Referensi', message: 'Yakin hapus data ini?', type: 'danger',
-            onConfirm: () => this.api('referensi.php?action=delete', { method: 'POST', data: { id } }).done(() => this.loadReferensiData(tabCat))
+            title: 'Hapus Referensi',
+            message: 'Yakin hapus data ini?',
+            type: 'danger',
+            confirmText: 'Ya, Hapus',
+            onConfirm: () => {
+                const loader = EModal.loading('Menghapus referensi...');
+                this.api('referensi.php?action=delete', { method: 'POST', data: { id } }).done(res => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'success', title: 'Berhasil Dihapus', message: res.message || 'Data referensi berhasil dihapus.' });
+                    this.loadReferensiData(tabCat);
+                }).fail(xhr => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'error', title: 'Gagal Menghapus', message: xhr.responseJSON?.message || 'Gagal menghapus data referensi.' });
+                });
+            }
         });
     },
 
@@ -5303,7 +5411,18 @@ const Sarpras = {
             title: 'Hapus Penanggung Jawab',
             message: `Yakin hapus <strong>${name}</strong>? Ruangan yang memiliki PJ ini akan kehilangan data PJ-nya.`,
             type: 'danger',
-            onConfirm: () => this.api('pj.php?action=delete', { method: 'POST', data: { id } }).done(() => this.loadReferensiData('penanggung_jawab'))
+            confirmText: 'Ya, Hapus',
+            onConfirm: () => {
+                const loader = EModal.loading('Menghapus penanggung jawab...');
+                this.api('pj.php?action=delete', { method: 'POST', data: { id } }).done(res => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'success', title: 'Berhasil Dihapus', message: res.message || `Penanggung Jawab "${name}" berhasil dihapus.` });
+                    this.loadReferensiData('penanggung_jawab');
+                }).fail(xhr => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'error', title: 'Gagal Menghapus', message: xhr.responseJSON?.message || 'Gagal menghapus penanggung jawab.' });
+                });
+            }
         });
     },
 
@@ -5537,9 +5656,17 @@ const Sarpras = {
         EModal.confirm({
             title: 'Batalkan BA',
             message: 'Yakin ingin membatalkan Berita Acara ini? Barang-barang di dalamnya akan kembali berstatus "Belum ada BA".',
+            type: 'danger',
+            confirmText: 'Ya, Batalkan',
             onConfirm: () => {
-                this.api(`manage.php?entity=penghapusan&action=delete-ba&id=${id}`).done(() => {
+                const loader = EModal.loading('Membatalkan Berita Acara...');
+                this.api(`manage.php?entity=penghapusan&action=delete-ba&id=${id}`).done(res => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'success', title: 'Berhasil Dibatalkan', message: res.message || 'Berita Acara berhasil dibatalkan.' });
                     this.loadRouteFromHash();
+                }).fail(xhr => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'error', title: 'Gagal Membatalkan', message: xhr.responseJSON?.message || 'Gagal membatalkan Berita Acara.' });
                 });
             }
         });
