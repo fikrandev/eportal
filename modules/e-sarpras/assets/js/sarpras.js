@@ -4361,53 +4361,132 @@ const Sarpras = {
     renderBarcodeManager($container) {
         $container.html(`
             <div class="sp-card">
-                <div class="sp-card-header">
-                    <h3>Cetak Label Barcode</h3>
-                    <div class="sp-toolbar"><button class="btn btn-primary" onclick="window.print()">Cetak Halaman Ini</button></div>
+                <div class="sp-card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                    <div>
+                        <h3 style="margin:0">Cetak Label Barcode</h3>
+                        <small style="color:var(--text-muted); display:block; margin-top:2px;">Label barcode inventaris sarpras sekolah (format siap cetak)</small>
+                    </div>
+                    <div class="sp-toolbar" style="display:flex; align-items:center; gap:8px;">
+                        <span id="bcCountBadge" class="badge badge-info" style="display:none; font-size:0.8rem; padding:6px 12px;"></span>
+                        <button id="btnPrintBarcode" class="btn btn-primary" onclick="window.print()" disabled>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;margin-right:6px;vertical-align:text-bottom"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                            Cetak Halaman Ini
+                        </button>
+                    </div>
                 </div>
                 <div class="sp-card-body">
-                    <div class="sp-filter-bar no-print">
-                        <select class="form-select" id="bc_rSel" onchange="Sarpras.loadBarcodes()"><option value="">Semua Ruang</option></select>
+                    <div class="sp-filter-bar no-print" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
+                        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                            <label style="font-weight:600; font-size:0.875rem; color:var(--text-secondary); margin:0;">Filter Ruangan:</label>
+                            <select class="form-select" id="bc_rSel" onchange="Sarpras.loadBarcodes()" style="min-width:240px;">
+                                <option value="">Semua Ruang</option>
+                            </select>
+                        </div>
+                        <div id="bcLoadingStatus" style="display:none; align-items:center; gap:8px; font-size:0.85rem; color:var(--text-muted); background:var(--bg-light, #f8fafc); padding:6px 14px; border-radius:20px; border:1px solid var(--border-color, #e2e8f0);">
+                            <div class="spinner" style="width:14px; height:14px; border:2px solid #cbd5e1; border-top-color:var(--primary, #2563eb); border-radius:50%; animation:rotate 0.8s linear infinite;"></div>
+                            <span id="bcLoadingText">Memuat label barcode...</span>
+                        </div>
                     </div>
-                    <div class="sp-barcode-grid" id="barcodeGrid"><div class="skeleton" style="height:300px"></div></div>
+                    <div class="sp-barcode-grid" id="barcodeGrid"></div>
                 </div>
             </div>
         `);
         
         this.api('ruang.php?action=all').done(res => {
-            res.data.forEach(r => $('#bc_rSel').append(`<option value="${r.id}">${r.tanah_nama} - ${r.bangunan_nama} - ${r.nama}</option>`));
+            if (res && res.data) {
+                res.data.forEach(r => $('#bc_rSel').append(`<option value="${r.id}">${r.tanah_nama} - ${r.bangunan_nama} - ${r.nama}</option>`));
+            }
         });
         this.loadBarcodes();
     },
 
     loadBarcodes() {
         const rid = $('#bc_rSel').val();
+        
+        // Visual feedback during loading
+        $('#bc_rSel').prop('disabled', true);
+        $('#btnPrintBarcode').prop('disabled', true);
+        $('#bcCountBadge').hide();
+        $('#bcLoadingStatus').css('display', 'inline-flex');
+        $('#bcLoadingText').text('Mengambil data barcode...');
+
+        // Render loading banner & skeleton cards inside grid
+        let skeletonCards = `
+            <div class="sp-barcode-loading">
+                <div class="sp-spinner"></div>
+                <div class="sp-barcode-loading-text">Memuat Label Barcode...</div>
+                <div class="sp-barcode-loading-sub">Sedang menyiapkan data inventaris dan kode QR</div>
+            </div>
+        `;
+        skeletonCards += Array(8).fill(0).map(() => `
+            <div class="sp-barcode-item sp-barcode-skeleton">
+                <div class="skeleton" style="width:80px; height:80px; border-radius:8px; margin: 0 auto 10px;"></div>
+                <div class="skeleton" style="width:120px; height:14px; border-radius:4px; margin: 0 auto 6px;"></div>
+                <div class="skeleton" style="width:100px; height:10px; border-radius:4px; margin: 0 auto 4px;"></div>
+                <div class="skeleton" style="width:70px; height:8px; border-radius:4px; margin: 0 auto;"></div>
+            </div>
+        `).join('');
+        $('#barcodeGrid').html(skeletonCards);
+
         this.api(`sarpras.php?action=barcode-data&ruang_id=${rid}`).done(res => {
-            if (!res.data.length) { $('#barcodeGrid').html('<div class="sp-empty">Pilih ruang yang memiliki sarpras.</div>'); return; }
-            const html = res.data.map(s => `
-                <div class="sp-barcode-item">
-                    <div class="sp-bc-wrap" data-code="${s.kode_inventaris}"></div>
-                    <div class="sp-barcode-label">${s.kode_inventaris}</div>
-                    <div class="sp-barcode-sub">${s.nama}</div>
-                    <div class="sp-barcode-sub" style="font-size:0.5rem; opacity:0.6">${s.ruang_nama}</div>
+            if (!res || !res.data || !res.data.length) {
+                $('#barcodeGrid').html(`
+                    <div class="sp-empty" style="grid-column:1/-1; width:100%; padding:48px 20px; text-align:center;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:48px;height:48px;margin:0 auto 12px;opacity:0.35;display:block;"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 7h10M7 12h10M7 17h10"/></svg>
+                        <strong style="color:#1e293b; font-size:1rem;">Tidak Ada Data Barang</strong>
+                        <p style="color:#64748b; font-size:0.85rem; margin-top:4px;">Tidak ada sarpras yang terdaftar pada ruangan yang dipilih.</p>
+                    </div>
+                `);
+                $('#btnPrintBarcode').prop('disabled', true);
+                return;
+            }
+
+            const items = res.data;
+            $('#bcCountBadge').text(`${items.length} Label`).fadeIn();
+            $('#bcLoadingText').text(`Menghasilkan ${items.length} QR Code...`);
+
+            const html = items.map(s => `
+                <div class="sp-barcode-item sp-fade-in">
+                    <div class="sp-bc-wrap" data-code="${this.escapeHtml(s.kode_inventaris)}"></div>
+                    <div class="sp-barcode-label">${this.escapeHtml(s.kode_inventaris)}</div>
+                    <div class="sp-barcode-sub" title="${this.escapeHtml(s.nama)}">${this.escapeHtml(s.nama)}</div>
+                    <div class="sp-barcode-sub" style="font-size:0.5rem; opacity:0.6">${this.escapeHtml(s.ruang_nama)}</div>
                 </div>
             `).join('');
             $('#barcodeGrid').html(html);
-            
-            // Generate QR Codes using library (assumes qrcode.js is loaded)
-            $('.sp-bc-wrap').each((i, el) => {
-                const code = $(el).data('code');
-                // Use absolute URL so scanner detects it as a web link
-                const url = `${window.location.origin}${this.state.baseUrl}modules/e-sarpras/scan.php?kode=${code}`;
-                new QRCode(el, { text: url, width: 80, height: 80, correctLevel: QRCode.CorrectLevel.M });
-            });
+
+            // Generate QR Codes asynchronously so the browser can paint smoothly
+            setTimeout(() => {
+                $('.sp-bc-wrap').each((i, el) => {
+                    const code = $(el).data('code');
+                    const url = `${window.location.origin}${this.state.baseUrl}modules/e-sarpras/scan.php?kode=${encodeURIComponent(code)}`;
+                    try {
+                        new QRCode(el, { text: url, width: 80, height: 80, correctLevel: QRCode.CorrectLevel.M });
+                    } catch (e) {
+                        console.error('Gagal membuat QR Code:', e);
+                    }
+                });
+                $('#btnPrintBarcode').prop('disabled', false);
+            }, 60);
+        }).fail(xhr => {
+            $('#barcodeGrid').html(`
+                <div class="sp-empty" style="grid-column:1/-1; width:100%; padding:48px 20px; text-align:center; color:var(--danger, #dc2626);">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:48px;height:48px;margin:0 auto 12px;opacity:0.6;display:block;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <strong>Gagal Memuat Data Barcode</strong>
+                    <p style="font-size:0.85rem; margin-top:4px; color:#64748b;">${this.escapeHtml(xhr.responseJSON?.message || 'Terjadi kesalahan saat memuat data. Silakan coba lagi.')}</p>
+                    <button class="btn btn-sm btn-secondary" onclick="Sarpras.loadBarcodes()" style="margin-top:12px;">Coba Lagi</button>
+                </div>
+            `);
+            EModal.toast({ type: 'error', title: 'Gagal Memuat', message: xhr.responseJSON?.message || 'Gagal memuat label barcode' });
+        }).always(() => {
+            $('#bc_rSel').prop('disabled', false);
+            $('#bcLoadingStatus').hide();
         });
     },
 
     printDetail(id) {
-        const url = `${window.location.origin}${this.state.baseUrl}modules/e-sarpras/scan.php?kode=PRINT&sarpras_id=${id}`;
-        const win = window.open(url, '_blank');
-        // Logic inside scan.php handles specific printing if needed, or we just rely on browser print
+        const url = `${window.location.origin}${this.state.baseUrl}modules/e-sarpras/scan.php?sarpras_id=${id}`;
+        window.open(url, '_blank');
     },
 
     /**

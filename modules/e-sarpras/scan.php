@@ -6,20 +6,26 @@
 require_once __DIR__ . '/../../api/config.php';
 
 $kode = isset($_GET['kode']) ? sanitize($_GET['kode']) : '';
+$sarpras_id = isset($_GET['sarpras_id']) ? (int)$_GET['sarpras_id'] : 0;
 $item = null;
 $school_name = get_setting('nama_sekolah', 'E-Portal');
 $school_icon = get_setting('icon_sekolah', '');
 
-if ($kode) {
+if ($sarpras_id > 0 || ($kode && $kode !== 'PRINT')) {
     try {
-        $stmt = db()->prepare("SELECT s.*, k.nama as kategori_nama, k.kode as kategori_kode, r.nama as ruang_nama, r.kode_ruang, b.nama as bangunan_nama, t.nama as tanah_nama
+        $sql = "SELECT s.*, k.nama as kategori_nama, k.kode as kategori_kode, r.nama as ruang_nama, r.kode_ruang, b.nama as bangunan_nama, t.nama as tanah_nama
             FROM sarpras s 
             JOIN kategori_sarpras k ON s.kategori_id=k.id 
             JOIN ruang r ON s.ruang_id=r.id 
             JOIN bangunan b ON r.bangunan_id=b.id 
-            JOIN tanah t ON b.tanah_id=t.id 
-            WHERE s.kode_inventaris=?");
-        $stmt->execute([$kode]);
+            JOIN tanah t ON b.tanah_id=t.id ";
+        if ($sarpras_id > 0) {
+            $stmt = db()->prepare($sql . " WHERE s.id=?");
+            $stmt->execute([$sarpras_id]);
+        } else {
+            $stmt = db()->prepare($sql . " WHERE s.kode_inventaris=?");
+            $stmt->execute([$kode]);
+        }
         $item = $stmt->fetch();
         
         if ($item) {

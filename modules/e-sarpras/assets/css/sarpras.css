@@ -639,6 +639,63 @@
     line-height: 1.1;
 }
 
+.sp-barcode-loading {
+    grid-column: 1 / -1;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    background: white;
+    border-radius: 12px;
+    border: 1px dashed var(--border-color, #cbd5e1);
+    text-align: center;
+}
+
+.sp-barcode-loading .sp-spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid rgba(37, 99, 235, 0.15);
+    border-top-color: var(--primary, #2563eb);
+    border-radius: 50%;
+    animation: rotate 0.8s linear infinite;
+    margin-bottom: 12px;
+}
+
+.sp-barcode-loading-text {
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--text-primary, #1e293b);
+}
+
+.sp-barcode-loading-sub {
+    font-size: 0.8rem;
+    color: var(--text-muted, #64748b);
+    margin-top: 4px;
+}
+
+.sp-barcode-skeleton {
+    background: white;
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 12px;
+    padding: 16px;
+    width: 200px;
+    height: 200px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 8px;
+    box-sizing: border-box;
+}
+
+@media print {
+    .sp-barcode-loading, .sp-barcode-skeleton, #bcLoadingStatus {
+        display: none !important;
+    }
+}
+
 /* ============ FILTER BAR ============ */
 .sp-filter-bar {
     display: flex;
