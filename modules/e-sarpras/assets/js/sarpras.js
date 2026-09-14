@@ -4387,7 +4387,9 @@ const Sarpras = {
                             <span id="bcLoadingText">Memuat label barcode...</span>
                         </div>
                     </div>
-                    <div class="sp-barcode-grid" id="barcodeGrid"></div>
+                    <div class="sp-barcode-container" id="barcodeContainer">
+                        <div class="sp-barcode-grid" id="barcodeGrid"></div>
+                    </div>
                 </div>
             </div>
         `);
@@ -4402,23 +4404,33 @@ const Sarpras = {
 
     loadBarcodes() {
         const rid = $('#bc_rSel').val();
+        this._bcLoadToken = (this._bcLoadToken || 0) + 1;
+        const currentToken = this._bcLoadToken;
         
-        // Visual feedback during loading
+        // 1. UI Loading indicator
         $('#bc_rSel').prop('disabled', true);
         $('#btnPrintBarcode').prop('disabled', true);
         $('#bcCountBadge').hide();
         $('#bcLoadingStatus').css('display', 'inline-flex');
         $('#bcLoadingText').text('Mengambil data barcode...');
 
-        // Render loading banner & skeleton cards inside grid
-        let skeletonCards = `
-            <div class="sp-barcode-loading">
+        // 2. Insert or update the loading overlay in #barcodeContainer
+        $('#barcodeContainer').find('#bcOverlay').remove();
+        const overlayHtml = `
+            <div class="sp-barcode-overlay" id="bcOverlay">
                 <div class="sp-spinner"></div>
-                <div class="sp-barcode-loading-text">Memuat Label Barcode...</div>
-                <div class="sp-barcode-loading-sub">Sedang menyiapkan data inventaris dan kode QR</div>
+                <div class="sp-barcode-loading-text" id="bcOverlayTitle">Memuat Label Barcode...</div>
+                <div class="sp-barcode-loading-sub" id="bcOverlaySub">Sedang mengambil data inventaris...</div>
+                <div class="sp-barcode-progress-wrap">
+                    <div class="sp-barcode-progress-bar" id="bcProgressBar"></div>
+                </div>
+                <div id="bcProgressCount" style="font-size: 0.75rem; color: #64748b; margin-top: 6px; font-weight: 600;">0%</div>
             </div>
         `;
-        skeletonCards += Array(8).fill(0).map(() => `
+        $('#barcodeContainer').append(overlayHtml);
+
+        // Put initial skeleton cards into #barcodeGrid
+        const skeletonCards = Array(8).fill(0).map(() => `
             <div class="sp-barcode-item sp-barcode-skeleton">
                 <div class="skeleton" style="width:80px; height:80px; border-radius:8px; margin: 0 auto 10px;"></div>
                 <div class="skeleton" style="width:120px; height:14px; border-radius:4px; margin: 0 auto 6px;"></div>
@@ -4429,7 +4441,10 @@ const Sarpras = {
         $('#barcodeGrid').html(skeletonCards);
 
         this.api(`sarpras.php?action=barcode-data&ruang_id=${rid}`).done(res => {
+            if (this._bcLoadToken !== currentToken) return;
+
             if (!res || !res.data || !res.data.length) {
+                $('#bcOverlay').fadeOut(200, function() { $(this).remove(); });
                 $('#barcodeGrid').html(`
                     <div class="sp-empty" style="grid-column:1/-1; width:100%; padding:48px 20px; text-align:center;">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:48px;height:48px;margin:0 auto 12px;opacity:0.35;display:block;"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 7h10M7 12h10M7 17h10"/></svg>
@@ -4438,15 +4453,21 @@ const Sarpras = {
                     </div>
                 `);
                 $('#btnPrintBarcode').prop('disabled', true);
+                $('#bc_rSel').prop('disabled', false);
+                $('#bcLoadingStatus').hide();
                 return;
             }
 
             const items = res.data;
-            $('#bcCountBadge').text(`${items.length} Label`).fadeIn();
-            $('#bcLoadingText').text(`Menghasilkan ${items.length} QR Code...`);
+            const total = items.length;
 
+            $('#bcOverlayTitle').text('Membuat QR Code...');
+            $('#bcOverlaySub').text(`Menyiapkan 0 dari ${total} QR Code...`);
+            $('#bcLoadingText').text(`Membuat ${total} QR Code...`);
+
+            // Render barcode items structure
             const html = items.map(s => `
-                <div class="sp-barcode-item sp-fade-in">
+                <div class="sp-barcode-item">
                     <div class="sp-bc-wrap" data-code="${this.escapeHtml(s.kode_inventaris)}"></div>
                     <div class="sp-barcode-label">${this.escapeHtml(s.kode_inventaris)}</div>
                     <div class="sp-barcode-sub" title="${this.escapeHtml(s.nama)}">${this.escapeHtml(s.nama)}</div>
@@ -4455,20 +4476,91 @@ const Sarpras = {
             `).join('');
             $('#barcodeGrid').html(html);
 
-            // Generate QR Codes asynchronously so the browser can paint smoothly
-            setTimeout(() => {
-                $('.sp-bc-wrap').each((i, el) => {
+            // Generate QR codes with completion verification
+            const wraps = $('#barcodeGrid .sp-bc-wrap').toArray();
+            let completed = 0;
+
+            const generateQr = (el) => {
+                return new Promise(resolve => {
                     const code = $(el).data('code');
                     const url = `${window.location.origin}${this.state.baseUrl}modules/e-sarpras/scan.php?kode=${encodeURIComponent(code)}`;
                     try {
-                        new QRCode(el, { text: url, width: 80, height: 80, correctLevel: QRCode.CorrectLevel.M });
+                        new QRCode(el, {
+                            text: url,
+                            width: 80,
+                            height: 80,
+                            correctLevel: QRCode.CorrectLevel.M
+                        });
                     } catch (e) {
                         console.error('Gagal membuat QR Code:', e);
+                        resolve();
+                        return;
                     }
+
+                    // Poll until canvas or image has appeared inside the element
+                    let attempts = 0;
+                    const checkInterval = setInterval(() => {
+                        attempts++;
+                        const img = el.querySelector('img');
+                        const canvas = el.querySelector('canvas');
+
+                        const isImgReady = img && img.src && (img.complete || img.naturalWidth > 0);
+                        const isCanvasReady = canvas && canvas.width > 0 && canvas.style.display !== 'none';
+
+                        if (isImgReady || isCanvasReady || attempts >= 40) {
+                            clearInterval(checkInterval);
+                            resolve();
+                        }
+                    }, 25);
                 });
-                $('#btnPrintBarcode').prop('disabled', false);
-            }, 60);
+            };
+
+            let idx = 0;
+            const chunkSize = 4;
+
+            const processNextBatch = () => {
+                if (this._bcLoadToken !== currentToken) return;
+
+                if (idx >= wraps.length) {
+                    // All QR codes are verified as rendered!
+                    $('#bcProgressBar').css('width', '100%');
+                    $('#bcProgressCount').text(`${total} / ${total} Selesai (100%)`);
+                    $('#bcOverlayTitle').text('QR Code Siap!');
+                    $('#bcOverlaySub').text('Menampilkan label barcode...');
+
+                    setTimeout(() => {
+                        if (this._bcLoadToken !== currentToken) return;
+                        $('#bcOverlay').fadeOut(280, function() { $(this).remove(); });
+                        $('#bcCountBadge').text(`${total} Label Siap Cetak`).fadeIn();
+                        $('#btnPrintBarcode').prop('disabled', false);
+                        $('#bc_rSel').prop('disabled', false);
+                        $('#bcLoadingStatus').hide();
+                    }, 200);
+                    return;
+                }
+
+                const currentChunk = wraps.slice(idx, idx + chunkSize);
+                idx += chunkSize;
+
+                Promise.all(currentChunk.map(el => generateQr(el))).then(() => {
+                    if (this._bcLoadToken !== currentToken) return;
+                    completed += currentChunk.length;
+                    if (completed > total) completed = total;
+
+                    const pct = Math.round((completed / total) * 100);
+                    $('#bcProgressBar').css('width', pct + '%');
+                    $('#bcProgressCount').text(`${completed} / ${total} (${pct}%)`);
+                    $('#bcOverlaySub').text(`Menghasilkan ${completed} dari ${total} QR Code...`);
+
+                    requestAnimationFrame(processNextBatch);
+                });
+            };
+
+            requestAnimationFrame(processNextBatch);
+
         }).fail(xhr => {
+            if (this._bcLoadToken !== currentToken) return;
+            $('#bcOverlay').fadeOut(200, function() { $(this).remove(); });
             $('#barcodeGrid').html(`
                 <div class="sp-empty" style="grid-column:1/-1; width:100%; padding:48px 20px; text-align:center; color:var(--danger, #dc2626);">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:48px;height:48px;margin:0 auto 12px;opacity:0.6;display:block;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
@@ -4477,10 +4569,10 @@ const Sarpras = {
                     <button class="btn btn-sm btn-secondary" onclick="Sarpras.loadBarcodes()" style="margin-top:12px;">Coba Lagi</button>
                 </div>
             `);
-            EModal.toast({ type: 'error', title: 'Gagal Memuat', message: xhr.responseJSON?.message || 'Gagal memuat label barcode' });
-        }).always(() => {
+            $('#btnPrintBarcode').prop('disabled', true);
             $('#bc_rSel').prop('disabled', false);
             $('#bcLoadingStatus').hide();
+            EModal.toast({ type: 'error', title: 'Gagal Memuat', message: xhr.responseJSON?.message || 'Gagal memuat label barcode' });
         });
     },
 

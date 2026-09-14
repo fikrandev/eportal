@@ -653,14 +653,54 @@
     text-align: center;
 }
 
-.sp-barcode-loading .sp-spinner {
-    width: 36px;
-    height: 36px;
-    border: 3px solid rgba(37, 99, 235, 0.15);
+.sp-barcode-container {
+    position: relative;
+    min-height: 320px;
+}
+
+.sp-barcode-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    z-index: 50;
+    border-radius: 12px;
+    padding: 30px 20px;
+    text-align: center;
+    min-height: 280px;
+}
+
+.sp-barcode-overlay .sp-spinner {
+    width: 44px;
+    height: 44px;
+    border: 3.5px solid rgba(37, 99, 235, 0.15);
     border-top-color: var(--primary, #2563eb);
     border-radius: 50%;
     animation: rotate 0.8s linear infinite;
-    margin-bottom: 12px;
+    margin-bottom: 14px;
+}
+
+.sp-barcode-progress-wrap {
+    width: 240px;
+    max-width: 80%;
+    height: 8px;
+    background: #e2e8f0;
+    border-radius: 99px;
+    margin-top: 14px;
+    overflow: hidden;
+}
+
+.sp-barcode-progress-bar {
+    width: 0%;
+    height: 100%;
+    background: linear-gradient(90deg, #2563eb, #3b82f6);
+    border-radius: 99px;
+    transition: width 0.15s ease;
 }
 
 .sp-barcode-loading-text {
@@ -691,7 +731,7 @@
 }
 
 @media print {
-    .sp-barcode-loading, .sp-barcode-skeleton, #bcLoadingStatus {
+    .sp-barcode-loading, .sp-barcode-skeleton, .sp-barcode-overlay, #bcLoadingStatus, #bcOverlay {
         display: none !important;
     }
 }
