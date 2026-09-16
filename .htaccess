@@ -7,6 +7,29 @@ RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 # Fix Authorization header for shared hosting (CGI/FastCGI)
 SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
 
+# Increase PHP Upload Limits for Audio/Image/ZIP files (Apache mod_php)
+<IfModule mod_php.c>
+    php_value upload_max_filesize 64M
+    php_value post_max_size 64M
+    php_value max_execution_time 300
+    php_value max_input_time 300
+    php_value memory_limit 256M
+</IfModule>
+<IfModule mod_php7.c>
+    php_value upload_max_filesize 64M
+    php_value post_max_size 64M
+    php_value max_execution_time 300
+    php_value max_input_time 300
+    php_value memory_limit 256M
+</IfModule>
+<IfModule mod_php8.c>
+    php_value upload_max_filesize 64M
+    php_value post_max_size 64M
+    php_value max_execution_time 300
+    php_value max_input_time 300
+    php_value memory_limit 256M
+</IfModule>
+
 # ADMS ZKTeco / Interactive Routes
 RewriteRule ^iclock/([a-zA-Z0-9_-]+)/?$ modules/e-absen/api/adms.php [L,QSA]
 

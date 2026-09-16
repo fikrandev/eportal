@@ -641,7 +641,8 @@ try {
             if ($status !== 'mengerjakan') throw new Exception('Ujian tidak aktif', 403);
 
             if (!isset($_FILES['voice']) || $_FILES['voice']['error'] !== UPLOAD_ERR_OK) {
-                throw new Exception('File voice tidak terkirim atau gagal diupload.', 400);
+                $errCode = $_FILES['voice']['error'] ?? 'none';
+                throw new Exception("File voice tidak terkirim atau gagal diupload (Error code: {$errCode}).", 400);
             }
 
             $file = $_FILES['voice'];
@@ -652,15 +653,31 @@ try {
 
             $uploadDir = __DIR__ . '/../uploads/voice/';
             if (!is_dir($uploadDir)) {
-                mkdir($uploadDir, 0755, true);
+                @mkdir($uploadDir, 0777, true);
+                @chmod($uploadDir, 0777);
+            }
+            if (!is_writable($uploadDir)) {
+                @chmod($uploadDir, 0777);
             }
 
             $filename = 'voice_' . $session_id . '_' . $jawaban_id . '_' . time() . '.' . $ext;
             $filepath = $uploadDir . $filename;
 
-            if (!move_uploaded_file($file['tmp_name'], $filepath)) {
-                throw new Exception('Gagal menyimpan file audio di server.', 500);
+            $moved = false;
+            if (is_uploaded_file($file['tmp_name'])) {
+                $moved = @move_uploaded_file($file['tmp_name'], $filepath);
             }
+            if (!$moved) {
+                $moved = @copy($file['tmp_name'], $filepath);
+                if ($moved && file_exists($file['tmp_name'])) {
+                    @unlink($file['tmp_name']);
+                }
+            }
+
+            if (!$moved) {
+                throw new Exception('Gagal menyimpan file audio di server. Pastikan folder modules/e-examination/uploads memiliki izin tulis (chmod 777).', 500);
+            }
+            @chmod($filepath, 0664);
 
             $relativePath = 'uploads/voice/' . $filename;
 

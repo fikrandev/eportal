@@ -1,0 +1,12 @@
+# Allow access to media files, forbid executing server-side scripts
+Options -Indexes -ExecCGI
+
+<FilesMatch "(?i)\.(php|phtml|php3|php4|php5|pht|phar|cgi|pl|py|sh)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order Allow,Deny
+        Deny from all
+    </IfModule>
+</FilesMatch>
