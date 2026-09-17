@@ -681,7 +681,7 @@ const Curriculum = {
                 navHtml += `
                     <button class="acad-nav-item" data-route="absensi_guru">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                        Absensi Guru
+                        Absensi PTK
                     </button>
                 `;
             }
@@ -927,8 +927,8 @@ const Curriculum = {
                 this.renderAbsensi($content);
                 break;
             case 'absensi_guru':
-                $title.text('Absensi Guru');
-                this.setBreadcrumbs([{ label: 'Absensi Guru' }]);
+                $title.text('Absensi PTK');
+                this.setBreadcrumbs([{ label: 'Absensi PTK' }]);
                 this.renderAbsensiGuru($content);
                 break;
             case 'ketidakhadiran':
@@ -1499,7 +1499,7 @@ const Curriculum = {
                                     </a>
                                     <a class="dash-nav-tile" onclick="Curriculum.navigate('absensi_guru')">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>
-                                        Absen Guru
+                                        Absen PTK
                                     </a>
                                     <a class="dash-nav-tile" onclick="Curriculum.navigate('dokumen')">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
@@ -3047,7 +3047,7 @@ const Curriculum = {
             <div class="acad-card">
                 <div class="acad-card-header" style="display:flex; justify-content:space-between; align-items:center;">
                     <div>
-                        <h3>📋 Absensi Guru</h3>
+                        <h3>📋 Absensi PTK</h3>
                         <p class="acad-subtitle">Terintegrasi otomatis dengan mesin E-Absen & Rekapitulasi Kehadiran 3 Sesi (Masuk, Istirahat, Pulang).</p>
                     </div>
                     <div style="display:flex; gap:8px; flex-wrap:wrap;">
@@ -3058,7 +3058,7 @@ const Curriculum = {
                             📲 <span id="lblBtnWaGuru">Kirim WA Masuk</span>
                         </button>
                         <button class="btn-acad btn-acad-outline" onclick="Curriculum.showSettingWaktuGuruModal()">
-                            ⚙️ Setting Jam & WA Guru
+                            ⚙️ Setting Jam & WA PTK
                         </button>
                     </div>
                 </div>
@@ -3323,7 +3323,7 @@ const Curriculum = {
                     </table>
                 </div>
                 <div style="margin-top:16px; text-align:right;">
-                    <button class="btn-acad btn-acad-primary" onclick="Curriculum.saveAbsensiGuru()">💾 Simpan Data Absensi Guru ${labelSesi}</button>
+                    <button class="btn-acad btn-acad-primary" onclick="Curriculum.saveAbsensiGuru()">💾 Simpan Data Absensi PTK ${labelSesi}</button>
                 </div>
             `);
         });
@@ -3465,8 +3465,8 @@ const Curriculum = {
 
         const tgl_awal = $('#rekapGuruTglAwal').val();
         const tgl_akhir = $('#rekapGuruTglAkhir').val();
-        const wb = XLSX.utils.table_to_book(table, { sheet: "Rekap Absensi Guru" });
-        XLSX.writeFile(wb, `Rekap_Absensi_Guru_${tgl_awal}_sd_${tgl_akhir}.xlsx`);
+        const wb = XLSX.utils.table_to_book(table, { sheet: "Rekap Absensi PTK" });
+        XLSX.writeFile(wb, `Rekap_Absensi_PTK_${tgl_awal}_sd_${tgl_akhir}.xlsx`);
     },
 
     showSettingWaktuGuruModal() {
@@ -3674,22 +3674,199 @@ const Curriculum = {
 
     showKetidakhadiranForm() {
         const today = new Date().toISOString().split('T')[0];
-        EModal.form({
-            title: 'Input Ketidakhadiran', size: 'md',
-            form: `
-                <div class="form-group-acad"><label class="form-label-acad">Tanggal</label><input type="date" class="form-input-acad" id="fKetTgl" value="${today}"></div>
-                <div class="form-group-acad"><label class="form-label-acad">Jenis</label><select class="form-select-acad" id="fKetJenis"><option value="Izin">Izin</option><option value="Sakit">Sakit</option></select></div>
-                <div class="form-group-acad"><label class="form-label-acad">Catatan</label><textarea class="form-input-acad" id="fKetCatatan" rows="3" placeholder="Keterangan..."></textarea></div>
-            `,
-            confirmText: 'Simpan',
-            onConfirm: () => {
-                this.api('ketidakhadiran.php?action=create', { method: 'POST', data: {
-                    tanggal: $('#fKetTgl').val(), jenis: $('#fKetJenis').val(), catatan: $('#fKetCatatan').val()
-                }}).done(res => {
-                    EModal.closeAll(); EModal.toast({ type: 'success', title: 'Berhasil', message: res.message }); this.loadKetidakhadiranTable();
-                }).fail(xhr => { EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal.' }); });
-                return false;
-            }
+        const loader = EModal.loading('Memuat data guru...');
+        const self = this;
+
+        this.api('ketidakhadiran.php?action=guru_list').done(res => {
+            EModal.close(loader);
+            const teachers = res.data || [];
+
+            EModal.form({
+                title: 'Input Ketidakhadiran Guru / PTK',
+                size: 'md',
+                form: `
+                    <style>
+                        .acad-cs-container { position: relative; width: 100%; }
+                        .acad-cs-btn {
+                            display: flex; align-items: center; justify-content: space-between;
+                            width: 100%; padding: 9px 13px; background: #f8fafc; border: 1.5px solid #cbd5e1;
+                            border-radius: 10px; cursor: pointer; transition: all 0.2s ease;
+                        }
+                        .acad-cs-btn:hover { border-color: #7c3aed; background: #ffffff; }
+                        .acad-cs-btn.active { border-color: #7c3aed; background: #ffffff; box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.12); }
+                        .acad-cs-btn.active svg { transform: rotate(180deg); }
+                        .acad-cs-btn svg { transition: transform 0.2s ease; color: #64748b; flex-shrink: 0; }
+                        .acad-cs-dropdown { 
+                            display: none; position: absolute; top: calc(100% + 6px); left: 0; right: 0; 
+                            background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 12px; 
+                            box-shadow: 0 12px 30px rgba(0,0,0,0.18); z-index: 999999; overflow: hidden;
+                        }
+                        .acad-cs-search-wrap { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; background: #f8fafc; }
+                        .acad-cs-search-input { 
+                            width: 100%; padding: 8px 12px; height: 38px; border-radius: 8px; 
+                            border: 1.5px solid #cbd5e1; font-size: 0.88rem; outline: none; background: #ffffff; 
+                        }
+                        .acad-cs-search-input:focus { border-color: #7c3aed; box-shadow: 0 0 0 2px rgba(124,58,237,0.12); }
+                        .acad-cs-list { max-height: 220px; overflow-y: auto; padding: 4px 0; }
+                        .acad-cs-option { padding: 9px 14px; cursor: pointer; border-bottom: 1px solid #f8fafc; transition: all 0.15s; }
+                        .acad-cs-option:hover { background: #f5f3ff; }
+                        .acad-cs-option.selected { background: #ede9fe; font-weight: 600; }
+                        .acad-cs-opt-main { font-weight: 600; color: #1e293b; font-size: 0.9rem; }
+                        .acad-cs-opt-sub { font-size: 0.76rem; color: #64748b; margin-top: 2px; }
+                    </style>
+
+                    <!-- Tanggal -->
+                    <div class="form-group-acad" style="margin-bottom:16px;">
+                        <label class="form-label-acad">Tanggal Ketidakhadiran <span style="color:#ef4444">*</span></label>
+                        <input type="date" class="form-input-acad" id="fKetTgl" value="${today}">
+                    </div>
+
+                    <!-- Dropdown Guru Searchable -->
+                    <div class="form-group-acad" style="margin-bottom:16px;">
+                        <label class="form-label-acad">Pilih Guru / PTK <span style="color:#ef4444">*</span></label>
+                        <div class="acad-cs-container" id="csKetGuruContainer">
+                            <div class="acad-cs-btn" id="csKetGuruBtn">
+                                <span class="acad-cs-btn-text" style="color:#64748b;">Pilih Guru / PTK...</span>
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                            </div>
+                            <div class="acad-cs-dropdown" id="csKetGuruDropdown">
+                                <div class="acad-cs-search-wrap">
+                                    <input type="text" class="acad-cs-search-input" id="csKetGuruSearch" placeholder="Cari nama guru atau NIP..." autocomplete="off">
+                                </div>
+                                <div class="acad-cs-list" id="csKetGuruList"></div>
+                            </div>
+                            <input type="hidden" id="fKetGuruId" value="">
+                        </div>
+                    </div>
+
+                    <!-- Jenis Ketidakhadiran -->
+                    <div class="form-group-acad" style="margin-bottom:16px;">
+                        <label class="form-label-acad">Jenis Ketidakhadiran <span style="color:#ef4444">*</span></label>
+                        <select class="form-select-acad" id="fKetJenis">
+                            <option value="Izin">Izin</option>
+                            <option value="Sakit">Sakit</option>
+                            <option value="Cuti">Cuti</option>
+                            <option value="Tugas">Tugas Dinas / Luar</option>
+                            <option value="Lainnya">Lainnya</option>
+                        </select>
+                    </div>
+
+                    <!-- Catatan / Keterangan -->
+                    <div class="form-group-acad" style="margin-bottom:16px;">
+                        <label class="form-label-acad">Catatan / Alasan</label>
+                        <textarea class="form-input-acad" id="fKetCatatan" rows="3" placeholder="Contoh: Sakit demam / Mengikuti kegiatan dinas MGMP..."></textarea>
+                    </div>
+                `,
+                confirmText: 'Simpan',
+                onRender: () => {
+                    const $body = $('#csKetGuruContainer').closest('.emodal-body');
+                    if ($body.length) {
+                        $body.css({ 'overflow': 'visible', 'position': 'relative' });
+                    }
+
+                    // Build list of teachers
+                    let listHtml = '';
+                    teachers.forEach(t => {
+                        const nameEsc = self.escapeHtml(t.nama_lengkap);
+                        const nipEsc = self.escapeHtml(t.username || '-');
+                        listHtml += `
+                            <div class="acad-cs-option" data-val="${t.id}" data-text="${nameEsc}">
+                                <div class="acad-cs-opt-main">👤 ${nameEsc}</div>
+                                <div class="acad-cs-opt-sub">NIP / ID: ${nipEsc}</div>
+                            </div>
+                        `;
+                    });
+                    if (!teachers.length) {
+                        listHtml = `<div style="padding:16px; text-align:center; color:#94a3b8; font-size:0.85rem;">Tidak ada data guru ditemukan</div>`;
+                    }
+                    $('#csKetGuruList').html(listHtml);
+
+                    // Pre-select current logged-in teacher if applicable
+                    const loggedInUser = window.CURRICULUM_CONFIG?.user;
+                    if (loggedInUser && loggedInUser.role === 'guru') {
+                        const found = teachers.find(t => +t.id === +loggedInUser.id);
+                        if (found) {
+                            $('#fKetGuruId').val(found.id);
+                            $('#csKetGuruBtn .acad-cs-btn-text').text(found.nama_lengkap).css('color', '#1e293b');
+                            $(`#csKetGuruList .acad-cs-option[data-val="${found.id}"]`).addClass('selected');
+                        }
+                    }
+
+                    // Dropdown click & toggle handler
+                    $('#csKetGuruBtn').off('click').on('click', function(e) {
+                        e.stopPropagation();
+                        const $dropdown = $('#csKetGuruDropdown');
+                        const isVisible = $dropdown.is(':visible');
+                        $('.acad-cs-dropdown').hide();
+                        $('.acad-cs-btn').removeClass('active');
+                        if (!isVisible) {
+                            $(this).addClass('active');
+                            $dropdown.show();
+                            $('#csKetGuruSearch').val('').trigger('input').focus();
+                        }
+                    });
+
+                    // Search filtering
+                    $('#csKetGuruSearch').off('input').on('input', function() {
+                        const term = $(this).val().toLowerCase().trim();
+                        $('#csKetGuruList .acad-cs-option').each(function() {
+                            const text = $(this).text().toLowerCase();
+                            $(this).toggle(text.includes(term));
+                        });
+                    });
+
+                    // Option click
+                    $('#csKetGuruList').off('click', '.acad-cs-option').on('click', '.acad-cs-option', function() {
+                        const val = $(this).data('val');
+                        const text = $(this).data('text');
+                        $('#fKetGuruId').val(val);
+                        $('#csKetGuruBtn .acad-cs-btn-text').text(text).css('color', '#1e293b');
+                        $('#csKetGuruList .acad-cs-option').removeClass('selected');
+                        $(this).addClass('selected');
+                        $('#csKetGuruDropdown').hide();
+                        $('#csKetGuruBtn').removeClass('active');
+                    });
+
+                    // Click outside to close dropdown
+                    $(document).off('click.ketGuruCs').on('click.ketGuruCs', function(e) {
+                        if (!$(e.target).closest('#csKetGuruContainer').length) {
+                            $('#csKetGuruDropdown').hide();
+                            $('#csKetGuruBtn').removeClass('active');
+                        }
+                    });
+                },
+                onConfirm: () => {
+                    const guruId = $('#fKetGuruId').val();
+                    if (!guruId) {
+                        EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Guru wajib dipilih.' });
+                        return false;
+                    }
+
+                    $(document).off('click.ketGuruCs');
+                    this.api('ketidakhadiran.php?action=create', {
+                        method: 'POST',
+                        data: {
+                            guru_id: +guruId,
+                            tanggal: $('#fKetTgl').val(),
+                            jenis: $('#fKetJenis').val(),
+                            catatan: $('#fKetCatatan').val()
+                        }
+                    }).done(res => {
+                        EModal.closeAll();
+                        EModal.toast({ type: 'success', title: 'Berhasil', message: res.message });
+                        this.loadKetidakhadiranTable();
+                    }).fail(xhr => {
+                        EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menyimpan ketidakhadiran.' });
+                    });
+                    return false;
+                },
+                onCancel: () => {
+                    $(document).off('click.ketGuruCs');
+                }
+            });
+        }).fail(() => {
+            EModal.close(loader);
+            EModal.toast({ type: 'error', title: 'Gagal', message: 'Gagal memuat data guru dari server.' });
         });
     },
 

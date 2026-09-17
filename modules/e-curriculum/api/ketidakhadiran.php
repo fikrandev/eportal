@@ -14,6 +14,10 @@ switch ($action) {
     case 'create':
         createKetidakhadiran($user);
         break;
+    case 'guru_list':
+    case 'teachers':
+        getGuruList($user);
+        break;
     case 'delete':
         deleteKetidakhadiran($user);
         break;
@@ -27,16 +31,30 @@ switch ($action) {
         json_response(400, false, 'Action tidak valid.');
 }
 
+function getGuruList($user) {
+    try {
+        $stmt = db()->query("
+            SELECT id, username, nama_lengkap 
+            FROM users 
+            WHERE role = 'guru' AND status = 1 
+            ORDER BY nama_lengkap ASC
+        ");
+        json_response(200, true, 'Daftar guru dimuat.', $stmt->fetchAll(PDO::FETCH_ASSOC));
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
 function listKetidakhadiran($user) {
     try {
         $tanggal = isset($_GET['tanggal']) ? $_GET['tanggal'] : date('Y-m-d');
         $tanggal_akhir = isset($_GET['tanggal_akhir']) ? $_GET['tanggal_akhir'] : '';
-        $isAdmin = $user['role'] === 'superadmin';
+        $canManage = in_array($user['role'], ['superadmin', 'admin']) || acad_can($user, 'ketidakhadiran_manage') || acad_can($user, 'kurikulum_manage');
 
         $where = "1=1";
         $params = [];
 
-        if (!$isAdmin) {
+        if (!$canManage) {
             $where .= " AND k.guru_id = ?";
             $params[] = $user['user_id'];
         }
@@ -68,18 +86,28 @@ function createKetidakhadiran($user) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed.');
 
     $input = get_input();
-    $guru_id = ($user['role'] === 'superadmin' && isset($input['guru_id'])) ? (int)$input['guru_id'] : $user['user_id'];
+    $guru_id = !empty($input['guru_id']) ? (int)$input['guru_id'] : $user['user_id'];
+    if ($guru_id <= 0) {
+        json_response(400, false, 'Guru wajib dipilih.');
+    }
+
     $tanggal = isset($input['tanggal']) ? $input['tanggal'] : date('Y-m-d');
     $jenis = isset($input['jenis']) && in_array($input['jenis'], ['Izin', 'Sakit', 'Cuti', 'Tugas', 'Lainnya']) ? $input['jenis'] : 'Izin';
     $catatan = isset($input['catatan']) ? trim($input['catatan']) : '';
 
+    $canManage = in_array($user['role'], ['superadmin', 'admin']) || acad_can($user, 'ketidakhadiran_manage') || acad_can($user, 'kurikulum_manage');
+    $status = $canManage ? 'Approved' : 'Pending';
+    if (!empty($input['status']) && in_array($input['status'], ['Approved', 'Pending', 'Rejected'])) {
+        $status = $input['status'];
+    }
+
     try {
         $stmt = db()->prepare("
-            INSERT INTO acad_ketidakhadiran (guru_id, tanggal, jenis, catatan)
-            VALUES (?, ?, ?, ?)
-            ON DUPLICATE KEY UPDATE jenis = VALUES(jenis), catatan = VALUES(catatan)
+            INSERT INTO acad_ketidakhadiran (guru_id, tanggal, jenis, catatan, status)
+            VALUES (?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE jenis = VALUES(jenis), catatan = VALUES(catatan), status = VALUES(status)
         ");
-        $stmt->execute([$guru_id, $tanggal, $jenis, $catatan]);
+        $stmt->execute([$guru_id, $tanggal, $jenis, $catatan, $status]);
         json_response(201, true, 'Ketidakhadiran berhasil dicatat.');
     } catch (PDOException $e) {
         json_response(500, false, 'Server error: ' . $e->getMessage());
