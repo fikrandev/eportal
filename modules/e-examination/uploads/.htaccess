@@ -1,6 +1,23 @@
 # Allow access to media files, forbid executing server-side scripts
 Options -Indexes -ExecCGI
 
+# Audio & Media MIME types for HTML5 Audio playback
+<IfModule mod_mime.c>
+    AddType audio/mpeg .mp3
+    AddType audio/ogg .ogg .oga
+    AddType audio/wav .wav
+    AddType audio/webm .webm
+    AddType audio/mp4 .m4a .aac .mp4
+    AddType audio/flac .flac
+    AddType audio/opus .opus
+    AddType audio/3gpp .3gp
+</IfModule>
+
+# Enable Byte Range Requests for HTML5 audio seeking and streaming
+<IfModule mod_headers.c>
+    Header set Accept-Ranges bytes
+</IfModule>
+
 <FilesMatch "(?i)\.(php|phtml|php3|php4|php5|pht|phar|cgi|pl|py|sh)$">
     <IfModule mod_authz_core.c>
         Require all denied

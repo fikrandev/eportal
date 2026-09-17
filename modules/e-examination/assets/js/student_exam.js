@@ -507,32 +507,117 @@ const ExamApp = {
         if (s.audio) {
             const limit = typeof s.audio_play_limit !== 'undefined' ? parseInt(s.audio_play_limit, 10) : 0;
             const playedCount = this.audioPlayCount[s.id] || 0;
+            const audioUrl = this.formatAudioUrl(s.audio);
+            const mimeType = this.getAudioMimeType(audioUrl);
+
             if (limit > 0 && playedCount >= limit) {
-                mediaHtml += `<div style="background:#fee2e2;color:#b91c1c;padding:12px;border-radius:8px;font-weight:600;text-align:center;margin-bottom:12px;">⚠️ Audio listening telah diputar ${limit}x (batas maksimal tercapai)</div>`;
+                mediaHtml += `
+                    <div class="exam-audio-player-box" style="background:#fee2e2; border:1.5px solid #fca5a5; color:#991b1b; padding:14px 18px; border-radius:12px; font-weight:600; text-align:center; margin-bottom:16px; display:flex; align-items:center; justify-content:center; gap:10px;">
+                        <span style="font-size:22px;">🔇</span>
+                        <div>Audio listening telah diputar ${limit}x (Batas maksimal pemutaran telah tercapai).</div>
+                    </div>
+                `;
             } else {
                 const remainingText = limit > 0
                     ? `Sisa pemutaran: <strong id="audio_remaining_${s.id}">${limit - playedCount}</strong> dari ${limit} kali`
                     : `Sisa pemutaran: <strong id="audio_remaining_${s.id}" style="color:#059669;">Bebas (Tanpa batas)</strong>`;
 
                 mediaHtml += `
-                    <div style="margin-bottom:12px;background:#f8fafc;padding:12px;border-radius:10px;border:1px solid #e2e8f0;">
-                        <audio id="audio_player_${s.id}" controls controlsList="nodownload noplaybackrate" style="width:100%;">
-                            <source src="../${s.audio}">
+                    <div class="exam-audio-player-box" id="audio_wrapper_${s.id}" style="margin-bottom:18px; background:linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%); padding:14px 16px; border-radius:14px; border:1.5px solid #cbd5e1; box-shadow:0 2px 8px rgba(0,0,0,0.04);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+                            <div style="display:flex; align-items:center; gap:8px; font-weight:700; color:#1e293b; font-size:14px;">
+                                <span style="display:inline-flex; align-items:center; justify-content:center; width:28px; height:28px; background:#e0e7ff; color:#4338ca; border-radius:50%; font-size:14px;">🎧</span>
+                                <span>Audio Listening</span>
+                            </div>
+                            <span style="font-size:12px; background:#ede9fe; color:#6d28d9; padding:4px 10px; border-radius:10px; font-weight:600; border:1px solid #ddd6fe;">
+                                ${remainingText}
+                            </span>
+                        </div>
+
+                        <!-- Custom Player Bar -->
+                        <div style="display:flex; align-items:center; gap:12px; background:#ffffff; padding:10px 14px; border-radius:10px; border:1px solid #e2e8f0;">
+                            <button type="button" id="btn_custom_play_${s.id}" onclick="ExamApp.togglePlayAudio(${s.id})" title="Putar / Jeda" style="width:42px; height:42px; border-radius:50%; background:#2563eb; color:white; border:none; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; transition:all 0.15s; box-shadow:0 2px 6px rgba(37,99,235,0.3);">
+                                <svg id="icon_play_${s.id}" viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                <svg id="icon_pause_${s.id}" viewBox="0 0 24 24" width="22" height="22" fill="currentColor" style="display:none;"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                            </button>
+
+                            <div style="flex:1; display:flex; flex-direction:column; gap:6px; min-width:0;">
+                                <div style="display:flex; justify-content:space-between; font-size:11px; color:#64748b; font-family:monospace; font-weight:600;">
+                                    <span id="audio_time_curr_${s.id}">00:00</span>
+                                    <span id="audio_time_dur_${s.id}">--:--</span>
+                                </div>
+                                <div style="position:relative; width:100%; height:8px; background:#e2e8f0; border-radius:4px; cursor:pointer;" onclick="ExamApp.seekAudio(${s.id}, event)" id="audio_track_${s.id}">
+                                    <div id="audio_progress_${s.id}" style="width:0%; height:100%; background:linear-gradient(90deg,#2563eb,#3b82f6); border-radius:4px; transition:width 0.1s linear;"></div>
+                                </div>
+                            </div>
+
+                            <button type="button" onclick="ExamApp.restartAudio(${s.id})" title="Putar dari awal" style="background:none; border:none; color:#64748b; cursor:pointer; padding:6px; border-radius:6px; display:flex; align-items:center; justify-content:center;">
+                                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                            </button>
+                        </div>
+
+                        <!-- Direct Native Audio Element (Provides full cross-browser audio controls) -->
+                        <audio id="audio_player_${s.id}" src="${audioUrl}" preload="auto" style="width:100%; height:36px; margin-top:10px;" controls controlsList="nodownload noplaybackrate">
+                            <source src="${audioUrl}" type="${mimeType}">
+                            Browser Anda tidak mendukung pemutar audio.
                         </audio>
-                        <div style="font-size:12px;color:#64748b;margin-top:6px;text-align:right;">${remainingText}</div>
+
+                        <!-- Error Box -->
+                        <div id="audio_error_${s.id}" style="display:none; margin-top:8px; padding:8px 12px; background:#fee2e2; border-radius:8px; color:#b91c1c; font-size:12px; align-items:center; justify-content:space-between;">
+                            <span>⚠️ Audio gagal dimuat dari server.</span>
+                            <button type="button" onclick="ExamApp.retryLoadAudio(${s.id})" style="background:#b91c1c; color:white; border:none; border-radius:6px; padding:4px 8px; font-size:11px; cursor:pointer;">Coba Lagi</button>
+                        </div>
                     </div>
                 `;
             }
         }
         $('#uiSoalMedia').html(mediaHtml);
 
-        // Hook audio event
+        // Setup audio player events
         const audioLimit = typeof s.audio_play_limit !== 'undefined' ? parseInt(s.audio_play_limit, 10) : 0;
         if (s.audio && (audioLimit === 0 || (this.audioPlayCount[s.id] || 0) < audioLimit)) {
             setTimeout(() => {
                 const player = document.getElementById(`audio_player_${s.id}`);
                 if (player) {
+                    try { player.load(); } catch(e) {}
+
+                    player.addEventListener('loadedmetadata', () => {
+                        if (player.duration) {
+                            $(`#audio_time_dur_${s.id}`).text(this.formatTime(player.duration));
+                        }
+                    });
+
+                    player.addEventListener('timeupdate', () => {
+                        $(`#audio_time_curr_${s.id}`).text(this.formatTime(player.currentTime));
+                        if (player.duration) {
+                            const pct = Math.min(100, Math.max(0, (player.currentTime / player.duration) * 100));
+                            $(`#audio_progress_${s.id}`).css('width', pct + '%');
+                            $(`#audio_time_dur_${s.id}`).text(this.formatTime(player.duration));
+                        }
+                    });
+
+                    player.addEventListener('play', () => {
+                        $(`#icon_play_${s.id}`).hide();
+                        $(`#icon_pause_${s.id}`).show();
+                        $(`#btn_custom_play_${s.id}`).css('background', '#16a34a');
+                    });
+
+                    player.addEventListener('pause', () => {
+                        $(`#icon_play_${s.id}`).show();
+                        $(`#icon_pause_${s.id}`).hide();
+                        $(`#btn_custom_play_${s.id}`).css('background', '#2563eb');
+                    });
+
+                    player.addEventListener('error', () => {
+                        $(`#audio_error_${s.id}`).css('display', 'flex');
+                    });
+
                     player.addEventListener('ended', () => {
+                        $(`#icon_play_${s.id}`).show();
+                        $(`#icon_pause_${s.id}`).hide();
+                        $(`#btn_custom_play_${s.id}`).css('background', '#2563eb');
+                        $(`#audio_progress_${s.id}`).css('width', '100%');
+
                         if (audioLimit > 0) {
                             this.audioPlayCount[s.id] = (this.audioPlayCount[s.id] || 0) + 1;
                             const newCount = this.audioPlayCount[s.id];
@@ -542,7 +627,12 @@ const ExamApp = {
                                 } catch (e) {}
                             }
                             if (newCount >= audioLimit) {
-                                $(`#audio_player_${s.id}`).parent().html(`<div style="background:#fee2e2;color:#b91c1c;padding:12px;border-radius:8px;font-weight:600;text-align:center;margin-bottom:12px;">🔊 Audio listening telah diputar ${audioLimit}x (batas maksimal tercapai)</div>`);
+                                $(`#audio_wrapper_${s.id}`).html(`
+                                    <div style="background:#fee2e2; border:1.5px solid #fca5a5; color:#991b1b; padding:14px 18px; border-radius:12px; font-weight:600; text-align:center; display:flex; align-items:center; justify-content:center; gap:10px;">
+                                        <span style="font-size:22px;">🔇</span>
+                                        <div>Audio listening telah diputar ${audioLimit}x (Batas maksimal pemutaran telah tercapai).</div>
+                                    </div>
+                                `);
                             } else {
                                 $(`#audio_remaining_${s.id}`).text(audioLimit - newCount);
                             }
@@ -554,6 +644,18 @@ const ExamApp = {
 
         // Text
         $('#uiSoalText').html(s.pertanyaan);
+
+        // Ensure any embedded audio inside question text works
+        $('#uiSoalText audio').each(function() {
+            $(this).attr('controls', 'controls').attr('preload', 'auto').css({ 'max-width': '100%', 'display': 'block', 'margin': '10px 0' });
+            let aSrc = $(this).attr('src') || $(this).find('source').attr('src');
+            if (aSrc) {
+                const fixedUrl = ExamApp.formatAudioUrl(aSrc);
+                $(this).attr('src', fixedUrl);
+                $(this).find('source').attr('src', fixedUrl);
+                try { this.load(); } catch(e) {}
+            }
+        });
 
         // Options
         this.renderOptions(currentData);
@@ -682,8 +784,8 @@ const ExamApp = {
                         </button>
                         
                         <div id="voice_preview_${s.id}" style="flex:1;display:${data.jawaban_voice ? 'block' : 'none'};">
-                            <audio id="audio_voice_preview_${s.id}" controls style="width:100%;height:36px;border-radius:18px;">
-                                <source src="../../${data.jawaban_voice}" type="audio/webm">
+                            <audio id="audio_voice_preview_${s.id}" src="${this.formatAudioUrl(data.jawaban_voice)}" preload="auto" controls style="width:100%;height:36px;border-radius:18px;">
+                                <source src="${this.formatAudioUrl(data.jawaban_voice)}" type="audio/webm">
                             </audio>
                         </div>
                     </div>
@@ -714,8 +816,8 @@ const ExamApp = {
                         </button>
                         
                         <div id="voice_preview_${s.id}" style="flex:1;display:${data.jawaban_voice ? 'block' : 'none'};">
-                            <audio id="audio_voice_preview_${s.id}" controls style="width:100%;height:36px;border-radius:18px;">
-                                <source src="../${data.jawaban_voice}" type="audio/webm">
+                            <audio id="audio_voice_preview_${s.id}" src="${this.formatAudioUrl(data.jawaban_voice)}" preload="auto" controls style="width:100%;height:36px;border-radius:18px;">
+                                <source src="${this.formatAudioUrl(data.jawaban_voice)}" type="audio/webm">
                             </audio>
                         </div>
                     </div>
@@ -970,6 +1072,118 @@ const ExamApp = {
                 EModal.alert('Error', 'Gagal mengupload audio');
             }
         });
+    },
+
+    // ==========================================
+    // AUDIO UTILITIES & CONTROLS
+    // ==========================================
+    formatAudioUrl(rawPath) {
+        if (!rawPath) return '';
+        rawPath = String(rawPath).trim();
+        if (rawPath.startsWith('http://') || rawPath.startsWith('https://') || rawPath.startsWith('blob:') || rawPath.startsWith('data:')) {
+            return rawPath;
+        }
+        if (rawPath.startsWith('/')) {
+            return rawPath;
+        }
+        while (rawPath.startsWith('../') || rawPath.startsWith('./')) {
+            rawPath = rawPath.replace(/^(\.\.\/|\.\/)/, '');
+        }
+        if (rawPath.startsWith('modules/e-examination/')) {
+            rawPath = rawPath.replace('modules/e-examination/', '');
+        }
+        return '../' + rawPath;
+    },
+
+    getAudioMimeType(url) {
+        if (!url) return 'audio/mpeg';
+        const clean = url.split('?')[0].split('#')[0].toLowerCase();
+        if (clean.endsWith('.mp3')) return 'audio/mpeg';
+        if (clean.endsWith('.ogg') || clean.endsWith('.oga')) return 'audio/ogg';
+        if (clean.endsWith('.wav')) return 'audio/wav';
+        if (clean.endsWith('.webm')) return 'audio/webm';
+        if (clean.endsWith('.m4a') || clean.endsWith('.aac') || clean.endsWith('.mp4')) return 'audio/mp4';
+        if (clean.endsWith('.flac')) return 'audio/flac';
+        if (clean.endsWith('.opus')) return 'audio/opus';
+        if (clean.endsWith('.3gp')) return 'audio/3gpp';
+        return 'audio/mpeg';
+    },
+
+    formatTime(sec) {
+        if (isNaN(sec) || !isFinite(sec) || sec < 0) return '00:00';
+        sec = Math.floor(sec);
+        const m = Math.floor(sec / 60).toString().padStart(2, '0');
+        const s = (sec % 60).toString().padStart(2, '0');
+        return `${m}:${s}`;
+    },
+
+    togglePlayAudio(soalId) {
+        const player = document.getElementById(`audio_player_${soalId}`);
+        if (!player) return;
+        if (player.paused) {
+            const playPromise = player.play();
+            if (playPromise !== undefined) {
+                playPromise.then(() => {
+                    $(`#icon_play_${soalId}`).hide();
+                    $(`#icon_pause_${soalId}`).show();
+                    $(`#btn_custom_play_${soalId}`).css('background', '#16a34a');
+                }).catch(err => {
+                    console.warn('Playback error, retrying with reload:', err);
+                    player.load();
+                    player.play().then(() => {
+                        $(`#icon_play_${soalId}`).hide();
+                        $(`#icon_pause_${soalId}`).show();
+                        $(`#btn_custom_play_${soalId}`).css('background', '#16a34a');
+                    }).catch(e => {
+                        $(`#audio_error_${soalId}`).css('display', 'flex');
+                    });
+                });
+            }
+        } else {
+            player.pause();
+            $(`#icon_play_${soalId}`).show();
+            $(`#icon_pause_${soalId}`).hide();
+            $(`#btn_custom_play_${soalId}`).css('background', '#2563eb');
+        }
+    },
+
+    seekAudio(soalId, event) {
+        const player = document.getElementById(`audio_player_${soalId}`);
+        const track = document.getElementById(`audio_track_${soalId}`);
+        if (!player || !track || !player.duration) return;
+        const rect = track.getBoundingClientRect();
+        const clickX = Math.max(0, Math.min(event.clientX - rect.left, rect.width));
+        const percent = clickX / rect.width;
+        player.currentTime = percent * player.duration;
+    },
+
+    restartAudio(soalId) {
+        const player = document.getElementById(`audio_player_${soalId}`);
+        if (!player) return;
+        player.currentTime = 0;
+        const playPromise = player.play();
+        if (playPromise !== undefined) {
+            playPromise.then(() => {
+                $(`#icon_play_${soalId}`).hide();
+                $(`#icon_pause_${soalId}`).show();
+                $(`#btn_custom_play_${soalId}`).css('background', '#16a34a');
+            }).catch(() => {});
+        }
+    },
+
+    retryLoadAudio(soalId) {
+        const player = document.getElementById(`audio_player_${soalId}`);
+        if (!player) return;
+        $(`#audio_error_${soalId}`).hide();
+        const currentSrc = player.getAttribute('src') || '';
+        const buster = (currentSrc.includes('?') ? '&' : '?') + 't=' + Date.now();
+        player.src = currentSrc.split('?')[0] + buster;
+        player.load();
+        player.play().then(() => {
+            $(`#icon_play_${soalId}`).hide();
+            $(`#icon_pause_${soalId}`).show();
+            $(`#btn_custom_play_${soalId}`).css('background', '#16a34a');
+        }).catch(() => {});
     }
 };
 

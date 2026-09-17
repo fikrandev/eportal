@@ -53,6 +53,11 @@ if (!$session_id) {
             overflow: hidden; /* Prevent body scroll, layout handles scrolling */
             user-select: none; /* Anti-copy */
         }
+        audio, .exam-audio-player-box, .exam-audio-player-box * {
+            user-select: auto !important;
+            -webkit-user-select: auto !important;
+            pointer-events: auto !important;
+        }
         /* Top Navigation Bar */
         .exam-header {
             background: white;
@@ -761,6 +766,7 @@ if (!$session_id) {
     <!-- Core App Logic -->
     <script>
         const EXAM_SESSION_ID = <?php echo $session_id; ?>;
+        const EXAM_BASE_URL = '<?php echo BASE_URL; ?>';
     </script>
     <script src="../assets/js/student_exam.js?v=<?php echo time(); ?>"></script>
 </body>
