@@ -559,9 +559,31 @@ const Schedule = {
                     </div>
                 </div>
                 <div class="sch-card-body">
-                    <div style="margin-bottom:16px;display:flex;gap:12px;align-items:center">
-                        <span style="font-size:0.85rem">Filter:</span>
-                        <select id="distFilterKelas" class="form-select" style="width:200px"><option value="">Semua Kelas</option></select>
+                    <div style="margin-bottom:16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;justify-content:space-between;">
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                            <span style="font-size:0.85rem;font-weight:600;color:var(--text-muted);">Filter:</span>
+                            <select id="distFilterKelas" class="form-select" style="width:190px"><option value="">Semua Kelas</option></select>
+                            
+                            <button type="button" class="btn btn-sm" id="btnBukaRekapModal" onclick="Schedule.showRekapDistribusiModal()" style="display:inline-flex;align-items:center;gap:6px;background:#f0fdf4;color:#166534;border:1px solid #bbf7d0;font-weight:600;padding:6px 13px;border-radius:8px;cursor:pointer;" title="Lihat Rekapitulasi Mengajar Semua Guru & Total JP">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                                Rekapitulasi Mengajar Guru
+                            </button>
+
+                            <div class="sch-view-switcher" style="display:inline-flex;background:#f1f5f9;border-radius:8px;padding:3px;border:1px solid #e2e8f0;">
+                                <button type="button" class="btn btn-sm btn-dist-view active" id="btnDistViewTable" onclick="Schedule.setDistViewMode('table')" style="border-radius:6px;font-size:0.8rem;padding:4px 10px;font-weight:600;border:none;background:#fff;color:#0f172a;box-shadow:0 1px 2px rgba(0,0,0,0.05);cursor:pointer;">
+                                    📋 Per Penugasan
+                                </button>
+                                <button type="button" class="btn btn-sm btn-dist-view" id="btnDistViewRekap" onclick="Schedule.setDistViewMode('rekap')" style="border-radius:6px;font-size:0.8rem;padding:4px 10px;font-weight:600;border:none;background:transparent;color:#64748b;cursor:pointer;">
+                                    📊 Rekap Guru & JP
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="distRekapSummaryStats" style="font-size:0.82rem;color:#475569;background:#f8fafc;padding:5px 12px;border-radius:20px;border:1px solid #e2e8f0;display:inline-flex;align-items:center;gap:10px;">
+                            <span>👨‍🏫 <strong id="statTotalGuruDist">0</strong> Guru Mengajar</span>
+                            <span style="color:#cbd5e1;">•</span>
+                            <span>⏱️ <strong id="statTotalJpDist">0</strong> Total JP</span>
+                        </div>
                     </div>
                     <div class="sch-table-wrapper" id="distTable"><div class="sch-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><h3>Memuat data...</h3></div></div>
                 </div>
@@ -573,39 +595,352 @@ const Schedule = {
             res.data.forEach(k => $('#distFilterKelas').append(`<option value="${k.id}">Rombel ${k.rombel} - ${k.nama_kelas}</option>`));
         });
 
-        $('#distFilterKelas').on('change', (e) => this.loadDistribusi($(e.target).val()));
+        $('#distFilterKelas').on('change', (e) => this.renderDistribusiTable($(e.target).val()));
         this.loadDistribusi();
     },
 
     loadDistribusi(kelasId = '') {
         this.api('distribusi.php?action=list').done(res => {
-            let data = res.data;
-            if (kelasId) data = data.filter(d => d.kelas_id == kelasId);
-            this.state.distData = res.data; // save all for export
+            this.state.distData = res.data || [];
+            this.updateRekapSummaryBadge();
+            const activeFilter = kelasId || $('#distFilterKelas').val() || '';
+            this.renderDistribusiTable(activeFilter);
+        });
+    },
 
-            if (!data.length) { $('#distTable').html('<div class="sch-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg><h3>Tidak ada distribusi</h3><p>Pilih kelas lain atau tambahkan penugasan baru.</p></div>'); return; }
+    updateRekapSummaryBadge() {
+        const rekap = this.getRekapitulasiData('');
+        const totalGuru = rekap.length;
+        const totalJp = rekap.reduce((acc, g) => acc + g.total_jp, 0);
+        $('#statTotalGuruDist').text(totalGuru);
+        $('#statTotalJpDist').text(totalJp);
+    },
 
-            let totalJp = 0;
-            let html = '<table class="sch-table"><thead><tr><th>No</th><th>Guru</th><th>Kelas</th><th>Mata Pelajaran</th><th>JP</th><th>Aksi</th></tr></thead><tbody>';
-            data.forEach((d, i) => {
-                totalJp += parseInt(d.jp);
+    setDistViewMode(mode) {
+        this.state.distViewMode = mode;
+        if (mode === 'rekap') {
+            $('#btnDistViewTable').css({ background: 'transparent', color: '#64748b', 'box-shadow': 'none' });
+            $('#btnDistViewRekap').css({ background: '#fff', color: '#0f172a', 'box-shadow': '0 1px 2px rgba(0,0,0,0.05)' });
+        } else {
+            $('#btnDistViewTable').css({ background: '#fff', color: '#0f172a', 'box-shadow': '0 1px 2px rgba(0,0,0,0.05)' });
+            $('#btnDistViewRekap').css({ background: 'transparent', color: '#64748b', 'box-shadow': 'none' });
+        }
+        const kelasId = $('#distFilterKelas').val() || '';
+        this.renderDistribusiTable(kelasId);
+    },
+
+    getRekapitulasiData(filterKelasId = '') {
+        let list = this.state.distData || [];
+        if (filterKelasId) {
+            list = list.filter(d => d.kelas_id == filterKelasId);
+        }
+
+        const guruMap = {};
+        list.forEach(d => {
+            const gid = d.guru_id;
+            if (!guruMap[gid]) {
+                guruMap[gid] = {
+                    guru_id: gid,
+                    nama_guru: d.nama_guru,
+                    kode_guru: d.kode_guru,
+                    total_jp: 0,
+                    assignments: [],
+                    kelasSet: new Set(),
+                    mapelSet: new Set()
+                };
+            }
+            const jp = parseInt(d.jp, 10) || 0;
+            guruMap[gid].total_jp += jp;
+            guruMap[gid].assignments.push({
+                id: d.id,
+                kelas_id: d.kelas_id,
+                nama_kelas: d.nama_kelas,
+                rombel: d.rombel,
+                mapel_id: d.mapel_id,
+                nama_mapel: d.nama_mapel,
+                jp: jp
+            });
+            if (d.nama_kelas) guruMap[gid].kelasSet.add(d.nama_kelas);
+            if (d.nama_mapel) guruMap[gid].mapelSet.add(d.nama_mapel);
+        });
+
+        return Object.values(guruMap).sort((a, b) => a.nama_guru.localeCompare(b.nama_guru));
+    },
+
+    renderDistribusiTable(kelasId = '') {
+        const mode = this.state.distViewMode || 'table';
+
+        // Rekapitulasi View
+        if (mode === 'rekap') {
+            const rekap = this.getRekapitulasiData(kelasId);
+            if (!rekap.length) {
+                $('#distTable').html('<div class="sch-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg><h3>Tidak ada data rekapitulasi</h3><p>Pilih kelas lain atau tambahkan penugasan baru.</p></div>');
+                return;
+            }
+
+            let totalJpSemua = 0;
+            let html = '<table class="sch-table"><thead><tr>';
+            html += '<th style="width:40px;text-align:center">No</th>';
+            html += '<th style="min-width:200px">Guru</th>';
+            html += '<th>Mengajar di Mana Saja (Kelas & Mata Pelajaran)</th>';
+            html += '<th style="width:110px;text-align:center">Jumlah Kelas</th>';
+            html += '<th style="width:120px;text-align:center">Total JP</th>';
+            html += '</tr></thead><tbody>';
+
+            rekap.forEach((g, i) => {
+                totalJpSemua += g.total_jp;
+                const badges = g.assignments.map(a => `
+                    <span style="display:inline-flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #cbd5e1;padding:3px 8px;border-radius:6px;font-size:12px;margin:2px 3px 2px 0;">
+                        <span style="background:#0284c7;color:#fff;font-weight:700;padding:1px 5px;border-radius:4px;font-size:10px;">${this.escapeHtml(a.nama_kelas)}</span>
+                        <span style="color:#1e293b;font-weight:500;">${this.escapeHtml(a.nama_mapel)}</span>
+                        <span style="background:#fef3c7;color:#b45309;font-weight:700;padding:1px 5px;border-radius:4px;font-size:11px;">${a.jp} JP</span>
+                    </span>
+                `).join('');
+
+                const isStandard = g.total_jp >= 24;
+                const badgeJp = `<span style="display:inline-flex;align-items:center;justify-content:center;padding:4px 12px;border-radius:12px;font-weight:700;font-size:13px;${isStandard ? 'background:#dcfce7;color:#15803d;border:1px solid #86efac;' : 'background:#fef3c7;color:#b45309;border:1px solid #fde68a;'}" title="${isStandard ? 'Memenuhi standar 24 JP' : 'Kurang dari 24 JP'}">${g.total_jp} JP</span>`;
+
                 html += `<tr>
-                    <td>${i+1}</td>
-                    <td><strong>${d.nama_guru}</strong><br><small style="color:var(--text-muted)">${d.kode_guru}</small></td>
-                    <td>Rbl ${d.rombel} - ${d.nama_kelas}</td>
-                    <td>${d.nama_mapel}</td>
-                    <td><span style="background:var(--primary-light);padding:2px 8px;border-radius:12px;font-weight:600">${d.jp}</span></td>
+                    <td style="text-align:center">${i+1}</td>
                     <td>
-                        <div class="sch-actions">
-                            <button class="sch-btn-icon" onclick="Schedule.formDist(${d.id})" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-                            <button class="sch-btn-icon danger" onclick="Schedule.deleteMaster('distribusi', ${d.id})" title="Hapus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
+                        <strong>${this.escapeHtml(g.nama_guru)}</strong>
+                        <br><small style="color:var(--text-muted)">${this.escapeHtml(g.kode_guru || '-')}</small>
+                    </td>
+                    <td>
+                        <div style="display:flex;flex-wrap:wrap;align-items:center;">${badges}</div>
+                        <div style="font-size:11px;color:#64748b;margin-top:4px;">
+                            Mengajar <strong>${g.kelasSet.size} Kelas</strong>: ${Array.from(g.kelasSet).map(k=>this.escapeHtml(k)).join(', ')} • <strong>${g.mapelSet.size} Mapel</strong>: ${Array.from(g.mapelSet).map(m=>this.escapeHtml(m)).join(', ')}
                         </div>
                     </td>
+                    <td style="text-align:center;font-weight:600;color:#334155;">${g.kelasSet.size} Kelas</td>
+                    <td style="text-align:center;">${badgeJp}</td>
                 </tr>`;
             });
-            html += `</tbody><tfoot><tr><td colspan="4" style="text-align:right;font-weight:700">Total JP:</td><td colspan="2" style="font-weight:700;color:var(--primary-dark)">${totalJp} Jam</td></tr></tfoot></table>`;
+
+            html += `</tbody><tfoot><tr>
+                <td colspan="3" style="text-align:right;font-weight:700">Total: ${rekap.length} Guru Mengajar</td>
+                <td style="text-align:center;font-weight:700">-</td>
+                <td style="text-align:center;font-weight:700;color:var(--primary-dark)">${totalJpSemua} Jam</td>
+            </tr></tfoot></table>`;
             $('#distTable').html(html);
+            return;
+        }
+
+        // Standard Table Mode
+        let data = this.state.distData || [];
+        if (kelasId) data = data.filter(d => d.kelas_id == kelasId);
+
+        if (!data.length) {
+            $('#distTable').html('<div class="sch-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg><h3>Tidak ada distribusi</h3><p>Pilih kelas lain atau tambahkan penugasan baru.</p></div>');
+            return;
+        }
+
+        let totalJp = 0;
+        let html = '<table class="sch-table"><thead><tr><th>No</th><th>Guru</th><th>Kelas</th><th>Mata Pelajaran</th><th>JP</th><th>Aksi</th></tr></thead><tbody>';
+        data.forEach((d, i) => {
+            totalJp += parseInt(d.jp);
+            html += `<tr>
+                <td>${i+1}</td>
+                <td><strong>${this.escapeHtml(d.nama_guru)}</strong><br><small style="color:var(--text-muted)">${this.escapeHtml(d.kode_guru)}</small></td>
+                <td>Rbl ${this.escapeHtml(d.rombel)} - ${this.escapeHtml(d.nama_kelas)}</td>
+                <td>${this.escapeHtml(d.nama_mapel)}</td>
+                <td><span style="background:var(--primary-light);padding:2px 8px;border-radius:12px;font-weight:600">${d.jp}</span></td>
+                <td>
+                    <div class="sch-actions">
+                        <button class="sch-btn-icon" onclick="Schedule.formDist(${d.id})" title="Edit"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                        <button class="sch-btn-icon danger" onclick="Schedule.deleteMaster('distribusi', ${d.id})" title="Hapus"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg></button>
+                    </div>
+                </td>
+            </tr>`;
         });
+        html += `</tbody><tfoot><tr><td colspan="4" style="text-align:right;font-weight:700">Total JP:</td><td colspan="2" style="font-weight:700;color:var(--primary-dark)">${totalJp} Jam</td></tr></tfoot></table>`;
+        $('#distTable').html(html);
+    },
+
+    showRekapDistribusiModal() {
+        const rekapList = this.getRekapitulasiData('');
+        if (!rekapList.length) {
+            alert('Belum ada data penugasan mengajar untuk direkap.');
+            return;
+        }
+
+        const totalGuru = rekapList.length;
+        const totalJp = rekapList.reduce((acc, g) => acc + g.total_jp, 0);
+        const rataRataJp = (totalJp / (totalGuru || 1)).toFixed(1);
+        const guruStandar = rekapList.filter(g => g.total_jp >= 24).length;
+
+        const modalHtml = `
+            <div style="margin-bottom:12px;">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(160px, 1fr));gap:12px;margin-bottom:16px;">
+                    <div style="background:#f0f9ff;border:1px solid #bae6fd;border-radius:10px;padding:12px;text-align:center;">
+                        <div style="font-size:11px;font-weight:600;color:#0369a1;text-transform:uppercase;">Total Guru</div>
+                        <div style="font-size:22px;font-weight:700;color:#0284c7;margin-top:2px;">${totalGuru} <span style="font-size:13px;font-weight:normal;">Guru</span></div>
+                    </div>
+                    <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:12px;text-align:center;">
+                        <div style="font-size:11px;font-weight:600;color:#92400e;text-transform:uppercase;">Total JP</div>
+                        <div style="font-size:22px;font-weight:700;color:#b45309;margin-top:2px;">${totalJp} <span style="font-size:13px;font-weight:normal;">JP</span></div>
+                    </div>
+                    <div style="background:#f5f3ff;border:1px solid #ddd6fe;border-radius:10px;padding:12px;text-align:center;">
+                        <div style="font-size:11px;font-weight:600;color:#6d28d9;text-transform:uppercase;">Rata-rata JP</div>
+                        <div style="font-size:22px;font-weight:700;color:#7c3aed;margin-top:2px;">${rataRataJp} <span style="font-size:13px;font-weight:normal;">JP</span></div>
+                    </div>
+                    <div style="background:#ecfdf5;border:1px solid #a7f3d0;border-radius:10px;padding:12px;text-align:center;">
+                        <div style="font-size:11px;font-weight:600;color:#047857;text-transform:uppercase;">&ge; 24 JP</div>
+                        <div style="font-size:22px;font-weight:700;color:#059669;margin-top:2px;">${guruStandar} <span style="font-size:13px;font-weight:normal;">Guru</span></div>
+                    </div>
+                </div>
+
+                <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;">
+                    <div style="position:relative;flex:1;max-width:300px;">
+                        <input type="text" id="rekapModalSearchInput" class="form-input" placeholder="🔍 Cari guru, kelas, mapel..." oninput="Schedule.filterRekapModalTable(this.value)" style="font-size:0.85rem;padding:7px 12px;">
+                    </div>
+                    <div style="display:flex;gap:8px;">
+                        <button type="button" class="btn btn-outline btn-sm" onclick="Schedule.printRekapDistribusi()" style="display:inline-flex;align-items:center;gap:6px;padding:6px 12px;">
+                            🖨️ Cetak Rekap
+                        </button>
+                    </div>
+                </div>
+
+                <div style="max-height:52vh;overflow-y:auto;border:1px solid #e2e8f0;border-radius:8px;" id="rekapModalTableWrapper">
+                    ${this.buildRekapTableHtml(rekapList)}
+                </div>
+            </div>
+        `;
+
+        if (window.EModal && EModal.form) {
+            EModal.form({
+                title: 'Rekapitulasi Distribusi Mengajar Guru & Total JP',
+                size: 'xl',
+                form: modalHtml,
+                confirmText: 'Tutup',
+                cancelText: 'Batal',
+                onOpen: () => { $('.emodal-footer .btn-ghost').hide(); },
+                onConfirm: () => { EModal.closeAll(); return true; }
+            });
+        }
+    },
+
+    buildRekapTableHtml(rekapList) {
+        let totalJpSemua = 0;
+        let html = '<table class="sch-table" style="margin-bottom:0;" id="tableRekapData"><thead><tr>';
+        html += '<th style="width:40px;text-align:center">No</th>';
+        html += '<th style="min-width:200px">Guru</th>';
+        html += '<th>Mengajar di Mana Saja (Kelas & Mata Pelajaran)</th>';
+        html += '<th style="width:110px;text-align:center">Jumlah Kelas</th>';
+        html += '<th style="width:110px;text-align:center">Total JP</th>';
+        html += '</tr></thead><tbody>';
+
+        rekapList.forEach((g, i) => {
+            totalJpSemua += g.total_jp;
+            const badges = g.assignments.map(a => `
+                <span style="display:inline-flex;align-items:center;gap:5px;background:#f8fafc;border:1px solid #cbd5e1;padding:3px 8px;border-radius:6px;font-size:12px;margin:2px 3px 2px 0;">
+                    <span style="background:#0284c7;color:#fff;font-weight:700;padding:1px 5px;border-radius:4px;font-size:10px;">${this.escapeHtml(a.nama_kelas)}</span>
+                    <span style="color:#1e293b;font-weight:500;">${this.escapeHtml(a.nama_mapel)}</span>
+                    <span style="background:#fef3c7;color:#b45309;font-weight:700;padding:1px 5px;border-radius:4px;font-size:11px;">${a.jp} JP</span>
+                </span>
+            `).join('');
+
+            const isStandard = g.total_jp >= 24;
+            const badgeJp = `<span style="display:inline-flex;align-items:center;justify-content:center;padding:4px 12px;border-radius:12px;font-weight:700;font-size:13px;${isStandard ? 'background:#dcfce7;color:#15803d;border:1px solid #86efac;' : 'background:#fef3c7;color:#b45309;border:1px solid #fde68a;'}" title="${isStandard ? 'Memenuhi standar 24 JP' : 'Kurang dari 24 JP'}">${g.total_jp} JP</span>`;
+
+            html += `<tr class="rekap-row" data-search="${this.escapeHtml((g.nama_guru + ' ' + (g.kode_guru||'') + ' ' + Array.from(g.kelasSet).join(' ') + ' ' + Array.from(g.mapelSet).join(' ')).toLowerCase())}">
+                <td style="text-align:center">${i+1}</td>
+                <td>
+                    <strong>${this.escapeHtml(g.nama_guru)}</strong>
+                    <br><small style="color:var(--text-muted)">${this.escapeHtml(g.kode_guru || '-')}</small>
+                </td>
+                <td>
+                    <div style="display:flex;flex-wrap:wrap;align-items:center;">${badges}</div>
+                    <div style="font-size:11px;color:#64748b;margin-top:4px;">
+                        Mengajar <strong>${g.kelasSet.size} Kelas</strong>: ${Array.from(g.kelasSet).map(k=>this.escapeHtml(k)).join(', ')} • <strong>${g.mapelSet.size} Mapel</strong>: ${Array.from(g.mapelSet).map(m=>this.escapeHtml(m)).join(', ')}
+                    </div>
+                </td>
+                <td style="text-align:center;font-weight:600;color:#334155;">${g.kelasSet.size} Kelas</td>
+                <td style="text-align:center;">${badgeJp}</td>
+            </tr>`;
+        });
+
+        html += `</tbody><tfoot><tr>
+            <td colspan="3" style="text-align:right;font-weight:700">Total: ${rekapList.length} Guru Mengajar</td>
+            <td style="text-align:center;font-weight:700">-</td>
+            <td style="text-align:center;font-weight:700;color:var(--primary-dark)">${totalJpSemua} Jam</td>
+        </tr></tfoot></table>`;
+        return html;
+    },
+
+    filterRekapModalTable(query) {
+        const q = (query || '').toLowerCase().trim();
+        $('#tableRekapData tbody tr.rekap-row').each(function() {
+            const rowSearch = $(this).data('search') || '';
+            if (!q || rowSearch.includes(q)) {
+                $(this).show();
+            } else {
+                $(this).hide();
+            }
+        });
+    },
+
+    printRekapDistribusi() {
+        const rekap = this.getRekapitulasiData('');
+        if (!rekap.length) return;
+        const totalGuru = rekap.length;
+        const totalJp = rekap.reduce((acc, g) => acc + g.total_jp, 0);
+
+        const rows = rekap.map((g, i) => `
+            <tr>
+                <td style="text-align:center;padding:6px;border:1px solid #333;">${i+1}</td>
+                <td style="padding:6px;border:1px solid #333;"><strong>${this.escapeHtml(g.nama_guru)}</strong><br><small style="color:#555;">${this.escapeHtml(g.kode_guru||'-')}</small></td>
+                <td style="padding:6px;border:1px solid #333;">
+                    ${g.assignments.map(a => `<span style="display:inline-block;margin-right:8px;margin-bottom:2px;">• <strong>${this.escapeHtml(a.nama_kelas)}</strong>: ${this.escapeHtml(a.nama_mapel)} (<strong>${a.jp} JP</strong>)</span>`).join('<br>')}
+                </td>
+                <td style="text-align:center;padding:6px;border:1px solid #333;">${g.kelasSet.size} Kelas</td>
+                <td style="text-align:center;padding:6px;border:1px solid #333;font-weight:bold;">${g.total_jp} JP</td>
+            </tr>
+        `).join('');
+
+        const printWin = window.open('', '_blank');
+        printWin.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Rekapitulasi Penugasan Mengajar Guru</title>
+                <style>
+                    body { font-family: Arial, sans-serif; padding: 20px; color: #111; }
+                    h2 { margin: 0 0 6px 0; text-align: center; text-transform: uppercase; font-size: 16px; }
+                    .sub { text-align: center; color: #444; margin-bottom: 20px; font-size: 12px; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+                    th { background: #f1f5f9; padding: 8px; border: 1px solid #333; }
+                    tfoot td { font-weight: bold; background: #f8fafc; padding: 8px; border: 1px solid #333; }
+                    @media print { @page { size: landscape; margin: 12mm; } }
+                </style>
+            </head>
+            <body>
+                <h2>Rekapitulasi Penugasan / Distribusi Mengajar Guru</h2>
+                <div class="sub">Total: <strong>${totalGuru}</strong> Guru Mengajar • Total Beban: <strong>${totalJp}</strong> Jam Pelajaran (JP)</div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width:35px;">No</th>
+                            <th style="width:220px;">Nama Guru</th>
+                            <th>Mengajar di Mana Saja (Kelas & Mata Pelajaran)</th>
+                            <th style="width:90px;">Jml Kelas</th>
+                            <th style="width:80px;">Total JP</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                    <tfoot>
+                        <tr>
+                            <td colspan="3" style="text-align:right;">Total Keseluruhan:</td>
+                            <td style="text-align:center;">-</td>
+                            <td style="text-align:center;">${totalJp} JP</td>
+                        </tr>
+                    </tfoot>
+                </table>
+                <script>window.onload = function() { window.print(); }<\/script>
+            </body>
+            </html>
+        `);
+        printWin.document.close();
     },
 
     formDist(id = null) {

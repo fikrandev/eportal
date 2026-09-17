@@ -492,21 +492,34 @@ const ExamApp = {
             $('#btnNext').show().prop('disabled', false).css('opacity', '1');
             $('#btnFinish').hide();
         }
-        // Media
+        // Media & Audio Play Limits
+        if (!this.audioPlayCount && this.sessionId) {
+            try {
+                const storedCounts = localStorage.getItem('exam_audio_counts_' + this.sessionId);
+                this.audioPlayCount = storedCounts ? JSON.parse(storedCounts) : {};
+            } catch (e) {
+                this.audioPlayCount = {};
+            }
+        }
         this.audioPlayCount = this.audioPlayCount || {};
         let mediaHtml = '';
         if (s.gambar) mediaHtml += `<img src="../${s.gambar}" style="max-width:100%; border-radius:8px; margin-bottom:12px;">`;
         if (s.audio) {
+            const limit = typeof s.audio_play_limit !== 'undefined' ? parseInt(s.audio_play_limit, 10) : 0;
             const playedCount = this.audioPlayCount[s.id] || 0;
-            if (playedCount >= 2) {
-                mediaHtml += `<div style="background:#fee2e2;color:#b91c1c;padding:12px;border-radius:8px;font-weight:600;text-align:center;margin-bottom:12px;">⚠️ Audio listening telah diputar 2x (batas maksimal tercapai)</div>`;
+            if (limit > 0 && playedCount >= limit) {
+                mediaHtml += `<div style="background:#fee2e2;color:#b91c1c;padding:12px;border-radius:8px;font-weight:600;text-align:center;margin-bottom:12px;">⚠️ Audio listening telah diputar ${limit}x (batas maksimal tercapai)</div>`;
             } else {
+                const remainingText = limit > 0
+                    ? `Sisa pemutaran: <strong id="audio_remaining_${s.id}">${limit - playedCount}</strong> dari ${limit} kali`
+                    : `Sisa pemutaran: <strong id="audio_remaining_${s.id}" style="color:#059669;">Bebas (Tanpa batas)</strong>`;
+
                 mediaHtml += `
-                    <div style="margin-bottom:12px;">
+                    <div style="margin-bottom:12px;background:#f8fafc;padding:12px;border-radius:10px;border:1px solid #e2e8f0;">
                         <audio id="audio_player_${s.id}" controls controlsList="nodownload noplaybackrate" style="width:100%;">
                             <source src="../${s.audio}">
                         </audio>
-                        <div style="font-size:12px;color:#64748b;margin-top:4px;text-align:right;">Sisa pemutaran: <strong id="audio_remaining_${s.id}">${2 - playedCount}</strong> kali</div>
+                        <div style="font-size:12px;color:#64748b;margin-top:6px;text-align:right;">${remainingText}</div>
                     </div>
                 `;
             }
@@ -514,17 +527,25 @@ const ExamApp = {
         $('#uiSoalMedia').html(mediaHtml);
 
         // Hook audio event
-        if (s.audio && (this.audioPlayCount[s.id] || 0) < 2) {
+        const audioLimit = typeof s.audio_play_limit !== 'undefined' ? parseInt(s.audio_play_limit, 10) : 0;
+        if (s.audio && (audioLimit === 0 || (this.audioPlayCount[s.id] || 0) < audioLimit)) {
             setTimeout(() => {
                 const player = document.getElementById(`audio_player_${s.id}`);
                 if (player) {
                     player.addEventListener('ended', () => {
-                        this.audioPlayCount[s.id] = (this.audioPlayCount[s.id] || 0) + 1;
-                        const newCount = this.audioPlayCount[s.id];
-                        if (newCount >= 2) {
-                            $(`#audio_player_${s.id}`).parent().html(`<div style="background:#fee2e2;color:#b91c1c;padding:12px;border-radius:8px;font-weight:600;text-align:center;margin-bottom:12px;">🔊 Audio listening telah diputar 2x (batas maksimal tercapai)</div>`);
-                        } else {
-                            $(`#audio_remaining_${s.id}`).text(2 - newCount);
+                        if (audioLimit > 0) {
+                            this.audioPlayCount[s.id] = (this.audioPlayCount[s.id] || 0) + 1;
+                            const newCount = this.audioPlayCount[s.id];
+                            if (this.sessionId) {
+                                try {
+                                    localStorage.setItem('exam_audio_counts_' + this.sessionId, JSON.stringify(this.audioPlayCount));
+                                } catch (e) {}
+                            }
+                            if (newCount >= audioLimit) {
+                                $(`#audio_player_${s.id}`).parent().html(`<div style="background:#fee2e2;color:#b91c1c;padding:12px;border-radius:8px;font-weight:600;text-align:center;margin-bottom:12px;">🔊 Audio listening telah diputar ${audioLimit}x (batas maksimal tercapai)</div>`);
+                            } else {
+                                $(`#audio_remaining_${s.id}`).text(audioLimit - newCount);
+                            }
                         }
                     });
                 }
@@ -854,6 +875,7 @@ const ExamApp = {
                     if (this._heartbeatInterval) clearInterval(this._heartbeatInterval);
                     if (this._devtoolsCheckInterval) clearInterval(this._devtoolsCheckInterval);
                     if (this.timerInterval) clearInterval(this.timerInterval);
+                    try { localStorage.removeItem('exam_audio_counts_' + this.sessionId); } catch(e) {}
                     window.location.href = 'dashboard.php';
                 } else {
                     EModal.alert('Gagal', r.message);

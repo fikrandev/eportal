@@ -638,13 +638,34 @@ const Exam = {
                         <span class="ex-soal-number">${i+1}</span>
                         <div class="ex-soal-pertanyaan">${s.pertanyaan}</div>
                     </div>
-                    ${s.gambar ? `<div style="padding-left:44px;margin-bottom:12px;"><img src="${this.state.moduleUrl + s.gambar}" style="max-width:300px;border-radius:8px;border:1px solid var(--bg-dark);" alt="gambar soal"></div>` : ''}
-                    ${s.audio ? `<div style="padding-left:44px;margin-bottom:12px;"><audio controls style="max-width:100%"><source src="${this.state.moduleUrl + s.audio}" type="audio/mpeg"></audio></div>` : ''}
+                    ${s.gambar ? `
+                    <div style="padding-left:44px;margin-bottom:12px;">
+                        <div style="display:inline-flex;flex-direction:column;gap:6px;align-items:flex-start;background:#f8fafc;padding:8px;border-radius:8px;border:1px solid #e2e8f0;">
+                            <img src="${this.state.moduleUrl + s.gambar}" style="max-width:300px;max-height:220px;object-fit:contain;border-radius:6px;border:1px solid #e2e8f0;background:#fff;" alt="gambar soal">
+                            <button type="button" class="btn btn-sm" style="color:#dc2626;border:1px solid #fca5a5;background:#fef2f2;padding:3px 8px;font-size:11px;border-radius:6px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;" onclick="Exam.deleteSoalMedia(${bankId}, ${s.id}, 'gambar')">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                Hapus Gambar
+                            </button>
+                        </div>
+                    </div>` : ''}
+                    ${s.audio ? `
+                    <div style="padding-left:44px;margin-bottom:12px;">
+                        <div style="display:inline-flex;align-items:center;gap:10px;background:#f8fafc;padding:8px 12px;border-radius:8px;border:1px solid #e2e8f0;flex-wrap:wrap;">
+                            <audio controls style="max-width:300px;height:34px;"><source src="${this.state.moduleUrl + s.audio}" type="audio/mpeg"></audio>
+                            <span style="font-size:11px;background:#f3e8ff;color:#7e22ce;padding:3px 8px;border-radius:6px;font-weight:600;border:1px solid #e9d5ff;">
+                                🎧 ${parseInt(s.audio_play_limit) > 0 ? `Batas: ${s.audio_play_limit}x putar` : 'Bebas diputar'}
+                            </span>
+                            <button type="button" class="btn btn-sm" style="color:#dc2626;border:1px solid #fca5a5;background:#fef2f2;padding:4px 8px;font-size:11px;border-radius:6px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;" onclick="Exam.deleteSoalMedia(${bankId}, ${s.id}, 'audio')">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                Hapus Audio
+                            </button>
+                        </div>
+                    </div>` : ''}
                     ${opsiHtml}
                     <div class="ex-soal-meta">
                         ${tipeBadge}
                         <span class="ex-badge ex-badge-gray">Bobot: ${s.bobot}</span>
-                        ${s.audio ? '<span class="ex-badge ex-badge-purple">🔊 Audio</span>' : ''}
+                        ${s.audio ? `<span class="ex-badge ex-badge-purple">🔊 Audio (${parseInt(s.audio_play_limit) > 0 ? s.audio_play_limit + 'x putar' : 'Bebas'})</span>` : ''}
                     </div>
                 </div>`;
             }).join('');
@@ -775,13 +796,55 @@ const Exam = {
                 <div class="ex-form-row">
                     <div class="form-group">
                         <label class="form-label">Gambar Lampiran Utama (opsional)</label>
-                        <input type="file" class="form-input" id="fSoalGambarFile" accept="image/*">
-                        ${existing && existing.gambar ? `<div style="margin-top:6px; font-size:12px; color:#3b82f6;">Saat ini: ${existing.gambar}</div>` : ''}
+                        ${existing && existing.gambar ? `
+                            <div id="fSoalGambarExisting" style="display:flex;align-items:center;gap:12px;background:#f8fafc;padding:10px;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:8px;">
+                                <img src="${this.state.moduleUrl + existing.gambar}" style="width:52px;height:52px;object-fit:cover;border-radius:6px;border:1px solid #cbd5e1;" alt="lampiran">
+                                <div style="flex:1;min-width:0;">
+                                    <div style="font-size:12px;font-weight:600;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${existing.gambar.split('/').pop()}</div>
+                                    <div id="fSoalGambarStatus" style="font-size:11px;color:#64748b;">Gambar saat ini terpasang</div>
+                                </div>
+                                <button type="button" id="btnToggleHapusGambar" class="btn btn-sm" onclick="Exam.toggleDeleteGambar()" style="color:#dc2626;border:1px solid #fca5a5;background:#fef2f2;padding:4px 10px;font-size:12px;border-radius:6px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                    <span>Hapus</span>
+                                </button>
+                            </div>
+                        ` : ''}
+                        <input type="file" class="form-input" id="fSoalGambarFile" accept="image/*" onchange="Exam.handleFileSelected('gambar', this)">
+                        <div id="fSoalGambarNewPreview" style="display:none;margin-top:6px;padding:8px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;align-items:center;gap:10px;"></div>
                     </div>
                     <div class="form-group">
                         <label class="form-label">Audio Listening (opsional)</label>
-                        <input type="file" class="form-input" id="fSoalAudioFile" accept="audio/*">
-                        ${existing && existing.audio ? `<div style="margin-top:6px; font-size:12px; color:#7c3aed;">Saat ini: ${existing.audio}</div>` : ''}
+                        ${existing && existing.audio ? `
+                            <div id="fSoalAudioExisting" style="display:flex;align-items:center;gap:12px;background:#f8fafc;padding:10px;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:8px;">
+                                <div style="font-size:22px;">🔊</div>
+                                <div style="flex:1;min-width:0;">
+                                    <div style="font-size:12px;font-weight:600;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${existing.audio.split('/').pop()}</div>
+                                    <audio controls style="width:100%;height:30px;margin-top:4px;"><source src="${this.state.moduleUrl + existing.audio}" type="audio/mpeg"></audio>
+                                    <div id="fSoalAudioStatus" style="font-size:11px;color:#64748b;margin-top:2px;">Audio saat ini terpasang</div>
+                                </div>
+                                <button type="button" id="btnToggleHapusAudio" class="btn btn-sm" onclick="Exam.toggleDeleteAudio()" style="color:#dc2626;border:1px solid #fca5a5;background:#fef2f2;padding:4px 10px;font-size:12px;border-radius:6px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                    <span>Hapus</span>
+                                </button>
+                            </div>
+                        ` : ''}
+                        <input type="file" class="form-input" id="fSoalAudioFile" accept="audio/*" onchange="Exam.handleFileSelected('audio', this)">
+                        <div id="fSoalAudioNewPreview" style="display:none;margin-top:6px;padding:8px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;align-items:center;gap:10px;"></div>
+                        
+                        <div style="margin-top:8px;padding:10px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
+                            <label class="form-label" style="font-size:12px;margin-bottom:4px;font-weight:600;">Batas Pemutaran Audio Siswa:</label>
+                            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                                <input type="number" class="form-input" id="fSoalAudioLimit" value="${existing ? (existing.audio_play_limit ?? 0) : 0}" min="0" max="99" style="width:75px;text-align:center;font-weight:bold;padding:4px 8px;">
+                                <span style="font-size:12px;color:#475569;">kali</span>
+                                <div style="display:flex;gap:4px;">
+                                    <button type="button" class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:11px;border:1px solid #cbd5e1;" onclick="$('#fSoalAudioLimit').val(0)">0 (Bebas)</button>
+                                    <button type="button" class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:11px;border:1px solid #cbd5e1;" onclick="$('#fSoalAudioLimit').val(1)">1x</button>
+                                    <button type="button" class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:11px;border:1px solid #cbd5e1;" onclick="$('#fSoalAudioLimit').val(2)">2x</button>
+                                    <button type="button" class="btn btn-ghost btn-sm" style="padding:2px 8px;font-size:11px;border:1px solid #cbd5e1;" onclick="$('#fSoalAudioLimit').val(3)">3x</button>
+                                </div>
+                            </div>
+                            <div style="font-size:11px;color:#64748b;margin-top:4px;">Isi <strong>0</strong> untuk putar tanpa batas (bebas), atau tentukan berapa kali audio boleh diputar siswa saat ujian.</div>
+                        </div>
                     </div>
                 </div>
                 <div id="fSoalOpsiContainer" style="margin-top:16px;"></div>
@@ -791,6 +854,8 @@ const Exam = {
             onOpen: () => {
                 window._examSoalOpsi = opsi;
                 window._examSoalKunci = kunci;
+                window._examDeleteGambar = false;
+                window._examDeleteAudio = false;
                 
                 // Initialize Quill Editor for Pertanyaan
                 if (window.Quill) {
@@ -892,6 +957,15 @@ const Exam = {
                     data.audio = existing.audio;
                 }
 
+                if (window._examDeleteGambar) {
+                    data.delete_gambar = 1;
+                    data.gambar = 'DELETE';
+                }
+                if (window._examDeleteAudio) {
+                    data.delete_audio = 1;
+                    data.audio = 'DELETE';
+                }
+
                 const imgFile = document.getElementById('fSoalGambarFile')?.files[0];
                 const audFile = document.getElementById('fSoalAudioFile')?.files[0];
 
@@ -901,7 +975,11 @@ const Exam = {
                 if (imgFile) {
                     uploadPromises.push(new Promise((resolve, reject) => {
                         this.uploadFile(imgFile, 'image').then(r => {
-                            if (r.success) { data.gambar = r.data.path; resolve(); }
+                            if (r.success) {
+                                data.gambar = r.data.path;
+                                delete data.delete_gambar;
+                                resolve();
+                            }
                             else { reject(r.message || 'Gagal upload gambar'); }
                         }).fail(() => reject('Gagal koneksi upload gambar'));
                     }));
@@ -909,7 +987,11 @@ const Exam = {
                 if (audFile) {
                     uploadPromises.push(new Promise((resolve, reject) => {
                         this.uploadFile(audFile, 'audio').then(r => {
-                            if (r.success) { data.audio = r.data.path; resolve(); }
+                            if (r.success) {
+                                data.audio = r.data.path;
+                                delete data.delete_audio;
+                                resolve();
+                            }
                             else { reject(r.message || 'Gagal upload audio'); }
                         }).fail(() => reject('Gagal koneksi upload audio'));
                     }));
@@ -1099,7 +1181,8 @@ const Exam = {
             bobot = totalScore;
         }
 
-        return { tipe_soal: tipe, pertanyaan, opsi, kunci_jawaban, pembahasan, bobot };
+        const audio_play_limit = Math.max(0, parseInt($('#fSoalAudioLimit').val(), 10) || 0);
+        return { tipe_soal: tipe, pertanyaan, opsi, kunci_jawaban, pembahasan, bobot, audio_play_limit };
     },
 
     deleteSoal(id, bankId) {
@@ -1110,6 +1193,113 @@ const Exam = {
                 this.api('bank_soal.php?action=delete_soal', { method:'POST', data:{id} }).then(r => {
                     if (r.success) { EModal.toast({type:'success',title:'Berhasil'}); this.navigate('detail_bank', {id: bankId}); }
                     else EModal.alert('Gagal', r.message);
+                });
+            }
+        });
+    },
+
+    toggleDeleteGambar() {
+        window._examDeleteGambar = !window._examDeleteGambar;
+        const $box = $('#fSoalGambarExisting');
+        const $status = $('#fSoalGambarStatus');
+        const $btn = $('#btnToggleHapusGambar');
+        if (window._examDeleteGambar) {
+            $box.css({ opacity: 0.5, background: '#fef2f2', 'border-color': '#fca5a5' });
+            $status.html('<span style="color:#dc2626;font-weight:600;">(Akan dihapus saat disimpan)</span>');
+            $btn.css({ color: '#475569', border: '1px solid #cbd5e1', background: '#f1f5f9' }).html('<span>Batal Hapus</span>');
+        } else {
+            $box.css({ opacity: 1, background: '#f8fafc', 'border-color': '#e2e8f0' });
+            $status.html('Gambar saat ini terpasang');
+            $btn.css({ color: '#dc2626', border: '1px solid #fca5a5', background: '#fef2f2' }).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> <span>Hapus</span>');
+        }
+    },
+
+    toggleDeleteAudio() {
+        window._examDeleteAudio = !window._examDeleteAudio;
+        const $box = $('#fSoalAudioExisting');
+        const $status = $('#fSoalAudioStatus');
+        const $btn = $('#btnToggleHapusAudio');
+        if (window._examDeleteAudio) {
+            $box.css({ opacity: 0.5, background: '#fef2f2', 'border-color': '#fca5a5' });
+            $status.html('<span style="color:#dc2626;font-weight:600;">(Akan dihapus saat disimpan)</span>');
+            $btn.css({ color: '#475569', border: '1px solid #cbd5e1', background: '#f1f5f9' }).html('<span>Batal Hapus</span>');
+        } else {
+            $box.css({ opacity: 1, background: '#f8fafc', 'border-color': '#e2e8f0' });
+            $status.html('Audio saat ini terpasang');
+            $btn.css({ color: '#dc2626', border: '1px solid #fca5a5', background: '#fef2f2' }).html('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> <span>Hapus</span>');
+        }
+    },
+
+    handleFileSelected(type, input) {
+        const file = input.files && input.files[0];
+        if (type === 'gambar') {
+            const $preview = $('#fSoalGambarNewPreview');
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    $preview.html(`
+                        <img src="${e.target.result}" style="width:42px;height:42px;object-fit:cover;border-radius:4px;border:1px solid #86efac;">
+                        <div style="flex:1;font-size:12px;color:#166534;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                            <strong>Akan diupload:</strong> ${this.esc(file.name)} (${(file.size / 1024).toFixed(1)} KB)
+                        </div>
+                        <button type="button" class="btn btn-ghost btn-sm" style="color:#ef4444;padding:2px 8px;font-size:12px;" onclick="Exam.clearSelectedFile('gambar')">✕ Batal</button>
+                    `).css('display', 'flex');
+                };
+                reader.readAsDataURL(file);
+            } else {
+                $preview.hide().empty();
+            }
+        } else if (type === 'audio') {
+            const $preview = $('#fSoalAudioNewPreview');
+            if (file) {
+                $preview.html(`
+                    <span style="font-size:20px;">🎵</span>
+                    <div style="flex:1;font-size:12px;color:#166534;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                        <strong>Akan diupload:</strong> ${this.esc(file.name)} (${(file.size / 1024).toFixed(1)} KB)
+                    </div>
+                    <button type="button" class="btn btn-ghost btn-sm" style="color:#ef4444;padding:2px 8px;font-size:12px;" onclick="Exam.clearSelectedFile('audio')">✕ Batal</button>
+                `).css('display', 'flex');
+            } else {
+                $preview.hide().empty();
+            }
+        }
+    },
+
+    clearSelectedFile(type) {
+        if (type === 'gambar') {
+            const input = document.getElementById('fSoalGambarFile');
+            if (input) input.value = '';
+            $('#fSoalGambarNewPreview').hide().empty();
+        } else if (type === 'audio') {
+            const input = document.getElementById('fSoalAudioFile');
+            if (input) input.value = '';
+            $('#fSoalAudioNewPreview').hide().empty();
+        }
+    },
+
+    deleteSoalMedia(bankId, soalId, type) {
+        const label = type === 'gambar' ? 'Gambar' : 'Audio';
+        EModal.confirm({
+            title: `Hapus ${label} Soal`,
+            message: `Apakah Anda yakin ingin menghapus ${label.toLowerCase()} dari soal ini? File di server akan dihapus secara permanen.`,
+            type: 'danger',
+            confirmText: 'Ya, Hapus',
+            onConfirm: () => {
+                const loader = EModal.loading(`Menghapus ${label.toLowerCase()}...`);
+                this.api('bank_soal.php?action=delete_media', {
+                    method: 'POST',
+                    data: { id: soalId, type: type }
+                }).then(r => {
+                    EModal.close(loader);
+                    if (r.success) {
+                        EModal.toast({ type: 'success', title: 'Berhasil', message: r.message });
+                        this.navigate('detail_bank', { id: bankId });
+                    } else {
+                        EModal.toast({ type: 'error', title: 'Gagal', message: r.message });
+                    }
+                }).fail(() => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'error', title: 'Error', message: `Gagal menghapus ${label.toLowerCase()}` });
                 });
             }
         });

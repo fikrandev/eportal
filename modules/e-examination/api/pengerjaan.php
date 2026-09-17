@@ -417,7 +417,7 @@ try {
             // Fetch answers and questions
             $stmtAns = db()->prepare("
                 SELECT j.id as jawaban_id, j.urutan, j.jawaban, j.opsi_acak, j.is_ragu AS ragu_ragu,
-                       s.id as soal_id, s.tipe_soal, s.pertanyaan, s.opsi, s.gambar, s.audio, s.bobot
+                       s.id as soal_id, s.tipe_soal, s.pertanyaan, s.opsi, s.gambar, s.audio, s.audio_play_limit, s.bobot
                 FROM exam_jawaban j
                 JOIN exam_soal s ON j.soal_id = s.id
                 WHERE j.sesi_id = ?
@@ -490,6 +490,7 @@ try {
                         'pertanyaan' => $s['pertanyaan'],
                         'gambar' => $s['gambar'],
                         'audio' => $s['audio'],
+                        'audio_play_limit' => (int)($s['audio_play_limit'] ?? 0),
                         'opsi' => $opsi
                     ]
                 ];

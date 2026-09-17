@@ -67,77 +67,99 @@ switch ($action) {
             db()->query("DELETE FROM sch_jadwal");
             db()->query("ALTER TABLE sch_jadwal AUTO_INCREMENT = 1");
 
-            // Mulai transaksi setelah ALTER TABLE karena ALTER TABLE menyebabkan implicit commit
-            db()->beginTransaction();
-
             // 2. Load Environment
-            $jamRows = db()->query("SELECT * FROM sch_jam_belajar ORDER BY CASE hari WHEN 'Senin' THEN 1 WHEN 'Selasa' THEN 2 WHEN 'Rabu' THEN 3 WHEN 'Kamis' THEN 4 WHEN 'Jumat' THEN 5 WHEN 'Sabtu' THEN 6 ELSE 7 END, jam_ke ASC")->fetchAll();
-            $kelasRows = db()->query("SELECT id FROM sch_kelas")->fetchAll();
-            $guruRows = db()->query("SELECT id FROM sch_guru")->fetchAll();
+            $jamRows = db()->query("
+                SELECT * FROM sch_jam_belajar 
+                ORDER BY CASE hari WHEN 'Senin' THEN 1 WHEN 'Selasa' THEN 2 WHEN 'Rabu' THEN 3 WHEN 'Kamis' THEN 4 WHEN 'Jumat' THEN 5 WHEN 'Sabtu' THEN 6 ELSE 7 END, jam_ke ASC
+            ")->fetchAll(PDO::FETCH_ASSOC);
+            $kelasRows = db()->query("SELECT id FROM sch_kelas")->fetchAll(PDO::FETCH_ASSOC);
+            $guruRows = db()->query("SELECT id FROM sch_guru")->fetchAll(PDO::FETCH_ASSOC);
             
             $distribusiRows = db()->query("
                 SELECT d.*, m.nama_mapel 
                 FROM sch_distribusi d 
                 JOIN sch_mapel m ON d.mapel_id = m.id 
                 ORDER BY d.jp DESC
-            ")->fetchAll();
+            ")->fetchAll(PDO::FETCH_ASSOC);
             
-            $kesediaanRows = db()->query("SELECT guru_id, jam_belajar_id FROM sch_kesediaan")->fetchAll();
+            $kesediaanRows = db()->query("SELECT guru_id, jam_belajar_id FROM sch_kesediaan")->fetchAll(PDO::FETCH_ASSOC);
             
             // Map Kesediaan (guru -> jam_ids)
             $kesediaanMap = [];
-            foreach($kesediaanRows as $kr) {
+            foreach ($kesediaanRows as $kr) {
                 $kesediaanMap[$kr['guru_id']][$kr['jam_belajar_id']] = true;
             }
 
-            // Prepare memory structures
-            $schedule = []; // schedule[kelas_id][jam_id] = distribusi_id
-            $guruBusy = []; // guruBusy[guru_id][jam_id] = true
-
-            // Group jam by hari for block searching rules
+            // Group jam by hari for block searching rules (only Pembelajaran slots)
             $jamByHari = [];
-            $jamList = []; // flat ordered list
-            foreach($jamRows as $j) {
-                $jamByHari[$j['hari']][] = $j;
-                $jamList[$j['id']] = $j;
+            $hariOrder = [];
+            $jamLookup = [];
+            foreach ($jamRows as $j) {
+                $jamLookup[$j['id']] = $j;
+                if ($j['tipe'] === 'Pembelajaran') {
+                    $jamByHari[$j['hari']][] = $j;
+                    if (!in_array($j['hari'], $hariOrder)) {
+                        $hariOrder[] = $j['hari'];
+                    }
+                }
             }
 
-            // Placing blocks solver - Multi-Start Randomized Heuristic
-            // We simulate multiple placements (up to 50 iterations or 45 seconds)
-            // and keep the schedule with the fewest unplaced slots.
-            
-            $bestUnplacedCount = PHP_INT_MAX;
-            $bestScheduleData = [];
-            
-            $maxIterations = 100; // Increased iterations for better results
+            $kelasTotalJp = [];
+            foreach ($distribusiRows as $d) {
+                $kelasTotalJp[$d['kelas_id']] = ($kelasTotalJp[$d['kelas_id']] ?? 0) + (int)$d['jp'];
+            }
+
+            // Multi-Start Optimization Solver
+            $bestResult = null;
+            $maxIterations = 50;
             $startTime = microtime(true);
-            $maxTimeSeconds = 45; // Max 45 seconds to prevent request timeout
+            $maxTimeSeconds = 35;
 
             for ($iter = 0; $iter < $maxIterations; $iter++) {
-                if (microtime(true) - $startTime > $maxTimeSeconds) break;
+                if (microtime(true) - $startTime > $maxTimeSeconds && $bestResult !== null) break;
 
-                $schedule = []; // Memory tracking for overlap
+                $schedule = [];
                 $guruBusy = [];
-                $currentUnplaced = [];
-                $currentScheduleData = []; // Array of [kelas_id, jam_id, distribusi_id]
+                $kelasDailyJp = [];
+                $classSubjectHari = [];
+                $scheduleData = [];
+                $unplaced = [];
+                $relaxedCount = 0;
 
-                // Shuffle distribusi but prefer larger JPs first
-                $shuffledDistribusi = $distribusiRows;
-                shuffle($shuffledDistribusi);
-                usort($shuffledDistribusi, function($a, $b) {
-                    // Small random factor so it's not identical every loop
-                    $scoreA = (int)$a['jp'] + (rand(0, 20) / 100);
-                    $scoreB = (int)$b['jp'] + (rand(0, 20) / 100);
-                    return $scoreB <=> $scoreA;
+                // Most Constrained First (guru dengan rasio beban JP / slot kesediaan tertinggi diproses lebih awal)
+                $teacherLoad = [];
+                foreach ($distribusiRows as $d) {
+                    $g = $d['guru_id'];
+                    $teacherLoad[$g] = ($teacherLoad[$g] ?? 0) + (int)$d['jp'];
+                }
+
+                $distList = $distribusiRows;
+                usort($distList, function($a, $b) use ($teacherLoad, $kesediaanMap) {
+                    $gA = $a['guru_id'];
+                    $gB = $b['guru_id'];
+                    $kesA = isset($kesediaanMap[$gA]) ? count($kesediaanMap[$gA]) : 999;
+                    $kesB = isset($kesediaanMap[$gB]) ? count($kesediaanMap[$gB]) : 999;
+                    
+                    $ratioA = ($teacherLoad[$gA] / max(1, $kesA)) + (rand(0, 15) / 100);
+                    $ratioB = ($teacherLoad[$gB] / max(1, $kesB)) + (rand(0, 15) / 100);
+
+                    if (abs($ratioA - $ratioB) > 0.05) {
+                        return $ratioB <=> $ratioA;
+                    }
+                    return (int)$b['jp'] <=> (int)$a['jp'];
                 });
 
-                foreach ($shuffledDistribusi as $dist) {
+                foreach ($distList as $dist) {
                     $kId = $dist['kelas_id'];
                     $gId = $dist['guru_id'];
                     $dId = $dist['id'];
+                    $mId = $dist['mapel_id'];
                     $jp = (int)$dist['jp'];
-                    
-                    // Rule Breakdown
+
+                    $totJpKelas = $kelasTotalJp[$kId] ?? 17;
+                    $numDays = count($hariOrder);
+                    $maxPerDay = max(3, (int)ceil($totJpKelas / $numDays) + 1);
+
                     $blocks = [];
                     if ($jp == 1) $blocks = [1];
                     elseif ($jp == 2) $blocks = [2];
@@ -146,7 +168,7 @@ switch ($action) {
                     elseif ($jp == 5) $blocks = [3, 2];
                     else {
                         $rem = $jp;
-                        while($rem > 0) {
+                        while ($rem > 0) {
                             if ($rem >= 2) { $blocks[] = 2; $rem -= 2; }
                             else { $blocks[] = 1; $rem -= 1; }
                         }
@@ -156,87 +178,157 @@ switch ($action) {
                     while (!empty($blocksQueue)) {
                         $blockSize = array_shift($blocksQueue);
                         $placed = false;
-                        
-                        $haris = array_keys($jamByHari);
-                        shuffle($haris); // Randomize day order
 
-                        foreach ($haris as $hari) {
+                        $passes = [true];
+                        if (!empty($kesediaanMap[$gId])) {
+                            $passes = [true, false]; // Pass 1: Strict kesediaan; Pass 2: Fallback jika slot kesediaan guru < JP mengajar
+                        }
+
+                        foreach ($passes as $strictKesediaan) {
                             if ($placed) break;
-                            $hariJams = $jamByHari[$hari];
-                            
-                            for ($i = 0; $i < count($hariJams); $i++) {
-                                if ($hariJams[$i]['tipe'] !== 'Pembelajaran') continue;
 
-                                $canPlace = true;
-                                $candidateSlots = [];
-                                $foundBlocks = 0;
+                            // Urutkan hari: utamakan hari dengan JP terendah pada kelas ini agar tidak ada HARI KOSONG
+                            $haris = $hariOrder;
+                            shuffle($haris);
+                            usort($haris, function($hA, $hB) use ($kId, $mId, $kelasDailyJp, $classSubjectHari) {
+                                $currJpA = $kelasDailyJp[$kId][$hA] ?? 0;
+                                $currJpB = $kelasDailyJp[$kId][$hB] ?? 0;
+                                
+                                $hasSubjA = !empty($classSubjectHari[$kId][$mId][$hA]) ? 10 : 0;
+                                $hasSubjB = !empty($classSubjectHari[$kId][$mId][$hB]) ? 10 : 0;
 
-                                for ($j = $i; $j < count($hariJams) && $foundBlocks < $blockSize; $j++) {
-                                    $slot = $hariJams[$j];
-                                    if ($slot['tipe'] !== 'Pembelajaran') continue;
+                                return ($currJpA + $hasSubjA) <=> ($currJpB + $hasSubjB);
+                            });
 
-                                    if (isset($schedule[$kId][$slot['id']])) { $canPlace = false; break; }
-                                    if (isset($guruBusy[$gId][$slot['id']])) { $canPlace = false; break; }
-                                    if (!empty($kesediaanMap[$gId]) && !isset($kesediaanMap[$gId][$slot['id']])) { $canPlace = false; break; }
+                            foreach ($haris as $hari) {
+                                if ($placed) break;
+                                $currJp = $kelasDailyJp[$kId][$hari] ?? 0;
 
-                                    $candidateSlots[] = $slot['id'];
-                                    $foundBlocks++;
+                                if ($currJp + $blockSize > $maxPerDay && $strictKesediaan) {
+                                    continue;
                                 }
 
-                                if ($canPlace && $foundBlocks == $blockSize) {
-                                    foreach ($candidateSlots as $cSlotId) {
-                                        $schedule[$kId][$cSlotId] = $dId;
-                                        $guruBusy[$gId][$cSlotId] = true;
-                                        $currentScheduleData[] = [$kId, $cSlotId, $dId];
+                                $hariJams = $jamByHari[$hari];
+
+                                for ($i = 0; $i <= count($hariJams) - $blockSize; $i++) {
+                                    $canPlace = true;
+                                    $candidateSlots = [];
+
+                                    for ($step = 0; $step < $blockSize; $step++) {
+                                        $slot = $hariJams[$i + $step];
+
+                                        if ($slot['tipe'] !== 'Pembelajaran') { $canPlace = false; break; }
+                                        if (isset($schedule[$kId][$slot['id']])) { $canPlace = false; break; }
+                                        if (isset($guruBusy[$gId][$slot['id']])) { $canPlace = false; break; }
+                                        if ($strictKesediaan && !empty($kesediaanMap[$gId]) && !isset($kesediaanMap[$gId][$slot['id']])) {
+                                            $canPlace = false;
+                                            break;
+                                        }
+
+                                        $candidateSlots[] = $slot['id'];
                                     }
-                                    $placed = true;
-                                    break;
+
+                                    if ($canPlace && count($candidateSlots) === $blockSize) {
+                                        foreach ($candidateSlots as $cSlotId) {
+                                            $schedule[$kId][$cSlotId] = $dId;
+                                            $guruBusy[$gId][$cSlotId] = true;
+                                            $scheduleData[] = [$kId, $cSlotId, $dId];
+                                        }
+                                        $kelasDailyJp[$kId][$hari] = ($kelasDailyJp[$kId][$hari] ?? 0) + $blockSize;
+                                        $classSubjectHari[$kId][$mId][$hari] = ($classSubjectHari[$kId][$mId][$hari] ?? 0) + 1;
+                                        if (!$strictKesediaan) $relaxedCount++;
+                                        $placed = true;
+                                        break;
+                                    }
                                 }
                             }
                         }
 
                         if (!$placed) {
                             if ($blockSize > 1) {
-                                if ($blockSize == 3) {
-                                    $blocksQueue[] = 2; $blocksQueue[] = 1;
-                                } else if ($blockSize == 2) {
-                                    $blocksQueue[] = 1; $blocksQueue[] = 1;
-                                } else {
-                                    $blocksQueue[] = $blockSize - 1; $blocksQueue[] = 1;
-                                }
+                                if ($blockSize == 3) { $blocksQueue[] = 2; $blocksQueue[] = 1; }
+                                elseif ($blockSize == 2) { $blocksQueue[] = 1; $blocksQueue[] = 1; }
+                                else { $blocksQueue[] = $blockSize - 1; $blocksQueue[] = 1; }
                             } else {
-                                $currentUnplaced[] = ['distribusi_id' => $dId, 'block' => $blockSize];
+                                $unplaced[] = $dist;
                             }
                         }
                     }
                 }
 
-                // Score this iteration
-                $unplacedCount = count($currentUnplaced);
-                if ($unplacedCount < $bestUnplacedCount) {
-                    $bestUnplacedCount = $unplacedCount;
-                    $bestScheduleData = $currentScheduleData;
-                    
-                    if ($bestUnplacedCount === 0) {
-                        break; // Perfect schedule found!
+                // Skor Evaluasi Kualitas Jadwal
+                $penalty = 0;
+                $penalty += count($unplaced) * 1000000;
+
+                // Penalti keras jika ada hari yang kosong untuk kelas yang memiliki cukup JP
+                $emptyDaysCount = 0;
+                $numDays = count($hariOrder);
+                foreach ($kelasTotalJp as $kId => $totJp) {
+                    if ($totJp >= $numDays) {
+                        foreach ($hariOrder as $h) {
+                            $j = $kelasDailyJp[$kId][$h] ?? 0;
+                            if ($j === 0) {
+                                $emptyDaysCount++;
+                                $penalty += 50000;
+                            }
+                        }
+                    }
+                }
+
+                // Penalti ketidakmerataan harian
+                foreach ($kelasTotalJp as $kId => $totJp) {
+                    if ($totJp <= 0) continue;
+                    $target = $totJp / $numDays;
+                    foreach ($hariOrder as $h) {
+                        $j = $kelasDailyJp[$kId][$h] ?? 0;
+                        $penalty += (int)pow(($j - $target) * 10, 2);
+                    }
+                }
+
+                $penalty += $relaxedCount * 50;
+
+                $currentResult = [
+                    'penalty' => $penalty,
+                    'unplacedCount' => count($unplaced),
+                    'emptyDaysCount' => $emptyDaysCount,
+                    'relaxedCount' => $relaxedCount,
+                    'scheduleData' => $scheduleData,
+                    'unplaced' => $unplaced,
+                    'kelasDailyJp' => $kelasDailyJp
+                ];
+
+                if ($bestResult === null || $currentResult['penalty'] < $bestResult['penalty']) {
+                    $bestResult = $currentResult;
+                    if ($bestResult['unplacedCount'] === 0 && $bestResult['emptyDaysCount'] === 0 && $bestResult['relaxedCount'] <= 6) {
+                        if ($iter >= 25) break;
                     }
                 }
             }
 
-            // Insert best schedule into DB
+            // Simpan jadwal terbaik ke DB dalam transaksi
+            db()->beginTransaction();
             $stmtInsert = db()->prepare("INSERT INTO sch_jadwal (kelas_id, jam_belajar_id, distribusi_id) VALUES (?, ?, ?)");
-            foreach ($bestScheduleData as $row) {
+            foreach ($bestResult['scheduleData'] as $row) {
                 $stmtInsert->execute($row);
             }
-            
             db()->commit();
             
-            if ($bestUnplacedCount > 0) {
-                json_response(200, true, 'Jadwal di-generate sebagian, ada konflik / kekurangan slot jam. (Heuristic limit tercapai)', [
-                    'unplaced_blocks' => $bestUnplacedCount
+            if ($bestResult['unplacedCount'] > 0) {
+                json_response(200, true, 'Jadwal di-generate sebagian, ada konflik / kekurangan slot jam.', [
+                    'unplaced_blocks' => $bestResult['unplacedCount'],
+                    'empty_days' => $bestResult['emptyDaysCount'],
+                    'total_placed' => count($bestResult['scheduleData'])
                 ]);
             } else {
-                json_response(200, true, 'Jadwal berhasil di-generate secara utuh 100%.');
+                $msg = 'Jadwal berhasil di-generate secara utuh 100% (Semua hari terisi merata tanpa hari kosong).';
+                if ($bestResult['relaxedCount'] > 0) {
+                    $msg .= " Catatan: {$bestResult['relaxedCount']} jam disesuaikan otomatis ke slot aktif karena ketersediaan jam guru tertentu kurang dari total JP mengajar.";
+                }
+                json_response(200, true, $msg, [
+                    'total_placed' => count($bestResult['scheduleData']),
+                    'empty_days' => $bestResult['emptyDaysCount'],
+                    'relaxed_kesediaan_slots' => $bestResult['relaxedCount']
+                ]);
             }
 
         } catch (Exception $e) {

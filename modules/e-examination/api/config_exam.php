@@ -22,6 +22,13 @@ function exam_ensure_tables() {
                 $pdo->exec("ALTER TABLE `exam_ujian` ADD COLUMN `metode_login` ENUM('nis_dob','examcard') NOT NULL DEFAULT 'nis_dob' AFTER `jenis`");
             }
         }
+        $checkSoal = $pdo->query("SHOW TABLES LIKE 'exam_soal'")->fetch();
+        if ($checkSoal) {
+            $colsAudio = $pdo->query("SHOW COLUMNS FROM `exam_soal` LIKE 'audio_play_limit'")->fetchAll();
+            if (empty($colsAudio)) {
+                $pdo->exec("ALTER TABLE `exam_soal` ADD COLUMN `audio_play_limit` INT NOT NULL DEFAULT 0 AFTER `audio`");
+            }
+        }
     } catch (Throwable $e) {}
     run_auto_migrations();
 }

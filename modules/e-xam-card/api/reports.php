@@ -47,7 +47,6 @@ switch ($action) {
 function recap()
 {
     $user = xam_auth();
-    file_put_contents(__DIR__ . '/debug_user.txt', print_r($user, true));
     $examId = (int) ($_GET['exam_id'] ?? 0);
     if ($examId <= 0) {
         json_response(400, false, 'Pilih ujian terlebih dahulu.');

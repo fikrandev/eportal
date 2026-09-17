@@ -6,7 +6,7 @@
 require_once __DIR__ . '/config.php';
 
 function run_auto_migrations() {
-    $target_version = 15;
+    $target_version = 16;
     
     // 1. Get current version (default to 0 if not set or if table settings doesn't exist yet)
     $current_version = 0;
@@ -699,6 +699,19 @@ function run_auto_migrations() {
                 $cols = $pdo->query("SHOW COLUMNS FROM `exam_ujian` LIKE 'metode_login'")->fetchAll();
                 if (empty($cols)) {
                     $pdo->exec("ALTER TABLE `exam_ujian` ADD COLUMN `metode_login` ENUM('nis_dob','examcard') NOT NULL DEFAULT 'nis_dob' AFTER `jenis`");
+                }
+            }
+        } catch (Exception $e) {}
+    }
+
+    // Version 16 migrations (E-Examination audio_play_limit in exam_soal)
+    if ($current_version < 16) {
+        try {
+            $checkSoal = $pdo->query("SHOW TABLES LIKE 'exam_soal'")->fetch();
+            if ($checkSoal) {
+                $cols = $pdo->query("SHOW COLUMNS FROM `exam_soal` LIKE 'audio_play_limit'")->fetchAll();
+                if (empty($cols)) {
+                    $pdo->exec("ALTER TABLE `exam_soal` ADD COLUMN `audio_play_limit` INT NOT NULL DEFAULT 0 AFTER `audio`");
                 }
             }
         } catch (Exception $e) {}

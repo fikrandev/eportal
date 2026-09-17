@@ -3951,15 +3951,29 @@ const Sarpras = {
         if (!id) return this.navigate('tanah');
         $container.html('<div class="skeleton" style="height:400px"></div>');
         
+        const canSarpras = this.hasPermission('sarpras_manage');
+        const u = this.state.user || {};
+        const isPJ = u.custom_role_name === 'Penanggung Jawab Ruangan' || (u.scoped_ruang_ids && u.scoped_ruang_ids.length > 0);
+
         this.api(`sarpras.php?action=get&id=${id}`).done(res => {
             const s = res.data;
-            $('#breadcrumb').html(`<a href="#/tanah">Tanah</a> <span class="sep">/</span> <a href="#/sarpras?ruang_id=${s.ruang_id}">${s.ruang_nama}</a> <span class="sep">/</span> <span class="current">${s.nama}</span>`);
+            if (!s) {
+                $container.html('<div class="sp-empty">Data sarpras tidak ditemukan.</div>');
+                return;
+            }
+
+            const bc = [{ label: 'Tanah', route: 'tanah' }];
+            if (s.ruang_id && s.ruang_nama) {
+                bc.push({ label: s.ruang_nama, route: 'sarpras', params: { ruang_id: s.ruang_id } });
+            }
+            bc.push({ label: s.nama || 'Detail' });
+            this.setBreadcrumbs(bc);
             
             $container.html(`
                 <div class="sp-dashboard-grid">
                     <div class="sp-card" style="grid-column: 1 / -1">
                         <div class="sp-card-header">
-                            <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg> ${s.nama}</h3>
+                            <h3><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg> ${this.escapeHtml(s.nama || '')}</h3>
                             ${(canSarpras || isPJ) ? `
                             <div class="sp-toolbar">
                                 <button class="btn btn-primary btn-sm" onclick="Sarpras.formSarpras(${s.id}, ${s.ruang_id})">Edit Data</button>
@@ -3972,17 +3986,17 @@ const Sarpras = {
                                     <div class="sp-foto-grid" id="sFotos">${this.renderSarprasFotosHtml(s.fotos, s.id)}</div>
                                 </div>
                                 <div class="sp-info-details">
-                                    <div class="sp-row"><span class="sp-label">Kode Inventaris</span><span class="sp-value">${s.kode_inventaris}</span></div>
-                                    <div class="sp-row"><span class="sp-label">Kategori</span><span class="sp-value">${s.kategori_nama} (${s.kategori_kode})</span></div>
-                                    <div class="sp-row"><span class="sp-label">Merk / Spek</span><span class="sp-value">${s.merk || '-'} / ${s.spesifikasi || '-'}</span></div>
-                                    <div class="sp-row"><span class="sp-label">Lokasi</span><span class="sp-value">${s.ruang_nama} &bull; ${s.bangunan_nama} &bull; ${s.tanah_nama}</span></div>
-                                    <div class="sp-row"><span class="sp-label">Perolehan</span><span class="sp-value">${s.tanggal_perolehan ? this.formatDate(s.tanggal_perolehan) : '-'} &bull; Rp ${this.formatNumber(s.harga_perolehan)} (${s.asal_perolehan})</span></div>
-                                    <div class="sp-row"><span class="sp-label">Masa Manfaat</span><span class="sp-value">${s.masa_manfaat_tahun} Tahun</span></div>
+                                    <div class="sp-row"><span class="sp-label">Kode Inventaris</span><span class="sp-value">${this.escapeHtml(s.kode_inventaris || '-')}</span></div>
+                                    <div class="sp-row"><span class="sp-label">Kategori</span><span class="sp-value">${this.escapeHtml(s.kategori_nama || '-')} (${this.escapeHtml(s.kategori_kode || '-')})</span></div>
+                                    <div class="sp-row"><span class="sp-label">Merk / Spek</span><span class="sp-value">${this.escapeHtml(s.merk || '-')} / ${this.escapeHtml(s.spesifikasi || '-')}</span></div>
+                                    <div class="sp-row"><span class="sp-label">Lokasi</span><span class="sp-value">${this.escapeHtml(s.ruang_nama || '-')} &bull; ${this.escapeHtml(s.bangunan_nama || '-')} &bull; ${this.escapeHtml(s.tanah_nama || '-')}</span></div>
+                                    <div class="sp-row"><span class="sp-label">Perolehan</span><span class="sp-value">${s.tanggal_perolehan ? this.formatDate(s.tanggal_perolehan) : '-'} &bull; Rp ${this.formatNumber(s.harga_perolehan)} (${this.escapeHtml(s.asal_perolehan || '-')})</span></div>
+                                    <div class="sp-row"><span class="sp-label">Masa Manfaat</span><span class="sp-value">${s.masa_manfaat_tahun || 0} Tahun</span></div>
                                     
                                     <div class="kondisi-grid" style="margin-top:20px">
-                                        <div class="kondisi-item baik"><div class="num">${s.kondisi_baik}</div><div class="lbl">BAIK</div></div>
-                                        <div class="kondisi-item rr"><div class="num">${s.kondisi_rusak_ringan}</div><div class="lbl">R. RINGAN</div></div>
-                                        <div class="kondisi-item rb"><div class="num">${s.kondisi_rusak_berat}</div><div class="lbl">R. BERAT</div></div>
+                                        <div class="kondisi-item baik"><div class="num">${s.kondisi_baik || 0}</div><div class="lbl">BAIK</div></div>
+                                        <div class="kondisi-item rr"><div class="num">${s.kondisi_rusak_ringan || 0}</div><div class="lbl">R. RINGAN</div></div>
+                                        <div class="kondisi-item rb"><div class="num">${s.kondisi_rusak_berat || 0}</div><div class="lbl">R. BERAT</div></div>
                                     </div>
                                 </div>
                             </div>
@@ -4000,10 +4014,19 @@ const Sarpras = {
                     </div>
                 </div>
             `);
+        }).fail(xhr => {
+            $container.html(`
+                <div class="sp-empty" style="padding:40px;text-align:center;">
+                    <div style="font-size:1.1rem;font-weight:600;color:var(--text-danger,#ef4444);margin-bottom:8px;">Gagal Memuat Detail Sarpras</div>
+                    <div style="color:var(--text-muted);margin-bottom:16px;">${xhr.responseJSON?.message || 'Terjadi kesalahan saat mengambil data.'}</div>
+                    <button class="btn btn-secondary btn-sm" onclick="window.history.back()">Kembali</button>
+                </div>
+            `);
         });
     },
 
     renderSarprasFotosHtml(fotos, sarprasId) {
+        fotos = Array.isArray(fotos) ? fotos : [];
         let html = fotos.map(f => `
             <div class="sp-foto-item">
                 <img src="${this.state.baseUrl}${f.foto_path}">
@@ -4046,13 +4069,15 @@ const Sarpras = {
     },
 
     renderRepairTable(repairs) {
+        repairs = Array.isArray(repairs) ? repairs : [];
         if (!repairs.length) return '<div class="sp-empty">Belum ada perbaikan.</div>';
-        return `<table class="sp-table"><thead><tr><th>Tgl</th><th>Deskripsi</th><th>Status</th></tr></thead><tbody>${repairs.map(r => `<tr><td>${this.formatDate(r.tanggal)}</td><td>${r.deskripsi}</td><td><span class="badge badge-${r.status === 'Selesai' ? 'success' : 'warning'}">${r.status}</span></td></tr>`).join('')}</tbody></table>`;
+        return `<table class="sp-table"><thead><tr><th>Tgl</th><th>Deskripsi</th><th>Status</th></tr></thead><tbody>${repairs.map(r => `<tr><td>${this.formatDate(r.tanggal)}</td><td>${this.escapeHtml(r.deskripsi || '-')}</td><td><span class="badge badge-${r.status === 'Selesai' ? 'success' : 'warning'}">${this.escapeHtml(r.status || '-')}</span></td></tr>`).join('')}</tbody></table>`;
     },
 
     renderPeriodikTable(periodics) {
+        periodics = Array.isArray(periodics) ? periodics : [];
         if (!periodics.length) return '<div class="sp-empty">Belum ada data periodik.</div>';
-        return `<table class="sp-table"><thead><tr><th>Periode</th><th>Tahun</th><th>B / RR / RB</th><th>Updater</th></tr></thead><tbody>${periodics.map(p => `<tr><td>${p.periode}</td><td>${p.tahun}</td><td>${p.kondisi_baik} / ${p.kondisi_rusak_ringan} / ${p.kondisi_rusak_berat}</td><td>${p.updated_by_name}</td></tr>`).join('')}</tbody></table>`;
+        return `<table class="sp-table"><thead><tr><th>Periode</th><th>Tahun</th><th>B / RR / RB</th><th>Updater</th></tr></thead><tbody>${periodics.map(p => `<tr><td>${this.escapeHtml(p.periode || '-')}</td><td>${this.escapeHtml(p.tahun || '-')}</td><td>${p.kondisi_baik || 0} / ${p.kondisi_rusak_ringan || 0} / ${p.kondisi_rusak_berat || 0}</td><td>${this.escapeHtml(p.updated_by_name || '-')}</td></tr>`).join('')}</tbody></table>`;
     },
 
     /**

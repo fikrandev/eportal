@@ -247,8 +247,8 @@ try {
             $nextUrutan = $stmtMax->fetchColumn();
 
             $stmt = db()->prepare("
-                INSERT INTO exam_soal (bank_soal_id, tipe_soal, pertanyaan, opsi, kunci_jawaban, pembahasan, bobot, gambar, audio, urutan)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO exam_soal (bank_soal_id, tipe_soal, pertanyaan, opsi, kunci_jawaban, pembahasan, bobot, gambar, audio, audio_play_limit, urutan)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ");
             $stmt->execute([
                 $bank_id,
@@ -260,6 +260,7 @@ try {
                 (float)($data['bobot'] ?? 1),
                 trim($data['gambar'] ?? '') ?: null,
                 trim($data['audio'] ?? '') ?: null,
+                max(0, (int)($data['audio_play_limit'] ?? 0)),
                 $nextUrutan
             ]);
             json_response(201, true, 'Soal berhasil ditambahkan', ['id' => db()->lastInsertId()]);
@@ -272,13 +273,52 @@ try {
             $id = (int)($data['id'] ?? 0);
             if (!$id) throw new Exception('ID tidak valid', 400);
 
+            // Fetch existing question to inspect old media files
+            $stmtOld = db()->prepare("SELECT gambar, audio FROM exam_soal WHERE id = ?");
+            $stmtOld->execute([$id]);
+            $oldSoal = $stmtOld->fetch();
+
             $opsi = isset($data['opsi']) ? json_encode($data['opsi'], JSON_UNESCAPED_UNICODE) : null;
             $kunci = isset($data['kunci_jawaban']) ? json_encode($data['kunci_jawaban'], JSON_UNESCAPED_UNICODE) : null;
+
+            // Handle gambar (detect delete flag or replacement)
+            $newGambar = trim($data['gambar'] ?? '');
+            if (!empty($data['delete_gambar']) || $newGambar === 'DELETE') {
+                $newGambar = null;
+            } elseif ($newGambar === '') {
+                $newGambar = !empty($data['delete_gambar']) ? null : ($oldSoal['gambar'] ?? null);
+            }
+
+            // Handle audio (detect delete flag or replacement)
+            $newAudio = trim($data['audio'] ?? '');
+            if (!empty($data['delete_audio']) || $newAudio === 'DELETE') {
+                $newAudio = null;
+            } elseif ($newAudio === '') {
+                $newAudio = !empty($data['delete_audio']) ? null : ($oldSoal['audio'] ?? null);
+            }
+
+            // Unlink old gambar if removed or replaced
+            if ($oldSoal && !empty($oldSoal['gambar']) && $oldSoal['gambar'] !== $newGambar) {
+                $cleanPath = str_replace(['..', '\\'], ['', '/'], $oldSoal['gambar']);
+                $oldFile = __DIR__ . '/../' . ltrim($cleanPath, '/');
+                if (file_exists($oldFile) && is_file($oldFile)) {
+                    @unlink($oldFile);
+                }
+            }
+
+            // Unlink old audio if removed or replaced
+            if ($oldSoal && !empty($oldSoal['audio']) && $oldSoal['audio'] !== $newAudio) {
+                $cleanPath = str_replace(['..', '\\'], ['', '/'], $oldSoal['audio']);
+                $oldFile = __DIR__ . '/../' . ltrim($cleanPath, '/');
+                if (file_exists($oldFile) && is_file($oldFile)) {
+                    @unlink($oldFile);
+                }
+            }
 
             $stmt = db()->prepare("
                 UPDATE exam_soal SET 
                     tipe_soal = ?, pertanyaan = ?, opsi = ?, kunci_jawaban = ?,
-                    pembahasan = ?, bobot = ?, gambar = ?, audio = ?, urutan = ?
+                    pembahasan = ?, bobot = ?, gambar = ?, audio = ?, audio_play_limit = ?, urutan = ?
                 WHERE id = ?
             ");
             $stmt->execute([
@@ -288,12 +328,44 @@ try {
                 $kunci,
                 trim($data['pembahasan'] ?? '') ?: null,
                 (float)($data['bobot'] ?? 1),
-                trim($data['gambar'] ?? '') ?: null,
-                trim($data['audio'] ?? '') ?: null,
+                $newGambar,
+                $newAudio,
+                max(0, (int)($data['audio_play_limit'] ?? 0)),
                 (int)($data['urutan'] ?? 0),
                 $id
             ]);
             json_response(200, true, 'Soal berhasil diperbarui');
+            break;
+
+        case 'delete_media':
+            exam_require_admin_or_guru();
+            if ($method !== 'POST') throw new Exception('Method not allowed', 405);
+            $data = get_input();
+            $id = (int)($data['id'] ?? 0);
+            $type = trim($data['type'] ?? '');
+            if (!$id || !in_array($type, ['gambar', 'audio'])) {
+                throw new Exception('Parameter id atau type tidak valid', 400);
+            }
+
+            $stmt = db()->prepare("SELECT gambar, audio FROM exam_soal WHERE id = ?");
+            $stmt->execute([$id]);
+            $soal = $stmt->fetch();
+            if (!$soal) throw new Exception('Soal tidak ditemukan', 404);
+
+            $filePath = $type === 'gambar' ? $soal['gambar'] : $soal['audio'];
+            if (!empty($filePath)) {
+                $cleanPath = str_replace(['..', '\\'], ['', '/'], $filePath);
+                $fullPath = __DIR__ . '/../' . ltrim($cleanPath, '/');
+                if (file_exists($fullPath) && is_file($fullPath)) {
+                    @unlink($fullPath);
+                }
+            }
+
+            $col = $type === 'gambar' ? 'gambar' : 'audio';
+            $stmtUpd = db()->prepare("UPDATE exam_soal SET {$col} = NULL WHERE id = ?");
+            $stmtUpd->execute([$id]);
+
+            json_response(200, true, ucfirst($type) . ' berhasil dihapus dari soal.');
             break;
 
         case 'delete_soal':

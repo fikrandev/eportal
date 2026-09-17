@@ -15,6 +15,32 @@ try {
         throw new Exception('Method not allowed', 405);
     }
 
+    // Handle Delete Media File directly
+    if ($action === 'delete') {
+        $input = get_input();
+        $path = trim($input['path'] ?? '');
+        if (!$path) {
+            throw new Exception('Path file tidak boleh kosong', 400);
+        }
+
+        // Security: Prevent path traversal, only allow deleting in uploads/images/ or uploads/audio/
+        $normalized = str_replace(['\\', '..'], ['/', ''], $path);
+        $normalized = ltrim($normalized, '/');
+
+        if (strpos($normalized, 'uploads/images/') !== 0 && strpos($normalized, 'uploads/audio/') !== 0) {
+            throw new Exception('Path file tidak valid atau berada di luar folder yang diizinkan', 403);
+        }
+
+        $targetFile = __DIR__ . '/../' . $normalized;
+        if (file_exists($targetFile) && is_file($targetFile)) {
+            if (!@unlink($targetFile)) {
+                throw new Exception('Gagal menghapus file dari disk server. Periksa izin folder.', 500);
+            }
+        }
+
+        json_response(200, true, 'File media berhasil dihapus dari server.');
+    }
+
     // 1. Check if payload exceeded post_max_size (which causes PHP to discard $_POST and $_FILES)
     if (empty($_FILES) && isset($_SERVER['CONTENT_LENGTH']) && (int)$_SERVER['CONTENT_LENGTH'] > 0) {
         $postMax = ini_get('post_max_size');
