@@ -3774,41 +3774,403 @@ const Curriculum = {
 
     showPiketForm() {
         const today = new Date().toISOString().split('T')[0];
+        const loader = EModal.loading('Memuat data jadwal guru...');
+
         this.api(`piket.php?action=available_guru&tanggal=${today}`).done(res => {
-            if (!res.success) return;
-            const { available, absent } = res.data;
-            const guruOpts = available.map(g => `<option value="${g.id}">${this.escapeHtml(g.nama_lengkap)}</option>`).join('');
-            const absentOpts = absent.map(g => `<option value="${g.id}">${this.escapeHtml(g.nama_lengkap)}</option>`).join('');
+            EModal.close(loader);
+            if (!res.success) {
+                EModal.toast({ type: 'error', title: 'Gagal', message: res.message || 'Gagal memuat data.' });
+                return;
+            }
 
-            // Load kelas
-            this.api('kelas.php?action=list').done(resK => {
-                const kelasOpts = (resK.data || []).map(k => `<option value="${k.id}">${this.escapeHtml(k.nama_kelas)}</option>`).join('');
+            let piketData = res.data;
 
-                EModal.form({
-                    title: 'Tambah Piket Guru', size: 'md',
-                    form: `
-                        <div class="form-group-acad"><label class="form-label-acad">Tanggal</label><input type="date" class="form-input-acad" id="fPiketTgl" value="${today}"></div>
-                        <div class="form-group-acad"><label class="form-label-acad">Guru Piket (Pengganti)</label><select class="form-select-acad" id="fPiketGuru"><option value="">Pilih...</option>${guruOpts}</select></div>
-                        <div class="form-group-acad"><label class="form-label-acad">Menggantikan Guru (opsional)</label><select class="form-select-acad" id="fPiketDiganti"><option value="">- Tidak ada -</option>${absentOpts}</select></div>
-                        <div class="form-group-acad"><label class="form-label-acad">Kelas (opsional)</label><select class="form-select-acad" id="fPiketKelas"><option value="">- Semua -</option>${kelasOpts}</select></div>
-                        <div class="form-group-acad"><label class="form-label-acad">Jam Ke (opsional)</label><input class="form-input-acad" id="fPiketJam" placeholder="contoh: 1-2"></div>
-                    `,
-                    confirmText: 'Simpan',
-                    onConfirm: () => {
-                        const guru = $('#fPiketGuru').val();
-                        if (!guru) { EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Guru piket wajib dipilih.' }); return false; }
-                        this.api('piket.php?action=save', { method: 'POST', data: {
-                            tanggal: $('#fPiketTgl').val(), guru_id: +guru,
+            const formHtml = `
+                <style>
+                    .emodal-card.emodal-md { max-width: 580px; width: 95%; }
+                    .emodal-card.emodal-full .emodal-body { overflow: visible !important; padding: 22px 26px; }
+                    .acad-cs-container { position: relative; user-select: none; width: 100%; margin-top: 4px; }
+                    .acad-cs-btn { 
+                        cursor: pointer; display: flex; justify-content: space-between; align-items: center; 
+                        background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 10px; padding: 10px 14px; 
+                        min-height: 44px; transition: all 0.2s; box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+                    }
+                    .acad-cs-btn:hover { border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.1); }
+                    .acad-cs-btn.active { border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,0.15); }
+                    .acad-cs-btn.active svg { transform: rotate(180deg); }
+                    .acad-cs-btn svg { transition: transform 0.2s ease; color: #64748b; flex-shrink: 0; }
+                    .acad-cs-dropdown { 
+                        display: none; position: absolute; top: calc(100% + 6px); left: 0; right: 0; 
+                        background: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 12px; 
+                        box-shadow: 0 12px 30px rgba(0,0,0,0.18); z-index: 999999; overflow: hidden;
+                    }
+                    .acad-cs-search-wrap { padding: 10px 12px; border-bottom: 1px solid #f1f5f9; background: #f8fafc; }
+                    .acad-cs-search-input { 
+                        width: 100%; padding: 8px 12px; height: 38px; border-radius: 8px; 
+                        border: 1.5px solid #cbd5e1; font-size: 0.88rem; outline: none; background: #ffffff; 
+                    }
+                    .acad-cs-search-input:focus { border-color: #7c3aed; box-shadow: 0 0 0 2px rgba(124,58,237,0.12); }
+                    .acad-cs-list { max-height: 220px; overflow-y: auto; padding: 4px 0; }
+                    .acad-cs-option { padding: 9px 14px; cursor: pointer; border-bottom: 1px solid #f8fafc; transition: all 0.15s; }
+                    .acad-cs-option:hover { background: #f5f3ff; }
+                    .acad-cs-option.selected { background: #ede9fe; font-weight: 600; }
+                    .acad-cs-opt-main { font-weight: 600; color: #1e293b; font-size: 0.9rem; }
+                    .acad-cs-opt-sub { font-size: 0.76rem; color: #64748b; margin-top: 2px; }
+                    .acad-cs-group { 
+                        padding: 6px 12px; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; 
+                        letter-spacing: 0.5px; border-top: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9;
+                    }
+                </style>
+                
+                <div class="form-group-acad" style="margin-bottom:18px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                        <label class="form-label-acad" style="margin:0;">Tanggal Piket</label>
+                        <span id="piketDayBadge" style="font-size:12px; background:#ede9fe; color:#6d28d9; padding:2px 10px; border-radius:12px; font-weight:700;">Hari: ${this.escapeHtml(piketData.hari || '')}</span>
+                    </div>
+                    <input type="date" class="form-input-acad" id="fPiketTgl" value="${today}">
+                </div>
+
+                <!-- 1. Guru Piket (Pengganti) -->
+                <div class="form-group-acad" style="margin-bottom:18px;">
+                    <label class="form-label-acad">Guru Piket (Pengganti) <span style="color:#ef4444">*</span></label>
+                    <div class="acad-cs-container" id="csPiketGuruContainer">
+                        <div class="acad-cs-btn" id="csPiketGuruBtn">
+                            <span class="acad-cs-btn-text" style="color:#64748b;">Pilih Guru Piket...</span>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                        </div>
+                        <div class="acad-cs-dropdown" id="csPiketGuruDropdown">
+                            <div class="acad-cs-search-wrap">
+                                <input type="text" class="acad-cs-search-input" id="csPiketGuruSearch" placeholder="Cari nama guru piket..." autocomplete="off">
+                            </div>
+                            <div class="acad-cs-list" id="csPiketGuruList"></div>
+                        </div>
+                        <input type="hidden" id="fPiketGuru" value="">
+                    </div>
+                </div>
+
+                <!-- 2. Menggantikan Guru (opsional) -->
+                <div class="form-group-acad" style="margin-bottom:18px;">
+                    <label class="form-label-acad">Menggantikan Guru (opsional)</label>
+                    <div class="acad-cs-container" id="csPiketDigantiContainer">
+                        <div class="acad-cs-btn" id="csPiketDigantiBtn">
+                            <span class="acad-cs-btn-text" style="color:#1e293b;">- Tidak ada (Piket Mandiri / Umum) -</span>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                        </div>
+                        <div class="acad-cs-dropdown" id="csPiketDigantiDropdown">
+                            <div class="acad-cs-search-wrap">
+                                <input type="text" class="acad-cs-search-input" id="csPiketDigantiSearch" placeholder="Cari guru yang digantikan..." autocomplete="off">
+                            </div>
+                            <div class="acad-cs-list" id="csPiketDigantiList"></div>
+                        </div>
+                        <input type="hidden" id="fPiketDiganti" value="">
+                    </div>
+                </div>
+
+                <!-- 3. Kelas (opsional) -->
+                <div class="form-group-acad" style="margin-bottom:18px;">
+                    <label class="form-label-acad">Kelas (opsional)</label>
+                    <div class="acad-cs-container" id="csPiketKelasContainer">
+                        <div class="acad-cs-btn" id="csPiketKelasBtn">
+                            <span class="acad-cs-btn-text" style="color:#1e293b;">- Semua -</span>
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                        </div>
+                        <div class="acad-cs-dropdown" id="csPiketKelasDropdown">
+                            <div class="acad-cs-search-wrap">
+                                <input type="text" class="acad-cs-search-input" id="csPiketKelasSearch" placeholder="Cari kelas..." autocomplete="off">
+                            </div>
+                            <div class="acad-cs-list" id="csPiketKelasList"></div>
+                        </div>
+                        <input type="hidden" id="fPiketKelas" value="">
+                    </div>
+                </div>
+
+                <!-- 4. Jam Ke (opsional) -->
+                <div class="form-group-acad">
+                    <label class="form-label-acad">Jam Ke (opsional)</label>
+                    <input class="form-input-acad" id="fPiketJam" placeholder="contoh: 1-2">
+                </div>
+            `;
+
+            EModal.form({
+                title: 'Tambah Piket Guru',
+                size: 'md',
+                form: formHtml,
+                confirmText: 'Simpan',
+                onOpen: () => {
+                    const self = this;
+
+                    // Populate Dropdown 1: Guru Piket
+                    function buildPiketGuruOptions() {
+                        const candidates = piketData.piket_candidates || [];
+                        const busy = piketData.busy_teachers || [];
+                        let html = '';
+
+                        if (candidates.length > 0) {
+                            html += `<div class="acad-cs-group" style="background:#f0fdf4; color:#166534; display:flex; justify-content:space-between; align-items:center;"><span>🌟 Bebas Jadwal Hari Ini (${candidates.length})</span><span style="font-size:10px; background:#16a34a; color:#fff; padding:1px 6px; border-radius:10px;">Rekomendasi</span></div>`;
+                            candidates.forEach(g => {
+                                html += `
+                                    <div class="acad-cs-option" data-val="${g.id}" data-text="${self.escapeHtml(g.nama_lengkap)}">
+                                        <div class="acad-cs-opt-main">${self.escapeHtml(g.nama_lengkap)}</div>
+                                        <div class="acad-cs-opt-sub" style="color:#16a34a; font-weight:600;">✓ Tidak ada jam mengajar hari ini</div>
+                                    </div>
+                                `;
+                            });
+                        } else {
+                            html += `<div class="acad-cs-group" style="background:#fef2f2; color:#991b1b;">Tidak ada guru bebas jadwal hari ini</div>`;
+                        }
+
+                        if (busy.length > 0) {
+                            html += `<div class="acad-cs-group" style="background:#fffbeb; color:#92400e;">⚠️ Guru Lainnya (${busy.length} Ada Jam Mengajar)</div>`;
+                            busy.forEach(g => {
+                                html += `
+                                    <div class="acad-cs-option" data-val="${g.id}" data-text="${self.escapeHtml(g.nama_lengkap)}">
+                                        <div class="acad-cs-opt-main">${self.escapeHtml(g.nama_lengkap)}</div>
+                                        <div class="acad-cs-opt-sub" style="color:#d97706;">Ada ${g.total_jp} JP jadwal mengajar hari ini</div>
+                                    </div>
+                                `;
+                            });
+                        }
+
+                        $('#csPiketGuruList').html(html);
+                    }
+
+                    // Populate Dropdown 2: Menggantikan Guru
+                    function buildPiketDigantiOptions() {
+                        const absent = piketData.absent_teachers || [];
+                        const busy = piketData.busy_teachers || [];
+                        const candidates = piketData.piket_candidates || [];
+
+                        let html = `
+                            <div class="acad-cs-option selected" data-val="" data-text="- Tidak ada -">
+                                <div class="acad-cs-opt-main" style="color:#64748b;">- Tidak ada (Piket Mandiri / Umum) -</div>
+                            </div>
+                        `;
+
+                        if (absent.length > 0) {
+                            html += `<div class="acad-cs-group" style="background:#fef2f2; color:#991b1b;">🚨 Guru Izin / Tidak Hadir (${absent.length})</div>`;
+                            absent.forEach(g => {
+                                html += `
+                                    <div class="acad-cs-option" data-val="${g.id}" data-text="${self.escapeHtml(g.nama_lengkap)}">
+                                        <div class="acad-cs-opt-main" style="color:#991b1b; font-weight:700;">${self.escapeHtml(g.nama_lengkap)}</div>
+                                        <div class="acad-cs-opt-sub" style="color:#dc2626;">${self.escapeHtml(g.alasan_absen || 'Izin / Sakit')}${g.total_jp > 0 ? ' • Ada ' + g.total_jp + ' JP mengajar' : ''}</div>
+                                    </div>
+                                `;
+                            });
+                        }
+
+                        if (busy.length > 0) {
+                            html += `<div class="acad-cs-group" style="background:#eff6ff; color:#1e40af;">📅 Guru Mengajar Hari Ini (${busy.length})</div>`;
+                            busy.forEach(g => {
+                                const classList = (g.classes || []).map(c => c.nama_kelas).join(', ');
+                                html += `
+                                    <div class="acad-cs-option" data-val="${g.id}" data-text="${self.escapeHtml(g.nama_lengkap)}">
+                                        <div class="acad-cs-opt-main">${self.escapeHtml(g.nama_lengkap)}</div>
+                                        <div class="acad-cs-opt-sub" style="color:#2563eb;">Mengajar di: ${self.escapeHtml(classList || '-')} (${g.total_jp} JP)</div>
+                                    </div>
+                                `;
+                            });
+                        }
+
+                        if (candidates.length > 0) {
+                            html += `<div class="acad-cs-group" style="background:#f8fafc; color:#64748b;">Guru Lainnya (Bebas Jadwal)</div>`;
+                            candidates.forEach(g => {
+                                html += `
+                                    <div class="acad-cs-option" data-val="${g.id}" data-text="${self.escapeHtml(g.nama_lengkap)}">
+                                        <div class="acad-cs-opt-main">${self.escapeHtml(g.nama_lengkap)}</div>
+                                        <div class="acad-cs-opt-sub" style="color:#64748b;">Tidak ada jadwal mengajar hari ini</div>
+                                    </div>
+                                `;
+                            });
+                        }
+
+                        $('#csPiketDigantiList').html(html);
+                    }
+
+                    // Populate Dropdown 3: Kelas
+                    function buildPiketKelasOptions(selectedGuruDigantiId) {
+                        const allK = piketData.all_classes || [];
+                        const teacherClasses = (selectedGuruDigantiId && piketData.teacher_classes) ? (piketData.teacher_classes[selectedGuruDigantiId] || []) : [];
+                        
+                        let html = '';
+                        if (teacherClasses.length > 0) {
+                            html += `<div class="acad-cs-group" style="background:#faf5ff; color:#6b21a8; font-weight:700;">🎯 Kelas Guru Yang Digantikan (${teacherClasses.length} Kelas):</div>`;
+                            teacherClasses.forEach(tc => {
+                                html += `
+                                    <div class="acad-cs-option" data-val="${tc.kelas_id}" data-jam="${self.escapeHtml(tc.jam_ke || '')}" data-text="${self.escapeHtml(tc.nama_kelas)}">
+                                        <div class="acad-cs-opt-main" style="color:#6b21a8; font-weight:700;">${self.escapeHtml(tc.nama_kelas)}</div>
+                                        <div class="acad-cs-opt-sub" style="color:#7c3aed; font-weight:600;">Jam ke: ${self.escapeHtml(tc.jam_ke || '-')} • ${self.escapeHtml(tc.mapel || '-')}</div>
+                                    </div>
+                                `;
+                            });
+                            html += `<div class="acad-cs-group" style="background:#f8fafc; color:#64748b;">Atau Pilih Semua / Kelas Lainnya:</div>`;
+                        }
+
+                        html += `
+                            <div class="acad-cs-option" data-val="" data-jam="" data-text="- Semua -">
+                                <div class="acad-cs-opt-main">- Semua -</div>
+                            </div>
+                        `;
+
+                        allK.forEach(k => {
+                            html += `
+                                <div class="acad-cs-option" data-val="${k.id}" data-jam="" data-text="${self.escapeHtml(k.nama_kelas)}">
+                                    <div class="acad-cs-opt-main">${self.escapeHtml(k.nama_kelas)}</div>
+                                </div>
+                            `;
+                        });
+
+                        $('#csPiketKelasList').html(html);
+
+                        // If the replaced teacher has schedules today, automatically pre-select their first class
+                        if (teacherClasses.length > 0) {
+                            const first = teacherClasses[0];
+                            $('#fPiketKelas').val(first.kelas_id);
+                            $('#csPiketKelasBtn .acad-cs-btn-text').text(first.nama_kelas).css('color', '#1e293b');
+                            if (first.jam_ke) {
+                                $('#fPiketJam').val(first.jam_ke);
+                            }
+                        } else {
+                            $('#fPiketKelas').val('');
+                            $('#csPiketKelasBtn .acad-cs-btn-text').text('- Semua -').css('color', '#1e293b');
+                        }
+                    }
+
+                    // Initial builds
+                    buildPiketGuruOptions();
+                    buildPiketDigantiOptions();
+                    buildPiketKelasOptions(null);
+
+                    // Dropdown click & toggle handler
+                    $('.acad-cs-btn').off('click').on('click', function(e) {
+                        e.stopPropagation();
+                        const $dropdown = $(this).siblings('.acad-cs-dropdown');
+                        const isVisible = $dropdown.is(':visible');
+                        $('.acad-cs-dropdown').hide();
+                        $('.acad-cs-btn').removeClass('active');
+                        if (!isVisible) {
+                            $(this).addClass('active');
+                            $dropdown.show();
+                            $dropdown.find('.acad-cs-search-input').val('').trigger('input').focus();
+                        }
+                    });
+
+                    // Search inputs real-time filtering
+                    $('.acad-cs-search-input').off('input').on('input', function() {
+                        const term = $(this).val().toLowerCase().trim();
+                        const $list = $(this).closest('.acad-cs-dropdown').find('.acad-cs-list');
+                        $list.find('.acad-cs-option').each(function() {
+                            const text = $(this).text().toLowerCase();
+                            $(this).toggle(text.includes(term));
+                        });
+                        $list.find('.acad-cs-group').each(function() {
+                            const $visibleOptions = $(this).nextUntil('.acad-cs-group', '.acad-cs-option:visible');
+                            $(this).toggle($visibleOptions.length > 0 || !term);
+                        });
+                    });
+
+                    // Select Option in Guru Piket
+                    $('#csPiketGuruList').off('click', '.acad-cs-option').on('click', '.acad-cs-option', function() {
+                        const val = $(this).data('val');
+                        const text = $(this).data('text');
+                        $('#fPiketGuru').val(val);
+                        $('#csPiketGuruBtn .acad-cs-btn-text').text(text).css('color', '#1e293b');
+                        $('#csPiketGuruDropdown').hide();
+                        $('#csPiketGuruBtn').removeClass('active');
+                    });
+
+                    // Select Option in Menggantikan Guru
+                    $('#csPiketDigantiList').off('click', '.acad-cs-option').on('click', '.acad-cs-option', function() {
+                        const val = $(this).data('val');
+                        const text = $(this).data('text');
+                        $('#fPiketDiganti').val(val);
+                        $('#csPiketDigantiBtn .acad-cs-btn-text').text(text).css('color', '#1e293b');
+                        $('#csPiketDigantiDropdown').hide();
+                        $('#csPiketDigantiBtn').removeClass('active');
+
+                        // Rebuild Kelas options based on replaced teacher
+                        buildPiketKelasOptions(val);
+                    });
+
+                    // Select Option in Kelas
+                    $('#csPiketKelasList').off('click', '.acad-cs-option').on('click', '.acad-cs-option', function() {
+                        const val = $(this).data('val');
+                        const text = $(this).data('text');
+                        const jam = $(this).data('jam');
+                        $('#fPiketKelas').val(val);
+                        $('#csPiketKelasBtn .acad-cs-btn-text').text(text).css('color', '#1e293b');
+                        if (jam) {
+                            $('#fPiketJam').val(jam);
+                        }
+                        $('#csPiketKelasDropdown').hide();
+                        $('#csPiketKelasBtn').removeClass('active');
+                    });
+
+                    // Click outside to close dropdowns
+                    $(document).off('click.piketCs').on('click.piketCs', function(e) {
+                        if (!$(e.target).closest('.acad-cs-container').length) {
+                            $('.acad-cs-dropdown').hide();
+                            $('.acad-cs-btn').removeClass('active');
+                        }
+                    });
+
+                    // Change Date Handler
+                    $('#fPiketTgl').off('change').on('change', function() {
+                        const newDate = $(this).val();
+                        if (!newDate) return;
+                        $('#piketDayBadge').text('Memuat...').css({ background: '#f1f5f9', color: '#64748b' });
+                        self.api(`piket.php?action=available_guru&tanggal=${newDate}`).done(resNew => {
+                            if (!resNew.success) return;
+                            piketData = resNew.data;
+                            $('#piketDayBadge').text(`Hari: ${piketData.hari || ''}`).css({ background: '#ede9fe', color: '#6d28d9' });
+
+                            // Reset form selections
+                            $('#fPiketGuru').val('');
+                            $('#csPiketGuruBtn .acad-cs-btn-text').text('Pilih Guru Piket...').css('color', '#64748b');
+                            $('#fPiketDiganti').val('');
+                            $('#csPiketDigantiBtn .acad-cs-btn-text').text('- Tidak ada -').css('color', '#1e293b');
+                            $('#fPiketKelas').val('');
+                            $('#csPiketKelasBtn .acad-cs-btn-text').text('- Semua -').css('color', '#1e293b');
+                            $('#fPiketJam').val('');
+
+                            buildPiketGuruOptions();
+                            buildPiketDigantiOptions();
+                            buildPiketKelasOptions(null);
+                        });
+                    });
+                },
+                onConfirm: () => {
+                    const guru = $('#fPiketGuru').val();
+                    if (!guru) {
+                        EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Guru piket wajib dipilih.' });
+                        return false;
+                    }
+
+                    $(document).off('click.piketCs');
+                    this.api('piket.php?action=save', {
+                        method: 'POST',
+                        data: {
+                            tanggal: $('#fPiketTgl').val(),
+                            guru_id: +guru,
                             guru_diganti_id: $('#fPiketDiganti').val() || null,
                             kelas_id: $('#fPiketKelas').val() || null,
                             jam_ke: $('#fPiketJam').val()
-                        }}).done(res => {
-                            EModal.closeAll(); EModal.toast({ type: 'success', title: 'Berhasil', message: res.message }); this.loadPiketTable();
-                        }).fail(xhr => { EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal.' }); });
-                        return false;
-                    }
-                });
+                        }
+                    }).done(res => {
+                        EModal.closeAll();
+                        EModal.toast({ type: 'success', title: 'Berhasil', message: res.message });
+                        this.loadPiketTable();
+                    }).fail(xhr => {
+                        EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menyimpan data piket.' });
+                    });
+                    return false;
+                },
+                onCancel: () => {
+                    $(document).off('click.piketCs');
+                }
             });
+        }).fail(() => {
+            EModal.close(loader);
+            EModal.toast({ type: 'error', title: 'Gagal', message: 'Gagal menghubungi server untuk memuat data piket.' });
         });
     },
 
