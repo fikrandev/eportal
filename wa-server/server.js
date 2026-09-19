@@ -145,6 +145,23 @@ async function resetAndReinit(deleteSession = false) {
 // Start WhatsApp on startup
 initClient();
 
+// Handle graceful shutdown for PM2 / restart
+const shutdownGracefully = async (signal) => {
+    console.log(`\n[WA] Menerima sinyal ${signal}. Menutup client dengan aman...`);
+    if (client) {
+        try {
+            await client.destroy();
+            console.log('[WA] Client berhasil ditutup.');
+        } catch (e) {
+            console.error('[WA] Gagal menutup client:', e.message);
+        }
+    }
+    process.exit(0);
+};
+
+process.on('SIGINT', () => shutdownGracefully('SIGINT'));
+process.on('SIGTERM', () => shutdownGracefully('SIGTERM'));
+
 // Health check endpoint
 app.get('/', (req, res) => {
     res.json({

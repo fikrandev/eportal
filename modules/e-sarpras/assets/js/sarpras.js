@@ -1773,7 +1773,8 @@ const Sarpras = {
                     if (this.state.currentRoute === 'tanah') {
                         this.refreshAccordionLevel('bangunan', bgId);
                     } else {
-                        this.renderRuang($('#mainContent'), bgId);
+                        // Keep current filtering state if any
+                        this.renderRuang($('#mainContent'), this.state.params.bangunan_id || null);
                     }
                 }).fail(xhr => EModal.toast({type:'error', title:'Gagal', message:xhr.responseJSON?.message}));
                 return false;
