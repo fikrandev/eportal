@@ -120,11 +120,18 @@ $school_icon = get_setting('icon_sekolah', '');
             <div class="app-header-left">
                 <div class="app-header-avatar" id="headerAvatar"></div>
                 <div>
-                    <div class="app-header-greeting" id="headerGreeting">Selamat Pagi 👋</div>
+                    <div class="app-header-greeting" id="headerGreeting">Assalamualaikum 👋</div>
                     <div class="app-header-name" id="headerName">Guru</div>
                 </div>
             </div>
             <div class="app-header-right">
+                <button class="app-header-btn" id="headerNotifBtn" onclick="GuruApp.toggleNotifPanel()" title="Notifikasi" style="position:relative;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                    </svg>
+                    <span id="headerNotifBadge" style="position:absolute; top:4px; right:4px; min-width:14px; height:14px; background:#ef4444; border-radius:8px; border:1.5px solid white; font-size:0.55rem; font-weight:800; display:none; align-items:center; justify-content:center; color:white; padding:0 2px;"></span>
+                </button>
                 <button class="app-header-btn" onclick="location.reload()" title="Refresh">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <polyline points="23 4 23 10 17 10"/>

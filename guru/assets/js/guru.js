@@ -382,8 +382,8 @@
             content.innerHTML = `
                 <div class="page-enter">
                     <!-- Curved Gradient Header Block -->
-                    <div class="welcome-header-block" style="background: var(--primary-gradient); color: white; padding: 24px 20px 30px; border-radius: 0 0 28px 28px; margin: -20px -16px 20px; box-shadow: 0 10px 25px -5px rgba(21, 101, 192, 0.25); position: relative; overflow: hidden;">
-                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div class="welcome-header-block" style="background: var(--primary-gradient); color: white; padding: 28px 20px 30px; border-radius: 0 0 28px 28px; margin: -20px -16px 20px; box-shadow: 0 10px 25px -5px rgba(21, 101, 192, 0.25); position: relative; overflow: hidden;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:6px;">
                             <div style="display:flex; align-items:center; gap:12px;">
                                 <div class="welcome-avatar" style="width:48px; height:48px; border-radius:50%; border:2px solid white; background:#fff; color:var(--primary); display:flex; align-items:center; justify-content:center; font-family:var(--font-heading); font-size:1.15rem; font-weight:800; overflow:hidden; flex-shrink:0;">
                                     ${Auth.user?.avatar 
@@ -392,7 +392,6 @@
                                     }
                                 </div>
                                 <div>
-                                    <div style="font-size:0.75rem; opacity:0.8; font-weight:500;">Assalamu'alaikum,</div>
                                     <div style="font-family:var(--font-heading); font-size:1.05rem; font-weight:800; line-height:1.2;">${escapeHtml(Auth.user?.nama_lengkap || 'Guru')}</div>
                                     <div style="font-size:0.7rem; opacity:0.75; font-weight:600; margin-top:2px;">
                                         ${roleSubtitle}
@@ -400,18 +399,27 @@
                                 </div>
                             </div>
                             <div style="display:flex; gap:10px;">
-                                <div class="welcome-icon-btn" style="width:36px; height:36px; border-radius:50%; background:rgba(255,255,255,0.15); display:flex; align-items:center; justify-content:center; position:relative;">
+                                <div class="welcome-icon-btn" id="notifBellBtn" onclick="GuruApp.toggleNotifPanel()" style="width:36px; height:36px; border-radius:50%; background:rgba(255,255,255,0.15); display:flex; align-items:center; justify-content:center; position:relative; cursor:pointer;">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
-                                    <span style="position:absolute; top:8px; right:8px; width:7px; height:7px; background:#ef4444; border-radius:50%; border:1px solid white;"></span>
+                                    <span id="notifBadge" style="position:absolute; top:4px; right:4px; min-width:16px; height:16px; background:#ef4444; border-radius:10px; border:1.5px solid white; font-size:0.6rem; font-weight:800; display:none; align-items:center; justify-content:center; color:white; padding:0 3px;"></span>
                                 </div>
                             </div>
+                        </div>
+
+                        <!-- Notification Panel -->
+                        <div id="notifPanel" style="display:none; background:white; border-radius:14px; margin-top:14px; padding:0; box-shadow:0 10px 30px rgba(0,0,0,0.15); max-height:300px; overflow-y:auto;">
+                            <div style="padding:12px 16px; border-bottom:1px solid #f1f5f9; display:flex; justify-content:space-between; align-items:center;">
+                                <div style="font-size:0.85rem; font-weight:800; color:#1e293b;">🔔 Notifikasi</div>
+                                <div style="font-size:0.7rem; color:#94a3b8; cursor:pointer;" onclick="GuruApp.clearNotifs()">Tandai Dibaca</div>
+                            </div>
+                            <div id="notifList" style="padding:4px 0;"></div>
                         </div>
 
                         <!-- Banner Hero -->
                         <div class="welcome-banner-hero" style="background:rgba(255,255,255,0.08); border-radius:16px; margin-top:20px; padding:16px; display:flex; justify-content:space-between; align-items:center; border:1px solid rgba(255,255,255,0.12);">
                             <div>
                                 <div style="font-size:0.75rem; font-weight:700; opacity:0.95; color:#fff;">${formatTanggal(tanggalIni)}</div>
-                                <div style="font-family:var(--font-heading); font-size:1.25rem; font-weight:800; margin-top:2px;">Selamat Hari Ini!</div>
+                                <div style="font-family:var(--font-heading); font-size:1.25rem; font-weight:800; margin-top:2px;">Assalamualaikum!</div>
                                 <div style="font-size:0.75rem; opacity:0.85; margin-top:2px;">Semangat beraktivitas & menginspirasi ☀️</div>
                             </div>
                             <div style="font-size:2.2rem; opacity:0.95; padding-right:4px;">📚</div>
@@ -2973,12 +2981,7 @@
             if (Auth.user) {
                 if (nameEl) nameEl.textContent = Auth.user.nama_lengkap || 'Guru';
                 if (greetEl) {
-                    const hour = new Date().getHours();
-                    let greeting = 'Selamat Pagi';
-                    if (hour >= 11 && hour < 15) greeting = 'Selamat Siang';
-                    else if (hour >= 15 && hour < 18) greeting = 'Selamat Sore';
-                    else if (hour >= 18) greeting = 'Selamat Malam';
-                    greetEl.textContent = greeting + ' 👋';
+                    greetEl.textContent = "Assalamualaikum 👋";
                 }
                 if (avatarEl) {
                     if (Auth.user.avatar) {
@@ -3240,11 +3243,269 @@
                 btn.disabled = false;
                 btn.innerHTML = '<span class="btn-label">Ubah Password</span>';
             });
+        },
+
+        // =============================================
+        // NOTIFICATION SYSTEM
+        // =============================================
+        _notifDismissed: JSON.parse(localStorage.getItem('guru_notif_dismissed') || '{}'),
+        _notifPanelOpen: false,
+
+        toggleNotifPanel() {
+            this._notifPanelOpen = !this._notifPanelOpen;
+            const panel = $('#notifPanel');
+            if (panel) {
+                panel.style.display = this._notifPanelOpen ? 'block' : 'none';
+            }
+            if (this._notifPanelOpen) {
+                this.renderNotifPanel();
+            }
+        },
+
+        clearNotifs() {
+            const today = getTanggalIni();
+            const items = this._buildNotifItems();
+            items.forEach(n => {
+                this._notifDismissed[today + '_' + n.id] = true;
+            });
+            localStorage.setItem('guru_notif_dismissed', JSON.stringify(this._notifDismissed));
+            this.renderNotifPanel();
+            this._updateNotifBadge(0);
+        },
+
+        _buildNotifItems() {
+            const now = new Date();
+            const hour = now.getHours();
+            const min = now.getMinutes();
+            const currentMinutes = hour * 60 + min;
+            const today = getTanggalIni();
+            const dayOfWeek = now.getDay(); // 0=Sunday
+            const items = [];
+
+            // Skip weekends (Sunday=0, Saturday=6 optional)
+            if (dayOfWeek === 0) return items;
+
+            // Absen Masuk reminder: show from 06:00 to 08:30
+            if (currentMinutes >= 360 && currentMinutes <= 510) {
+                items.push({
+                    id: 'absen_masuk',
+                    icon: '🟢',
+                    title: 'Absen Masuk',
+                    message: 'Jangan lupa absen masuk hari ini!',
+                    time: '06:00 - 08:30',
+                    color: '#10b981'
+                });
+            }
+
+            // Absen Istirahat reminder: show from 11:30 to 13:30
+            if (currentMinutes >= 690 && currentMinutes <= 810) {
+                items.push({
+                    id: 'absen_istirahat',
+                    icon: '🟡',
+                    title: 'Absen Istirahat',
+                    message: 'Waktunya istirahat, jangan lupa absen!',
+                    time: '11:30 - 13:30',
+                    color: '#f59e0b'
+                });
+            }
+
+            // Absen Pulang reminder: show from 13:00 to 17:00
+            if (currentMinutes >= 780 && currentMinutes <= 1020) {
+                items.push({
+                    id: 'absen_pulang',
+                    icon: '🔴',
+                    title: 'Absen Pulang',
+                    message: 'Pastikan absen pulang sebelum meninggalkan sekolah!',
+                    time: '13:00 - 17:00',
+                    color: '#ef4444'
+                });
+            }
+
+            // Isi Jurnal reminder (untuk PTK/Guru yang mengajar): show from 07:00 to 16:00
+            const hasMapel = Auth.user?.mapel_diampu && Auth.user.mapel_diampu.length > 0;
+            if (hasMapel && currentMinutes >= 420 && currentMinutes <= 960) {
+                items.push({
+                    id: 'isi_jurnal',
+                    icon: '📝',
+                    title: 'Isi Jurnal Mengajar',
+                    message: 'Segera isi jurnal mengajar hari ini!',
+                    time: '07:00 - 16:00',
+                    color: '#6366f1'
+                });
+            }
+
+            return items;
+        },
+
+        renderNotifPanel() {
+            const list = $('#notifList');
+            if (!list) return;
+
+            const today = getTanggalIni();
+            const items = this._buildNotifItems();
+            const activeItems = items.filter(n => !this._notifDismissed[today + '_' + n.id]);
+
+            if (activeItems.length === 0) {
+                list.innerHTML = `
+                    <div style="text-align:center; padding:24px 16px; color:#94a3b8;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32" style="opacity:0.4; margin-bottom:6px;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                        <div style="font-size:0.8rem; font-weight:600;">Tidak ada notifikasi</div>
+                    </div>
+                `;
+            } else {
+                list.innerHTML = activeItems.map(n => `
+                    <div style="display:flex; align-items:flex-start; gap:10px; padding:10px 16px; border-bottom:1px solid #f8fafc; transition:background 0.2s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                        <div style="width:32px; height:32px; border-radius:10px; background:${n.color}15; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:1rem;">${n.icon}</div>
+                        <div style="flex:1; min-width:0;">
+                            <div style="font-size:0.82rem; font-weight:700; color:#1e293b;">${n.title}</div>
+                            <div style="font-size:0.72rem; color:#64748b; margin-top:1px;">${n.message}</div>
+                            <div style="font-size:0.65rem; color:#94a3b8; margin-top:3px;">⏰ ${n.time}</div>
+                        </div>
+                    </div>
+                `).join('');
+            }
+
+            this._updateNotifBadge(activeItems.length);
+        },
+
+        _updateNotifBadge(count) {
+            // Badge on welcome header
+            const badge = $('#notifBadge');
+            if (badge) {
+                if (count > 0) {
+                    badge.style.display = 'flex';
+                    badge.textContent = count;
+                } else {
+                    badge.style.display = 'none';
+                }
+            }
+            // Badge on app header
+            const headerBadge = $('#headerNotifBadge');
+            if (headerBadge) {
+                if (count > 0) {
+                    headerBadge.style.display = 'flex';
+                    headerBadge.textContent = count;
+                } else {
+                    headerBadge.style.display = 'none';
+                }
+            }
+        },
+
+        checkAndPushNotifications() {
+            const today = getTanggalIni();
+            const items = this._buildNotifItems();
+            const activeItems = items.filter(n => !this._notifDismissed[today + '_' + n.id]);
+
+            this._updateNotifBadge(activeItems.length);
+
+            // Push notification for each active item (only once per item per day)
+            const pushSentKey = 'guru_push_sent';
+            const pushSent = JSON.parse(localStorage.getItem(pushSentKey) || '{}');
+
+            activeItems.forEach(n => {
+                const pushKey = today + '_' + n.id;
+                if (!pushSent[pushKey]) {
+                    this._showPushNotification(n.title, n.message);
+                    pushSent[pushKey] = true;
+                }
+            });
+
+            localStorage.setItem(pushSentKey, JSON.stringify(pushSent));
+        },
+
+        _showPushNotification(title, body) {
+            if (!('Notification' in window)) return;
+            if (Notification.permission === 'granted') {
+                try {
+                    new Notification(title, {
+                        body: body,
+                        icon: (CONFIG.school?.icon ? BASE_URL + CONFIG.school.icon : BASE_URL + 'assets/icons/icon-192.png'),
+                        badge: BASE_URL + 'assets/icons/icon-192.png',
+                        tag: title.replace(/\s/g, '_'),
+                        requireInteraction: false
+                    });
+                } catch (e) {
+                    // Fallback: use service worker registration
+                    if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+                        navigator.serviceWorker.ready.then(reg => {
+                            reg.showNotification(title, {
+                                body: body,
+                                icon: BASE_URL + 'assets/icons/icon-192.png',
+                                tag: title.replace(/\s/g, '_')
+                            });
+                        });
+                    }
+                }
+            } else if (Notification.permission !== 'denied') {
+                Notification.requestPermission().then(perm => {
+                    if (perm === 'granted') {
+                        this._showPushNotification(title, body);
+                    }
+                });
+            }
+        },
+
+        initNotifications() {
+            // Request push permission on first load
+            if ('Notification' in window && Notification.permission === 'default') {
+                setTimeout(() => {
+                    Notification.requestPermission();
+                }, 3000);
+            }
+
+            // Clean old dismissed entries (older than today)
+            const today = getTanggalIni();
+            const cleaned = {};
+            Object.keys(this._notifDismissed).forEach(k => {
+                if (k.startsWith(today)) cleaned[k] = true;
+            });
+            this._notifDismissed = cleaned;
+            localStorage.setItem('guru_notif_dismissed', JSON.stringify(cleaned));
+
+            // Clean old push sent entries
+            const pushSentKey = 'guru_push_sent';
+            const pushSent = JSON.parse(localStorage.getItem(pushSentKey) || '{}');
+            const cleanedPush = {};
+            Object.keys(pushSent).forEach(k => {
+                if (k.startsWith(today)) cleanedPush[k] = true;
+            });
+            localStorage.setItem(pushSentKey, JSON.stringify(cleanedPush));
+
+            // Initial check
+            this.checkAndPushNotifications();
+
+            // Check every 5 minutes
+            setInterval(() => {
+                this.checkAndPushNotifications();
+            }, 5 * 60 * 1000);
+
+            // Close panel when clicking outside
+            document.addEventListener('click', (e) => {
+                const panel = $('#notifPanel');
+                const bellBtn = $('#notifBellBtn');
+                const headerBtn = $('#headerNotifBtn');
+                if (panel && this._notifPanelOpen) {
+                    if (!panel.contains(e.target) && 
+                        (!bellBtn || !bellBtn.contains(e.target)) &&
+                        (!headerBtn || !headerBtn.contains(e.target))) {
+                        this._notifPanelOpen = false;
+                        panel.style.display = 'none';
+                    }
+                }
+            });
         }
     };
 
     // =============================================
     // BOOT
     // =============================================
-    document.addEventListener('DOMContentLoaded', () => App.init());
+    document.addEventListener('DOMContentLoaded', () => {
+        App.init();
+        // Start notification system after login check
+        setTimeout(() => {
+            if (Auth.isLoggedIn()) {
+                window.GuruApp.initNotifications();
+            }
+        }, 2000);
+    });
 })();
