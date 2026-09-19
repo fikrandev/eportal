@@ -1,0 +1,1 @@
+<?php require 'api/config.php'; $token = db()->query('SELECT token FROM sessions WHERE expired_at > NOW() LIMIT 1')->fetchColumn(); echo file_get_contents('http://localhost/eportal/modules/e-curriculum/api/dashboard.php?action=stats&token='.$token);

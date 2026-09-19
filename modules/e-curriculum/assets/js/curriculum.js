@@ -1280,10 +1280,9 @@ const Curriculum = {
             }
 
             // 8. Lateness HTML
-            const lateness = res.data.summary.lateness || {};
-            const latenessChartData = lateness.chart || [];
-            const latenessSiswa = lateness.siswa_today || [];
-            const latenessGuru = lateness.guru_today || [];
+            const latenessChartData = res.data.chart_terlambat || [];
+            const latenessSiswa = res.data.siswa_terlambat_today || [];
+            const latenessGuru = res.data.guru_terlambat_today || [];
 
             let latenessHtml = `
                 <div class="dash-card fade-in">
@@ -1695,7 +1694,8 @@ const Curriculum = {
 
             // Initialize ApexChart
             setTimeout(() => {
-                if (window.ApexCharts && $('#chartKeterlambatan')) {
+                const chartEl = document.querySelector('#chartKeterlambatan');
+                if (window.ApexCharts && chartEl) {
                     const categories = latenessChartData.map(d => {
                         const date = new Date(d.tanggal);
                         return date.getDate() + '/' + (date.getMonth() + 1);
@@ -1754,7 +1754,7 @@ const Curriculum = {
                         }
                     };
 
-                    const chart = new ApexCharts($('#chartKeterlambatan'), options);
+                    const chart = new ApexCharts(chartEl, options);
                     chart.render();
                 }
             }, 100);
