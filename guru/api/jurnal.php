@@ -220,7 +220,7 @@ function createJurnal($user) {
         }
 
         // Get homeroom class ID
-        $stmtWali = db()->prepare("SELECT id, nama_kelas FROM sch_kelas WHERE wali_id = ? LIMIT 1");
+        $stmtWali = db()->prepare("SELECT id, nama_kelas FROM ref_kelas WHERE wali_kelas_id = ? LIMIT 1");
         $stmtWali->execute([$user['user_id']]);
         $wali = $stmtWali->fetch(PDO::FETCH_ASSOC);
 
@@ -611,7 +611,7 @@ function getStudentsByKelas($user) {
 function listJurnalWaliKelas($user) {
     try {
         // Find homeroom class reference
-        $stmtW = db()->prepare("SELECT id, rombel as tingkat, nama_kelas FROM sch_kelas WHERE wali_id = ? LIMIT 1");
+        $stmtW = db()->prepare("SELECT id, tingkat, nama_kelas FROM ref_kelas WHERE wali_kelas_id = ? LIMIT 1");
         $stmtW->execute([$user['user_id']]);
         $wali = $stmtW->fetch(PDO::FETCH_ASSOC);
         
@@ -677,7 +677,7 @@ function listJurnalWaliKelas($user) {
 function rekapAbsensiWaliKelas($user) {
     try {
         // Resolve homeroom class reference
-        $stmtW = db()->prepare("SELECT id, rombel as tingkat, nama_kelas FROM sch_kelas WHERE wali_id = ? LIMIT 1");
+        $stmtW = db()->prepare("SELECT id, tingkat, nama_kelas FROM ref_kelas WHERE wali_kelas_id = ? LIMIT 1");
         $stmtW->execute([$user['user_id']]);
         $wali = $stmtW->fetch(PDO::FETCH_ASSOC);
         
@@ -763,7 +763,7 @@ function dailyAbsenWaliKelas($user) {
         $tanggal = isset($_GET['tanggal']) ? trim($_GET['tanggal']) : date('Y-m-d');
         
         // Resolve homeroom class reference
-        $stmtW = db()->prepare("SELECT id, rombel as tingkat, nama_kelas FROM sch_kelas WHERE wali_id = ? LIMIT 1");
+        $stmtW = db()->prepare("SELECT id, tingkat, nama_kelas FROM ref_kelas WHERE wali_kelas_id = ? LIMIT 1");
         $stmtW->execute([$user['user_id']]);
         $wali = $stmtW->fetch(PDO::FETCH_ASSOC);
         
@@ -963,7 +963,7 @@ function getDashboardStats($user) {
 
         // 2. Wali Kelas Stats
         $waliStats = null;
-        $stmtW = db()->prepare("SELECT id, rombel as tingkat, nama_kelas FROM sch_kelas WHERE wali_id = ? LIMIT 1");
+        $stmtW = db()->prepare("SELECT id, tingkat, nama_kelas FROM ref_kelas WHERE wali_kelas_id = ? LIMIT 1");
         $stmtW->execute([$user['user_id']]);
         $wali = $stmtW->fetch(PDO::FETCH_ASSOC);
         

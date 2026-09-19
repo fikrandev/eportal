@@ -113,8 +113,8 @@ function handleGuruLogin() {
  * Helper to fetch teacher metadata (homeroom, teaching assignment, profile type)
  */
 function getTeacherMetadata($userId, $username) {
-    // 1. Wali Kelas check (Use sch_kelas which is managed by e-curriculum)
-    $stmtWali = db()->prepare("SELECT id, rombel as tingkat, nama_kelas FROM sch_kelas WHERE wali_id = ? LIMIT 1");
+    // 1. Wali Kelas check
+    $stmtWali = db()->prepare("SELECT id, tingkat, nama_kelas FROM ref_kelas WHERE wali_kelas_id = ? LIMIT 1");
     $stmtWali->execute([$userId]);
     $waliKelas = $stmtWali->fetch(PDO::FETCH_ASSOC) ?: null;
 
