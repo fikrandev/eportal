@@ -601,9 +601,15 @@
                                     noteSnippet = escapeHtml(r.catatan || 'Tidak ada catatan.');
                                 } else if (r.jenis_jurnal === 'wali_kelas') {
                                     cardTitle = 'Jurnal Guru Wali';
-                                    cardBadge = `Kelas ${escapeHtml(r.nama_kelas || '')}`;
+                                    cardBadge = 'Guru Wali';
                                     cardBadgeClass = 'badge-warning';
-                                    cardSubtitle = `${formatTanggal(r.tanggal)} — Aktivitas Wali Kelas`;
+                                    cardSubtitle = `${formatTanggal(r.tanggal)} — Kelas ${escapeHtml(r.nama_kelas || '')}`;
+                                    noteSnippet = escapeHtml(r.catatan || 'Tidak ada catatan.');
+                                } else if (r.jenis_jurnal === 'waka') {
+                                    cardTitle = 'Jurnal Waka';
+                                    cardBadge = 'Waka';
+                                    cardBadgeClass = 'badge-primary';
+                                    cardSubtitle = `${formatTanggal(r.tanggal)} — Tugas Tambahan Waka`;
                                     noteSnippet = escapeHtml(r.catatan || 'Tidak ada catatan.');
                                 }
 
@@ -833,11 +839,45 @@
             const tanggalIni = getTanggalIni();
             const hasMapel = !!Auth.user?.has_mapel;
             const isWali = !!Auth.user?.wali_kelas;
+            const isWaka = !!Auth.user?.is_waka;
+
+            const waliBanner = isWali ? `
+                <div class="wali-journal-banner" onclick="GuruApp.openKegiatanModal('wali_kelas')" style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border: 1.5px solid #bfdbfe; border-radius: 16px; padding: 14px 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; box-shadow: var(--shadow-sm); transition:transform 0.2s ease;">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <div style="width:38px; height:38px; border-radius:10px; background:#2563eb; color:white; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                        </div>
+                        <div>
+                            <div style="font-family:var(--font-heading); font-size:0.875rem; font-weight:800; color:#1e40af;">Jurnal Guru Wali (${escapeHtml(Auth.user.wali_kelas?.nama_kelas || '')})</div>
+                            <div style="font-size:0.75rem; color:#3b82f6; font-weight:600;">Klik untuk catat kegiatan & pembinaan kelas</div>
+                        </div>
+                    </div>
+                    <span class="btn btn-sm btn-primary" style="pointer-events:none; font-size:0.75rem; padding:6px 12px; border-radius:8px;">+ Isi</span>
+                </div>
+            ` : '';
+
+            const wakaBanner = isWaka ? `
+                <div class="waka-journal-banner" onclick="GuruApp.openKegiatanModal('waka')" style="background: linear-gradient(135deg, #fdf4ff 0%, #fae8ff 100%); border: 1.5px solid #f5d0fe; border-radius: 16px; padding: 14px 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; box-shadow: var(--shadow-sm); transition:transform 0.2s ease;">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <div style="width:38px; height:38px; border-radius:10px; background:#c026d3; color:white; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                        </div>
+                        <div>
+                            <div style="font-family:var(--font-heading); font-size:0.875rem; font-weight:800; color:#86198f;">Jurnal Waka (${escapeHtml(Auth.user.jabatan_waka || 'Wakil Kepala Sekolah')})</div>
+                            <div style="font-size:0.75rem; color:#d946ef; font-weight:600;">Klik untuk catat kegiatan Waka</div>
+                        </div>
+                    </div>
+                    <span class="btn btn-sm btn-primary" style="background:#c026d3; border:none; pointer-events:none; font-size:0.75rem; padding:6px 12px; border-radius:8px;">+ Isi</span>
+                </div>
+            ` : '';
 
             if (!hasMapel) {
                 // Non-KBM Teacher: Simplified Journal Form (Pilih Tanggal, Catatan Kegiatan, Simpan)
                 content.innerHTML = `
                     <div class="page-enter">
+                        ${waliBanner}
+                        ${wakaBanner}
+                        
                         <div class="section-title">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                             Jurnal Kegiatan Harian
@@ -877,20 +917,8 @@
             // KBM Teacher with Teaching Schedule
             content.innerHTML = `
                 <div class="page-enter">
-                    ${isWali ? `
-                        <div class="wali-journal-banner" onclick="GuruApp.openKegiatanModal('wali_kelas')" style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border: 1.5px solid #bfdbfe; border-radius: 16px; padding: 14px 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; box-shadow: var(--shadow-sm); transition:transform 0.2s ease;">
-                            <div style="display:flex; align-items:center; gap:12px;">
-                                <div style="width:38px; height:38px; border-radius:10px; background:#2563eb; color:white; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                                </div>
-                                <div>
-                                    <div style="font-family:var(--font-heading); font-size:0.875rem; font-weight:800; color:#1e40af;">Jurnal Guru Wali (${escapeHtml(Auth.user.wali_kelas.nama_kelas)})</div>
-                                    <div style="font-size:0.75rem; color:#3b82f6; font-weight:600;">Klik untuk catat kegiatan & pembinaan kelas</div>
-                                </div>
-                            </div>
-                            <span class="btn btn-sm btn-primary" style="pointer-events:none; font-size:0.75rem; padding:6px 12px; border-radius:8px;">+ Isi</span>
-                        </div>
-                    ` : ''}
+                    ${waliBanner}
+                    ${wakaBanner}
 
                     <div class="section-title">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -929,8 +957,8 @@
                         container.innerHTML = list.map(item => `
                             <div class="jurnal-item" onclick="GuruApp.viewJurnal(${item.id})">
                                 <div class="jurnal-item-header">
-                                    <div class="jurnal-item-mapel">${item.jenis_jurnal === 'wali_kelas' ? 'Jurnal Guru Wali' : 'Jurnal Kegiatan'}</div>
-                                    <span class="badge ${item.jenis_jurnal === 'wali_kelas' ? 'badge-warning' : 'badge-info'}">${item.jenis_jurnal === 'wali_kelas' ? 'Guru Wali' : 'Non-KBM'}</span>
+                                    <div class="jurnal-item-mapel">${item.jenis_jurnal === 'wali_kelas' ? 'Jurnal Guru Wali' : (item.jenis_jurnal === 'waka' ? 'Jurnal Waka' : 'Jurnal Kegiatan')}</div>
+                                    <span class="badge ${item.jenis_jurnal === 'wali_kelas' ? 'badge-warning' : (item.jenis_jurnal === 'waka' ? 'badge-primary' : 'badge-info')}">${item.jenis_jurnal === 'wali_kelas' ? 'Guru Wali' : (item.jenis_jurnal === 'waka' ? 'Waka' : 'Non-KBM')}</span>
                                 </div>
                                 <div class="jurnal-item-tp" style="margin-top:6px; font-size:0.85rem; color:var(--text-primary); line-height:1.5;">${escapeHtml(item.catatan || '-')}</div>
                                 <div class="jurnal-item-footer" style="margin-top:10px;">
@@ -999,10 +1027,20 @@
 
             const tanggal = getTanggalIni();
             const isWali = jenis === 'wali_kelas';
-            const title = existing ? (isWali ? 'Edit Jurnal Guru Wali' : 'Edit Jurnal Kegiatan') : (isWali ? 'Isi Jurnal Guru Wali' : 'Isi Jurnal Kegiatan');
-            const placeholder = isWali 
-                ? 'Tuliskan catatan pembinaan siswa, koordinasi wali murid, atau kejadian di kelas hari ini...'
-                : 'Tuliskan uraian kegiatan harian kerja Anda hari ini...';
+            const isWaka = jenis === 'waka';
+            
+            let title = 'Isi Jurnal Kegiatan';
+            let placeholder = 'Tuliskan uraian kegiatan harian kerja Anda hari ini...';
+            
+            if (isWali) {
+                title = existing ? 'Edit Jurnal Guru Wali' : 'Isi Jurnal Guru Wali';
+                placeholder = 'Tuliskan catatan pembinaan siswa, koordinasi wali murid, atau kejadian di kelas hari ini...';
+            } else if (isWaka) {
+                title = existing ? 'Edit Jurnal Waka' : 'Isi Jurnal Waka';
+                placeholder = 'Tuliskan catatan kegiatan Wakil Kepala Sekolah hari ini (koordinasi, program, dll)...';
+            } else if (existing) {
+                title = 'Edit Jurnal Kegiatan';
+            }
 
             const overlay = document.createElement('div');
             overlay.className = 'guru-modal-overlay';
@@ -1024,6 +1062,12 @@
                             <div class="form-info-row">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                                 <span>Wali Kelas: <strong>${escapeHtml(Auth.user.wali_kelas.nama_kelas)}</strong></span>
+                            </div>
+                        ` : ''}
+                        ${isWaka && Auth.user?.jabatan_waka ? `
+                            <div class="form-info-row">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                                <span>Jabatan: <strong>${escapeHtml(Auth.user.jabatan_waka)}</strong></span>
                             </div>
                         ` : ''}
 
@@ -1422,9 +1466,15 @@
                                 snippet = escapeHtml(j.catatan || 'Tidak ada catatan.');
                             } else if (j.jenis_jurnal === 'wali_kelas') {
                                 title = 'Jurnal Guru Wali';
-                                badgeText = `Kelas ${escapeHtml(j.nama_kelas || '')}`;
+                                badgeText = 'Guru Wali';
                                 badgeClass = 'badge-warning';
-                                subtitle = 'Aktivitas & Pembinaan Siswa';
+                                subtitle = `Kelas ${escapeHtml(j.nama_kelas || '')}`;
+                                snippet = escapeHtml(j.catatan || 'Tidak ada catatan.');
+                            } else if (j.jenis_jurnal === 'waka') {
+                                title = 'Jurnal Waka';
+                                badgeText = 'Waka';
+                                badgeClass = 'badge-primary';
+                                subtitle = 'Tugas Tambahan Waka';
                                 snippet = escapeHtml(j.catatan || 'Tidak ada catatan.');
                             }
 

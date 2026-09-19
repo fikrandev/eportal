@@ -93,7 +93,9 @@ function handleGuruLogin() {
                 'avatar'        => $user['avatar'],
                 'wali_kelas'    => $meta['wali_kelas'],
                 'has_mapel'     => $meta['has_mapel'],
-                'teacher_type'  => $meta['teacher_type']
+                'teacher_type'  => $meta['teacher_type'],
+                'is_waka'       => $meta['is_waka'],
+                'jabatan_waka'  => $meta['jabatan_waka']
             ],
             'school' => [
                 'nama' => $namaSekolah,
@@ -135,10 +137,29 @@ function getTeacherMetadata($userId, $username) {
         $teacherType = $waliKelas ? 'kbm_wali' : 'kbm';
     }
 
+    // 3. Waka (Wakil Kepala Sekolah) check
+    $stmtWaka = db()->prepare("SELECT tupoksi, jabatan FROM users WHERE id = ? LIMIT 1");
+    $stmtWaka->execute([$userId]);
+    $userRow = $stmtWaka->fetch(PDO::FETCH_ASSOC);
+    $isWaka = false;
+    $jabatanWaka = '';
+    
+    if ($userRow) {
+        $tupoksi = strtolower($userRow['tupoksi'] ?? '');
+        $jabatan = strtolower($userRow['jabatan'] ?? '');
+        if (strpos($tupoksi, 'waka') !== false || strpos($tupoksi, 'wakil kepala sekolah') !== false ||
+            strpos($jabatan, 'waka') !== false || strpos($jabatan, 'wakil kepala sekolah') !== false) {
+            $isWaka = true;
+            $jabatanWaka = $userRow['jabatan'] ?: 'Wakil Kepala Sekolah';
+        }
+    }
+
     return [
         'wali_kelas' => $waliKelas,
         'has_mapel' => $hasMapel,
-        'teacher_type' => $teacherType
+        'teacher_type' => $teacherType,
+        'is_waka' => $isWaka,
+        'jabatan_waka' => $jabatanWaka
     ];
 }
 

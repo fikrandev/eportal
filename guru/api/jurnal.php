@@ -176,7 +176,7 @@ function createJurnal($user) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed.');
 
     $input = get_input();
-    $jenis_jurnal = isset($input['jenis_jurnal']) && in_array($input['jenis_jurnal'], ['kbm', 'non_kbm', 'wali_kelas']) ? $input['jenis_jurnal'] : 'kbm';
+    $jenis_jurnal = isset($input['jenis_jurnal']) && in_array($input['jenis_jurnal'], ['kbm', 'non_kbm', 'wali_kelas', 'waka']) ? $input['jenis_jurnal'] : 'kbm';
     $tanggal = isset($input['tanggal']) ? $input['tanggal'] : date('Y-m-d');
     
     // Strict restriction: Can only fill journal for today
@@ -240,6 +240,29 @@ function createJurnal($user) {
             $jurnal_id = db()->lastInsertId();
 
             json_response(201, true, 'Jurnal kegiatan wali kelas berhasil disimpan.', ['id' => $jurnal_id]);
+        } catch (PDOException $e) {
+            json_response(500, false, 'Server error: ' . $e->getMessage());
+        }
+        return;
+    }
+
+    // ==========================================
+    // 3. WAKA JOURNAL (Tugas Tambahan Waka)
+    // ==========================================
+    if ($jenis_jurnal === 'waka') {
+        if (empty($catatan)) {
+            json_response(400, false, 'Catatan kegiatan Waka wajib diisi.');
+        }
+
+        try {
+            $stmt = db()->prepare("
+                INSERT INTO acad_jurnal (guru_id, academic_year_id, jenis_jurnal, tanggal, catatan)
+                VALUES (?, ?, 'waka', ?, ?)
+            ");
+            $stmt->execute([$user['user_id'], $year_id, $tanggal, $catatan]);
+            $jurnal_id = db()->lastInsertId();
+
+            json_response(201, true, 'Jurnal kegiatan Waka berhasil disimpan.', ['id' => $jurnal_id]);
         } catch (PDOException $e) {
             json_response(500, false, 'Server error: ' . $e->getMessage());
         }
@@ -375,7 +398,7 @@ function updateJurnal($user) {
 
     $catatan = isset($input['catatan']) ? trim($input['catatan']) : '';
 
-    if ($existingJurnal['jenis_jurnal'] === 'non_kbm' || $existingJurnal['jenis_jurnal'] === 'wali_kelas') {
+    if ($existingJurnal['jenis_jurnal'] === 'non_kbm' || $existingJurnal['jenis_jurnal'] === 'wali_kelas' || $existingJurnal['jenis_jurnal'] === 'waka') {
         if (empty($catatan)) {
             json_response(400, false, 'Catatan kegiatan wajib diisi.');
         }
