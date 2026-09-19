@@ -556,7 +556,7 @@
                     // Render Schedule or Non-KBM Activity Box
                     const scheduleContainer = $('#homeTodaySchedule');
                     if (scheduleContainer) {
-                        const isMapel = !!Auth.user?.is_guru_mapel;
+                        const isMapel = !!Auth.user?.is_guru_mapel || !!Auth.user?.has_mapel;
                         const hasSchedule = schedules && schedules.length > 0;
                         
                         let html = '';
@@ -885,7 +885,7 @@
                 if (res.success) schedules = res.data || [];
             } catch(e) {}
 
-            const isMapel = !!Auth.user?.is_guru_mapel;
+            const isMapel = !!Auth.user?.is_guru_mapel || !!Auth.user?.has_mapel;
             const isWali = !!Auth.user?.wali_kelas;
             const isGuruWali = !!Auth.user?.is_guru_wali;
             const isWaka = !!Auth.user?.is_waka;
