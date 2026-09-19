@@ -562,7 +562,18 @@
                             }
                         } else {
                             // Non-KBM teacher: direct activity box
-                            scheduleContainer.innerHTML = `
+                            let nonKbmHtml = '';
+                            if (isWali) {
+                                nonKbmHtml += `
+                                    <div style="margin-bottom:12px;">
+                                        <button class="btn btn-sm" onclick="GuruApp.openKegiatanModal('wali_kelas')" style="width:100%; background:#eff6ff; color:#2563eb; border:1.5px dashed #93c5fd; border-radius:12px; padding:10px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px;">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                                            <span>+ Isi Jurnal Guru Wali (${escapeHtml(Auth.user.wali_kelas.nama_kelas)})</span>
+                                        </button>
+                                    </div>
+                                `;
+                            }
+                            nonKbmHtml += `
                                 <div class="non-kbm-card" style="background:white; border-radius:18px; padding:18px; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9;">
                                     <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
                                         <div>
@@ -577,6 +588,7 @@
                                     </button>
                                 </div>
                             `;
+                            scheduleContainer.innerHTML = nonKbmHtml;
                         }
                     }
 

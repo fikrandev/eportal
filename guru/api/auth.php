@@ -118,17 +118,19 @@ function getTeacherMetadata($userId, $username) {
     $stmtWali->execute([$userId]);
     $waliKelas = $stmtWali->fetch(PDO::FETCH_ASSOC) ?: null;
 
-    // 2. Has Mapel / Teaching schedule check
-    $stmtGuru = db()->prepare("SELECT id FROM sch_guru WHERE kode_guru = ?");
-    $stmtGuru->execute([$username]);
-    $guru = $stmtGuru->fetch(PDO::FETCH_ASSOC);
-
-    $hasMapel = false;
-    if ($guru) {
-        $stmtDist = db()->prepare("SELECT COUNT(*) FROM sch_distribusi WHERE guru_id = ?");
-        $stmtDist->execute([$guru['id']]);
-        $hasMapel = ((int)$stmtDist->fetchColumn() > 0);
-    }
+    // 2. Fetch User Tupoksi and Jabatan
+    $stmtUser = db()->prepare("SELECT tupoksi, jabatan FROM users WHERE id = ? LIMIT 1");
+    $stmtUser->execute([$userId]);
+    $userRow = $stmtUser->fetch(PDO::FETCH_ASSOC);
+    
+    $tupoksiStr = strtolower($userRow['tupoksi'] ?? '');
+    $jabatanStr = strtolower($userRow['jabatan'] ?? '');
+    
+    // 3. Determine if Guru Mata Pelajaran
+    $isGuruMapel = (strpos($tupoksiStr, 'guru mata pelajaran') !== false);
+    
+    // has_mapel now represents if they are supposed to have teaching schedules (KBM) based on tupoksi
+    $hasMapel = $isGuruMapel;
 
     $teacherType = 'kbm';
     if (!$hasMapel) {
@@ -137,18 +139,13 @@ function getTeacherMetadata($userId, $username) {
         $teacherType = $waliKelas ? 'kbm_wali' : 'kbm';
     }
 
-    // 3. Waka (Wakil Kepala Sekolah) check
-    $stmtWaka = db()->prepare("SELECT tupoksi, jabatan FROM users WHERE id = ? LIMIT 1");
-    $stmtWaka->execute([$userId]);
-    $userRow = $stmtWaka->fetch(PDO::FETCH_ASSOC);
+    // 4. Waka (Wakil Kepala Sekolah) check
     $isWaka = false;
     $jabatanWaka = '';
     
     if ($userRow) {
-        $tupoksi = strtolower($userRow['tupoksi'] ?? '');
-        $jabatan = strtolower($userRow['jabatan'] ?? '');
-        if (strpos($tupoksi, 'waka') !== false || strpos($tupoksi, 'wakil kepala sekolah') !== false ||
-            strpos($jabatan, 'waka') !== false || strpos($jabatan, 'wakil kepala sekolah') !== false) {
+        if (strpos($tupoksiStr, 'waka') !== false || strpos($tupoksiStr, 'wakil kepala sekolah') !== false ||
+            strpos($jabatanStr, 'waka') !== false || strpos($jabatanStr, 'wakil kepala sekolah') !== false) {
             $isWaka = true;
             $jabatanWaka = $userRow['jabatan'] ?: 'Wakil Kepala Sekolah';
         }
