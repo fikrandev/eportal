@@ -576,7 +576,7 @@ function updateGuruPassword() {
 
     try {
         $stmt = db()->prepare("SELECT id, password FROM users WHERE id = ?");
-        $stmt->execute([$auth['id']]);
+        $stmt->execute([$auth['user_id']]);
         $user = $stmt->fetch();
 
         if (!$user) {
@@ -589,7 +589,7 @@ function updateGuruPassword() {
 
         $newHash = password_hash($newPass, PASSWORD_DEFAULT);
         $updateStmt = db()->prepare("UPDATE users SET password = ? WHERE id = ?");
-        $updateStmt->execute([$newHash, $auth['id']]);
+        $updateStmt->execute([$newHash, $auth['user_id']]);
 
         json_response(200, true, 'Password berhasil diperbarui.');
     } catch (PDOException $e) {
