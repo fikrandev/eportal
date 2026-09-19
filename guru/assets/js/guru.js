@@ -579,7 +579,7 @@
                                 <div style="margin-bottom:12px;">
                                     <button class="btn btn-sm" onclick="GuruApp.openKegiatanModal('guru_wali')" style="width:100%; background:#f0fdf4; color:#16a34a; border:1.5px dashed #86efac; border-radius:12px; padding:10px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px;">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                                        <span>+ Isi Jurnal Guru Wali</span>
+                                        <span>+ Tulis Catatan Guru Wali</span>
                                     </button>
                                 </div>
                             `;
