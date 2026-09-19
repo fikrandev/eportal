@@ -1279,6 +1279,49 @@ const Curriculum = {
                 `;
             }
 
+            // 8. Lateness HTML
+            const lateness = res.data.summary.lateness || {};
+            const latenessChartData = lateness.chart || [];
+            const latenessSiswa = lateness.siswa_today || [];
+            const latenessGuru = lateness.guru_today || [];
+
+            let latenessHtml = `
+                <div class="dash-card fade-in">
+                    <div class="dash-card-header">
+                        <h3 class="dash-card-title">
+                            <span style="font-size:1.1rem;">⏱️</span> Statistik Keterlambatan (7 Hari Terakhir)
+                        </h3>
+                    </div>
+                    <div class="dash-card-body" style="padding:16px;">
+                        <div id="chartKeterlambatan" style="height: 250px;"></div>
+                        
+                        <div style="margin-top:16px;">
+                            <div style="font-weight:700; color:#475569; margin-bottom:10px; padding-bottom:6px; border-bottom:1px solid #e2e8f0;">Daftar Terlambat Hari Ini</div>
+                            <div style="display:flex; gap:16px; flex-wrap:wrap;">
+                                <div style="flex:1; min-width:200px; border:1px solid #f1f5f9; border-radius:10px; padding:12px; background:#f8fafc;">
+                                    <div style="font-size:0.85rem; font-weight:700; color:#3b82f6; margin-bottom:8px;">👨‍🏫 Guru Terlambat (${latenessGuru.length})</div>
+                                    ${latenessGuru.length ? latenessGuru.map(g => `
+                                        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px dashed #e2e8f0; font-size:0.8rem;">
+                                            <span style="font-weight:600; color:#334155;">${this.escapeHtml(g.guru_nama)}</span>
+                                            <span class="badge badge-warning" style="font-size:0.7rem;">${(g.waktu||'').split(' ')[1] || g.waktu}</span>
+                                        </div>
+                                    `).join('') : '<div style="font-size:0.8rem; color:#94a3b8;">Nihil</div>'}
+                                </div>
+                                <div style="flex:1; min-width:200px; border:1px solid #f1f5f9; border-radius:10px; padding:12px; background:#f8fafc;">
+                                    <div style="font-size:0.85rem; font-weight:700; color:#10b981; margin-bottom:8px;">🎒 Siswa Terlambat (${latenessSiswa.length})</div>
+                                    ${latenessSiswa.length ? latenessSiswa.map(s => `
+                                        <div style="display:flex; justify-content:space-between; align-items:center; padding:6px 0; border-bottom:1px dashed #e2e8f0; font-size:0.8rem;">
+                                            <div><span style="font-weight:600; color:#334155;">${this.escapeHtml(s.nama_siswa)}</span> <span style="color:#64748b; font-size:0.75rem;">(${this.escapeHtml(s.nama_kelas)})</span></div>
+                                            <span class="badge badge-warning" style="font-size:0.7rem;">${(s.waktu||'').split(' ')[1] || s.waktu}</span>
+                                        </div>
+                                    `).join('') : '<div style="font-size:0.8rem; color:#94a3b8;">Nihil</div>'}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
             // Main Dashboard HTML Assembly
             $container.html(`
                 <!-- HERO BANNER -->
@@ -1428,6 +1471,7 @@ const Curriculum = {
                 <div class="dash-content-grid">
                     <!-- LEFT COLUMN (PRIMARY FEEDS & SCHEDULE) -->
                     <div>
+                        ${latenessHtml}
                         <!-- JADWAL KBM HARI INI -->
                         <div class="dash-card fade-in">
                             <div class="dash-card-header">
@@ -1648,6 +1692,73 @@ const Curriculum = {
                     </div>
                 </div>
             `);
+
+            // Initialize ApexChart
+            setTimeout(() => {
+                if (window.ApexCharts && $('#chartKeterlambatan')) {
+                    const categories = latenessChartData.map(d => {
+                        const date = new Date(d.tanggal);
+                        return date.getDate() + '/' + (date.getMonth() + 1);
+                    });
+                    const siswaData = latenessChartData.map(d => d.siswa);
+                    const guruData = latenessChartData.map(d => d.guru);
+
+                    const options = {
+                        series: [{
+                            name: 'Siswa Terlambat',
+                            data: siswaData
+                        }, {
+                            name: 'Guru Terlambat',
+                            data: guruData
+                        }],
+                        chart: {
+                            type: 'bar',
+                            height: 250,
+                            toolbar: { show: false },
+                            fontFamily: 'Inter, sans-serif'
+                        },
+                        colors: ['#10b981', '#3b82f6'],
+                        plotOptions: {
+                            bar: {
+                                horizontal: false,
+                                columnWidth: '55%',
+                                endingShape: 'rounded',
+                                borderRadius: 4
+                            },
+                        },
+                        dataLabels: {
+                            enabled: false
+                        },
+                        stroke: {
+                            show: true,
+                            width: 2,
+                            colors: ['transparent']
+                        },
+                        xaxis: {
+                            categories: categories,
+                        },
+                        yaxis: {
+                            title: {
+                                text: 'Jumlah Terlambat'
+                            }
+                        },
+                        fill: {
+                            opacity: 1
+                        },
+                        tooltip: {
+                            y: {
+                                formatter: function (val) {
+                                    return val + " orang"
+                                }
+                            }
+                        }
+                    };
+
+                    const chart = new ApexCharts($('#chartKeterlambatan'), options);
+                    chart.render();
+                }
+            }, 100);
+
         });
     },
 

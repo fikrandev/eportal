@@ -84,6 +84,7 @@ if ($action === 'stats') {
                 COUNT(CASE WHEN status = 'S' THEN 1 END) as sakit,
                 COUNT(CASE WHEN status = 'I' THEN 1 END) as izin,
                 COUNT(CASE WHEN status = 'A' THEN 1 END) as alpha,
+                COUNT(CASE WHEN status = 'T' THEN 1 END) as terlambat,
                 COUNT(*) as total_recorded
             FROM acad_absensi_guru
             WHERE tanggal = ?
@@ -265,6 +266,47 @@ if ($action === 'stats') {
             ) as sub
         ")->fetch(PDO::FETCH_ASSOC);
 
+        // 13. NEW: Grafik Keterlambatan 7 Hari Terakhir
+        $chart_terlambat = [];
+        $stmtLateSiswa = $pdo->prepare("SELECT tanggal, COUNT(*) as jml FROM acad_absensi WHERE status = 'T' AND tanggal BETWEEN DATE_SUB(?, INTERVAL 6 DAY) AND ? GROUP BY tanggal");
+        $stmtLateSiswa->execute([$today, $today]);
+        $late_siswa_data = $stmtLateSiswa->fetchAll(PDO::FETCH_KEY_PAIR);
+
+        $stmtLateGuru = $pdo->prepare("SELECT tanggal, COUNT(*) as jml FROM acad_absensi_guru WHERE status = 'T' AND tanggal BETWEEN DATE_SUB(?, INTERVAL 6 DAY) AND ? GROUP BY tanggal");
+        $stmtLateGuru->execute([$today, $today]);
+        $late_guru_data = $stmtLateGuru->fetchAll(PDO::FETCH_KEY_PAIR);
+
+        for ($i = 6; $i >= 0; $i--) {
+            $tgl = date('Y-m-d', strtotime("-$i days", strtotime($today)));
+            $chart_terlambat[] = [
+                'tanggal' => $tgl,
+                'siswa' => (int)($late_siswa_data[$tgl] ?? 0),
+                'guru' => (int)($late_guru_data[$tgl] ?? 0)
+            ];
+        }
+
+        // 14. NEW: Daftar Terlambat Hari Ini
+        $stmtLateSiswaList = $pdo->prepare("
+            SELECT a.created_at as waktu, s.nama as nama_siswa, COALESCE(k.nama_kelas, s.kelas) as nama_kelas
+            FROM acad_absensi a
+            JOIN students s ON a.student_id = s.id
+            LEFT JOIN sch_kelas k ON a.kelas_id = k.id
+            WHERE a.tanggal = ? AND a.status = 'T'
+            ORDER BY a.created_at DESC
+        ");
+        $stmtLateSiswaList->execute([$today]);
+        $siswa_terlambat_today = $stmtLateSiswaList->fetchAll(PDO::FETCH_ASSOC);
+
+        $stmtLateGuruList = $pdo->prepare("
+            SELECT g.created_at as waktu, u.nama_lengkap as guru_nama, u.avatar
+            FROM acad_absensi_guru g
+            JOIN users u ON g.guru_id = u.id
+            WHERE g.tanggal = ? AND g.status = 'T'
+            ORDER BY g.created_at DESC
+        ");
+        $stmtLateGuruList->execute([$today]);
+        $guru_terlambat_today = $stmtLateGuruList->fetchAll(PDO::FETCH_ASSOC);
+
         json_response(200, true, 'Ultra-informative dashboard data loaded.', [
             'summary' => [
                 'total_guru' => $total_guru,
@@ -280,6 +322,7 @@ if ($action === 'stats') {
                     'sakit' => (int)($absensi_guru_summary['sakit'] ?? 0),
                     'izin' => (int)($absensi_guru_summary['izin'] ?? 0),
                     'alpha' => (int)($absensi_guru_summary['alpha'] ?? 0),
+                    'terlambat' => (int)($absensi_guru_summary['terlambat'] ?? 0),
                     'total_recorded' => (int)($absensi_guru_summary['total_recorded'] ?? 0),
                 ],
                 'absensi_siswa' => [
@@ -327,7 +370,10 @@ if ($action === 'stats') {
             'recent_docs' => $recentDocs,
             'recent_buku' => $recentBuku,
             'academic_year' => $active_year,
-            'server_date' => $today
+            'server_date' => $today,
+            'chart_terlambat' => $chart_terlambat,
+            'siswa_terlambat_today' => $siswa_terlambat_today,
+            'guru_terlambat_today' => $guru_terlambat_today
         ]);
     } catch (PDOException $e) {
         json_response(500, false, 'Database error: ' . $e->getMessage());
