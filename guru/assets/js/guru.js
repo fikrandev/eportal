@@ -2975,14 +2975,10 @@
 
         updateHeader() {
             const nameEl = $('#headerName');
-            const greetEl = $('#headerGreeting');
             const avatarEl = $('#headerAvatar');
 
             if (Auth.user) {
                 if (nameEl) nameEl.textContent = Auth.user.nama_lengkap || 'Guru';
-                if (greetEl) {
-                    greetEl.textContent = "Assalamualaikum 👋";
-                }
                 if (avatarEl) {
                     if (Auth.user.avatar) {
                         avatarEl.innerHTML = `<img src="${BASE_URL}${Auth.user.avatar}" alt="Avatar" onerror="this.parentElement.textContent='${getInitials(Auth.user.nama_lengkap)}';">`;

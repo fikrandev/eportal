@@ -119,8 +119,7 @@ $school_icon = get_setting('icon_sekolah', '');
         <header class="app-header">
             <div class="app-header-left">
                 <div class="app-header-avatar" id="headerAvatar"></div>
-                <div>
-                    <div class="app-header-greeting" id="headerGreeting">Assalamualaikum 👋</div>
+                <div style="margin-top: 4px;">
                     <div class="app-header-name" id="headerName">Guru</div>
                 </div>
             </div>
