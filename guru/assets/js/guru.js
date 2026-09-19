@@ -3272,7 +3272,7 @@
             btn.disabled = true;
             btn.innerHTML = 'Memproses...';
 
-            API.post('api/users.php?action=update-guru-password', {
+            API.post('../api/users.php?action=update-guru-password', {
                 old_password: oldPass,
                 new_password: newPass
             }).then(res => {
