@@ -112,6 +112,13 @@ $school_icon = get_setting('icon_sekolah', '');
                 </div>
             </div>
             <div class="app-header-right">
+                <button class="app-header-btn" id="headerNotifBtnSiswa" onclick="App.toggleNotifPanel()" title="Notifikasi" style="position:relative; margin-right:5px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/>
+                        <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                    </svg>
+                    <span id="headerNotifBadgeSiswa" style="position:absolute; top:4px; right:4px; min-width:14px; height:14px; background:#ef4444; border-radius:8px; border:1.5px solid white; font-size:0.55rem; font-weight:800; display:none; align-items:center; justify-content:center; color:white; padding:0 2px;"></span>
+                </button>
                 <button class="app-header-btn" onclick="App.logout()" title="Keluar">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
@@ -126,6 +133,17 @@ $school_icon = get_setting('icon_sekolah', '');
         <main class="app-content" id="appContent">
             <!-- Injected by SPA router -->
         </main>
+
+        <!-- Notification Panel -->
+        <div id="notifPanelSiswa" style="display:none; position:fixed; top:60px; right:15px; width:320px; max-width:calc(100vw - 30px); background:#fff; border-radius:16px; box-shadow:0 10px 25px rgba(0,0,0,0.15); z-index:1000; overflow:hidden; border:1px solid #e2e8f0;">
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:14px 16px; border-bottom:1px solid #f1f5f9; background:#f8fafc;">
+                <h3 style="margin:0; font-size:0.95rem; font-weight:700; color:#1e293b;">Notifikasi Siswa</h3>
+                <button onclick="App.clearNotifs()" style="background:none; border:none; font-size:0.75rem; color:#3b82f6; font-weight:600; cursor:pointer;">Tandai Dibaca</button>
+            </div>
+            <div id="notifListSiswa" style="max-height:350px; overflow-y:auto; padding:0;">
+                <!-- Notif items go here -->
+            </div>
+        </div>
 
         <!-- Bottom Navigation with iOS Safe Area -->
         <nav class="bottom-nav">

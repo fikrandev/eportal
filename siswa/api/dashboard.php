@@ -84,12 +84,48 @@ try {
     $stmtAlfa->execute([$studentId, $studentNis, $month, $year]);
     $alfa = (int)$stmtAlfa->fetchColumn();
 
+    // Fetch Wali Kelas and Guru Wali
+    $guru_wali = $siswa['guru_wali'] ?? '-';
+    $wali_kelas = '-';
+    
+    if (!empty($siswa['kelas'])) {
+        try {
+            $stmtWali = db()->prepare("
+                SELECT u.nama_lengkap 
+                FROM acad_kelas k
+                JOIN users u ON k.wali_id = u.id
+                WHERE k.nama_kelas = ?
+            ");
+            $stmtWali->execute([$siswa['kelas']]);
+            $nama_wali = $stmtWali->fetchColumn();
+            if ($nama_wali) {
+                $wali_kelas = $nama_wali;
+            } else {
+                // Try ref_kelas
+                $stmtWali2 = db()->prepare("
+                    SELECT u.nama_lengkap 
+                    FROM ref_kelas k
+                    JOIN users u ON k.wali_kelas_id = u.id
+                    WHERE k.nama_kelas = ?
+                ");
+                $stmtWali2->execute([$siswa['kelas']]);
+                $nama_wali2 = $stmtWali2->fetchColumn();
+                if ($nama_wali2) {
+                    $wali_kelas = $nama_wali2;
+                }
+            }
+        } catch (Exception $e) {}
+    }
+
     json_response(200, true, 'Dashboard loaded', [
         'hadir' => $hadir,
         'izin' => $izin,
         'sakit' => $sakit,
-        'alfa' => $alfa
+        'alfa' => $alfa,
+        'wali_kelas' => $wali_kelas,
+        'guru_wali' => $guru_wali
     ]);
 } catch (PDOException $e) {
     json_response(500, false, 'Database Error: ' . $e->getMessage());
 }
+

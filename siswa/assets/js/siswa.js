@@ -249,10 +249,20 @@ const App = {
                         
                         <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.8); margin-bottom: 4px; font-weight: 600;">Kartu Siswa Digital</div>
                         <h2 style="font-size: 1.45rem; margin-bottom: 4px; color: #ffffff; font-weight: 700;">${student.nama || 'Siswa'}</h2>
-                        <div style="display: flex; gap: 8px; flex-wrap: wrap; opacity: 0.9; font-size: 0.85rem;">
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap; opacity: 0.9; font-size: 0.85rem; margin-bottom: 8px;">
                             <span>NIS: <strong>${student.nis || '-'}</strong></span>
                             <span>•</span>
                             <span>Kelas: <strong>${student.kelas || '-'}</strong></span>
+                        </div>
+                        <div style="background: rgba(0,0,0,0.15); padding: 8px 12px; border-radius: 10px; font-size: 0.75rem; display: flex; flex-direction: column; gap: 4px;">
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="opacity: 0.8;">Wali Kelas:</span>
+                                <strong style="color: #fff;">${data.wali_kelas || '-'}</strong>
+                            </div>
+                            <div style="display: flex; justify-content: space-between;">
+                                <span style="opacity: 0.8;">Guru Wali:</span>
+                                <strong style="color: #fff;">${data.guru_wali || '-'}</strong>
+                            </div>
                         </div>
                         
                         <!-- Kehadiran Box -->
@@ -685,6 +695,237 @@ const App = {
         }, 3200);
     },
 
+    // =============================================
+    // NOTIFICATION SYSTEM (SISWA)
+    // =============================================
+    _notifDismissed: JSON.parse(localStorage.getItem('siswa_notif_dismissed') || '{}'),
+    _notifPanelOpen: false,
+
+    toggleNotifPanel() {
+        this._notifPanelOpen = !this._notifPanelOpen;
+        const panel = document.getElementById('notifPanelSiswa');
+        if (panel) {
+            panel.style.display = this._notifPanelOpen ? 'block' : 'none';
+        }
+        if (this._notifPanelOpen) {
+            this.renderNotifPanel();
+        }
+    },
+
+    clearNotifs() {
+        // format YYYY-MM-DD
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const today = `${year}-${month}-${day}`;
+        
+        const items = this._buildNotifItems();
+        items.forEach(n => {
+            this._notifDismissed[today + '_' + n.id] = true;
+        });
+        localStorage.setItem('siswa_notif_dismissed', JSON.stringify(this._notifDismissed));
+        this.renderNotifPanel();
+        this._updateNotifBadge(0);
+    },
+
+    _buildNotifItems() {
+        const now = new Date();
+        const hour = now.getHours();
+        const min = now.getMinutes();
+        const currentMinutes = hour * 60 + min;
+        const dayOfWeek = now.getDay(); // 0=Sunday
+        const items = [];
+
+        // Skip weekends
+        if (dayOfWeek === 0) return items;
+
+        // Absen Masuk reminder: show from 06:00 to 07:30
+        if (currentMinutes >= 360 && currentMinutes <= 450) {
+            items.push({
+                id: 'absen_masuk_siswa',
+                icon: '🟢',
+                title: 'Presensi Masuk',
+                message: 'Jangan lupa tap kartu/sidik jari di gerbang hari ini!',
+                time: '06:00 - 07:30',
+                color: '#10b981'
+            });
+        }
+
+        // Absen Pulang reminder: show from 14:00 to 16:30
+        if (currentMinutes >= 840 && currentMinutes <= 990) {
+            items.push({
+                id: 'absen_pulang_siswa',
+                icon: '🔴',
+                title: 'Presensi Pulang',
+                message: 'Waktunya pulang! Jangan lupa presensi pulang sebelum keluar gerbang.',
+                time: '14:00 - 16:30',
+                color: '#ef4444'
+            });
+        }
+
+        return items;
+    },
+
+    renderNotifPanel() {
+        const list = document.getElementById('notifListSiswa');
+        if (!list) return;
+
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const today = `${year}-${month}-${day}`;
+        
+        const items = this._buildNotifItems();
+        const activeItems = items.filter(n => !this._notifDismissed[today + '_' + n.id]);
+
+        if (activeItems.length === 0) {
+            list.innerHTML = `
+                <div style="text-align:center; padding:24px 16px; color:#94a3b8;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" width="32" height="32" style="opacity:0.4; margin-bottom:6px;"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+                    <div style="font-size:0.8rem; font-weight:600;">Tidak ada notifikasi</div>
+                </div>
+            `;
+        } else {
+            list.innerHTML = activeItems.map(n => `
+                <div style="display:flex; align-items:flex-start; gap:10px; padding:10px 16px; border-bottom:1px solid #f8fafc; transition:background 0.2s;" onmouseover="this.style.background='#f8fafc'" onmouseout="this.style.background='transparent'">
+                    <div style="width:32px; height:32px; border-radius:10px; background:${n.color}15; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:1rem;">${n.icon}</div>
+                    <div style="flex:1; min-width:0;">
+                        <div style="font-size:0.82rem; font-weight:700; color:#1e293b;">${n.title}</div>
+                        <div style="font-size:0.72rem; color:#64748b; margin-top:1px;">${n.message}</div>
+                        <div style="font-size:0.65rem; color:#94a3b8; margin-top:3px;">⏰ ${n.time}</div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        this._updateNotifBadge(activeItems.length);
+    },
+
+    _updateNotifBadge(count) {
+        const headerBadge = document.getElementById('headerNotifBadgeSiswa');
+        if (headerBadge) {
+            if (count > 0) {
+                headerBadge.style.display = 'flex';
+                headerBadge.textContent = count;
+            } else {
+                headerBadge.style.display = 'none';
+            }
+        }
+    },
+
+    checkAndPushNotifications() {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const today = `${year}-${month}-${day}`;
+        
+        const items = this._buildNotifItems();
+        const activeItems = items.filter(n => !this._notifDismissed[today + '_' + n.id]);
+
+        this._updateNotifBadge(activeItems.length);
+
+        // Push notification for each active item (only once per item per day)
+        const pushSentKey = 'siswa_push_sent';
+        const pushSent = JSON.parse(localStorage.getItem(pushSentKey) || '{}');
+
+        activeItems.forEach(n => {
+            const pushKey = today + '_' + n.id;
+            if (!pushSent[pushKey]) {
+                this._showPushNotification(n.title, n.message);
+                pushSent[pushKey] = true;
+            }
+        });
+
+        localStorage.setItem(pushSentKey, JSON.stringify(pushSent));
+    },
+
+    _showPushNotification(title, body) {
+        if (!('Notification' in window)) return;
+        if (Notification.permission === 'granted') {
+            try {
+                new Notification(title, {
+                    body: body,
+                    icon: (window.APP_CONFIG?.baseUrl ? window.APP_CONFIG.baseUrl + '../assets/icons/icon-192.png' : '/assets/icons/icon-192.png'),
+                    badge: (window.APP_CONFIG?.baseUrl ? window.APP_CONFIG.baseUrl + '../assets/icons/icon-192.png' : '/assets/icons/icon-192.png'),
+                    tag: title.replace(/\s/g, '_'),
+                    requireInteraction: false
+                });
+            } catch (e) {
+                // Fallback: use service worker registration
+                if (navigator.serviceWorker && navigator.serviceWorker.ready) {
+                    navigator.serviceWorker.ready.then(reg => {
+                        reg.showNotification(title, {
+                            body: body,
+                            icon: (window.APP_CONFIG?.baseUrl ? window.APP_CONFIG.baseUrl + '../assets/icons/icon-192.png' : '/assets/icons/icon-192.png'),
+                            tag: title.replace(/\s/g, '_')
+                        });
+                    });
+                }
+            }
+        } else if (Notification.permission !== 'denied') {
+            Notification.requestPermission().then(perm => {
+                if (perm === 'granted') {
+                    this._showPushNotification(title, body);
+                }
+            });
+        }
+    },
+
+    initNotifications() {
+        // Request push permission on first load
+        if ('Notification' in window && Notification.permission === 'default') {
+            setTimeout(() => {
+                Notification.requestPermission();
+            }, 3000);
+        }
+
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const today = `${year}-${month}-${day}`;
+        
+        // Clean old dismissed entries (older than today)
+        const cleaned = {};
+        Object.keys(this._notifDismissed).forEach(k => {
+            if (k.startsWith(today)) cleaned[k] = true;
+        });
+        this._notifDismissed = cleaned;
+        localStorage.setItem('siswa_notif_dismissed', JSON.stringify(cleaned));
+
+        // Clean old push sent entries
+        const pushSentKey = 'siswa_push_sent';
+        const pushSent = JSON.parse(localStorage.getItem(pushSentKey) || '{}');
+        const cleanedPush = {};
+        Object.keys(pushSent).forEach(k => {
+            if (k.startsWith(today)) cleanedPush[k] = true;
+        });
+        localStorage.setItem(pushSentKey, JSON.stringify(cleanedPush));
+
+        // Initial check
+        this.checkAndPushNotifications();
+
+        // Check every 5 minutes
+        setInterval(() => {
+            this.checkAndPushNotifications();
+        }, 5 * 60 * 1000);
+
+        // Close panel when clicking outside
+        document.addEventListener('click', (e) => {
+            const panel = document.getElementById('notifPanelSiswa');
+            const headerBtn = document.getElementById('headerNotifBtnSiswa');
+            if (panel && this._notifPanelOpen) {
+                if (!panel.contains(e.target) && (!headerBtn || !headerBtn.contains(e.target))) {
+                    this._notifPanelOpen = false;
+                    panel.style.display = 'none';
+                }
+            }
+        });
+    },
+
     bindEvents() {
         const loginForm = document.getElementById('loginForm');
         if (loginForm) {
@@ -705,4 +946,11 @@ const App = {
 };
 
 // Auto initialize App on DOM ready
-document.addEventListener('DOMContentLoaded', () => App.init());
+document.addEventListener('DOMContentLoaded', () => {
+    App.init();
+    setTimeout(() => {
+        if (App.state.student) {
+            App.initNotifications();
+        }
+    }, 2000);
+});
