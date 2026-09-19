@@ -11,24 +11,25 @@ require_once __DIR__ . '/../api/migration_helper.php';
 run_auto_migrations();
 
 $school_name = get_setting('nama_sekolah', 'E-Portal');
-$school_icon = get_setting('icon_sekolah', '');
+$app_name = get_setting('app_name_guru', 'Portal Guru ' . $school_name);
+$app_icon = get_setting('app_icon_guru', get_setting('icon_sekolah', ''));
 ?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="description" content="Portal Guru — Jadwal & Jurnal Mengajar">
+    <meta name="description" content="<?php echo htmlspecialchars($app_name); ?>">
     <meta name="theme-color" content="#1565C0">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Portal Guru">
+    <meta name="apple-mobile-web-app-title" content="<?php echo htmlspecialchars($app_name); ?>">
 
-    <title>Portal Guru — <?php echo htmlspecialchars($school_name); ?></title>
+    <title><?php echo htmlspecialchars($app_name); ?></title>
 
-    <?php if($school_icon): ?>
-    <link rel="icon" href="<?php echo BASE_URL . $school_icon; ?>">
-    <link rel="apple-touch-icon" href="<?php echo BASE_URL . $school_icon; ?>">
+    <?php if($app_icon): ?>
+    <link rel="icon" href="<?php echo BASE_URL . $app_icon; ?>">
+    <link rel="apple-touch-icon" href="<?php echo BASE_URL . $app_icon; ?>">
     <?php else: ?>
     <link rel="icon" href="<?php echo BASE_URL; ?>assets/icons/icon-192.png">
     <link rel="apple-touch-icon" href="<?php echo BASE_URL; ?>assets/icons/icon-192.png">

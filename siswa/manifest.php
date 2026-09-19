@@ -8,16 +8,19 @@ require_once __DIR__ . '/../api/config.php';
 $school_name = get_setting('nama_sekolah', 'E-Portal');
 $school_icon = get_setting('icon_sekolah', '');
 
+$app_name = get_setting('app_name_siswa', 'Portal Murid ' . $school_name);
+$app_icon = get_setting('app_icon_siswa', $school_icon);
+
 // Use absolute BASE_URL path for reliable icon resolution in PWA installer
-$icon_url = !empty($school_icon) 
-    ? BASE_URL . $school_icon 
+$icon_url = !empty($app_icon) 
+    ? BASE_URL . $app_icon 
     : BASE_URL . 'assets/icons/icon-192.png';
 
 header('Content-Type: application/json');
 echo json_encode([
-    'name' => 'Portal Murid ' . $school_name,
-    'short_name' => 'Portal Murid',
-    'description' => 'Portal Murid - Absensi & Izin',
+    'name' => $app_name,
+    'short_name' => $app_name,
+    'description' => $app_name . ' - Absensi & Izin',
     'start_url' => './',
     'scope' => './',
     'id' => '/eportal/siswa/',

@@ -2920,6 +2920,27 @@ const Admin = {
                     </div>
                 </div>
                 <div class="settings-section" style="margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border-color);">
+                    <h4>Aplikasi PWA (Portal)</h4><p>Atur nama aplikasi dan ikon khusus untuk masing-masing portal.</p>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 16px;">
+                        <div>
+                            <h5 style="margin-bottom:12px;">Portal Siswa</h5>
+                            <div class="form-group"><label class="form-label">Nama Aplikasi</label><input class="form-input" id="setAppNameSiswa" value="${App.escapeHtml(s.app_name_siswa?.value||'Portal Murid E-Portal')}"></div>
+                            <div class="form-group"><label class="form-label">Icon / Logo Siswa</label>
+                                <div class="icon-preview" id="iconPreviewSiswa">${s.app_icon_siswa?.value?`<img src="${App.baseUrl}${s.app_icon_siswa.value}">`:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>'}</div>
+                                <input type="file" class="form-input" id="iconSiswaFile" accept="image/*" style="padding:10px" onchange="Admin.uploadIconSiswa()">
+                            </div>
+                        </div>
+                        <div>
+                            <h5 style="margin-bottom:12px;">Portal Guru</h5>
+                            <div class="form-group"><label class="form-label">Nama Aplikasi</label><input class="form-input" id="setAppNameGuru" value="${App.escapeHtml(s.app_name_guru?.value||'Portal Guru E-Portal')}"></div>
+                            <div class="form-group"><label class="form-label">Icon / Logo Guru</label>
+                                <div class="icon-preview" id="iconPreviewGuru">${s.app_icon_guru?.value?`<img src="${App.baseUrl}${s.app_icon_guru.value}">`:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>'}</div>
+                                <input type="file" class="form-input" id="iconGuruFile" accept="image/*" style="padding:10px" onchange="Admin.uploadIconGuru()">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="settings-section" style="margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border-color);">
                     <h4>Keamanan Akun</h4>
                     <p>Ubah password untuk akun superadmin Anda.</p>
                     <div class="form-group"><label class="form-label">Password Lama</label><input type="password" class="form-input" id="setOldPassword" placeholder="Masukkan password lama"></div>
@@ -2969,10 +2990,43 @@ const Admin = {
         }).fail(xhr=>{EModal.close(loader);EModal.toast({type:'error',title:'Gagal',message:xhr.responseJSON?.message||'Gagal upload kop surat.'});});
     },
 
+    uploadIconSiswa() {
+        const file=$('#iconSiswaFile')[0].files[0];
+        if(!file)return;
+        const fd=new FormData();fd.append('icon',file);
+        const loader=EModal.loading('Mengupload icon siswa...');
+        $.ajax({url:App.baseUrl+'api/settings.php?action=upload-icon-siswa',method:'POST',data:fd,processData:false,contentType:false,headers:{'Authorization':'Bearer '+App.state.token}}).done(res=>{
+            EModal.close(loader);
+            if(res.success){
+                $('#iconPreviewSiswa').html(`<img src="${App.baseUrl}${res.data.path}">`);
+                EModal.toast({type:'success',title:'Berhasil',message:'Icon Siswa berhasil diupload.'});
+            }
+        }).fail(()=>{EModal.close(loader);EModal.toast({type:'error',title:'Gagal',message:'Gagal upload icon siswa.'});});
+    },
+
+    uploadIconGuru() {
+        const file=$('#iconGuruFile')[0].files[0];
+        if(!file)return;
+        const fd=new FormData();fd.append('icon',file);
+        const loader=EModal.loading('Mengupload icon guru...');
+        $.ajax({url:App.baseUrl+'api/settings.php?action=upload-icon-guru',method:'POST',data:fd,processData:false,contentType:false,headers:{'Authorization':'Bearer '+App.state.token}}).done(res=>{
+            EModal.close(loader);
+            if(res.success){
+                $('#iconPreviewGuru').html(`<img src="${App.baseUrl}${res.data.path}">`);
+                EModal.toast({type:'success',title:'Berhasil',message:'Icon Guru berhasil diupload.'});
+            }
+        }).fail(()=>{EModal.close(loader);EModal.toast({type:'error',title:'Gagal',message:'Gagal upload icon guru.'});});
+    },
+
     saveSettings() {
         const btn=document.getElementById('saveSettingsBtn');
         EModal.btnLoading(btn,true);
-        const data={nama_sekolah:$('#setNamaSekolah').val().trim(),kepala_sekolah:$('#setKepalaSekolah').val().trim()};
+        const data={
+            nama_sekolah:$('#setNamaSekolah').val().trim(),
+            kepala_sekolah:$('#setKepalaSekolah').val().trim(),
+            app_name_siswa:$('#setAppNameSiswa').val().trim(),
+            app_name_guru:$('#setAppNameGuru').val().trim()
+        };
         App.api('api/settings.php?action=update',{method:'POST',data}).done(res=>{
             if(res.success){App.state.school.nama=data.nama_sekolah;localStorage.setItem('eportal_school',JSON.stringify(App.state.school));EModal.info({type:'success',title:'Tersimpan!',message:'Pengaturan berhasil disimpan.'});}
         }).fail(xhr=>EModal.toast({type:'error',title:'Gagal',message:xhr.responseJSON?.message||'Error'})).always(()=>EModal.btnLoading(btn,false));

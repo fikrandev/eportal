@@ -6,25 +6,26 @@
 require_once __DIR__ . '/../api/config.php';
 
 $school_name = get_setting('nama_sekolah', 'E-Portal');
-$school_icon = get_setting('icon_sekolah', '');
+$app_name = get_setting('app_name_siswa', 'Portal Murid ' . $school_name);
+$app_icon = get_setting('app_icon_siswa', get_setting('icon_sekolah', ''));
 ?>
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="description" content="Portal Murid — <?php echo htmlspecialchars($school_name); ?>">
+    <meta name="description" content="<?php echo htmlspecialchars($app_name); ?>">
     <meta name="theme-color" content="#1565C0">
     <meta name="format-detection" content="telephone=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="Portal Murid">
+    <meta name="apple-mobile-web-app-title" content="<?php echo htmlspecialchars($app_name); ?>">
 
-    <title>Portal Murid — <?php echo htmlspecialchars($school_name); ?></title>
+    <title><?php echo htmlspecialchars($app_name); ?></title>
 
-    <?php if($school_icon): ?>
-    <link rel="icon" href="<?php echo BASE_URL . htmlspecialchars($school_icon); ?>">
-    <link rel="apple-touch-icon" href="<?php echo BASE_URL . htmlspecialchars($school_icon); ?>">
+    <?php if($app_icon): ?>
+    <link rel="icon" href="<?php echo BASE_URL . htmlspecialchars($app_icon); ?>">
+    <link rel="apple-touch-icon" href="<?php echo BASE_URL . htmlspecialchars($app_icon); ?>">
     <?php endif; ?>
 
     <link rel="manifest" href="manifest.php">
