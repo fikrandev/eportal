@@ -556,63 +556,43 @@
                     // Render Schedule or Non-KBM Activity Box
                     const scheduleContainer = $('#homeTodaySchedule');
                     if (scheduleContainer) {
-                        if (hasMapel) {
-                            if (isWali) {
-                                // Add button for Wali Kelas journal entry
-                                const waliActionHtml = `
-                                    <div style="margin-bottom:12px;">
-                                        <button class="btn btn-sm" onclick="GuruApp.openKegiatanModal('wali_kelas')" style="width:100%; background:#eff6ff; color:#2563eb; border:1.5px dashed #93c5fd; border-radius:12px; padding:10px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px;">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                                            <span>+ Isi Jurnal Wali Kelas (${escapeHtml(Auth.user.wali_kelas.nama_kelas)})</span>
-                                        </button>
-                                    </div>
-                                `;
-                                scheduleContainer.innerHTML = waliActionHtml + '<div id="homeScheduleSlotsWrap"></div>';
-                                this.renderScheduleSlots('#homeScheduleSlotsWrap', schedules, true);
-                            } else {
-                                this.renderScheduleSlots(scheduleContainer, schedules, true);
-                            }
+                        const isMapel = !!Auth.user?.is_guru_mapel;
+                        const hasSchedule = schedules && schedules.length > 0;
+                        
+                        let html = '';
 
-                            if (isGuruWali) {
-                                const gwHtml = `
-                                    <div style="margin-top:12px;">
-                                        <button class="btn btn-sm" onclick="GuruApp.openKegiatanModal('guru_wali')" style="width:100%; background:#f0fdf4; color:#16a34a; border:1.5px dashed #86efac; border-radius:12px; padding:10px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px;">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                                            <span>+ Isi Jurnal Guru Wali</span>
-                                        </button>
-                                    </div>
-                                `;
-                                scheduleContainer.innerHTML += gwHtml;
-                            }
-                        } else {
-                            // Non-KBM teacher: direct activity box
-                            let nonKbmHtml = '';
-                            if (isWali) {
-                                nonKbmHtml += `
-                                    <div style="margin-bottom:12px;">
-                                        <button class="btn btn-sm" onclick="GuruApp.openKegiatanModal('wali_kelas')" style="width:100%; background:#eff6ff; color:#2563eb; border:1.5px dashed #93c5fd; border-radius:12px; padding:10px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px;">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                                            <span>+ Isi Jurnal Wali Kelas (${escapeHtml(Auth.user.wali_kelas.nama_kelas)})</span>
-                                        </button>
-                                    </div>
-                                `;
-                            }
-                            if (isGuruWali) {
-                                nonKbmHtml += `
-                                    <div style="margin-bottom:12px;">
-                                        <button class="btn btn-sm" onclick="GuruApp.openKegiatanModal('guru_wali')" style="width:100%; background:#f0fdf4; color:#16a34a; border:1.5px dashed #86efac; border-radius:12px; padding:10px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px;">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                                            <span>+ Isi Jurnal Guru Wali</span>
-                                        </button>
-                                    </div>
-                                `;
-                            }
-                            nonKbmHtml += `
-                                <div class="non-kbm-card" style="background:white; border-radius:18px; padding:18px; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9;">
+                        // 1. Wali Kelas Button
+                        if (isWali) {
+                            html += `
+                                <div style="margin-bottom:12px;">
+                                    <button class="btn btn-sm" onclick="GuruApp.openKegiatanModal('wali_kelas')" style="width:100%; background:#eff6ff; color:#2563eb; border:1.5px dashed #93c5fd; border-radius:12px; padding:10px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px;">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                                        <span>+ Isi Jurnal Wali Kelas (${escapeHtml(Auth.user.wali_kelas.nama_kelas)})</span>
+                                    </button>
+                                </div>
+                            `;
+                        }
+
+                        // 2. Guru Wali Button
+                        if (isGuruWali) {
+                            html += `
+                                <div style="margin-bottom:12px;">
+                                    <button class="btn btn-sm" onclick="GuruApp.openKegiatanModal('guru_wali')" style="width:100%; background:#f0fdf4; color:#16a34a; border:1.5px dashed #86efac; border-radius:12px; padding:10px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px;">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                        <span>+ Isi Jurnal Guru Wali</span>
+                                    </button>
+                                </div>
+                            `;
+                        }
+
+                        // 3. Non-KBM Activity Box (Jika bukan Guru Mapel)
+                        if (!isMapel) {
+                            html += `
+                                <div class="non-kbm-card" style="margin-bottom:16px; background:white; border-radius:18px; padding:18px; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9;">
                                     <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px;">
                                         <div>
                                             <div style="font-family:var(--font-heading); font-size:0.95rem; font-weight:800; color:var(--text-primary);">Kegiatan Hari Ini</div>
-                                            <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Catat ringkasan aktivitas / tugas Anda hari ini</div>
+                                            <div style="font-size:0.75rem; color:var(--text-muted); margin-top:2px;">Catat aktivitas / tugas Anda hari ini</div>
                                         </div>
                                         <span class="badge badge-primary" style="font-size:0.7rem;">Non-KBM</span>
                                     </div>
@@ -622,7 +602,18 @@
                                     </button>
                                 </div>
                             `;
-                            scheduleContainer.innerHTML = nonKbmHtml;
+                        }
+
+                        // 4. KBM Schedule Slots (Jika Guru Mapel ATAU punya jadwal)
+                        if (isMapel || hasSchedule) {
+                            html += '<div id="homeScheduleSlotsWrap"></div>';
+                        }
+
+                        scheduleContainer.innerHTML = html;
+
+                        // Render actual slots inside wrap if it exists
+                        if (isMapel || hasSchedule) {
+                            this.renderScheduleSlots('#homeScheduleSlotsWrap', schedules, true);
                         }
                     }
 
@@ -883,10 +874,22 @@
         async renderJurnal(editId = null) {
             const content = $('#appContent');
             const tanggalIni = getTanggalIni();
-            const hasMapel = !!Auth.user?.has_mapel;
+            
+            // Show loading skeleton while fetching schedule
+            content.innerHTML = '<div class="page-enter"><div class="skeleton skeleton-card" style="height:100px;"></div></div>';
+            
+            // Await schedules
+            let schedules = [];
+            try {
+                const res = await API.get(`api/jadwal.php?action=daily&tanggal=${tanggalIni}`);
+                if (res.success) schedules = res.data || [];
+            } catch(e) {}
+
+            const isMapel = !!Auth.user?.is_guru_mapel;
             const isWali = !!Auth.user?.wali_kelas;
             const isGuruWali = !!Auth.user?.is_guru_wali;
             const isWaka = !!Auth.user?.is_waka;
+            const hasSchedule = schedules.length > 0;
 
             const waliBanner = isWali ? `
                 <div class="wali-journal-banner" onclick="GuruApp.openKegiatanModal('wali_kelas')" style="background: linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%); border: 1.5px solid #bfdbfe; border-radius: 16px; padding: 14px 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; box-shadow: var(--shadow-sm); transition:transform 0.2s ease;">
@@ -933,76 +936,78 @@
                 </div>
             ` : '';
 
-            if (!hasMapel) {
-                // Non-KBM Teacher: Simplified Journal Form (Pilih Tanggal, Catatan Kegiatan, Simpan)
-                content.innerHTML = `
-                    <div class="page-enter">
-                        ${waliBanner}
-                        ${guruWaliBanner}
-                        ${wakaBanner}
-                        
-                        <div class="section-title">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                            Jurnal Kegiatan Harian
-                        </div>
-                        <p class="section-subtitle">Catat ringkasan aktivitas / tugas kerja Anda hari ini</p>
+            let html = '<div class="page-enter">';
+            html += waliBanner;
+            html += guruWaliBanner;
+            html += wakaBanner;
 
-                        <div class="form-info-row mb-2">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                            <span>Tanggal: <strong>${formatTanggal(tanggalIni)}</strong></span>
-                            <input type="hidden" id="jurnalDate" value="${tanggalIni}">
-                        </div>
+            // Non-KBM Section
+            if (!isMapel) {
+                html += `
+                    <div class="section-title">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                        Jurnal Kegiatan Harian
+                    </div>
+                    <p class="section-subtitle">Catat ringkasan aktivitas / tugas kerja Anda hari ini</p>
 
-                        <div class="guru-card mb-3" style="background:white; border-radius:18px; padding:18px; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9;">
-                            <div class="form-group">
-                                <label class="form-label" style="font-weight:700; color:var(--text-primary);">Catatan Kegiatan</label>
-                                <textarea class="form-textarea" id="directKegiatanCatatan" placeholder="Tuliskan uraian atau catatan kegiatan kerja Anda hari ini (misal bimbingan konseling, pembinaan, piket sekolah, administrasi, dll)..." style="min-height:120px;"></textarea>
-                            </div>
-                            <button class="btn btn-primary btn-block" id="directKegiatanSaveBtn" onclick="GuruApp.saveDirectKegiatan('non_kbm')" style="font-weight:700; padding:12px; border-radius:12px;">
-                                <span class="btn-label">Simpan Kegiatan</span>
-                            </button>
-                        </div>
+                    <div class="form-info-row mb-2">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        <span>Tanggal: <strong>${formatTanggal(tanggalIni)}</strong></span>
+                        <input type="hidden" id="jurnalDate" value="${tanggalIni}">
+                    </div>
 
-                        <div class="section-title mt-3">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                            Kegiatan Hari Ini
+                    <div class="guru-card mb-3" style="background:white; border-radius:18px; padding:18px; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9;">
+                        <div class="form-group">
+                            <label class="form-label" style="font-weight:700; color:var(--text-primary);">Catatan Kegiatan</label>
+                            <textarea class="form-textarea" id="directKegiatanCatatan" placeholder="Tuliskan uraian atau catatan kegiatan kerja Anda hari ini..." style="min-height:120px;"></textarea>
                         </div>
-                        <div id="directTodayKegiatanList">
-                            <div class="skeleton skeleton-card" style="height:70px; margin-bottom:8px;"></div>
-                        </div>
+                        <button class="btn btn-primary btn-block" id="directKegiatanSaveBtn" onclick="GuruApp.saveDirectKegiatan('non_kbm')" style="font-weight:700; padding:12px; border-radius:12px;">
+                            <span class="btn-label">Simpan Kegiatan</span>
+                        </button>
+                    </div>
+
+                    <div class="section-title mt-3">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                        Kegiatan Hari Ini
+                    </div>
+                    <div id="directTodayKegiatanList">
+                        <div class="skeleton skeleton-card" style="height:70px; margin-bottom:8px;"></div>
                     </div>
                 `;
-
-                this.loadDirectTodayKegiatan('non_kbm');
-                return;
             }
 
-            // KBM Teacher with Teaching Schedule
-            content.innerHTML = `
-                <div class="page-enter">
-                    ${waliBanner}
-                    ${wakaBanner}
-
-                    <div class="section-title">
+            // KBM Schedule Section
+            if (isMapel || hasSchedule) {
+                html += `
+                    <div class="section-title ${!isMapel ? 'mt-4' : ''}">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                         Jurnal Mengajar
                     </div>
                     <p class="section-subtitle">Pilih jadwal untuk mengisi jurnal hari ini</p>
 
+                    ${isMapel ? `
                     <div class="form-info-row mb-2">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                         <span>Jurnal Hari Ini: <strong>${formatTanggal(tanggalIni)}</strong></span>
                         <input type="hidden" id="jurnalDate" value="${tanggalIni}">
                     </div>
+                    ` : ''}
 
-                    <div id="jurnalScheduleList">
-                        <div class="skeleton skeleton-card"></div>
-                        <div class="skeleton skeleton-card"></div>
-                    </div>
-                </div>
-            `;
+                    <div id="jurnalScheduleListWrap"></div>
+                `;
+            }
 
-            this.loadJurnalSchedule();
+            html += '</div>'; // close page-enter
+            content.innerHTML = html;
+
+            // Load data
+            if (!isMapel) {
+                this.loadDirectTodayKegiatan('non_kbm');
+            }
+
+            if (isMapel || hasSchedule) {
+                this.renderScheduleSlots('#jurnalScheduleListWrap', schedules, false);
+            }
         },
 
         async loadDirectTodayKegiatan(jenis = 'non_kbm') {

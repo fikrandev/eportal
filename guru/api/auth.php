@@ -159,6 +159,7 @@ function getTeacherMetadata($userId, $username) {
 
     return [
         'wali_kelas' => $waliKelas,
+        'is_guru_mapel' => $isGuruMapel,
         'has_mapel' => $hasMapel,
         'teacher_type' => $teacherType,
         'is_waka' => $isWaka,
