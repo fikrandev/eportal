@@ -111,9 +111,9 @@ switch ($action) {
 
             // Multi-Start Optimization Solver
             $bestResult = null;
-            $maxIterations = 50;
+            $maxIterations = 150;
             $startTime = microtime(true);
-            $maxTimeSeconds = 35;
+            $maxTimeSeconds = 55;
 
             for ($iter = 0; $iter < $maxIterations; $iter++) {
                 if (microtime(true) - $startTime > $maxTimeSeconds && $bestResult !== null) break;
@@ -282,6 +282,22 @@ switch ($action) {
                     foreach ($hariOrder as $h) {
                         $j = $kelasDailyJp[$kId][$h] ?? 0;
                         $penalty += (int)pow(($j - $target) * 10, 2);
+                    }
+                }
+
+                // Penalti untuk jam kosong (gap) dalam satu kelas di hari yang sama
+                foreach ($schedule as $kId => $kSchedule) {
+                    $daySlots = [];
+                    foreach ($kSchedule as $slotId => $dId) {
+                        $slot = $jamLookup[$slotId];
+                        $daySlots[$slot['hari']][] = $slot['jam_ke'];
+                    }
+                    foreach ($daySlots as $hari => $jamKes) {
+                        sort($jamKes);
+                        $gap = max($jamKes) - min($jamKes) + 1 - count($jamKes);
+                        if ($gap > 0) {
+                            $penalty += $gap * 200000; // Penalti sangat besar agar dihindari
+                        }
                     }
                 }
 
