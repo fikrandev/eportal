@@ -4401,11 +4401,23 @@ const Sarpras = {
                 </div>
                 <div class="sp-card-body">
                     <div class="sp-filter-bar no-print" style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-bottom:20px;">
-                        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
+                        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; position:relative;">
                             <label style="font-weight:600; font-size:0.875rem; color:var(--text-secondary); margin:0;">Filter Ruangan:</label>
-                            <select class="form-select" id="bc_rSel" onchange="Sarpras.loadBarcodes()" style="min-width:240px;">
-                                <option value="">Semua Ruang</option>
-                            </select>
+                            <div class="bc-searchable-dropdown" style="position:relative; width:300px;">
+                                <input type="hidden" id="bc_rSel" value="">
+                                <div id="bc_rSel_display" style="width:100%; cursor:pointer; background:#fff; border:1px solid #cbd5e1; border-radius:6px; padding:8px 12px; font-size:14px; display:flex; justify-content:space-between; align-items:center;" onclick="const d = document.getElementById('bc_rSel_dropdown'); d.style.display = d.style.display==='block'?'none':'block'; if(d.style.display==='block') { document.getElementById('bc_rSel_search').focus(); } event.stopPropagation();">
+                                    <span id="bc_rSel_text">Semua Ruang</span>
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                </div>
+                                <div id="bc_rSel_dropdown" style="display:none; position:absolute; top:calc(100% + 4px); left:0; width:100%; background:#fff; border:1px solid #cbd5e1; border-radius:8px; z-index:999; box-shadow:0 10px 15px -3px rgba(0,0,0,0.1);">
+                                    <div style="padding:8px; border-bottom:1px solid #f1f5f9;">
+                                        <input type="text" id="bc_rSel_search" class="form-input" placeholder="Cari ruang..." style="width:100%; padding:6px 10px; font-size:13px;" onkeyup="Sarpras.filterBcRuangan(this.value)" onclick="event.stopPropagation();">
+                                    </div>
+                                    <div id="bc_rSel_options" style="max-height:220px; overflow-y:auto; padding:4px 0;">
+                                        <div class="bc-r-opt" data-val="" data-text="Semua Ruang" style="padding:8px 12px; cursor:pointer; font-size:14px;" onclick="Sarpras.selectBcRuangan('', 'Semua Ruang')">Semua Ruang</div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                         <div id="bcLoadingStatus" style="display:none; align-items:center; gap:8px; font-size:0.85rem; color:var(--text-muted); background:var(--bg-light, #f8fafc); padding:6px 14px; border-radius:20px; border:1px solid var(--border-color, #e2e8f0);">
                             <div class="spinner" style="width:14px; height:14px; border:2px solid #cbd5e1; border-top-color:var(--primary, #2563eb); border-radius:50%; animation:rotate 0.8s linear infinite;"></div>
@@ -4419,11 +4431,44 @@ const Sarpras = {
             </div>
         `);
         
-        this.api('ruang.php?action=all').done(res => {
-            if (res && res.data) {
-                res.data.forEach(r => $('#bc_rSel').append(`<option value="${r.id}">${r.tanah_nama} - ${r.bangunan_nama} - ${r.nama}</option>`));
+        // Hide dropdown when clicking outside
+        $(document).on('click.bcDropdown', function() {
+            const dropdown = document.getElementById('bc_rSel_dropdown');
+            if (dropdown && dropdown.style.display === 'block') {
+                dropdown.style.display = 'none';
             }
         });
+
+        this.api('ruang.php?action=all').done(res => {
+            if (res && res.data) {
+                this._bcRuanganData = res.data;
+                res.data.forEach(r => {
+                    const txt = `${r.tanah_nama} - ${r.bangunan_nama} - ${r.nama}`;
+                    $('#bc_rSel_options').append(`<div class="bc-r-opt" data-val="${r.id}" data-text="${txt}" style="padding:8px 12px; cursor:pointer; font-size:14px; border-bottom:1px solid #f8fafc;" onclick="Sarpras.selectBcRuangan('${r.id}', '${txt.replace(/'/g, "\\'")}')">${txt}</div>`);
+                });
+                
+                // Add hover effect
+                $('.bc-r-opt').on('mouseenter', function(){ $(this).css('background', '#f1f5f9'); }).on('mouseleave', function(){ $(this).css('background', 'transparent'); });
+            }
+        });
+        this.loadBarcodes();
+    },
+
+    filterBcRuangan(term) {
+        term = term.toLowerCase();
+        $('.bc-r-opt').each(function() {
+            const text = $(this).attr('data-text').toLowerCase();
+            if (text.includes(term)) $(this).show();
+            else $(this).hide();
+        });
+    },
+
+    selectBcRuangan(val, text) {
+        $('#bc_rSel').val(val);
+        $('#bc_rSel_text').text(text);
+        $('#bc_rSel_dropdown').hide();
+        $('#bc_rSel_search').val('');
+        this.filterBcRuangan('');
         this.loadBarcodes();
     },
 

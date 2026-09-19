@@ -1505,6 +1505,26 @@
                         </div>
                     </div>
 
+                    <div class="guru-card" style="margin-top: 15px;">
+                        <div class="guru-card-body">
+                            <h3 style="font-size: 1rem; margin-bottom: 15px; color: var(--text-dark); display:flex; align-items:center; gap:8px;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                                Keamanan Akun
+                            </h3>
+                            <div class="form-group">
+                                <label class="form-label">Password Lama</label>
+                                <input type="password" class="form-input" id="setOldPasswordGuru" placeholder="Masukkan password saat ini">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Password Baru</label>
+                                <input type="password" class="form-input" id="setNewPasswordGuru" placeholder="Minimal 5 karakter">
+                            </div>
+                            <button class="btn btn-primary btn-block" id="btnUpdatePasswordGuru" onclick="GuruApp.updatePassword()">
+                                <span class="btn-label">Ubah Password</span>
+                            </button>
+                        </div>
+                    </div>
+
                     <div class="logout-section">
                         <button class="btn btn-danger btn-block" onclick="GuruApp.confirmLogout()">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
@@ -3183,6 +3203,43 @@
 
         loadDokumenList() {
             Pages.loadDokumenList();
+        },
+
+        updatePassword() {
+            const oldPass = $('#setOldPasswordGuru').value;
+            const newPass = $('#setNewPasswordGuru').value;
+            const btn = $('#btnUpdatePasswordGuru');
+
+            if (!oldPass || !newPass) {
+                Toast.show('Semua kolom password wajib diisi!', 'warning');
+                return;
+            }
+
+            if (newPass.length < 5) {
+                Toast.show('Password baru minimal 5 karakter!', 'warning');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = 'Memproses...';
+
+            API.post('api/users.php?action=update-guru-password', {
+                old_password: oldPass,
+                new_password: newPass
+            }).then(res => {
+                if (res.success) {
+                    Toast.show('Password berhasil diperbarui.', 'success');
+                    $('#setOldPasswordGuru').value = '';
+                    $('#setNewPasswordGuru').value = '';
+                } else {
+                    Toast.show(res.message || 'Gagal memperbarui password.', 'error');
+                }
+            }).catch(err => {
+                Toast.show('Terjadi kesalahan server.', 'error');
+            }).finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = '<span class="btn-label">Ubah Password</span>';
+            });
         }
     };
 

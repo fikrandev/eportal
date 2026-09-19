@@ -53,6 +53,9 @@ switch ($action) {
     case 'get_graduation_years':
         getGraduationYears();
         break;
+    case 'rekap_wali':
+        rekapWali();
+        break;
     default:
         json_response(400, false, 'Action tidak valid.');
 }
@@ -893,6 +896,63 @@ function getGraduationYears()
         }
 
         json_response(200, true, 'Daftar Tahun Ajaran Kelulusan.', $years);
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
+function rekapWali() {
+    require_superadmin();
+
+    $academicYearId = isset($_GET['academic_year_id']) ? (int)$_GET['academic_year_id'] : 0;
+    if ($academicYearId <= 0) {
+        $active = get_active_academic_year();
+        $academicYearId = (int)($active['id'] ?? 0);
+    }
+
+    try {
+        // Jumlah siswa aktif dengan dan tanpa wali
+        $stmtPunya = db()->prepare("SELECT COUNT(*) as count FROM students WHERE academic_year_id = ? AND status_siswa = 'Aktif' AND guru_wali IS NOT NULL AND guru_wali != ''");
+        $stmtPunya->execute([$academicYearId]);
+        $punyaWali = $stmtPunya->fetchColumn();
+
+        $stmtTidakPunya = db()->prepare("SELECT COUNT(*) as count FROM students WHERE academic_year_id = ? AND status_siswa = 'Aktif' AND (guru_wali IS NULL OR guru_wali = '')");
+        $stmtTidakPunya->execute([$academicYearId]);
+        $tidakPunyaWali = $stmtTidakPunya->fetchColumn();
+
+        // Guru dan jumlah anak walinya
+        $stmtGuru = db()->prepare("
+            SELECT guru_wali, COUNT(id) as total_siswa 
+            FROM students 
+            WHERE academic_year_id = ? AND status_siswa = 'Aktif' AND guru_wali IS NOT NULL AND guru_wali != ''
+            GROUP BY guru_wali
+            ORDER BY total_siswa DESC, guru_wali ASC
+        ");
+        $stmtGuru->execute([$academicYearId]);
+        $guruWaliList = $stmtGuru->fetchAll(PDO::FETCH_ASSOC);
+
+        // Rekap siswa yang tidak punya wali dikelompokkan berdasarkan kelas
+        $stmtTanpaWaliKelas = db()->prepare("
+            SELECT kelas, COUNT(id) as total_siswa
+            FROM students
+            WHERE academic_year_id = ? AND status_siswa = 'Aktif' AND (guru_wali IS NULL OR guru_wali = '')
+            GROUP BY kelas
+            ORDER BY kelas ASC
+        ");
+        $stmtTanpaWaliKelas->execute([$academicYearId]);
+        $tanpaWaliKelas = $stmtTanpaWaliKelas->fetchAll(PDO::FETCH_ASSOC);
+
+        $data = [
+            'summary' => [
+                'punya_wali' => $punyaWali,
+                'tidak_punya_wali' => $tidakPunyaWali,
+                'total_siswa' => $punyaWali + $tidakPunyaWali
+            ],
+            'guru_wali_list' => $guruWaliList,
+            'tanpa_wali_kelas' => $tanpaWaliKelas
+        ];
+
+        json_response(200, true, 'Rekap guru wali berhasil dimuat.', $data);
     } catch (PDOException $e) {
         json_response(500, false, 'Server error: ' . $e->getMessage());
     }

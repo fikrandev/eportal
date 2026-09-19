@@ -24,6 +24,11 @@ function global_kepala_sekolah($default = '') {
     return trim((string) get_setting('sarpras_kepala_sekolah', $default));
 }
 
+function global_kota($default = 'Palu') {
+    $value = trim((string) get_setting('kota', ''));
+    return strtoupper($value !== '' ? $value : $default);
+}
+
 function report_clean_keterangan($value) {
     $text = trim((string)$value);
     if ($text === '') return '-';
@@ -382,7 +387,7 @@ function handlePenyusutan($action) {
 
                 echo '<div class="ttd-wrapper">';
                 echo '  <div class="ttd"><div class="label">MENGETAHUI,<br>WAKA. SARANA PRASARANA</div><div class="nama">'.$school_waka.'</div></div>';
-                echo '  <div class="ttd"><div class="label">PALU, '.date('d F Y').'<br>MENGETAHUI,<br>KEPALA SEKOLAH</div><div class="nama">'.$school_kepala.'</div></div>';
+                echo '  <div class="ttd"><div class="label">'.global_kota().', '.date('d F Y').'<br>MENGETAHUI,<br>KEPALA SEKOLAH</div><div class="nama">'.$school_kepala.'</div></div>';
                 echo '</div>';
                 
                 echo '<p class="footer-note">Data telah diperbarui pertanggal ' . date('d F Y') . '</p>';
@@ -851,13 +856,18 @@ function handleLaporan($action) {
         
         .ttd-center { display: flex; justify-content: center; margin-top: 10px; page-break-inside: avoid; }
         
-        .sp-report-page { position: relative; min-height: 285mm; page-break-after: always; padding-bottom: 60px; box-sizing: border-box; }
+        .sp-report-page { position: relative; min-height: 280mm; page-break-after: always; padding-bottom: 60px; box-sizing: border-box; }
+        .sp-report-page:last-of-type { page-break-after: auto; }
         
         .footer-note { position: absolute; bottom: 10px; left: 0; right: 0; font-style: italic; font-size: 9pt; color: #666; border-top: 1px solid #f2f2f2; padding-top: 5px; }
         
         @media print { 
+            html, body { height: auto; }
             body { padding: 0; } 
-            @page { size: 210mm 330mm; margin: 15mm; }
+            @page { size: 215mm 330mm; margin: 15mm; }
+            .sp-report-page { min-height: auto; page-break-after: always; padding-bottom: 0; }
+            .sp-report-page:last-of-type { page-break-after: auto; }
+            .footer-note { position: relative; margin-top: 30px; bottom: auto; page-break-inside: avoid; }
             .btn-print { display:none; }
         }
         .btn-print { position:fixed; top:15px; right:20px; background:#1e293b; color:white; border:none; padding:10px 22px; border-radius:8px; cursor:pointer; font-weight:600; font-size:13px; z-index:999; box-shadow:0 4px 12px rgba(0,0,0,0.2); }
@@ -914,7 +924,7 @@ function handleLaporan($action) {
             
             echo '<div class="ttd-wrapper">';
             echo '  <div class="ttd"><div class="label">MENGETAHUI,<br>WAKA. SARANA PRASARANA</div><div class="nama">'.$school_waka.'</div></div>';
-            echo '  <div class="ttd"><div class="label">PALU, '.date('d F Y').'<br>PETUGAS INVENTARIS</div><div class="nama">.............................</div></div>';
+            echo '  <div class="ttd"><div class="label">'.global_kota().', '.date('d F Y').'<br>PETUGAS INVENTARIS</div><div class="nama">.............................</div></div>';
             echo '</div>';
             echo '<div class="ttd-center">';
             echo '  <div class="ttd"><div class="label">MENGETAHUI,<br>KEPALA SEKOLAH</div><div class="nama">'.$school_kepala.'</div></div>';
@@ -953,7 +963,7 @@ function handleLaporan($action) {
             
             echo '<div class="ttd-wrapper">';
             echo '  <div class="ttd"><div class="label">MENGETAHUI,<br>WAKA. SARANA PRASARANA</div><div class="nama">'.$school_waka.'</div></div>';
-            echo '  <div class="ttd"><div class="label">PALU, '.date('d F Y').'<br>PETUGAS INVENTARIS</div><div class="nama">.............................</div></div>';
+            echo '  <div class="ttd"><div class="label">'.global_kota().', '.date('d F Y').'<br>PETUGAS INVENTARIS</div><div class="nama">.............................</div></div>';
             echo '</div>';
             echo '<div class="ttd-center">';
             echo '  <div class="ttd"><div class="label">MENGETAHUI,<br>KEPALA SEKOLAH</div><div class="nama">'.$school_kepala.'</div></div>';
@@ -1097,7 +1107,7 @@ function handleLaporan($action) {
                 
                 echo '<div class="ttd-wrapper">';
                 echo '  <div class="ttd"><div class="label">MENGETAHUI,<br>WAKA. SARANA PRASARANA</div><div class="nama">'.$school_waka.'</div></div>';
-                echo '  <div class="ttd"><div class="label">PALU, '.date('d F Y').'<br>PENANGGUNG JAWAB RUANG</div><div class="nama">'.($room['pj_nama'] ?: '.............................').'</div></div>';
+                echo '  <div class="ttd"><div class="label">'.global_kota().', '.date('d F Y').'<br>PENANGGUNG JAWAB RUANG</div><div class="nama">'.($room['pj_nama'] ?: '.............................').'</div></div>';
                 echo '</div>';
                 echo '<div class="ttd-center">';
                 echo '  <div class="ttd"><div class="label">MENGETAHUI,<br>KEPALA SEKOLAH</div><div class="nama">'.$school_kepala.'</div></div>';
@@ -1445,7 +1455,8 @@ function handlePeminjaman($action) {
             $html .= "Mengetahui,<br>Wakil Kepala Sarpras<br><div class='sp-signature-space'></div><b>" . htmlspecialchars($namaWaka) . "</b>";
             $html .= "</div>";
             $html .= "<div class='sp-signature-box'>";
-            $html .= "Palu, {$todayDate}<br>Yang ".($pData['status'] == 'Dikembalikan' ? 'mengembalikan' : 'meminjam')."<br><div class='sp-signature-space'></div><b>{$pData['nama_peminjam']}</b>";
+            $kotaTitle = ucfirst(strtolower(global_kota()));
+            $html .= "{$kotaTitle}, {$todayDate}<br>Yang ".($pData['status'] == 'Dikembalikan' ? 'mengembalikan' : 'meminjam')."<br><div class='sp-signature-space'></div><b>{$pData['nama_peminjam']}</b>";
             $html .= "</div>";
             $html .= "</div>";
             

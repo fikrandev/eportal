@@ -557,7 +557,7 @@ const ExamApp = {
                         </div>
 
                         <!-- Direct Native Audio Element (Provides full cross-browser audio controls) -->
-                        <audio id="audio_player_${s.id}" src="${audioUrl}" preload="auto" style="width:100%; height:36px; margin-top:10px;" controls controlsList="nodownload noplaybackrate">
+                        <audio id="audio_player_${s.id}" preload="auto" style="width:100%; height:36px; margin-top:10px;" controls controlsList="nodownload noplaybackrate">
                             <source src="${audioUrl}" type="${mimeType}">
                             Browser Anda tidak mendukung pemutar audio.
                         </audio>
@@ -784,7 +784,7 @@ const ExamApp = {
                         </button>
                         
                         <div id="voice_preview_${s.id}" style="flex:1;display:${data.jawaban_voice ? 'block' : 'none'};">
-                            <audio id="audio_voice_preview_${s.id}" src="${this.formatAudioUrl(data.jawaban_voice)}" preload="auto" controls style="width:100%;height:36px;border-radius:18px;">
+                            <audio id="audio_voice_preview_${s.id}" preload="auto" controls style="width:100%;height:36px;border-radius:18px;">
                                 <source src="${this.formatAudioUrl(data.jawaban_voice)}" type="audio/webm">
                             </audio>
                         </div>
@@ -816,7 +816,7 @@ const ExamApp = {
                         </button>
                         
                         <div id="voice_preview_${s.id}" style="flex:1;display:${data.jawaban_voice ? 'block' : 'none'};">
-                            <audio id="audio_voice_preview_${s.id}" src="${this.formatAudioUrl(data.jawaban_voice)}" preload="auto" controls style="width:100%;height:36px;border-radius:18px;">
+                            <audio id="audio_voice_preview_${s.id}" preload="auto" controls style="width:100%;height:36px;border-radius:18px;">
                                 <source src="${this.formatAudioUrl(data.jawaban_voice)}" type="audio/webm">
                             </audio>
                         </div>

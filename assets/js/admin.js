@@ -1348,6 +1348,10 @@ const Admin = {
                             Ekspor Excel
                         </button>
                         <div style="width:1px; height:24px; background:#d1d5db; margin:0 4px;"></div>
+                        <button class="btn btn-info btn-sm" onclick="Admin.showRekapWaliModal()">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>
+                            Rekap Wali Kelas
+                        </button>
                         <button class="btn btn-warning btn-sm" onclick="Admin.showSetGuruWaliModal()">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                             Set Guru Wali
@@ -1605,6 +1609,124 @@ const Admin = {
                     EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Error' });
                 });
             }
+        });
+    },
+
+    showRekapWaliModal() {
+        const loader = EModal.loading('Memuat rekap...');
+        App.api('api/students.php?action=rekap_wali&academic_year_id=' + (this.studentsAcademicYearId || '')).done(res => {
+            EModal.close(loader);
+            if (!res.success) return;
+            const d = res.data;
+            
+            let guruHtml = '';
+            if (d.guru_wali_list.length > 0) {
+                guruHtml = d.guru_wali_list.map((g, idx) => `
+                    <tr>
+                        <td style="text-align:center;">${idx + 1}</td>
+                        <td><strong>${App.escapeHtml(g.guru_wali)}</strong></td>
+                        <td style="text-align:center;"><span class="badge" style="background:#e0f2fe; color:#0369a1; padding:4px 10px; border-radius:12px; font-weight:600;">${g.total_siswa} Siswa</span></td>
+                    </tr>
+                `).join('');
+            } else {
+                guruHtml = `<tr><td colspan="3" class="text-center text-muted" style="padding:15px;">Belum ada data guru wali.</td></tr>`;
+            }
+
+            let tanpaWaliHtml = '';
+            if (d.tanpa_wali_kelas.length > 0) {
+                tanpaWaliHtml = d.tanpa_wali_kelas.map(k => `
+                    <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-bottom:1px dashed #e2e8f0;">
+                        <span style="font-size:14px;">Kelas <strong>${App.escapeHtml(k.kelas || 'Tanpa Kelas')}</strong></span>
+                        <span class="badge" style="background:#fee2e2; color:#b91c1c; padding:4px 10px; border-radius:12px; font-weight:600;">${k.total_siswa} Siswa</span>
+                    </div>
+                `).join('');
+            } else {
+                tanpaWaliHtml = `<div class="text-center text-muted" style="padding:20px 10px; font-size:14px;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="32" height="32" style="margin-bottom:10px; color:#10b981; display:block; margin:0 auto 10px auto;"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg> Semua siswa sudah memiliki guru wali.</div>`;
+            }
+
+            const modal = `
+            <div class="admin-form-modal show" id="rekapWaliModal" onclick="if(event.target===this)Admin.closeFormModal('rekapWaliModal')">
+                <div class="admin-form-panel" style="max-width: 800px; max-height:85vh; display:flex; flex-direction:column; padding:0; overflow:hidden;">
+                    <div class="panel-header" style="padding:20px 24px; background:#fff; border-bottom:1px solid #e2e8f0; border-radius:12px 12px 0 0;">
+                        <h3 style="margin:0; font-size:18px; color:#1e293b; display:flex; align-items:center; gap:8px;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" style="color:#0ea5e9;"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>
+                            Rekapitulasi Guru Wali Kelas
+                        </h3>
+                        <button class="panel-close" onclick="Admin.closeFormModal('rekapWaliModal')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+                    </div>
+                    <div class="panel-body" style="overflow-y:auto; flex:1; padding:24px; background:#f8fafc;">
+                        
+                        <!-- Summary Cards -->
+                        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:16px; margin-bottom:24px;">
+                            <div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #e2e8f0; text-align:center; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+                                <div style="font-size:13px; font-weight:600; color:#64748b; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">Total Siswa Aktif</div>
+                                <div style="font-size:32px; font-weight:700; color:#0f172a; line-height:1;">${d.summary.total_siswa}</div>
+                            </div>
+                            <div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #bbf7d0; text-align:center; box-shadow:0 1px 3px rgba(0,0,0,0.05); position:relative; overflow:hidden;">
+                                <div style="position:absolute; top:0; left:0; width:100%; height:4px; background:#22c55e;"></div>
+                                <div style="font-size:13px; font-weight:600; color:#166534; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">Sudah Punya Wali</div>
+                                <div style="font-size:32px; font-weight:700; color:#15803d; line-height:1;">${d.summary.punya_wali}</div>
+                            </div>
+                            <div style="background:#fff; padding:20px; border-radius:12px; border:1px solid #fecaca; text-align:center; box-shadow:0 1px 3px rgba(0,0,0,0.05); position:relative; overflow:hidden;">
+                                <div style="position:absolute; top:0; left:0; width:100%; height:4px; background:#ef4444;"></div>
+                                <div style="font-size:13px; font-weight:600; color:#991b1b; margin-bottom:8px; text-transform:uppercase; letter-spacing:0.5px;">Belum Punya Wali</div>
+                                <div style="font-size:32px; font-weight:700; color:#b91c1c; line-height:1;">${d.summary.tidak_punya_wali}</div>
+                            </div>
+                        </div>
+
+                        <!-- Data Section -->
+                        <div style="display:grid; grid-template-columns:1fr; gap:24px;">
+                            <style>
+                                @media (min-width: 768px) {
+                                    .rekap-grid { grid-template-columns: 3fr 2fr !important; }
+                                }
+                            </style>
+                            <div class="rekap-grid" style="display:grid; grid-template-columns:1fr; gap:24px;">
+                                <!-- Teacher List -->
+                                <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; flex-direction:column;">
+                                    <div style="padding:16px 20px; background:#f1f5f9; border-bottom:1px solid #e2e8f0;">
+                                        <h4 style="margin:0; font-size:15px; color:#334155; display:flex; align-items:center; gap:8px;">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+                                            Distribusi Siswa per Guru Wali
+                                        </h4>
+                                    </div>
+                                    <div class="data-table-wrapper" style="max-height: 350px; overflow-y: auto;">
+                                        <table class="data-table" style="margin: 0; font-size:14px; border:none;">
+                                            <thead style="position:sticky; top:0; background:#fff; z-index:10; box-shadow:0 1px 2px rgba(0,0,0,0.05);">
+                                                <tr>
+                                                    <th style="width:50px; text-align:center; padding:12px 16px;">No</th>
+                                                    <th style="padding:12px 16px;">Nama Guru Wali</th>
+                                                    <th style="width:140px; text-align:center; padding:12px 16px;">Jumlah Anak Wali</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                ${guruHtml}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+
+                                <!-- Students Without Wali -->
+                                <div style="background:#fff; border:1px solid #e2e8f0; border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.05); display:flex; flex-direction:column;">
+                                    <div style="padding:16px 20px; background:#fef2f2; border-bottom:1px solid #fee2e2;">
+                                        <h4 style="margin:0; font-size:15px; color:#991b1b; display:flex; align-items:center; gap:8px;">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+                                            Daftar Kelas Belum Punya Wali
+                                        </h4>
+                                    </div>
+                                    <div style="padding:0 20px; max-height:350px; overflow-y:auto;">
+                                        ${tanpaWaliHtml}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>`;
+            $('body').append(modal);
+        }).fail(xhr => {
+            EModal.close(loader);
+            EModal.toast({type: 'error', message: xhr.responseJSON?.message || 'Gagal memuat rekap.'});
         });
     },
 
@@ -2797,7 +2919,14 @@ const Admin = {
                         <p class="admin-subtitle">Kop ini menjadi kop default untuk surat di semua modul.</p>
                     </div>
                 </div>
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:20px;">
+                <div class="settings-section" style="margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border-color);">
+                    <h4>Keamanan Akun</h4>
+                    <p>Ubah password untuk akun superadmin Anda.</p>
+                    <div class="form-group"><label class="form-label">Password Lama</label><input type="password" class="form-input" id="setOldPassword" placeholder="Masukkan password lama"></div>
+                    <div class="form-group"><label class="form-label">Password Baru</label><input type="password" class="form-input" id="setNewPassword" placeholder="Minimal 5 karakter"></div>
+                    <button class="btn btn-outline" id="btnUpdateSuperadminPassword" onclick="Admin.updateSuperadminPassword()">Update Password</button>
+                </div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-top:24px;padding-top:24px;border-top:1px solid var(--border-color);">
                     <button class="btn btn-ghost btn-sm" onclick="Admin.goTo('reset-data')" style="color:var(--danger)">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16" style="margin-right:6px"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
                         Reset Data Sistem
@@ -2847,6 +2976,37 @@ const Admin = {
         App.api('api/settings.php?action=update',{method:'POST',data}).done(res=>{
             if(res.success){App.state.school.nama=data.nama_sekolah;localStorage.setItem('eportal_school',JSON.stringify(App.state.school));EModal.info({type:'success',title:'Tersimpan!',message:'Pengaturan berhasil disimpan.'});}
         }).fail(xhr=>EModal.toast({type:'error',title:'Gagal',message:xhr.responseJSON?.message||'Error'})).always(()=>EModal.btnLoading(btn,false));
+    },
+    
+    updateSuperadminPassword() {
+        const oldPass = $('#setOldPassword').val();
+        const newPass = $('#setNewPassword').val();
+        
+        if (!oldPass || !newPass) {
+            EModal.toast({type: 'warning', message: 'Password lama dan baru harus diisi!'});
+            return;
+        }
+        if (newPass.length < 5) {
+            EModal.toast({type: 'warning', message: 'Password baru minimal 5 karakter!'});
+            return;
+        }
+        
+        const btn = document.getElementById('btnUpdateSuperadminPassword');
+        EModal.btnLoading(btn, true);
+        
+        App.api('api/users.php?action=update-superadmin-password', {
+            method: 'POST',
+            data: { old_password: oldPass, new_password: newPass }
+        }).done(res => {
+            if (res.success) {
+                EModal.info({type: 'success', title: 'Berhasil', message: 'Password superadmin berhasil diperbarui!'});
+                $('#setOldPassword, #setNewPassword').val('');
+            }
+        }).fail(xhr => {
+            EModal.toast({type: 'error', message: xhr.responseJSON?.message || 'Gagal update password'});
+        }).always(() => {
+            EModal.btnLoading(btn, false);
+        });
     },
 
     // ==================== RESET DATA SECTION ====================

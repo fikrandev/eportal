@@ -35,6 +35,12 @@ switch ($action) {
     case 'stats':
         getStats();
         break;
+    case 'update-superadmin-password':
+        updateSuperadminPassword();
+        break;
+    case 'update-guru-password':
+        updateGuruPassword();
+        break;
     default:
         json_response(400, false, 'Action tidak valid.');
 }
@@ -510,5 +516,83 @@ function getStats() {
         json_response(200, true, 'Statistik berhasil dimuat.', $stats);
     } catch (PDOException $e) {
         json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Update Superadmin password
+ */
+function updateSuperadminPassword() {
+    $user = require_superadmin();
+    $input = get_input();
+    
+    $oldPass = isset($input['old_password']) ? $input['old_password'] : '';
+    $newPass = isset($input['new_password']) ? $input['new_password'] : '';
+    
+    if (empty($oldPass) || empty($newPass)) {
+        json_response(400, false, 'Password lama dan baru harus diisi.');
+    }
+    
+    if (strlen($newPass) < 5) {
+        json_response(400, false, 'Password baru minimal 5 karakter.');
+    }
+    
+    try {
+        $stmt = db()->prepare("SELECT password FROM users WHERE id = ? AND role = 'superadmin'");
+        $stmt->execute([$user['user_id']]);
+        $userData = $stmt->fetch();
+        
+        if (!$userData || !password_verify($oldPass, $userData['password'])) {
+            json_response(400, false, 'Password lama tidak sesuai.');
+        }
+        
+        $hash = password_hash($newPass, PASSWORD_DEFAULT);
+        $stmtUpd = db()->prepare("UPDATE users SET password = ? WHERE id = ?");
+        $stmtUpd->execute([$hash, $user['user_id']]);
+        
+        json_response(200, true, 'Password superadmin berhasil diperbarui.');
+    } catch (PDOException $e) {
+        json_response(500, false, 'Database error: ' . $e->getMessage());
+    }
+}
+
+function updateGuruPassword() {
+    $auth = auth_check();
+    if (!$auth) {
+        json_response(401, false, 'Sesi tidak valid atau telah berakhir.');
+    }
+    
+    $input = get_input();
+    $oldPass = $input['old_password'] ?? '';
+    $newPass = $input['new_password'] ?? '';
+
+    if (empty($oldPass) || empty($newPass)) {
+        json_response(400, false, 'Password lama dan baru wajib diisi.');
+    }
+
+    if (strlen($newPass) < 5) {
+        json_response(400, false, 'Password baru minimal 5 karakter.');
+    }
+
+    try {
+        $stmt = db()->prepare("SELECT id, password FROM users WHERE id = ?");
+        $stmt->execute([$auth['id']]);
+        $user = $stmt->fetch();
+
+        if (!$user) {
+            json_response(404, false, 'Pengguna tidak ditemukan.');
+        }
+
+        if (!password_verify($oldPass, $user['password'])) {
+            json_response(400, false, 'Password lama tidak sesuai.');
+        }
+
+        $newHash = password_hash($newPass, PASSWORD_DEFAULT);
+        $updateStmt = db()->prepare("UPDATE users SET password = ? WHERE id = ?");
+        $updateStmt->execute([$newHash, $auth['id']]);
+
+        json_response(200, true, 'Password berhasil diperbarui.');
+    } catch (PDOException $e) {
+        json_response(500, false, 'Database error: ' . $e->getMessage());
     }
 }

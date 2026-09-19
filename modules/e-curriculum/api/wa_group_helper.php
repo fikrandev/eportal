@@ -69,18 +69,48 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
 
     // Fetch logs from absen_logs for date:
     $stmtLogs = db()->prepare("
-        SELECT TRIM(LEADING '0' FROM mesin_pin) COLLATE utf8mb4_unicode_ci as clean_pin, 
-               MIN(CASE WHEN TIME(waktu_absen) < ? THEN TIME(waktu_absen) END) as jam_masuk,
-               MIN(CASE WHEN TIME(waktu_absen) >= ? AND TIME(waktu_absen) < ? THEN TIME(waktu_absen) END) as jam_istirahat,
-               MAX(CASE WHEN TIME(waktu_absen) >= ? THEN TIME(waktu_absen) END) as jam_pulang
+        SELECT TRIM(LEADING '0' FROM mesin_pin) COLLATE utf8mb4_unicode_ci as clean_pin, TIME(waktu_absen) as jam 
         FROM absen_logs 
         WHERE DATE(waktu_absen) = ? 
-        GROUP BY clean_pin
+        ORDER BY waktu_absen ASC
     ");
-    $stmtLogs->execute([$waktuIstirahatMulai, $waktuIstirahatMulai, $jamMulaiPulang, $jamMulaiPulang, $tanggal]);
+    $stmtLogs->execute([$tanggal]);
+    
+    $rawLogs = [];
+    while ($row = $stmtLogs->fetch()) {
+        $pin = $row['clean_pin'];
+        if (!isset($rawLogs[$pin])) $rawLogs[$pin] = [];
+        $rawLogs[$pin][] = $row['jam'];
+    }
+
     $eAbsenLogs = [];
-    while ($l = $stmtLogs->fetch()) {
-        $eAbsenLogs[$l['clean_pin']] = $l;
+    foreach ($rawLogs as $pin => $scans) {
+        $first = $scans[0];
+        $last = $scans[count($scans) - 1];
+        $masuk = $first;
+        $pulang = null;
+        $istirahat = null;
+
+        if ($first !== $last) {
+            // Evaluasi jam pulang: ambil scan terakhir jika sudah agak siang (misal >= 11:00)
+            if ($last >= '11:00:00') {
+                $pulang = $last;
+            }
+            
+            // Evaluasi jam istirahat: cari scan di antara waktu istirahat mulai dan jam pulang
+            foreach ($scans as $scan) {
+                if ($scan !== $first && $scan !== $pulang && $scan >= $waktuIstirahatMulai) {
+                    $istirahat = $scan;
+                    break;
+                }
+            }
+        }
+        
+        $eAbsenLogs[$pin] = [
+            'jam_masuk' => $masuk,
+            'jam_istirahat' => $istirahat,
+            'jam_pulang' => $pulang
+        ];
     }
 
     // Manual overrides
@@ -298,11 +328,13 @@ function checkAndSendWaGroupGuruAbsensiBatch($tanggal = null) {
                 return false; // Sudah dikirim hari ini
             }
 
+            // Set flag LEBIH DULU untuk mencegah double send jika WA server lemot/timeout (Race Condition)
+            upsert_setting('wa_guru_last_sent_date_masuk', $tanggal, 'text', 'Tanggal terakhir WA absen masuk guru dikirim');
+
             // Kirim laporan WA masuk secara lengkap (semua guru)
             $result = sendWaGroupAbsensiGuruDirect($tanggal, 'masuk');
 
             if (!empty($result['success'])) {
-                upsert_setting('wa_guru_last_sent_date_masuk', $tanggal, 'text', 'Tanggal terakhir WA absen masuk guru dikirim');
                 return true;
             }
         }
@@ -316,11 +348,13 @@ function checkAndSendWaGroupGuruAbsensiBatch($tanggal = null) {
             return false; // Sudah dikirim hari ini
         }
 
+        // Set flag LEBIH DULU untuk mencegah double send
+        upsert_setting('wa_guru_last_sent_date_pulang', $tanggal, 'text', 'Tanggal terakhir WA absen pulang guru dikirim');
+
         // Kirim laporan WA absen pulang lengkap
         $result = sendWaGroupAbsensiGuruDirect($tanggal, 'pulang');
 
         if (!empty($result['success'])) {
-            upsert_setting('wa_guru_last_sent_date_pulang', $tanggal, 'text', 'Tanggal terakhir WA absen pulang guru dikirim');
             return true;
         }
     }

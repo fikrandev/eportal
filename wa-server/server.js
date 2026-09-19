@@ -265,7 +265,10 @@ app.post('/send', async (req, res) => {
             chatId = `${formattedNumber}@c.us`;
         }
 
-        await client.sendMessage(chatId, message);
+        const sendPromise = client.sendMessage(chatId, message);
+        const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout 10s: WhatsApp lambat/hang.')), 10000));
+        await Promise.race([sendPromise, timeoutPromise]);
+        
         console.log(`[WA] Berhasil mengirim pesan ke ${chatId}`);
         
         res.json({ success: true, message: 'Pesan berhasil terkirim ke WhatsApp.' });
