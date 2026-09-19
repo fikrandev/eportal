@@ -289,6 +289,9 @@
                 case 'jurnal-kelas':
                     Pages.renderJurnalKelas();
                     break;
+                case 'jurnal-guru-wali':
+                    Pages.renderJurnalGuruWali();
+                    break;
                 case 'profil':
                     Pages.renderProfil();
                     break;
@@ -370,6 +373,7 @@
             const hariIni = getHariIni();
             const tanggalIni = getTanggalIni();
             const isWali = !!Auth.user?.wali_kelas;
+            const isGuruWali = !!Auth.user?.is_guru_wali;
             const hasMapel = !!Auth.user?.has_mapel;
 
             let roleSubtitle = 'Tenaga Pendidik';
@@ -477,7 +481,15 @@
                                 <div style="width:40px; height:40px; border-radius:12px; background:rgba(245,158,11,0.1); color:#f59e0b; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
                                 </div>
-                                <span style="font-size:0.75rem; font-weight:700; color:var(--text-primary);">Jurnal Kelas</span>
+                                <span style="font-size:0.75rem; font-weight:700; color:var(--text-primary);">Jurnal Wali Kelas</span>
+                            </div>
+                        ` : ''}
+                        ${isGuruWali ? `
+                            <div class="shortcut-card" onclick="location.hash='#/jurnal-guru-wali'" style="background:white; border-radius:16px; padding:14px 10px; text-align:center; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px; transition:transform 0.2s ease;">
+                                <div style="width:40px; height:40px; border-radius:12px; background:rgba(22,163,74,0.1); color:#16a34a; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                </div>
+                                <span style="font-size:0.75rem; font-weight:700; color:var(--text-primary);">Jurnal Guru Wali</span>
                             </div>
                         ` : ''}
                     </div>
@@ -551,7 +563,7 @@
                                     <div style="margin-bottom:12px;">
                                         <button class="btn btn-sm" onclick="GuruApp.openKegiatanModal('wali_kelas')" style="width:100%; background:#eff6ff; color:#2563eb; border:1.5px dashed #93c5fd; border-radius:12px; padding:10px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px;">
                                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                                            <span>+ Isi Jurnal Guru Wali (${escapeHtml(Auth.user.wali_kelas.nama_kelas)})</span>
+                                            <span>+ Isi Jurnal Wali Kelas (${escapeHtml(Auth.user.wali_kelas.nama_kelas)})</span>
                                         </button>
                                     </div>
                                 `;
@@ -559,6 +571,18 @@
                                 this.renderScheduleSlots('#homeScheduleSlotsWrap', schedules, true);
                             } else {
                                 this.renderScheduleSlots(scheduleContainer, schedules, true);
+                            }
+
+                            if (isGuruWali) {
+                                const gwHtml = `
+                                    <div style="margin-top:12px;">
+                                        <button class="btn btn-sm" onclick="GuruApp.openKegiatanModal('guru_wali')" style="width:100%; background:#f0fdf4; color:#16a34a; border:1.5px dashed #86efac; border-radius:12px; padding:10px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px;">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                            <span>+ Isi Jurnal Guru Wali</span>
+                                        </button>
+                                    </div>
+                                `;
+                                scheduleContainer.innerHTML += gwHtml;
                             }
                         } else {
                             // Non-KBM teacher: direct activity box
@@ -568,7 +592,17 @@
                                     <div style="margin-bottom:12px;">
                                         <button class="btn btn-sm" onclick="GuruApp.openKegiatanModal('wali_kelas')" style="width:100%; background:#eff6ff; color:#2563eb; border:1.5px dashed #93c5fd; border-radius:12px; padding:10px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px;">
                                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                                            <span>+ Isi Jurnal Guru Wali (${escapeHtml(Auth.user.wali_kelas.nama_kelas)})</span>
+                                            <span>+ Isi Jurnal Wali Kelas (${escapeHtml(Auth.user.wali_kelas.nama_kelas)})</span>
+                                        </button>
+                                    </div>
+                                `;
+                            }
+                            if (isGuruWali) {
+                                nonKbmHtml += `
+                                    <div style="margin-bottom:12px;">
+                                        <button class="btn btn-sm" onclick="GuruApp.openKegiatanModal('guru_wali')" style="width:100%; background:#f0fdf4; color:#16a34a; border:1.5px dashed #86efac; border-radius:12px; padding:10px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px;">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                            <span>+ Isi Jurnal Guru Wali</span>
                                         </button>
                                     </div>
                                 `;
@@ -851,6 +885,7 @@
             const tanggalIni = getTanggalIni();
             const hasMapel = !!Auth.user?.has_mapel;
             const isWali = !!Auth.user?.wali_kelas;
+            const isGuruWali = !!Auth.user?.is_guru_wali;
             const isWaka = !!Auth.user?.is_waka;
 
             const waliBanner = isWali ? `
@@ -860,11 +895,26 @@
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
                         </div>
                         <div>
-                            <div style="font-family:var(--font-heading); font-size:0.875rem; font-weight:800; color:#1e40af;">Jurnal Guru Wali (${escapeHtml(Auth.user.wali_kelas?.nama_kelas || '')})</div>
+                            <div style="font-family:var(--font-heading); font-size:0.875rem; font-weight:800; color:#1e40af;">Jurnal Wali Kelas (${escapeHtml(Auth.user.wali_kelas?.nama_kelas || '')})</div>
                             <div style="font-size:0.75rem; color:#3b82f6; font-weight:600;">Klik untuk catat kegiatan & pembinaan kelas</div>
                         </div>
                     </div>
                     <span class="btn btn-sm btn-primary" style="pointer-events:none; font-size:0.75rem; padding:6px 12px; border-radius:8px;">+ Isi</span>
+                </div>
+            ` : '';
+
+            const guruWaliBanner = isGuruWali ? `
+                <div class="guru-wali-journal-banner" onclick="GuruApp.openKegiatanModal('guru_wali')" style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border: 1.5px solid #bbf7d0; border-radius: 16px; padding: 14px 16px; margin-bottom: 16px; display: flex; align-items: center; justify-content: space-between; cursor: pointer; box-shadow: var(--shadow-sm); transition:transform 0.2s ease;">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <div style="width:38px; height:38px; border-radius:10px; background:#16a34a; color:white; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                        </div>
+                        <div>
+                            <div style="font-family:var(--font-heading); font-size:0.875rem; font-weight:800; color:#166534;">Jurnal Guru Wali</div>
+                            <div style="font-size:0.75rem; color:#22c55e; font-weight:600;">Klik untuk catat kegiatan Guru Wali</div>
+                        </div>
+                    </div>
+                    <span class="btn btn-sm btn-primary" style="background:#16a34a; border:none; pointer-events:none; font-size:0.75rem; padding:6px 12px; border-radius:8px;">+ Isi</span>
                 </div>
             ` : '';
 
@@ -888,6 +938,7 @@
                 content.innerHTML = `
                     <div class="page-enter">
                         ${waliBanner}
+                        ${guruWaliBanner}
                         ${wakaBanner}
                         
                         <div class="section-title">
@@ -969,8 +1020,8 @@
                         container.innerHTML = list.map(item => `
                             <div class="jurnal-item" onclick="GuruApp.viewJurnal(${item.id})">
                                 <div class="jurnal-item-header">
-                                    <div class="jurnal-item-mapel">${item.jenis_jurnal === 'wali_kelas' ? 'Jurnal Guru Wali' : (item.jenis_jurnal === 'waka' ? 'Jurnal Waka' : 'Jurnal Kegiatan')}</div>
-                                    <span class="badge ${item.jenis_jurnal === 'wali_kelas' ? 'badge-warning' : (item.jenis_jurnal === 'waka' ? 'badge-primary' : 'badge-info')}">${item.jenis_jurnal === 'wali_kelas' ? 'Guru Wali' : (item.jenis_jurnal === 'waka' ? 'Waka' : 'Non-KBM')}</span>
+                                    <div class="jurnal-item-mapel">${item.jenis_jurnal === 'wali_kelas' ? 'Jurnal Wali Kelas' : (item.jenis_jurnal === 'guru_wali' ? 'Jurnal Guru Wali' : (item.jenis_jurnal === 'waka' ? 'Jurnal Waka' : 'Jurnal Kegiatan'))}</div>
+                                    <span class="badge ${item.jenis_jurnal === 'wali_kelas' ? 'badge-warning' : (item.jenis_jurnal === 'guru_wali' ? 'badge-success' : (item.jenis_jurnal === 'waka' ? 'badge-primary' : 'badge-info'))}">${item.jenis_jurnal === 'wali_kelas' ? 'Wali Kelas' : (item.jenis_jurnal === 'guru_wali' ? 'Guru Wali' : (item.jenis_jurnal === 'waka' ? 'Waka' : 'Non-KBM'))}</span>
                                 </div>
                                 <div class="jurnal-item-tp" style="margin-top:6px; font-size:0.85rem; color:var(--text-primary); line-height:1.5;">${escapeHtml(item.catatan || '-')}</div>
                                 <div class="jurnal-item-footer" style="margin-top:10px;">
@@ -1039,14 +1090,18 @@
 
             const tanggal = getTanggalIni();
             const isWali = jenis === 'wali_kelas';
+            const isGuruWali = jenis === 'guru_wali';
             const isWaka = jenis === 'waka';
             
             let title = 'Isi Jurnal Kegiatan';
             let placeholder = 'Tuliskan uraian kegiatan harian kerja Anda hari ini...';
             
             if (isWali) {
+                title = existing ? 'Edit Jurnal Wali Kelas' : 'Isi Jurnal Wali Kelas';
+                placeholder = 'Tuliskan catatan pembinaan kelas, koordinasi absensi, atau kejadian di kelas hari ini...';
+            } else if (isGuruWali) {
                 title = existing ? 'Edit Jurnal Guru Wali' : 'Isi Jurnal Guru Wali';
-                placeholder = 'Tuliskan catatan pembinaan siswa, koordinasi wali murid, atau kejadian di kelas hari ini...';
+                placeholder = 'Tuliskan catatan pembinaan siswa perwalian atau penyelesaian masalah akademik siswa...';
             } else if (isWaka) {
                 title = existing ? 'Edit Jurnal Waka' : 'Isi Jurnal Waka';
                 placeholder = 'Tuliskan catatan kegiatan Wakil Kepala Sekolah hari ini (koordinasi, program, dll)...';
@@ -1134,6 +1189,7 @@
                     else if (Router.currentPage === 'jurnal') Pages.renderJurnal();
                     else if (Router.currentPage === 'riwayat') Pages.loadRiwayat();
                     else if (Router.currentPage === 'jurnal-kelas') Pages.loadWaliJurnal();
+                    else if (Router.currentPage === 'jurnal-guru-wali') Pages.loadGuruWaliJurnal();
                 } else {
                     Toast.show(res.message || 'Gagal menyimpan jurnal.', 'error');
                 }
@@ -1389,6 +1445,8 @@
                     if (Router.currentPage === 'home') Pages.renderHome();
                     else if (Router.currentPage === 'jurnal') Pages.loadJurnalSchedule();
                     else if (Router.currentPage === 'riwayat') Pages.loadRiwayat();
+                    else if (Router.currentPage === 'jurnal-kelas') Pages.loadWaliJurnal();
+                    else if (Router.currentPage === 'jurnal-guru-wali') Pages.loadGuruWaliJurnal();
                 } else {
                     Toast.show(res.message || 'Gagal menyimpan jurnal.', 'error');
                 }
@@ -1498,6 +1556,72 @@
                                     </div>
                                     <div class="jurnal-item-kelas" style="font-size:0.75rem; color:var(--text-secondary); margin-top:-2px;">${subtitle}</div>
                                     ${snippet ? `<div class="jurnal-item-tp" style="margin-top:6px; font-size:0.8rem; color:var(--text-primary); line-height:1.4;">${snippet}</div>` : ''}
+                                    <div class="jurnal-item-footer" style="margin-top:10px;">
+                                        <div class="jurnal-item-date">${formatTanggal(j.tanggal)}</div>
+                                        <div class="jurnal-item-actions">
+                                            ${j.tanggal === getTanggalIni() ? `
+                                                <button onclick="event.stopPropagation(); GuruApp.editJurnal(${j.id})" title="Edit">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                                </button>
+                                                <button class="danger" onclick="event.stopPropagation(); GuruApp.deleteJurnal(${j.id})" title="Hapus">
+                                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                                </button>
+                                            ` : `
+                                                <span class="badge badge-success">Selesai</span>
+                                            `}
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }).join('')}
+                    `;
+                }
+            } catch(e) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-title">Gagal Memuat</div>
+                        <div class="empty-state-desc">Tidak dapat memuat riwayat jurnal.</div>
+                    </div>
+                `;
+            }
+        },
+
+        async loadGuruWaliJurnal() {
+            const container = $('#guruWaliJurnalListContainer');
+            const filter = $('#guruWaliJurnalFilter')?.value || 'month';
+            if (!container) return;
+
+            container.innerHTML = '<div class="text-center text-muted text-sm py-4">Memuat data...</div>';
+            
+            const range = getDateRange(filter);
+            const from = range.from;
+            const to = range.to;
+
+            try {
+                const res = await API.get(`api/jurnal.php?action=list&tanggal=${from}&tanggal_akhir=${to}&jenis_jurnal=guru_wali`);
+                if (res.success) {
+                    const data = res.data || [];
+                    if (data.length === 0) {
+                        container.innerHTML = `
+                            <div class="empty-state">
+                                <div class="empty-state-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></div>
+                                <div class="empty-state-title">Belum Ada Jurnal Guru Wali</div>
+                                <div class="empty-state-desc">Tidak ada jurnal pada rentang tanggal ini.</div>
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    container.innerHTML = `
+                        <p class="text-sm text-muted mb-2">${data.length} jurnal ditemukan</p>
+                        ${data.map(j => {
+                            return `
+                                <div class="jurnal-item" onclick="GuruApp.viewJurnal(${j.id})">
+                                    <div class="jurnal-item-header">
+                                        <div class="jurnal-item-mapel">Jurnal Guru Wali</div>
+                                        <span class="badge badge-success" style="font-size:0.7rem;">Guru Wali</span>
+                                    </div>
+                                    ${j.catatan ? `<div class="jurnal-item-tp" style="margin-top:6px; font-size:0.8rem; color:var(--text-primary); line-height:1.4;">${escapeHtml(j.catatan)}</div>` : ''}
                                     <div class="jurnal-item-footer" style="margin-top:10px;">
                                         <div class="jurnal-item-date">${formatTanggal(j.tanggal)}</div>
                                         <div class="jurnal-item-actions">

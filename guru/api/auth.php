@@ -119,7 +119,7 @@ function getTeacherMetadata($userId, $username) {
     $waliKelas = $stmtWali->fetch(PDO::FETCH_ASSOC) ?: null;
 
     // 2. Fetch User Tupoksi and Jabatan
-    $stmtUser = db()->prepare("SELECT tupoksi, jabatan FROM users WHERE id = ? LIMIT 1");
+    $stmtUser = db()->prepare("SELECT nama_lengkap, tupoksi, jabatan FROM users WHERE id = ? LIMIT 1");
     $stmtUser->execute([$userId]);
     $userRow = $stmtUser->fetch(PDO::FETCH_ASSOC);
     
@@ -150,13 +150,20 @@ function getTeacherMetadata($userId, $username) {
             $jabatanWaka = $userRow['jabatan'] ?: 'Wakil Kepala Sekolah';
         }
     }
+    
+    // 5. Guru Wali check (from students table)
+    $namaLengkap = $userRow['nama_lengkap'] ?? $username;
+    $stmtGw = db()->prepare("SELECT COUNT(*) FROM students WHERE guru_wali = ? AND status = 1");
+    $stmtGw->execute([$namaLengkap]);
+    $isGuruWali = ((int)$stmtGw->fetchColumn() > 0);
 
     return [
         'wali_kelas' => $waliKelas,
         'has_mapel' => $hasMapel,
         'teacher_type' => $teacherType,
         'is_waka' => $isWaka,
-        'jabatan_waka' => $jabatanWaka
+        'jabatan_waka' => $jabatanWaka,
+        'is_guru_wali' => $isGuruWali
     ];
 }
 
