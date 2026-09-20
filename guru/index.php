@@ -11,8 +11,9 @@ require_once __DIR__ . '/../api/migration_helper.php';
 run_auto_migrations();
 
 $school_name = get_setting('nama_sekolah', 'E-Portal');
+$school_icon = get_setting('icon_sekolah', '');
 $app_name = get_setting('app_name_guru', 'Portal Guru ' . $school_name);
-$app_icon = get_setting('app_icon_guru', get_setting('icon_sekolah', ''));
+$app_icon = get_setting('app_icon_guru', $school_icon);
 ?>
 <!DOCTYPE html>
 <html lang="id">

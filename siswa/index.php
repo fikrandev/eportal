@@ -6,8 +6,9 @@
 require_once __DIR__ . '/../api/config.php';
 
 $school_name = get_setting('nama_sekolah', 'E-Portal');
+$school_icon = get_setting('icon_sekolah', '');
 $app_name = get_setting('app_name_siswa', 'Portal Murid ' . $school_name);
-$app_icon = get_setting('app_icon_siswa', get_setting('icon_sekolah', ''));
+$app_icon = get_setting('app_icon_siswa', $school_icon);
 ?>
 <!DOCTYPE html>
 <html lang="id">
