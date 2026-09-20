@@ -476,21 +476,6 @@
                                 </div>
                                 <span style="font-size:0.75rem; font-weight:700; color:var(--text-primary);">Rekap Absen</span>
                             </div>
-                        ${isWali ? `
-                            <div class="shortcut-card" onclick="location.hash='#/jurnal-kelas'" style="background:white; border-radius:16px; padding:14px 10px; text-align:center; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px; transition:transform 0.2s ease;">
-                                <div style="width:40px; height:40px; border-radius:12px; background:rgba(245,158,11,0.1); color:#f59e0b; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                                </div>
-                                <span style="font-size:0.75rem; font-weight:700; color:var(--text-primary);">Jurnal Wali Kelas</span>
-                            </div>
-                        ` : ''}
-                        ${isGuruWali ? `
-                            <div class="shortcut-card" onclick="location.hash='#/jurnal-guru-wali'" style="background:white; border-radius:16px; padding:14px 10px; text-align:center; box-shadow:var(--shadow-sm); border:1.5px solid #f1f5f9; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:8px; transition:transform 0.2s ease;">
-                                <div style="width:40px; height:40px; border-radius:12px; background:rgba(22,163,74,0.1); color:#16a34a; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                                </div>
-                                <span style="font-size:0.75rem; font-weight:700; color:var(--text-primary);">Jurnal Guru Wali</span>
-                            </div>
                         ` : ''}
                     </div>
 
@@ -565,9 +550,9 @@
                         if (isWali) {
                             html += `
                                 <div style="margin-bottom:12px;">
-                                    <button class="btn btn-sm" onclick="GuruApp.openKegiatanModal('wali_kelas')" style="width:100%; background:#eff6ff; color:#2563eb; border:1.5px dashed #93c5fd; border-radius:12px; padding:10px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px;">
+                                    <button class="btn btn-sm" onclick="location.hash='#/jurnal-kelas'" style="width:100%; background:#eff6ff; color:#2563eb; border:1.5px dashed #93c5fd; border-radius:12px; padding:10px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px;">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                                        <span>+ Isi Jurnal Wali Kelas (${escapeHtml(Auth.user.wali_kelas.nama_kelas)})</span>
+                                        <span>Buka Jurnal & Rekap Wali Kelas (${escapeHtml(Auth.user.wali_kelas.nama_kelas)})</span>
                                     </button>
                                 </div>
                             `;
@@ -577,9 +562,9 @@
                         if (isGuruWali) {
                             html += `
                                 <div style="margin-bottom:12px;">
-                                    <button class="btn btn-sm" onclick="GuruApp.openKegiatanModal('guru_wali')" style="width:100%; background:#f0fdf4; color:#16a34a; border:1.5px dashed #86efac; border-radius:12px; padding:10px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px;">
+                                    <button class="btn btn-sm" onclick="location.hash='#/jurnal-guru-wali'" style="width:100%; background:#f0fdf4; color:#16a34a; border:1.5px dashed #86efac; border-radius:12px; padding:10px; font-weight:700; display:flex; align-items:center; justify-content:center; gap:8px;">
                                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                                        <span>+ Tulis Catatan Guru Wali</span>
+                                        <span>Buka Jurnal & Rekap Guru Wali</span>
                                     </button>
                                 </div>
                             `;
@@ -1877,9 +1862,12 @@
 
             content.innerHTML = `
                 <div class="page-enter">
-                    <div class="section-title" style="margin-bottom:12px;">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                        Jurnal & Rekap Kelas (${escapeHtml(Auth.user.wali_kelas.nama_kelas)})
+                    <div class="section-title" style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                            Jurnal & Rekap Kelas (${escapeHtml(Auth.user.wali_kelas.nama_kelas)})
+                        </div>
+                        <button class="btn btn-sm btn-primary" onclick="GuruApp.openKegiatanModal('wali_kelas')" style="padding:4px 8px; font-size:0.75rem;">+ Tulis</button>
                     </div>
 
                     <div class="tabs-segment">
@@ -2299,9 +2287,12 @@
 
             content.innerHTML = `
                 <div class="page-enter">
-                    <div class="section-title" style="margin-bottom:12px;">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                        Jurnal & Rekap Guru Wali
+                    <div class="section-title" style="margin-bottom:12px; display:flex; justify-content:space-between; align-items:center;">
+                        <div>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                            Jurnal & Rekap Guru Wali
+                        </div>
+                        <button class="btn btn-sm btn-primary" onclick="GuruApp.openKegiatanModal('guru_wali')" style="background:#16a34a; border-color:#16a34a; padding:4px 8px; font-size:0.75rem;">+ Tulis</button>
                     </div>
 
                     <div class="tabs-segment">
