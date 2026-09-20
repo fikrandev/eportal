@@ -72,6 +72,12 @@ switch ($action) {
     case 'dashboard_stats':
         getDashboardStats($user);
         break;
+    case 'guru_wali_rekap':
+        rekapAbsensiGuruWali($user);
+        break;
+    case 'guru_wali_daily_absen':
+        dailyAbsenGuruWali($user);
+        break;
     default:
         json_response(400, false, 'Action tidak valid.');
 }
@@ -1099,3 +1105,134 @@ function createIzin($user) {
     }
 }
 
+/**
+ * Fetch attendance stats percentage for guru wali students
+ */
+function rekapAbsensiGuruWali($user) {
+    try {
+        $namaLengkap = $user['nama_lengkap'] ?? $user['username'];
+        $stmtS = db()->prepare("SELECT id, nis, nama, kelas FROM students WHERE guru_wali = ? AND status = 1 ORDER BY nama");
+        $stmtS->execute([$namaLengkap]);
+        $students = $stmtS->fetchAll(PDO::FETCH_ASSOC);
+
+        if (empty($students)) {
+            json_response(200, true, 'Data rekap kosong (Belum ada anak wali).', [
+                'students' => []
+            ]);
+            return;
+        }
+
+        $active_year = get_active_academic_year();
+        $year_id = $active_year['id'] ?? 0;
+
+        $stats = [];
+        $studentIds = array_column($students, 'id');
+        $inClause = implode(',', array_fill(0, count($studentIds), '?'));
+        $params = array_merge($studentIds, [$year_id]);
+        
+        $stmtA = db()->prepare("
+            SELECT student_id,
+                   SUM(CASE WHEN status = 'H' THEN 1 ELSE 0 END) as hadir,
+                   SUM(CASE WHEN status = 'S' THEN 1 ELSE 0 END) as sakit,
+                   SUM(CASE WHEN status = 'I' THEN 1 ELSE 0 END) as izin,
+                   SUM(CASE WHEN status = 'A' THEN 1 ELSE 0 END) as alpha,
+                   COUNT(*) as total
+            FROM acad_absensi
+            WHERE student_id IN ($inClause) AND academic_year_id = ?
+            GROUP BY student_id
+        ");
+        $stmtA->execute($params);
+        while ($r = $stmtA->fetch(PDO::FETCH_ASSOC)) {
+            $stats[$r['student_id']] = $r;
+        }
+
+        $result = [];
+        foreach ($students as $s) {
+            $sid = $s['id'];
+            $st = $stats[$sid] ?? ['hadir' => 0, 'sakit' => 0, 'izin' => 0, 'alpha' => 0, 'total' => 0];
+            
+            $total_days = $st['total'];
+            $persentase = 100;
+            if ($total_days > 0) {
+                $persentase = round(($st['hadir'] / $total_days) * 100);
+            }
+
+            $result[] = [
+                'id' => $sid,
+                'nis' => $s['nis'],
+                'nama' => $s['nama'],
+                'kelas' => $s['kelas'],
+                'hadir' => (int)$st['hadir'],
+                'sakit' => (int)$st['sakit'],
+                'izin' => (int)$st['izin'],
+                'alpha' => (int)$st['alpha'],
+                'persentase' => $persentase
+            ];
+        }
+
+        json_response(200, true, 'Rekap absensi guru wali berhasil dimuat.', $result);
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Fetch daily attendance of all students under a Guru Wali
+ */
+function dailyAbsenGuruWali($user) {
+    try {
+        $tanggal = isset($_GET['tanggal']) ? $_GET['tanggal'] : date('Y-m-d');
+        $namaLengkap = $user['nama_lengkap'] ?? $user['username'];
+        
+        $stmtS = db()->prepare("SELECT id, nis, nama, kelas FROM students WHERE guru_wali = ? AND status = 1 ORDER BY nama");
+        $stmtS->execute([$namaLengkap]);
+        $students = $stmtS->fetchAll(PDO::FETCH_ASSOC);
+        
+        if (empty($students)) {
+            json_response(400, false, 'Anda tidak memiliki anak wali.');
+        }
+
+        $studentIds = array_column($students, 'id');
+        $inClause = implode(',', array_fill(0, count($studentIds), '?'));
+        $params = array_merge([$tanggal], $studentIds);
+
+        $stmtA = db()->prepare("
+            SELECT student_id, jam_ke, status
+            FROM acad_absensi
+            WHERE tanggal = ? AND student_id IN ($inClause)
+        ");
+        $stmtA->execute($params);
+        $absensi = $stmtA->fetchAll(PDO::FETCH_ASSOC);
+
+        $absenMap = [];
+        foreach ($absensi as $a) {
+            $jamInt = (int) preg_replace('/\D/', '', $a['jam_ke']);
+            if ($jamInt > 0 && $jamInt <= 10) {
+                $absenMap[$a['student_id']][$jamInt] = $a['status'];
+            }
+        }
+
+        $result = [];
+        foreach ($students as $s) {
+            $jams = [];
+            for ($i = 1; $i <= 10; $i++) {
+                $jams[$i] = $absenMap[$s['id']][$i] ?? '.';
+            }
+            $result[] = [
+                'id' => $s['id'],
+                'nis' => $s['nis'],
+                'nama' => $s['nama'],
+                'kelas' => $s['kelas'],
+                'jams' => $jams
+            ];
+        }
+
+        json_response(200, true, 'Data absen harian.', [
+            'tanggal' => $tanggal,
+            'kelas_name' => 'Anak Wali ' . $namaLengkap,
+            'students' => $result
+        ]);
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
