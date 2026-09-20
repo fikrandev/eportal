@@ -3661,6 +3661,22 @@
             Pages.filterWaliRekap(query);
         },
 
+        loadGuruWaliJurnal() {
+            Pages.loadGuruWaliJurnal();
+        },
+
+        switchGuruWaliTab(tab) {
+            Pages.switchGuruWaliTab(tab);
+        },
+
+        filterGuruWaliRekap(query) {
+            Pages.filterGuruWaliRekap(query);
+        },
+
+        async printDailyGuruWaliAbsen() {
+            await Pages.printDailyGuruWaliAbsen();
+        },
+
         openIzinModal() {
             Pages.openIzinModal();
         },
