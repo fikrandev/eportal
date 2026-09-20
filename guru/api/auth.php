@@ -205,7 +205,11 @@ function handleGuruCheck() {
         $meta = getTeacherMetadata($user['user_id'], $user['username']);
         $user['wali_kelas'] = $meta['wali_kelas'];
         $user['has_mapel'] = $meta['has_mapel'];
+        $user['is_guru_mapel'] = $meta['is_guru_mapel'];
         $user['teacher_type'] = $meta['teacher_type'];
+        $user['is_waka'] = $meta['is_waka'];
+        $user['jabatan_waka'] = $meta['jabatan_waka'];
+        $user['is_guru_wali'] = $meta['is_guru_wali'];
 
         // Get school settings
         $namaSekolah = get_setting('nama_sekolah', 'E-Portal Sekolah');
