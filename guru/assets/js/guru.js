@@ -476,7 +476,6 @@
                                 </div>
                                 <span style="font-size:0.75rem; font-weight:700; color:var(--text-primary);">Rekap Absen</span>
                             </div>
-                        ` : ''}
                     </div>
 
                     <!-- Ringkasan Absensi Kelas (Untuk Wali Kelas) -->
