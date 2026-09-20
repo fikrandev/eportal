@@ -157,6 +157,15 @@ function getTeacherMetadata($userId, $username) {
     $stmtGw->execute([$namaLengkap]);
     $isGuruWali = ((int)$stmtGw->fetchColumn() > 0);
 
+    // Fallback: Check if tupoksi or jabatan contains 'guru wali'
+    if (!$isGuruWali && $userRow) {
+        $tupoksiStr = strtolower($userRow['tupoksi'] ?? '');
+        $jabatanStr = strtolower($userRow['jabatan'] ?? '');
+        if (strpos($tupoksiStr, 'guru wali') !== false || strpos($jabatanStr, 'guru wali') !== false) {
+            $isGuruWali = true;
+        }
+    }
+
     return [
         'wali_kelas' => $waliKelas,
         'is_guru_mapel' => $isGuruMapel,
