@@ -125,9 +125,26 @@ function meta()
 function listExams()
 {
     $yearId = xam_active_year_id();
-    $stmt = db()->prepare("\n        SELECT e.*,\n               (SELECT COUNT(*) FROM xam_exam_classes c WHERE c.exam_id = e.id) as total_kelas,\n               (SELECT COUNT(*) FROM xam_exam_students xs WHERE xs.exam_id = e.id) as total_siswa\n        FROM xam_exams e\n        WHERE e.academic_year_id = ?\n        ORDER BY e.exam_start_date DESC, e.id DESC\n    ");
+    $stmt = db()->prepare("
+        SELECT e.*,
+               (SELECT COUNT(*) FROM xam_exam_classes c WHERE c.exam_id = e.id) as total_kelas,
+               (SELECT COUNT(*) FROM xam_exam_students xs WHERE xs.exam_id = e.id) as total_siswa
+        FROM xam_exams e
+        WHERE e.academic_year_id = ?
+        ORDER BY e.exam_start_date DESC, e.id DESC
+    ");
     $stmt->execute([$yearId]);
-    json_response(200, true, 'Data ujian berhasil dimuat.', $stmt->fetchAll());
+    $exams = $stmt->fetchAll();
+
+    foreach ($exams as &$e) {
+        $realPath = xam_resolve_template_path($e['card_template'] ?? '', (int)$e['id']);
+        if ($realPath) {
+            $e['card_template'] = 'modules/e-xam-card/uploads/templates/' . basename($realPath);
+        }
+    }
+    unset($e);
+
+    json_response(200, true, 'Data ujian berhasil dimuat.', $exams);
 }
 
 function getExam()
@@ -142,6 +159,11 @@ function getExam()
     $exam = $stmt->fetch();
     if (!$exam) {
         json_response(404, false, 'Ujian tidak ditemukan.');
+    }
+
+    $realPath = xam_resolve_template_path($exam['card_template'] ?? '', (int)$exam['id']);
+    if ($realPath) {
+        $exam['card_template'] = 'modules/e-xam-card/uploads/templates/' . basename($realPath);
     }
 
     json_response(200, true, 'Detail ujian.', $exam);

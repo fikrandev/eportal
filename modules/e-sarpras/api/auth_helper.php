@@ -169,7 +169,40 @@ function sp_resolve_user_by_token($token, $jsonOnFail = true) {
 }
 
 function sp_auth() {
+    sp_ensure_default_categories();
     return sp_resolve_user_by_token(sp_extract_token(), true);
+}
+
+function sp_ensure_default_categories() {
+    static $checked = false;
+    if ($checked) return;
+    $checked = true;
+    try {
+        $count = (int)db()->query("SELECT COUNT(*) FROM kategori_sarpras")->fetchColumn();
+        if ($count === 0) {
+            $defaults = [
+                ['Lambang Negara', 'A', 'sarana'],
+                ['Meubelair', 'B', 'sarana'],
+                ['Elektronik', 'C', 'sarana'],
+                ['Lab. Fisika', 'D', 'sarana'],
+                ['Lab. Kimia', 'E', 'sarana'],
+                ['Lab. Biologi', 'F', 'sarana'],
+                ['Alat Musik', 'G', 'sarana'],
+                ['UKS', 'H', 'sarana'],
+                ['BK', 'I', 'sarana'],
+                ['Perpustakaan', 'J', 'sarana'],
+                ['Sarpras Lainnya', 'N', 'sarana'],
+                ['K3', 'K', 'sarana'],
+                ['Perangkat Kelas', 'L', 'sarana'],
+                ['Perlengkapan Kelas', 'M', 'sarana'],
+                ['Koleksi Buku', 'BK', 'sarana']
+            ];
+            $stmt = db()->prepare("INSERT INTO kategori_sarpras (nama, kode, jenis) VALUES (?, ?, ?)");
+            foreach ($defaults as $d) {
+                $stmt->execute($d);
+            }
+        }
+    } catch (Exception $e) {}
 }
 
 function sp_has($user, $permission) {

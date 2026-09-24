@@ -122,13 +122,17 @@ function downloadCard()
     }
 
     $setting = xam_exam_setting($examId);
-    $schoolName = get_setting('nama_sekolah', 'E-Portal Sekolah');
+    $schoolName = get_setting('nama_sekolah', 'SMAS Wachid Hasyim 1 Surabaya');
+    $schoolAddress = get_setting('alamat_sekolah', 'Jl. Sidotopo Wetan Baru No. 37 Telp. 0313764756 Surabaya');
+    $schoolIcon = get_setting('icon_sekolah', '');
     $activeYear = get_active_academic_year();
+    
     $letterNumber = xam_compose_letter_number(
         $setting['letter_manual_no'] ?? '',
         $setting['letter_code'] ?? 'I04.1/SMA.WH1',
         $setting['letter_date'] ?? date('Y-m-d')
     );
+    
     $headmasterName = trim((string) ($setting['headmaster_name'] ?? ''));
     if ($headmasterName === '' && !empty($setting['headmaster_user_name'])) {
         $headmasterName = $setting['headmaster_user_name'];
@@ -160,7 +164,7 @@ function downloadCard()
         $x = $marginX + ($col * $cardW);
         $y = $marginY + ($row * $cardH);
 
-        renderExamCard($pdf, $x, $y, $cardW, $cardH, $student, $exam, $schoolName, $activeYear, $setting, $letterNumber, $headmasterName);
+        renderExamCard($pdf, $x, $y, $cardW, $cardH, $student, $exam, $schoolName, $schoolAddress, $schoolIcon, $activeYear, $setting, $letterNumber, $headmasterName);
         $count++;
     }
 
@@ -173,149 +177,150 @@ function downloadCard()
     exit;
 }
 
-function renderExamCard($pdf, $x, $y, $cardW, $cardH, $student, $exam, $schoolName, $activeYear, $setting, $letterNumber, $headmasterName)
+function renderExamCard($pdf, $x, $y, $cardW, $cardH, $student, $exam, $schoolName, $schoolAddress, $schoolIcon, $activeYear, $setting, $letterNumber, $headmasterName)
 {
-    $templatePath = !empty($exam['card_template']) ? __DIR__ . '/../../../' . $exam['card_template'] : '';
-    $useTemplate = $templatePath !== '' && file_exists($templatePath);
+    $root = realpath(__DIR__ . '/../../../') ?: dirname(dirname(dirname(__DIR__)));
+    $templatePath = xam_resolve_template_path($exam['card_template'] ?? '', (int)($exam['id'] ?? 0));
+    $useTemplate = ($templatePath !== '' && file_exists($templatePath));
+
+    $kopH = 56.69;  // 2cm ruang kop template
+    $contentTop = $y + $kopH;
 
     if ($useTemplate) {
         // Background Template (berisi KOP di 2cm atas)
         $pdf->image($templatePath, $x, $y, $cardW, $cardH);
+    } else {
+        // Fallback KOP jika tidak ada file template
+        $pdf->rect($x, $y, $cardW, $cardH);
         
-        // ============================================================
-        // AREA KONTEN: di bawah KOP (~2cm = 56.69pt)
-        // ============================================================
-        $kopH = 56.69;  // 2cm ruang kop template
-        $contentTop = $y + $kopH;
-        
-        // --- JUDUL (center, 3 baris) ---
-        $pdf->text($x, $contentTop + 15, 'KARTU PESERTA', 10, 'F2', 'center', $cardW);
-        $examTitle = strtoupper((string) ($exam['exam_name'] ?? 'UJIAN'));
-        $pdf->text($x, $contentTop + 27, $examTitle, 8, 'F2', 'center', $cardW);
-        $tahun = ($activeYear['tahun_ajaran'] ?? '-');
-        $subtitle = 'TAHUN PELAJARAN ' . $tahun;
-        $pdf->text($x, $contentTop + 37, $subtitle, 7, 'F2', 'center', $cardW);
-        
-        // Garis bawah setelah judul (panjangnya sesuai teks)
-        $subW = $pdf->textWidth($subtitle, 7);
-        $subW += 10; // Tambahan padding sedikit karena text F2 (bold) biasanya lebih lebar dari standar
-        $subX = $x + ($cardW - $subW) / 2;
-        $pdf->line($subX, $contentTop + 41, $subX + $subW, $contentTop + 41, 0.5);
-        
-        // --- PRE-CALCULATE Y POSITIONS ---
-        $bottomY = $y + $cardH;
-        $footerY = $bottomY - 10;
-        $qrSize = 30;
-        $qrY = $footerY - $qrSize - 10;
-        $cityY = $qrY - 20;
-
-        // --- FOTO SISWA (sisi kiri, sejajar dengan label NAMA, bottom sejajar dengan garis bawah nama kepsek) ---
-        $photoH = 51.02; // 1.8cm tinggi
-        $photoX = $x + 8 + 42.52; // digeser 1.5cm (42.52pt) ke kanan dari posisi awal
-        $photoY = ($footerY + 2) - $photoH - 5; // sejajarkan dengan garis bawah nama kepsek, lalu naikkan 5 point
-        
-        $root = realpath(__DIR__ . '/../../../');
-        $fotoPath = $student['foto_path'] ?? '';
-        if ($fotoPath !== '') {
-            $fullPhotoPath = $root . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, ltrim($fotoPath, '/\\'));
-            if (file_exists($fullPhotoPath)) {
-                $dims = $pdf->imageDimensions($fullPhotoPath);
-                if ($dims) {
-                    $photoW = $photoH * $dims['width'] / max(1, $dims['height']);
-                    $pdf->rect($photoX - 1, $photoY - 1, $photoW + 2, $photoH + 2);
-                    $pdf->image($fullPhotoPath, $photoX, $photoY, 0, $photoH);
-                }
+        // Logo Sekolah jika ada
+        $hasIcon = false;
+        if (!empty($schoolIcon)) {
+            $iconFullPath = $root . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, ltrim($schoolIcon, '/\\'));
+            if (file_exists($iconFullPath)) {
+                $hasIcon = true;
+                $pdf->image($iconFullPath, $x + 10, $y + 6, 0, 38);
             }
         }
 
-        // --- BIODATA (4 baris, sisi kiri, tidak overlap karena foto di bawah) ---
-        $labelX = $x + 8;
-        $colonX = $x + 68;
-        $valueX = $x + 74;
-        $bioY = $contentTop + 55; // diturunkan agar tidak nabrak garis Tahun Pelajaran
-        $fs = 8;
-        $lh = 13; // line height
-
-        // Baris 1: NAMA
-        $namaKelas = strtoupper($student['nama'] ?? '-') . ' / ' . ($student['kelas'] ?? '-');
-        $pdf->text($labelX, $bioY, 'NAMA', $fs, 'F2');
-        $pdf->text($colonX, $bioY, ':', $fs, 'F2');
-        $pdf->text($valueX, $bioY, $namaKelas, $fs, 'F2');
-        $bioY += $lh;
-
-        // Baris 2: USERNAME
-        $pdf->text($labelX, $bioY, 'USERNAME', $fs, 'F2');
-        $pdf->text($colonX, $bioY, ':', $fs, 'F2');
-        $pdf->text($valueX, $bioY, ($student['username'] ?? '-'), $fs, 'F2');
-        $bioY += $lh;
-
-        // Baris 3: PASSWORD
-        $password = ($student['status'] ?? 'DITANGGUHKAN') === 'OKE' ? ($student['password_plain'] ?? '-') : 'DITANGGUHKAN';
-        $pdf->text($labelX, $bioY, 'PASSWORD', $fs, 'F2');
-        $pdf->text($colonX, $bioY, ':', $fs, 'F2');
-        $pdf->text($valueX, $bioY, $password, $fs, 'F2');
-        $bioY += $lh;
-
-        // Baris 4: RUANGAN
-        $pdf->text($labelX, $bioY, 'RUANGAN', $fs, 'F2');
-        $pdf->text($colonX, $bioY, ':', $fs, 'F2');
-        $pdf->text($valueX, $bioY, ($student['ruang_ujian'] ?: '-'), $fs, 'F2');
-
-
-        // --- TANDA TANGAN (sudut kanan bawah, diposisikan Center) ---
-        $signBoxW = 100; // Lebar area tanda tangan
-        $signX = $x + $cardW - $signBoxW - 10; // 10pt dari pinggir kanan
-        // $bottomY, $footerY, $qrY, $cityY sudah dihitung di atas
-
-        // Nama Kepsek (center, underline) - paling bawah
-        $pdf->text($signX, $footerY, $headmasterName, 8, 'F2', 'center', $signBoxW);
-        $nameW = $pdf->textWidth($headmasterName, 8);
-        $lineX = $signX + ($signBoxW - $nameW) / 2;
-        $pdf->line($lineX, $footerY + 2, $lineX + $nameW, $footerY + 2, 0.5);
+        // Teks KOP
+        $textX = $hasIcon ? ($x + 45) : ($x + 10);
+        $textW = $hasIcon ? ($cardW - 55) : ($cardW - 20);
+        $pdf->text($textX, $y + 12, 'YAYASAN WACHID HASYIM', 8, 'F2', 'center', $textW);
+        $pdf->text($textX, $y + 24, strtoupper($schoolName), 11, 'F2', 'center', $textW);
+        $pdf->text($textX, $y + 35, $schoolAddress, 6, 'F1', 'center', $textW);
         
-        $sig = xam_verify_signature($student['student_id'], $exam['id'], $letterNumber);
-        $qrUrl = absoluteBaseUrl() . 'modules/e-xam-card/v.php?c=' . rawurlencode($student['student_id'] . '.' . $exam['id'] . '.' . $sig);
-        $qrFile = qrImagePathLocal($qrUrl);
-        if ($qrFile) {
-            $qrX = $signX + ($signBoxW - $qrSize) / 2;
-            $pdf->image($qrFile, $qrX, $qrY, $qrSize, $qrSize);
-            @unlink($qrFile);
-        }
+        // Garis pemisah KOP
+        $pdf->line($x + 8, $y + 44, $x + $cardW - 8, $y + 44, 1.2);
+        $pdf->line($x + 8, $y + 46, $x + $cardW - 8, $y + 46, 0.4);
+    }
+    
+    // --- JUDUL (center, 3 baris) ---
+    $pdf->text($x, $contentTop + 15, 'KARTU PESERTA', 10, 'F2', 'center', $cardW);
+    $examTitle = strtoupper((string) ($exam['exam_name'] ?? 'UJIAN'));
+    $pdf->text($x, $contentTop + 27, $examTitle, 8, 'F2', 'center', $cardW);
+    
+    // Prioritas tahun ajaran: dari data ujian, atau fallback ke tahun aktif global
+    $tahun = !empty($exam['tahun_ajaran']) ? $exam['tahun_ajaran'] : ($activeYear['tahun_ajaran'] ?? '-');
+    $subtitle = 'TAHUN PELAJARAN ' . $tahun;
+    $pdf->text($x, $contentTop + 37, $subtitle, 7, 'F2', 'center', $cardW);
+    
+    // Garis bawah setelah judul (panjangnya sesuai teks)
+    $subW = $pdf->textWidth($subtitle, 7);
+    $subW += 10;
+    $subX = $x + ($cardW - $subW) / 2;
+    $pdf->line($subX, $contentTop + 41, $subX + $subW, $contentTop + 41, 0.5);
+    
+    // --- PRE-CALCULATE Y POSITIONS ---
+    $bottomY = $y + $cardH;
+    $footerY = $bottomY - 10;
+    $qrSize = 30;
+    $qrY = $footerY - $qrSize - 10;
 
-        // "Kepala Sekolah," (center) - di atas QR
-        $pdf->text($signX, $qrY - 10, 'Kepala Sekolah,', 7, 'F1', 'center', $signBoxW);
+    // --- FOTO SISWA ---
+    $photoH = 51.02; // 1.8cm tinggi
+    $photoX = $x + 8 + 42.52; // digeser 1.5cm ke kanan
+    $photoY = ($footerY + 2) - $photoH - 5;
+    
+    $fotoPath = $student['foto_path'] ?? '';
+    if (empty($fotoPath) && !empty($student['nis'])) {
+        $stmtP = db()->prepare("SELECT foto_path FROM students WHERE nis = ? AND foto_path IS NOT NULL AND foto_path <> '' ORDER BY id DESC LIMIT 1");
+        $stmtP->execute([$student['nis']]);
+        $fotoPath = $stmtP->fetchColumn() ?: '';
+    }
 
-        // Tanggal (center) - di atas "Kepala Sekolah,"
-        $city = 'Surabaya, ' . xam_indo_date($setting['sign_date'] ?? date('Y-m-d'));
-        $pdf->text($signX, $qrY - 20, $city, 7, 'F1', 'center', $signBoxW);
-
-        // --- FOOTER KIRI (italic) ---
-        // $pdf->text($x + 8, $footerY, 'Dokumen ini telah ditandatangani secara digital,', 6, 'F3');
-
-    } else {
-        // Fallback jika tidak ada template
-        $pdf->rect($x, $y, $cardW, $cardH);
-        $pdf->text($x, $y + 20, strtoupper($schoolName), 10, 'F2', 'center', $cardW);
-        $pdf->text($x, $y + 35, 'KARTU UJIAN', 9, 'F2', 'center', $cardW);
-        
-        $labelX = $x + 10;
-        $dataX = $x + 80;
-        $currY = $y + 55;
-        $fontSize = 8;
-        
-        $fields = [
-            ['Nama', $student['nama']],
-            ['Kelas', $student['kelas']],
-            ['Username', $student['username']],
-            ['Password', ($student['status'] === 'OKE' ? $student['password_plain'] : 'DITANGGUHKAN')]
-        ];
-
-        foreach ($fields as $f) {
-            $pdf->text($labelX, $currY, $f[0], $fontSize, 'F1');
-            $pdf->text($dataX, $currY, ': ' . $f[1], $fontSize, 'F2');
-            $currY += 12;
+    if ($fotoPath !== '') {
+        $fullPhotoPath = $root . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, ltrim($fotoPath, '/\\'));
+        if (file_exists($fullPhotoPath)) {
+            $dims = $pdf->imageDimensions($fullPhotoPath);
+            if ($dims) {
+                $photoW = $photoH * $dims['width'] / max(1, $dims['height']);
+                $pdf->rect($photoX - 1, $photoY - 1, $photoW + 2, $photoH + 2);
+                $pdf->image($fullPhotoPath, $photoX, $photoY, 0, $photoH);
+            }
         }
     }
+
+    // --- BIODATA (4 baris) ---
+    $labelX = $x + 8;
+    $colonX = $x + 68;
+    $valueX = $x + 74;
+    $bioY = $contentTop + 55;
+    $fs = 8;
+    $lh = 13;
+
+    // Baris 1: NAMA / KELAS
+    $namaKelas = strtoupper($student['nama'] ?? '-') . ' / ' . ($student['kelas'] ?? '-');
+    $pdf->text($labelX, $bioY, 'NAMA', $fs, 'F2');
+    $pdf->text($colonX, $bioY, ':', $fs, 'F2');
+    $pdf->text($valueX, $bioY, $namaKelas, $fs, 'F2');
+    $bioY += $lh;
+
+    // Baris 2: USERNAME
+    $pdf->text($labelX, $bioY, 'USERNAME', $fs, 'F2');
+    $pdf->text($colonX, $bioY, ':', $fs, 'F2');
+    $pdf->text($valueX, $bioY, ($student['username'] ?? '-'), $fs, 'F2');
+    $bioY += $lh;
+
+    // Baris 3: PASSWORD
+    $password = ($student['status'] ?? 'DITANGGUHKAN') === 'OKE' ? ($student['password_plain'] ?? '-') : 'DITANGGUHKAN';
+    $pdf->text($labelX, $bioY, 'PASSWORD', $fs, 'F2');
+    $pdf->text($colonX, $bioY, ':', $fs, 'F2');
+    $pdf->text($valueX, $bioY, $password, $fs, 'F2');
+    $bioY += $lh;
+
+    // Baris 4: RUANGAN
+    $pdf->text($labelX, $bioY, 'RUANGAN', $fs, 'F2');
+    $pdf->text($colonX, $bioY, ':', $fs, 'F2');
+    $pdf->text($valueX, $bioY, ($student['ruang_ujian'] ?: '-'), $fs, 'F2');
+
+    // --- TANDA TANGAN (sudut kanan bawah) ---
+    $signBoxW = 100;
+    $signX = $x + $cardW - $signBoxW - 10;
+
+    // Tanggal (center) - di atas "Kepala Sekolah,"
+    $city = 'Surabaya, ' . xam_indo_date($setting['sign_date'] ?? date('Y-m-d'));
+    $pdf->text($signX, $qrY - 20, $city, 7, 'F1', 'center', $signBoxW);
+
+    // "Kepala Sekolah," (center) - di atas QR
+    $pdf->text($signX, $qrY - 10, 'Kepala Sekolah,', 7, 'F1', 'center', $signBoxW);
+
+    // QR Code
+    $targetStudentId = (int) ($student['student_id'] ?? $student['id'] ?? 0);
+    $sig = xam_verify_signature($targetStudentId, $exam['id'], $letterNumber);
+    $qrUrl = absoluteBaseUrl() . 'modules/e-xam-card/v.php?c=' . rawurlencode($targetStudentId . '.' . $exam['id'] . '.' . $sig);
+    $qrFile = qrImagePathLocal($qrUrl);
+    if ($qrFile && file_exists($qrFile)) {
+        $qrX = $signX + ($signBoxW - $qrSize) / 2;
+        $pdf->image($qrFile, $qrX, $qrY, $qrSize, $qrSize);
+        @unlink($qrFile);
+    }
+
+    // Nama Kepsek (center, underline) - paling bawah
+    $pdf->text($signX, $footerY, $headmasterName, 8, 'F2', 'center', $signBoxW);
+    $nameW = $pdf->textWidth($headmasterName, 8);
+    $lineX = $signX + ($signBoxW - $nameW) / 2;
+    $pdf->line($lineX, $footerY + 2, $lineX + $nameW, $footerY + 2, 0.5);
 }
 
 function qrImagePathLocal($url)
@@ -328,10 +333,15 @@ function qrImagePathLocal($url)
     return $path;
 }
 
-
 function examDetail($examId)
 {
-    $stmt = db()->prepare('SELECT * FROM xam_exams WHERE id = ? LIMIT 1');
+    $stmt = db()->prepare('
+        SELECT e.*, ay.tahun_ajaran, ay.semester 
+        FROM xam_exams e 
+        LEFT JOIN academic_years ay ON ay.id = e.academic_year_id 
+        WHERE e.id = ? 
+        LIMIT 1
+    ');
     $stmt->execute([(int) $examId]);
     return $stmt->fetch();
 }
@@ -343,7 +353,8 @@ function reportStudents($examId, $scope, $kelas, $studentId)
 
     if ($scope === 'student') {
         if ($studentId <= 0) return [];
-        $where .= ' AND s.id = ?';
+        $where .= ' AND (xs.student_id = ? OR s.id = ?)';
+        $params[] = $studentId;
         $params[] = $studentId;
     } elseif ($scope === 'class') {
         if ($kelas === '') return [];
@@ -359,5 +370,23 @@ function reportStudents($examId, $scope, $kelas, $studentId)
         ORDER BY s.kelas ASC, s.no_urut ASC, s.nama ASC
     ");
     $stmt->execute($params);
-    return $stmt->fetchAll();
+    $students = $stmt->fetchAll();
+
+    // Check for latest class and photo for each student
+    foreach ($students as &$stu) {
+        if (!empty($stu['nis'])) {
+            $latest = xam_get_latest_student_info($stu['nis']);
+            if ($latest) {
+                if (!empty($latest['kelas'])) {
+                    $stu['kelas'] = $latest['kelas'];
+                }
+                if (!empty($latest['foto_path'])) {
+                    $stu['foto_path'] = $latest['foto_path'];
+                }
+            }
+        }
+    }
+    unset($stu);
+
+    return $students;
 }

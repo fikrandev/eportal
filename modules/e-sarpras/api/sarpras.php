@@ -216,10 +216,23 @@ function getNextKodeInventaris($kategori_id, $tahun) {
     $s->execute([$kat_kode, $tahun]);
     $seq = $s->fetch();
     if ($seq) {
-        $next = $seq['last_seq'] + 1;
-        db()->prepare("UPDATE sequence_tracker SET last_seq=? WHERE kategori_kode=? AND tahun=?")->execute([$next, $kat_kode, $tahun]);
+        $next = (int)$seq['last_seq'] + 1;
     } else {
         $next = 1;
+    }
+
+    try {
+        $checkMax = db()->prepare("SELECT MAX(CAST(SUBSTRING_INDEX(kode_inventaris, '-', -1) AS UNSIGNED)) FROM sarpras WHERE kode_inventaris LIKE ?");
+        $checkMax->execute([$kat_kode . '-' . $tahun . '-%']);
+        $maxInSarpras = (int)$checkMax->fetchColumn();
+        if ($maxInSarpras >= $next) {
+            $next = $maxInSarpras + 1;
+        }
+    } catch (Exception $e) {}
+
+    if ($seq) {
+        db()->prepare("UPDATE sequence_tracker SET last_seq=? WHERE kategori_kode=? AND tahun=?")->execute([$next, $kat_kode, $tahun]);
+    } else {
         db()->prepare("INSERT INTO sequence_tracker (kategori_kode, tahun, last_seq) VALUES (?,?,?)")->execute([$kat_kode, $tahun, $next]);
     }
     
@@ -238,11 +251,11 @@ function processFotoUpload($sarpras_id) {
 }
 
 function createSarpras() {
-    $user = sp_auth(); sp_require_any($user, ['sarpras_manage'], 'Akses ditolak');
+    $user = sp_auth(); sp_require_any($user, ['sarpras_manage', 'ruang_manage'], 'Akses ditolak');
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed');
     $d = get_input();
     
-    $ruang_id = !empty($d['ruang_id']) ? (int)$d['ruang_id'] : null;
+    $ruang_id = (!empty($d['ruang_id']) && (int)$d['ruang_id'] > 0) ? (int)$d['ruang_id'] : null;
 
     // Enforcement for PJ
     if (!empty($user['scoped_ruang_ids'])) {
@@ -322,6 +335,17 @@ function createSarpras() {
             db()->query("INSERT INTO kategori_sarpras (nama, kode, jenis) VALUES ('Koleksi Buku', 'BK', 'sarana')");
             $kategori_id = db()->lastInsertId();
         }
+    } elseif ($kategori_id <= 0 && ($d['grup_pintasan'] ?? '') === 'angkutan') {
+        $check = db()->query("SELECT id FROM kategori_sarpras WHERE nama LIKE '%kendaraan%' OR nama LIKE '%angkutan%'")->fetch();
+        if ($check) $kategori_id = (int)$check['id'];
+    } elseif ($kategori_id <= 0 && ($d['grup_pintasan'] ?? '') === 'ahp-bhp') {
+        $check = db()->query("SELECT id FROM kategori_sarpras WHERE nama LIKE '%habis pakai%' OR nama LIKE '%perlengkapan%' OR nama LIKE '%perangkat%'")->fetch();
+        if ($check) $kategori_id = (int)$check['id'];
+    }
+
+    if ($kategori_id <= 0) {
+        $firstKat = db()->query("SELECT id FROM kategori_sarpras ORDER BY id ASC LIMIT 1")->fetchColumn();
+        if ($firstKat) $kategori_id = (int)$firstKat;
     }
     
     $nama = sanitize($d['nama'] ?? '');
@@ -357,7 +381,7 @@ function createSarpras() {
 }
 
 function updateSarpras() {
-    $user = sp_auth(); sp_require_any($user, ['sarpras_manage'], 'Akses ditolak');
+    $user = sp_auth(); sp_require_any($user, ['sarpras_manage', 'ruang_manage'], 'Akses ditolak');
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed');
     $d = get_input(); $id = (int)($d['id'] ?? 0);
     $ruang_id = !empty($d['ruang_id']) ? (int)$d['ruang_id'] : null;

@@ -1807,9 +1807,10 @@ const Sarpras = {
                             ${canImportBuku ? `<button class="btn btn-secondary btn-sm" onclick="Sarpras.formImportBuku(${ruangId})">Import Buku</button>` : ''}
                             <button class="btn btn-secondary btn-sm" onclick="Sarpras.formCopySarpras(${ruangId})">Salin Aset</button>
                             
-                            <button class="btn btn-primary btn-sm" onclick="Sarpras.formSarpras(null, ${ruangId}, 'ahp-bhp')">+ Barang (AHP/BHP)</button>
-                            <button class="btn btn-primary btn-sm" onclick="Sarpras.formSarpras(null, ${ruangId}, 'angkutan')">+ Angkutan</button>
-                            <button class="btn btn-primary btn-sm" onclick="Sarpras.formSarpras(null, ${ruangId}, 'buku')">+ Buku</button>
+                            <button class="btn btn-primary btn-sm" onclick="Sarpras.formSarpras(null, ${ruangId})">+ Tambah Barang</button>
+                            <button class="btn btn-secondary btn-sm" onclick="Sarpras.formSarpras(null, ${ruangId}, 'ahp-bhp')">+ AHP/BHP</button>
+                            <button class="btn btn-secondary btn-sm" onclick="Sarpras.formSarpras(null, ${ruangId}, 'angkutan')">+ Angkutan</button>
+                            <button class="btn btn-secondary btn-sm" onclick="Sarpras.formSarpras(null, ${ruangId}, 'buku')">+ Buku</button>
                         </div>
                     </div>
                     <div class="sp-card-body">
@@ -2693,25 +2694,22 @@ const Sarpras = {
         const isEdit = id !== null && id !== undefined && !isAddMore;
         const isTemplate = isAddMore && id !== null;
 
-        // If adding to room, we can distribute from warehouse stock or create new from master catalog
-        const isFromWarehouse = (ruangId && !isEdit && !['ahp-bhp', 'angkutan', 'buku'].includes(groupFilter));
+        // Fetch categories, master catalog, rooms, and warehouse items
         const reqs = [
             this.api('manage.php?entity=kategori&action=list'),
             this.api('master_sarpras.php?action=list' + (groupFilter && !isEdit ? `&grup=${groupFilter}` : '')),
-            this.api('ruang.php?action=list')
+            this.api('ruang.php?action=list'),
+            this.api('sarpras.php?action=list&ruang_id=0&per_page=500')
         ];
-        if (isFromWarehouse) {
-            reqs.push(this.api('sarpras.php?action=list&ruang_id=0&per_page=500'));
-        }
 
         $.when(...reqs).done((resKat, resCatalog, resRuang, resWarehouse) => {
-            const kData = resKat[0].data || [];
-            const rData = resRuang[0].data || [];
-            const mData = resCatalog[0].data || [];
-            const wData = (isFromWarehouse && resWarehouse && resWarehouse[0] && resWarehouse[0].data) ? (resWarehouse[0].data.data || []) : [];
+            const kData = (resKat && resKat[0] && resKat[0].data) ? resKat[0].data : [];
+            const rData = (resRuang && resRuang[0] && resRuang[0].data) ? resRuang[0].data : [];
+            const mData = (resCatalog && resCatalog[0] && resCatalog[0].data) ? resCatalog[0].data : [];
+            const wData = (resWarehouse && resWarehouse[0] && resWarehouse[0].data) ? (resWarehouse[0].data.data || resWarehouse[0].data || []) : [];
             
             const katOptions = kData.map(k => `<option value="${k.id}">${k.nama}</option>`).join('');
-            const ruangOptions = rData.map(r => `<option value="${r.id}">${r.nama} (${r.bangunan_nama})</option>`).join('');
+            const ruangOptions = rData.map(r => `<option value="${r.id}">${r.nama} (${r.bangunan_nama || ''})</option>`).join('');
             
             let customSelectOptions = '';
             if (wData.length > 0) {
@@ -2719,7 +2717,7 @@ const Sarpras = {
                 customSelectOptions += wData.map(w => `
                     <div class="sp-cs-option" data-id="${w.id}" data-nama="${w.nama}" data-source-id="${w.id}" data-kat="${w.kategori_id}" data-kode="${w.kode_inventaris}" data-merk="${w.merk||''}" data-manfaat="${w.masa_manfaat_tahun||5}" data-harga="${w.harga_perolehan||0}" data-tgl="${w.tanggal_perolehan||''}" data-available="${w.jumlah}">
                         <div class="cs-opt-m">${w.nama}</div>
-                        <div class="cs-opt-k">${w.kode_inventaris} | ${w.kategori_nama} — <span style="color:#1d4ed8; font-weight:600;">Stok Gudang: ${w.jumlah}</span></div>
+                        <div class="cs-opt-k">${w.kode_inventaris} | ${w.kategori_nama || ''} — <span style="color:#1d4ed8; font-weight:600;">Stok Gudang: ${w.jumlah}</span></div>
                     </div>
                 `).join('');
             }
@@ -2730,12 +2728,12 @@ const Sarpras = {
                 customSelectOptions += mData.map(m => `
                     <div class="sp-cs-option" data-id="${m.id}" data-nama="${m.nama}" data-kat="${m.kategori_id}" data-kode="${m.kode||''}" data-merk="${m.merk_default||''}" data-manfaat="${m.masa_manfaat_default||5}" data-harga="${m.harga_perolehan||0}" data-tgl="${m.tanggal_perolehan||''}">
                         <div class="cs-opt-m">${m.nama}</div>
-                        <div class="cs-opt-k">${m.kategori_nama} ${isFromWarehouse ? '— <span style="color:#059669; font-weight:600;">Barang Baru</span>' : ''}</div>
+                        <div class="cs-opt-k">${m.kategori_nama || ''} — <span style="color:#059669; font-weight:600;">Katalog Master</span></div>
                     </div>
                 `).join('');
             }
             
-            const csFallback = (customSelectOptions ? customSelectOptions : `<div style="padding:15px; text-align:center; color:var(--text-muted); font-size:0.85rem;">Belum ada master data untuk kategori ini. Ketik nama di atas untuk input manual.</div>`) +
+            const csFallback = (customSelectOptions ? customSelectOptions : `<div style="padding:15px; text-align:center; color:var(--text-muted); font-size:0.85rem;">Katalog belum ada. Ketik nama di atas untuk input barang baru.</div>`) +
                 `<div class="sp-cs-option" id="csCustomOption" style="display:none; background:#f8fafc; border-top:2px dashed #cbd5e1; color:var(--primary); font-weight:600; padding:12px 15px; cursor:pointer;">+ Gunakan "<span class="custom-name"></span>" sebagai barang baru manual</div>`;
 
             let formTitle = isEdit ? 'Edit Barang' : (isAddMore ? 'Tambah Batch Baru' : 'Tambah Barang Baru');
@@ -2783,7 +2781,7 @@ const Sarpras = {
                                 .sp-form-grid-2, .sp-form-grid-3 { grid-template-columns: 1fr !important; }
                             }
                         </style>
-                        <input type="hidden" id="f_sRuangId" value="${ruangId}">
+                        <input type="hidden" id="f_sRuangId" value="${ruangId || ''}">
                         <input type="hidden" id="f_sNamaHidden" value="">
                         <input type="hidden" id="f_sMaster" value="">
                         <input type="hidden" id="f_sSourceId" value="">
@@ -2797,15 +2795,15 @@ const Sarpras = {
                             </div>
                             
                             <div class="form-group">
-                                <label>Pilih Barang dari Katalog</label>
+                                <label>Pilih Barang dari Katalog atau Ketik Baru</label>
                                 <div class="sp-cs-container" id="customSelectContainer">
                                     <div class="sp-cs-btn" id="customSelectBtn">
-                                        <span id="csSelectedText" style="color:#64748b; font-size:0.95rem;">-- Pilih Barang dari Master --</span>
+                                        <span id="csSelectedText" style="color:#64748b; font-size:0.95rem;">-- Klik untuk Cari / Pilih Barang --</span>
                                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"></polyline></svg>
                                     </div>
                                     <div class="sp-cs-dropdown" id="customSelectDropdown">
                                         <div style="padding:12px; border-bottom:1px solid #e2e8f0; background:#f8fafc;">
-                                            <input type="text" id="csSearchInput" class="form-input" placeholder="Cari nama barang..." style="width:100%; padding:10px 14px; height:42px; border-radius:8px; border:1px solid #cbd5e1; outline:none;" autocomplete="off">
+                                            <input type="text" id="csSearchInput" class="form-input" placeholder="Ketik nama barang... tekan Enter untuk gunakan langsung" style="width:100%; padding:10px 14px; height:42px; border-radius:8px; border:1px solid #cbd5e1; outline:none;" autocomplete="off">
                                         </div>
                                         <div id="csOptionsList" style="max-height:250px; overflow-y:auto; padding:5px 0;">
                                             ${csFallback}
@@ -2819,8 +2817,8 @@ const Sarpras = {
                             </div>
 
                             <div class="sp-form-grid-2">
-                                ${(!ruangId || ['ahp-bhp', 'angkutan', 'buku'].includes(this.state.currentRoute)) ? '' : `<div class="form-group"><label>Lokasi / Ruangan</label><select class="form-select" id="f_sRuangIdSelect" disabled>${ruangOptions}</select></div>`}
-                                <div class="form-group" style="${(!ruangId || ['ahp-bhp', 'angkutan', 'buku'].includes(this.state.currentRoute)) ? 'grid-column: span 2;' : ''}"><label>Kategori</label><select class="form-select" id="f_sKat" disabled>${katOptions}</select></div>
+                                ${ruangId ? `<div class="form-group"><label>Lokasi / Ruangan</label><select class="form-select" id="f_sRuangIdSelect" disabled>${ruangOptions}</select></div>` : ((!['ahp-bhp', 'angkutan', 'buku'].includes(this.state.currentRoute)) ? `<div class="form-group"><label>Lokasi / Ruangan</label><select class="form-select" id="f_sRuangIdSelect"><option value="">-- Pilih Ruang (Opsional) --</option>${ruangOptions}</select></div>` : '')}
+                                <div class="form-group" style="${(!ruangId && ['ahp-bhp', 'angkutan', 'buku'].includes(this.state.currentRoute)) ? 'grid-column: span 2;' : ''}"><label>Kategori <span style="color:var(--danger)">*</span></label><select class="form-select" id="f_sKat"><option value="">-- Pilih Kategori --</option>${katOptions}</select></div>
                             </div>
                         </div>
 
@@ -2860,14 +2858,14 @@ const Sarpras = {
                         </div>
 
                         <!-- SECTION 2: DETAIL PEROLEHAN -->
-                        <div class="sp-form-section" ${(ruangId && !isEdit) ? 'style="display:none"' : ''}>
+                        <div class="sp-form-section">
                             <div class="sp-form-section-title">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                                 Detail & Perolehan
                             </div>
                             <div class="sp-form-grid-2">
-                                <div class="form-group"><label>Kode Inventaris</label><input class="form-input" id="f_sKode" placeholder="Pilih katalog dlu" readonly style="background:#f8f9fa;"></div>
-                                <div class="form-group"><label>Merk / Model</label><input class="form-input" id="f_sMerk" placeholder="Contoh: Honda, Sharp, Erlangga"></div>
+                                <div class="form-group"><label>Kode Inventaris</label><input class="form-input" id="f_sKode" placeholder="Otomatis dari sistem" style="background:#f8f9fa;"></div>
+                                <div class="form-group"><label>Merk / Model</label><input class="form-input" id="f_sMerk" placeholder="Contoh: Olympic, Honda, Sharp"></div>
                             </div>
                             <div class="sp-form-grid-2">
                                 <div class="form-group"><label>Tanggal Perolehan</label><input type="date" class="form-input" id="f_sTglPerolehan" value="${new Date().toISOString().split('T')[0]}"></div>
@@ -2884,8 +2882,8 @@ const Sarpras = {
                                     Kuantitas & Harga
                                 </div>
                                 <div class="sp-form-grid-2">
-                                    <div class="form-group"><label>Jumlah (Unit/Eksemplar)</label><input type="number" class="form-input" id="f_sJml" value="1"></div>
-                                    <div class="form-group" ${ruangId && !isEdit ? 'style="display:none"' : ''}><label>Harga (Satuan)</label><input type="text" class="form-input sp-rupiah-input" id="f_sHarga" value="0"></div>
+                                    <div class="form-group"><label>Jumlah (Unit/Eksemplar) <span style="color:var(--danger)">*</span></label><input type="number" class="form-input" id="f_sJml" value="1" min="1"></div>
+                                    <div class="form-group"><label>Harga (Satuan)</label><input type="text" class="form-input sp-rupiah-input" id="f_sHarga" value="0"></div>
                                 </div>
                             </div>
                             
@@ -2915,15 +2913,15 @@ const Sarpras = {
                             const isBuku = katText.includes('buku');
                             const isAngkutan = katText.includes('angkutan') || katText.includes('kendaraan') || this.state.currentRoute === 'angkutan';
                             
-                            // Hide special layouts if it's a distribution (picking from master)
                             const isPickingMaster = !!groupFilter;
 
                             $('.sp-layout-buku').toggle(isBuku && !isPickingMaster);
                             $('.sp-layout-angkutan').toggle(isAngkutan && !isPickingMaster);
                             
-                            if (isBuku) { $('#f_sMerk').val('-'); }
+                            if (isBuku && !$('#f_sMerk').val()) { $('#f_sMerk').val('-'); }
                         };
                         $('#f_sKat').on('change', toggleSpecialLayouts);
+                        
                         // Custom dropdown logic
                         $('#customSelectBtn').on('click', function(e) {
                             e.stopPropagation();
@@ -2942,15 +2940,43 @@ const Sarpras = {
                         });
 
                         $('#csSearchInput').on('input', function() {
-                            const term = $(this).val().toLowerCase().trim();
+                            const term = $(this).val().trim();
+                            const termLower = term.toLowerCase();
                             $('.sp-cs-option:not(#csCustomOption)').each(function() {
                                 const text = $(this).text().toLowerCase();
-                                $(this).toggle(text.includes(term));
+                                $(this).toggle(text.includes(termLower));
                             });
                             if (term.length > 0) {
-                                $('#csCustomOption').show().find('.custom-name').text($(this).val().trim());
+                                $('#csCustomOption').show().find('.custom-name').text(term);
+                                if (!$('#f_sSourceId').val()) {
+                                    $('#f_sNamaHidden').val(term);
+                                    $('#f_sMaster').val('custom');
+                                    if (!$('#f_sKode').val() || $('#f_sKode').val() === 'Pilih katalog dlu') {
+                                        $('#f_sKode').val('Otomatis');
+                                    }
+                                }
                             } else {
                                 $('#csCustomOption').hide();
+                            }
+                        });
+
+                        $('#csSearchInput').on('keydown', function(e) {
+                            if (e.key === 'Enter') {
+                                e.preventDefault();
+                                const visibleOpts = $('.sp-cs-option:visible:not(#csCustomOption)');
+                                if (visibleOpts.length === 1) {
+                                    visibleOpts.first().trigger('click');
+                                } else if ($('#csCustomOption').is(':visible')) {
+                                    $('#csCustomOption').trigger('click');
+                                } else if ($(this).val().trim()) {
+                                    const val = $(this).val().trim();
+                                    $('#f_sNamaHidden').val(val);
+                                    $('#f_sMaster').val('custom');
+                                    if (!$('#f_sKode').val()) $('#f_sKode').val('Otomatis');
+                                    $('#csSelectedText').html(`<div style="font-weight:600; font-size:0.9rem; color:#1e293b;">${val}</div><div style="font-size:0.75rem; color:#64748b;">(Input Manual)</div>`);
+                                    $('#customSelectDropdown').hide();
+                                    $('#customSelectBtn').removeClass('active');
+                                }
                             }
                         });
 
@@ -2975,15 +3001,14 @@ const Sarpras = {
                                 $('#csStockLabel').hide();
                             }
                             
-                            $('#f_sMerk').val(d.merk || '');
-                            $('#f_sManfaat').val(d.manfaat || 5);
-                            $('#f_sHarga').val(Sarpras.formatNumber(d.harga || 0));
-                            $('#f_sTglPerolehan').val(d.tgl || new Date().toISOString().split('T')[0]);
+                            if (d.merk) $('#f_sMerk').val(d.merk);
+                            if (d.manfaat) $('#f_sManfaat').val(d.manfaat);
+                            if (d.harga) $('#f_sHarga').val(Sarpras.formatNumber(d.harga));
+                            if (d.tgl) $('#f_sTglPerolehan').val(d.tgl);
                             
                             if (d.kat) {
                                 $('#f_sKat').val(d.kat).trigger('change');
                             }
-                            $('#f_sKat').prop('disabled', true);
 
                             // Auto sync condition to match jumlah if condition is 0
                             const currentJml = parseInt($('#f_sJml').val() || 1);
@@ -3006,7 +3031,6 @@ const Sarpras = {
                             $('#f_sSourceId').val('');
                             $('#f_sKode').val('Otomatis');
                             $('#csStockLabel').hide();
-                            $('#f_sKat').prop('disabled', false); // Allow picking category for custom item
 
                             const currentJml = parseInt($('#f_sJml').val() || 1);
                             const currentRR = parseInt($('#f_sRR').val() || 0);
@@ -3085,21 +3109,24 @@ const Sarpras = {
                         }
                     },
                     onConfirm: () => {
-                        let finalNama = $('#f_sNamaHidden').val();
+                        let finalNama = ($('#f_sNamaHidden').val() || '').trim();
+                        if (!finalNama && $('#csSearchInput').val()) {
+                            finalNama = $('#csSearchInput').val().trim();
+                        }
                         if ($('#f_sKat option:selected').text().toLowerCase().includes('buku')) {
                             finalNama = $('#f_sJudulBuku').val() || finalNama;
                         }
 
                         if (!finalNama && !$('#f_sMaster').val()) {
-                            EModal.toast({type:'error', title:'Error', message:'Silakan pilih barang dari katalog atau isi judul/nama barang'});
+                            EModal.toast({type:'error', title:'Error', message:'Silakan pilih barang dari katalog atau isi nama barang'});
                             return false;
                         }
                         
-                        const noLocationNeeded = !ruangId || ['ahp-bhp', 'angkutan', 'buku'].includes(this.state.currentRoute);
-                        const targetRuangId = noLocationNeeded ? '' : ($('#f_sRuangIdSelect').val() || $('#f_sRuangId').val() || '');
-                        if (!noLocationNeeded && !targetRuangId) {
-                            EModal.toast({type:'error', title:'Error', message:'Silakan pilih lokasi/ruangan'});
-                            return false;
+                        let targetRuangId = '';
+                        if (ruangId) {
+                            targetRuangId = ruangId;
+                        } else if (!['ahp-bhp', 'angkutan', 'buku'].includes(this.state.currentRoute)) {
+                            targetRuangId = $('#f_sRuangIdSelect').val() || $('#f_sRuangId').val() || '';
                         }
 
                         const sourceId = $('#f_sSourceId').val();
@@ -3168,6 +3195,8 @@ const Sarpras = {
                         
                         if (['ahp-bhp', 'angkutan', 'buku'].includes(this.state.currentRoute)) {
                             fd.append('grup_pintasan', this.state.currentRoute);
+                        } else if (groupFilter) {
+                            fd.append('grup_pintasan', groupFilter);
                         }
 
                         const fileInput = document.getElementById('f_sFoto');
@@ -3191,6 +3220,8 @@ const Sarpras = {
                         $(document).off('click.csDropdown');
                     }
                 });
+            }).fail(() => {
+                EModal.toast({ type: 'error', title: 'Gagal', message: 'Gagal memuat data formulir dari server.' });
             });
     },
 
@@ -3842,11 +3873,14 @@ const Sarpras = {
         ).done((resKat, resSat) => {
             // Because we use $.when, the response is usually an array [data, textStatus, jqXHR]
             // We only need the response data from index 0
-            const kData = resKat[0].data || [];
-            const sData = resSat[0].data || [];
+            const kData = (resKat && resKat[0] && resKat[0].data) ? resKat[0].data : (resKat && resKat.data ? resKat.data : []);
+            const sData = (resSat && resSat[0] && resSat[0].data) ? resSat[0].data : (resSat && resSat.data ? resSat.data : []);
             
             const katOptions = kData.map(k => `<option value="${k.id}">${k.nama}</option>`).join('');
-            const satOptions = sData.map(s => `<option value="${s.nama}">${s.nama}</option>`).join('');
+            const defaultSatuan = ['Unit', 'Buah', 'Set', 'Pcs', 'Lembar', 'Paket', 'Eks'];
+            const satOptions = (sData && sData.length > 0)
+                ? sData.map(s => `<option value="${s.nama}">${s.nama}</option>`).join('')
+                : defaultSatuan.map(s => `<option value="${s}">${s}</option>`).join('');
 
             EModal.form({
                 title: isEdit ? 'Edit Sarpras' : 'Tambah Sarpras',
@@ -3857,7 +3891,7 @@ const Sarpras = {
                     </div>
                     <div class="sp-form-row">
                         <div class="form-group"><label>Kode Barang (Otomatis)</label><input class="form-input" id="f_msKode" placeholder="Pilih kategori dlu"></div>
-                        <div class="form-group"><label>Satuan</label><select class="form-select" id="f_msSatuan">${satOptions || '<option value="Unit">Unit</option>'}</select></div>
+                        <div class="form-group"><label>Satuan</label><select class="form-select" id="f_msSatuan">${satOptions}</select></div>
                     </div>
                     <div class="sp-form-row">
                         <div class="form-group"><label>Masa Manfaat (Tahun)</label><input type="number" class="form-input" id="f_msManfaat" value="5" required></div>
@@ -3876,7 +3910,14 @@ const Sarpras = {
                         if (selectedKat && selectedKat.kode) {
                             // Fetch existing items for this category to determine next number
                             Sarpras.api(`master_sarpras.php?action=list&kategori_id=${katId}`).done(res => {
-                                const nextNum = res.data.length + 1;
+                                let maxSeq = 0;
+                                (res.data || []).forEach(item => {
+                                    if (item.kode && item.kode.startsWith(selectedKat.kode + '.')) {
+                                        const part = parseInt(item.kode.replace(selectedKat.kode + '.', ''), 10);
+                                        if (!isNaN(part) && part > maxSeq) maxSeq = part;
+                                    }
+                                });
+                                const nextNum = maxSeq > 0 ? (maxSeq + 1) : (res.data ? res.data.length + 1 : 1);
                                 $('#f_msKode').val(`${selectedKat.kode}.${nextNum}`);
                             });
                         }
@@ -3922,6 +3963,8 @@ const Sarpras = {
                     return false;
                 }
             });
+        }).fail(() => {
+            EModal.toast({ type: 'error', title: 'Gagal', message: 'Gagal memuat kategori atau satuan sarpras.' });
         });
     },
 

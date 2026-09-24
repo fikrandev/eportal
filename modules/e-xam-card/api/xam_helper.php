@@ -186,3 +186,72 @@ function absoluteBaseUrl()
     $host = $_SERVER['HTTP_HOST'];
     return $protocol . $host . BASE_URL;
 }
+
+/**
+ * Resolve exam card template path on disk.
+ * Handles database paths, relative paths, Windows/Linux separators, and file discovery fallback.
+ */
+function xam_resolve_template_path($cardTemplate, $examId = 0)
+{
+    $root = realpath(__DIR__ . '/../../../') ?: dirname(dirname(dirname(__DIR__)));
+
+    // 1. Try exact path if provided
+    if (!empty($cardTemplate)) {
+        $clean = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, ltrim($cardTemplate, '/\\'));
+        $full = $root . DIRECTORY_SEPARATOR . $clean;
+        if (file_exists($full)) {
+            return $full;
+        }
+    }
+
+    // 2. Fallback: search for template file matching exam id in uploads/templates/
+    if ($examId > 0) {
+        $uploadDir = __DIR__ . '/../uploads/templates';
+        if (is_dir($uploadDir)) {
+            $files = glob($uploadDir . '/template_' . (int)$examId . '_*.{png,jpg,jpeg,PNG,JPG,JPEG}', GLOB_BRACE);
+            if (!empty($files)) {
+                // Pick newest file
+                usort($files, function($a, $b) { return filemtime($b) - filemtime($a); });
+                $resolved = $files[0];
+
+                // Auto-heal the database record if possible
+                try {
+                    $rel = 'modules/e-xam-card/uploads/templates/' . basename($resolved);
+                    db()->prepare("UPDATE xam_exams SET card_template = ? WHERE id = ?")->execute([$rel, (int)$examId]);
+                } catch (Exception $e) {}
+
+                return $resolved;
+            }
+        }
+    }
+
+    return '';
+}
+
+/**
+ * Get latest active student record info (class, photo, name) by NIS.
+ */
+function xam_get_latest_student_info($nis, $preferredYearId = 0)
+{
+    if (empty($nis)) return null;
+    try {
+        $sql = "
+            SELECT id, nama, nis, nisn, kelas, foto_path, academic_year_id, tanggal_lahir
+            FROM students
+            WHERE nis = ? AND status = 1
+        ";
+        $params = [$nis];
+        if ($preferredYearId > 0) {
+            $sql .= " ORDER BY (academic_year_id = ?) DESC, academic_year_id DESC, id DESC LIMIT 1";
+            $params[] = (int)$preferredYearId;
+        } else {
+            $sql .= " ORDER BY academic_year_id DESC, id DESC LIMIT 1";
+        }
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetch() ?: null;
+    } catch (PDOException $e) {
+        return null;
+    }
+}
+

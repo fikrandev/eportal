@@ -80,12 +80,25 @@ function createRuang() {
     $pj_id = !empty($d['pj_id']) ? (int)$d['pj_id'] : null;
     $nama = sanitize($d['nama'] ?? '');
     $kode = sanitize($d['kode_ruang'] ?? '');
-    if (!$bangunan_id || !$nama || !$kode) json_response(400, false, 'Wajib isi Bangunan, Nama, dan Kode Ruang');
+    if (!$bangunan_id || !$nama) json_response(400, false, 'Wajib isi Bangunan dan Nama Ruang');
+    if (empty($kode)) {
+        $seq = (int)db()->query("SELECT COUNT(*) FROM ruang WHERE bangunan_id = $bangunan_id")->fetchColumn() + 1;
+        do {
+            $candidate = 'R.' . $bangunan_id . '.' . sprintf('%02d', $seq);
+            $check = db()->prepare("SELECT COUNT(*) FROM ruang WHERE kode_ruang = ?");
+            $check->execute([$candidate]);
+            if ((int)$check->fetchColumn() === 0) {
+                $kode = $candidate;
+                break;
+            }
+            $seq++;
+        } while ($seq < 999);
+    }
     
     try {
         $stmt = db()->prepare("INSERT INTO ruang (bangunan_id,pj_id,nama,kode_ruang,panjang_m,lebar_m,lantai,jenis_ruang,kapasitas,kondisi,keterangan) VALUES (?,?,?,?,?,?,?,?,?,?,?)");
         $stmt->execute([$bangunan_id, $pj_id, $nama, $kode, $d['panjang_m']??null, $d['lebar_m']??null, (int)($d['lantai']??1), sanitize($d['jenis_ruang']??'Ruang Kelas'), (int)($d['kapasitas']??0), sanitize($d['kondisi']??'Baik'), sanitize($d['keterangan']??'')]);
-        json_response(201, true, 'Ruang berhasil ditambahkan', ['id' => db()->lastInsertId()]);
+        json_response(201, true, 'Ruang berhasil ditambahkan', ['id' => db()->lastInsertId(), 'kode_ruang' => $kode]);
     } catch (PDOException $e) {
         if (strpos($e->getMessage(), 'uk_kode_ruang') !== false) json_response(400, false, 'Kode ruang sudah digunakan');
         json_response(500, false, 'Error: '.$e->getMessage());

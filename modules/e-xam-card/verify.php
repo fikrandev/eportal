@@ -10,7 +10,12 @@ $examId = 0;
 $sig = '';
 
 if (!empty($_GET['c'])) {
-    $parts = explode('.', sanitize($_GET['c']));
+    $cRaw = sanitize($_GET['c']);
+    $decoded = base64_decode($cRaw, true);
+    if ($decoded && strpos($decoded, '.') !== false) {
+        $cRaw = $decoded;
+    }
+    $parts = explode('.', $cRaw);
     if (count($parts) === 3) {
         $studentId = (int) $parts[0];
         $examId = (int) $parts[1];
@@ -29,9 +34,9 @@ if ($studentId > 0 && $examId > 0 && $sig !== '') {
         $stmt = db()->prepare("
             SELECT 
                 s.id as student_id, s.nama, s.nis, s.nisn, s.kelas,
-                e.id as exam_id, e.exam_name,
+                e.id as exam_id, e.exam_name, e.academic_year_id as exam_year_id,
                 es.letter_code, es.letter_manual_no, es.letter_date, es.sign_date, es.headmaster_user_id,
-                u.nama_lengkap as headmaster_name
+                COALESCE(es.headmaster_name, u.nama_lengkap) as headmaster_name
             FROM students s
             JOIN xam_exams e ON e.id = ?
             LEFT JOIN xam_exam_settings es ON es.exam_id = e.id
@@ -42,6 +47,14 @@ if ($studentId > 0 && $examId > 0 && $sig !== '') {
         $data = $stmt->fetch();
 
         if ($data) {
+            // Check latest class for student's NIS
+            if (!empty($data['nis'])) {
+                $latest = xam_get_latest_student_info($data['nis'], (int)($data['exam_year_id'] ?? 0));
+                if ($latest && !empty($latest['kelas'])) {
+                    $data['kelas'] = $latest['kelas'];
+                }
+            }
+
             $letterNo = xam_compose_letter_number($data['letter_manual_no'], $data['letter_code'], $data['letter_date']);
             $expected = xam_verify_signature($studentId, $examId, $letterNo);
             $valid = hash_equals($expected, $sig);

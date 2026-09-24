@@ -1306,7 +1306,8 @@ const ExamCard = {
         const exam = this.state.exams.find(e => String(e.id) === String(examId));
         if (!exam) return;
 
-        const currentTemplate = exam.card_template ? `${this.state.baseUrl}${exam.card_template}` : '';
+        const cleanTplPath = (exam.card_template || '').replace(/^[\\\/]+/, '').replace(/\\/g, '/');
+        const currentTemplate = cleanTplPath ? `${this.state.baseUrl}${cleanTplPath}` : '';
 
         EModal.form({
             title: 'Upload Template Kartu',
@@ -1322,7 +1323,7 @@ const ExamCard = {
                     <input type="file" id="tplFileInput" class="form-input" accept="image/jpeg,image/png">
                 </div>
                 <div id="tplPreviewContainer" style="margin-top: 16px; border: 2px dashed #e2e8f0; border-radius: 8px; padding: 10px; min-height: 100px; display: flex; align-items: center; justify-content: center; background: #f8fafc;">
-                    ${currentTemplate ? `<img src="${currentTemplate}" style="max-width: 100%; max-height: 200px; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">` : '<span style="color: #94a3b8; font-size: 0.85rem;">Preview template akan muncul di sini</span>'}
+                    ${currentTemplate ? `<img src="${currentTemplate}" style="max-width: 100%; max-height: 200px; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.1);" onerror="this.onerror=null; this.parentElement.innerHTML='<span style=\\'color:#94a3b8; font-size:0.85rem;\\'>Template sebelumnya tidak ditemukan di server. Silakan pilih file baru untuk diunggah.</span>';">` : '<span style="color: #94a3b8; font-size: 0.85rem;">Preview template akan muncul di sini</span>'}
                 </div>
             `,
             onConfirm: () => {

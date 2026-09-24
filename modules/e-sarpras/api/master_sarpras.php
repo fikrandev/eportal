@@ -183,12 +183,17 @@ function listMaster() {
 
 function createMaster() {
     $user = sp_auth();
-    sp_require_any($user, ['sarpras_manage'], 'Akses ditolak');
+    sp_require_any($user, ['sarpras_manage', 'referensi_manage'], 'Akses ditolak');
 
     $d = get_input();
     $nama = sanitize($d['nama'] ?? '');
     $kat  = (int)($d['kategori_id'] ?? 0);
-    if (!$nama || !$kat) json_response(400, false, 'Nama dan kategori wajib diisi');
+    if (!$nama) json_response(400, false, 'Nama barang wajib diisi');
+    if (!$kat) {
+        $firstKat = db()->query("SELECT id FROM kategori_sarpras ORDER BY id ASC LIMIT 1")->fetchColumn();
+        if ($firstKat) $kat = (int)$firstKat;
+        else json_response(400, false, 'Kategori belum tersedia');
+    }
 
     $kode = sanitize($d['kode'] ?? '');
     if (empty($kode)) {
@@ -211,7 +216,7 @@ function createMaster() {
 
 function updateMaster() {
     $user = sp_auth();
-    sp_require_any($user, ['sarpras_manage'], 'Akses ditolak');
+    sp_require_any($user, ['sarpras_manage', 'referensi_manage'], 'Akses ditolak');
 
     $d = get_input();
     $id = (int)($d['id'] ?? 0);
@@ -231,7 +236,7 @@ function updateMaster() {
 
 function deleteMaster() {
     $user = sp_auth();
-    sp_require_any($user, ['sarpras_manage'], 'Akses ditolak');
+    sp_require_any($user, ['sarpras_manage', 'referensi_manage'], 'Akses ditolak');
 
     $d = get_input();
     $id = (int)($d['id'] ?? 0);
