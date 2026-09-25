@@ -24,13 +24,17 @@ try {
 
     // Jika belum ada input guru di acad_absensi, hitung dari absen_logs mesin
     if ($hadir === 0) {
-        $stmtLogs = db()->prepare("
-            SELECT COUNT(DISTINCT DATE(waktu_absen)) FROM absen_logs 
-            WHERE (mesin_pin = ? OR mesin_pin = ?) 
-            AND MONTH(waktu_absen) = ? AND YEAR(waktu_absen) = ?
-        ");
-        $stmtLogs->execute([$cleanPin, $studentNis, $month, $year]);
-        $hadir = (int)$stmtLogs->fetchColumn();
+        try {
+            $stmtLogs = db()->prepare("
+                SELECT COUNT(DISTINCT DATE(waktu_absen)) FROM absen_logs 
+                WHERE (mesin_pin = ? OR mesin_pin = ?) 
+                AND MONTH(waktu_absen) = ? AND YEAR(waktu_absen) = ?
+            ");
+            $stmtLogs->execute([$cleanPin, $studentNis, $month, $year]);
+            $hadir = (int)$stmtLogs->fetchColumn();
+        } catch (Exception $e) {
+            // Ignore if absen_logs doesn't exist
+        }
     }
 
     // 2. Izin (dari acad_absensi atau acad_izin_siswa yang Disetujui/Approved)

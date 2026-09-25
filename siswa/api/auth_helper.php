@@ -59,6 +59,7 @@ function get_current_siswa() {
     
     list($nis, $hash) = explode(':', $decoded, 2);
     
+    try {
         $activeYear = get_active_academic_year();
         $activeYearId = (int)($activeYear['id'] ?? 0);
 
