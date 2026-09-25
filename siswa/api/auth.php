@@ -54,9 +54,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $student = null;
         $matched_tgl = null;
         
+        $activeYear = get_active_academic_year();
+        $activeYearId = (int)($activeYear['id'] ?? 0);
+
         foreach ($possible_dates as $tgl) {
-            $stmt = db()->prepare("SELECT * FROM students WHERE nis = ? AND tanggal_lahir = ? AND status = 1 LIMIT 1");
-            $stmt->execute([$nis, $tgl]);
+            $sql = "SELECT * FROM students WHERE nis = ? AND tanggal_lahir = ? AND status = 1";
+            $params = [$nis, $tgl];
+            if ($activeYearId > 0) {
+                $sql .= " ORDER BY (academic_year_id = ?) DESC, academic_year_id DESC, id DESC LIMIT 1";
+                $params[] = $activeYearId;
+            } else {
+                $sql .= " ORDER BY academic_year_id DESC, id DESC LIMIT 1";
+            }
+            $stmt = db()->prepare($sql);
+            $stmt->execute($params);
             $res = $stmt->fetch();
             if ($res) {
                 $student = $res;

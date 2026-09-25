@@ -59,9 +59,19 @@ function get_current_siswa() {
     
     list($nis, $hash) = explode(':', $decoded, 2);
     
-    try {
-        $stmt = db()->prepare("SELECT * FROM students WHERE nis = ? AND status = 1");
-        $stmt->execute([$nis]);
+        $activeYear = get_active_academic_year();
+        $activeYearId = (int)($activeYear['id'] ?? 0);
+
+        $sql = "SELECT * FROM students WHERE nis = ? AND status = 1";
+        $params = [$nis];
+        if ($activeYearId > 0) {
+            $sql .= " ORDER BY (academic_year_id = ?) DESC, academic_year_id DESC, id DESC LIMIT 1";
+            $params[] = $activeYearId;
+        } else {
+            $sql .= " ORDER BY academic_year_id DESC, id DESC LIMIT 1";
+        }
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
         $student = $stmt->fetch();
         
         if ($student) {

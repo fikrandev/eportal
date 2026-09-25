@@ -35,10 +35,7 @@ switch ($action) {
  */
 function listModules() {
     try {
-        $user = null;
-        try {
-            $user = auth_check();
-        } catch (Exception $e) {}
+        $user = auth_get_optional_user();
 
         $stmt = db()->query("SELECT * FROM modules WHERE status = 1 ORDER BY urutan ASC, nama_modul ASC");
         $modules = $stmt->fetchAll();

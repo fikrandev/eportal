@@ -220,6 +220,7 @@ function auth_check()
         }
 
         return [
+            'id' => (int) $session['user_id'],
             'user_id' => (int) $session['user_id'],
             'username' => $session['username'],
             'nama_lengkap' => $session['nama_lengkap'],
@@ -231,6 +232,60 @@ function auth_check()
         ];
     } catch (PDOException $e) {
         json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Get current user if token exists and is valid, without failing or exiting if no token
+ */
+function auth_get_optional_user() {
+    $token = '';
+    if (function_exists('getallheaders')) {
+        $headers = getallheaders();
+        if (isset($headers['Authorization'])) {
+            $token = str_replace('Bearer ', '', $headers['Authorization']);
+        } elseif (isset($headers['authorization'])) {
+            $token = str_replace('Bearer ', '', $headers['authorization']);
+        }
+    }
+    if (empty($token) && isset($_GET['token'])) {
+        $token = $_GET['token'];
+    }
+    if (empty($token)) {
+        return null;
+    }
+    try {
+        $stmt = db()->prepare("
+            SELECT s.*, u.id as user_id, u.username, u.nama_lengkap, u.role, u.avatar,
+                   pur.role_id as portal_role_id, prd.nama as portal_role_nama
+            FROM sessions s 
+            JOIN users u ON s.user_id = u.id 
+            LEFT JOIN portal_user_roles pur ON pur.user_id = u.id
+            LEFT JOIN portal_roles_def prd ON prd.id = pur.role_id
+            WHERE s.token = ? AND s.expired_at > NOW()
+        ");
+        $stmt->execute([$token]);
+        $session = $stmt->fetch();
+        if (!$session) return null;
+
+        $permissions = portal_get_user_permissions($session['user_id']);
+        if ($session['role'] === 'superadmin') {
+            $permissions[] = '*';
+        }
+
+        return [
+            'id' => (int) $session['user_id'],
+            'user_id' => (int) $session['user_id'],
+            'username' => $session['username'],
+            'nama_lengkap' => $session['nama_lengkap'],
+            'role' => $session['role'],
+            'avatar' => $session['avatar'],
+            'portal_role_id' => (int) ($session['portal_role_id'] ?? 0),
+            'portal_role_nama' => $session['portal_role_nama'] ?? '',
+            'permissions' => array_values(array_unique($permissions))
+        ];
+    } catch (Exception $e) {
+        return null;
     }
 }
 

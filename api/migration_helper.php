@@ -6,7 +6,7 @@
 require_once __DIR__ . '/config.php';
 
 function run_auto_migrations() {
-    $target_version = 17;
+    $target_version = 18;
     
     // 1. Get current version (default to 0 if not set or if table settings doesn't exist yet)
     $current_version = 0;
@@ -822,6 +822,57 @@ function run_auto_migrations() {
                 $stmtAssign = $pdo->prepare("INSERT IGNORE INTO `portal_user_roles` (`user_id`, `role_id`) VALUES (?, ?)");
                 foreach ($saUsers as $uid) {
                     $stmtAssign->execute([$uid, $superadminRoleId]);
+                }
+            }
+        } catch (Exception $e) {}
+    }
+
+    // Version 18 migrations (Ensure ref_kelas table exists and users table has kode_guru, no_hp)
+    if ($current_version < 18) {
+        try {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `ref_kelas` (
+                    `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+                    `tingkat` VARCHAR(50) NOT NULL,
+                    `nama_kelas` VARCHAR(100) NOT NULL,
+                    `wali_kelas_id` INT(11) UNSIGNED NULL DEFAULT NULL,
+                    `keterangan` VARCHAR(255) NULL DEFAULT '',
+                    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    PRIMARY KEY (`id`),
+                    KEY `idx_tingkat` (`tingkat`),
+                    KEY `idx_nama_kelas` (`nama_kelas`),
+                    KEY `idx_wali_kelas` (`wali_kelas_id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+            ");
+        } catch (Exception $e) {}
+
+        try {
+            $cols = $pdo->query("DESCRIBE users")->fetchAll(PDO::FETCH_COLUMN);
+            if (!in_array('kode_guru', $cols, true)) {
+                $pdo->exec("ALTER TABLE users ADD COLUMN kode_guru VARCHAR(10) NULL AFTER username");
+            }
+            if (!in_array('no_hp', $cols, true)) {
+                $pdo->exec("ALTER TABLE users ADD COLUMN no_hp VARCHAR(30) NULL AFTER email");
+            }
+        } catch (Exception $e) {}
+
+        // Auto-seed classes into ref_kelas from students if ref_kelas is empty
+        try {
+            $refCount = (int)$pdo->query("SELECT COUNT(*) FROM ref_kelas")->fetchColumn();
+            if ($refCount === 0) {
+                $stmt = $pdo->query("SELECT DISTINCT kelas FROM students WHERE kelas IS NOT NULL AND kelas != ''");
+                $studentClasses = $stmt->fetchAll(PDO::FETCH_COLUMN);
+                $stmtInsert = $pdo->prepare("INSERT INTO ref_kelas (tingkat, nama_kelas, keterangan) VALUES (?, ?, ?)");
+                foreach ($studentClasses as $rawKelas) {
+                    $rawKelasTrimmed = trim($rawKelas);
+                    if (!$rawKelasTrimmed) continue;
+                    if (preg_match('/^([a-zA-Z0-9]+)[\s\.\-](.+)$/', $rawKelasTrimmed, $matches)) {
+                        $tingkat = $matches[1];
+                    } else {
+                        $tingkat = $rawKelasTrimmed;
+                    }
+                    $stmtInsert->execute([$tingkat, $rawKelasTrimmed, 'Sinkronisasi Otomatis dari Data Siswa']);
                 }
             }
         } catch (Exception $e) {}

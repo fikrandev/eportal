@@ -248,7 +248,15 @@ const Admin = {
         `);
 
         App.api('api/users.php?action=stats').done(res => {
-            if (!res.success) return;
+            if (!res.success) {
+                $('#adminContent').html(`
+                    <div style="background:#fee2e2; border:1px solid #f87171; color:#991b1b; padding:18px 24px; border-radius:12px; margin:20px 0;">
+                        <strong>Gagal memuat statistik dashboard:</strong> ${App.escapeHtml(res.message || 'Terjadi kesalahan sistem.')}
+                        <div style="margin-top:12px;"><button class="btn btn-sm btn-primary" onclick="Admin.renderAdminDashboard()">Coba Lagi</button></div>
+                    </div>
+                `);
+                return;
+            }
             const s = res.data;
 
             const formatTimeAgo = (dateStr) => {
@@ -389,6 +397,14 @@ const Admin = {
                             </div>
                         </div>
                     </div>
+                </div>
+            `);
+        }).fail(xhr => {
+            const msg = xhr.responseJSON?.message || 'Tidak dapat terhubung ke server atau sesi telah berakhir.';
+            $('#adminContent').html(`
+                <div style="background:#fee2e2; border:1px solid #f87171; color:#991b1b; padding:18px 24px; border-radius:12px; margin:20px 0;">
+                    <strong>Terjadi Kesalahan:</strong> ${App.escapeHtml(msg)}
+                    <div style="margin-top:12px;"><button class="btn btn-sm btn-primary" onclick="Admin.renderAdminDashboard()">Coba Lagi</button></div>
                 </div>
             `);
         });

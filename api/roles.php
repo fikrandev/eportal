@@ -10,6 +10,7 @@ header('Content-Type: application/json');
 $action = $_GET['action'] ?? '';
 
 switch ($action) {
+    case 'list':
     case 'list_roles':
         listRoles();
         break;

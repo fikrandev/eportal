@@ -486,8 +486,22 @@ function getStats() {
         $stats['total_teachers'] = (int)$stmt->fetch()['total'];
 
         // Total classes
-        $stmt = db()->query("SELECT COUNT(*) as total FROM ref_kelas");
-        $stats['total_classes'] = (int)$stmt->fetch()['total'];
+        try {
+            $stmt = db()->query("SELECT COUNT(*) as total FROM ref_kelas");
+            $totalClasses = (int)$stmt->fetch()['total'];
+            if ($totalClasses === 0) {
+                $stmtStd = db()->query("SELECT COUNT(DISTINCT kelas) as total FROM students WHERE status = 1 AND kelas IS NOT NULL AND kelas != ''");
+                $totalClasses = (int)$stmtStd->fetch()['total'];
+            }
+            $stats['total_classes'] = $totalClasses;
+        } catch (Exception $e) {
+            try {
+                $stmtStd = db()->query("SELECT COUNT(DISTINCT kelas) as total FROM students WHERE status = 1 AND kelas IS NOT NULL AND kelas != ''");
+                $stats['total_classes'] = (int)$stmtStd->fetch()['total'];
+            } catch (Exception $e2) {
+                $stats['total_classes'] = 0;
+            }
+        }
 
         // Total journals today
         $stmt = db()->prepare("SELECT COUNT(*) as total FROM acad_jurnal WHERE tanggal = ?");
