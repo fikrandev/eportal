@@ -20,8 +20,17 @@ if ($studentToken !== '') {
                 $isStudent = true;
                 // Force scope to student and set IDs from token to prevent tampering
                 $_GET['scope'] = 'student';
-                $_GET['student_id'] = $payload['student_id'];
-                $_GET['exam_id'] = $payload['exam_id'];
+                $_GET['student_id'] = (int) $payload['student_id'];
+                $_GET['exam_id'] = (int) $payload['exam_id'];
+
+                // Verify status is OKE
+                $stmtChk = db()->prepare("SELECT status FROM xam_exam_students WHERE exam_id = ? AND student_id = ?");
+                $stmtChk->execute([(int)$payload['exam_id'], (int)$payload['student_id']]);
+                $stRow = $stmtChk->fetch();
+                if ($stRow && ($stRow['status'] ?? '') !== 'OKE') {
+                    http_response_code(403);
+                    die('Status kartu ujian Anda ditangguhkan. Silakan hubungi pihak sekolah.');
+                }
             }
         }
     }
@@ -220,8 +229,8 @@ function renderExamCard($pdf, $x, $y, $cardW, $cardH, $student, $exam, $schoolNa
     $examTitle = strtoupper((string) ($exam['exam_name'] ?? 'UJIAN'));
     $pdf->text($x, $contentTop + 27, $examTitle, 8, 'F2', 'center', $cardW);
     
-    // Prioritas tahun ajaran: dari data ujian, atau fallback ke tahun aktif global
-    $tahun = !empty($exam['tahun_ajaran']) ? $exam['tahun_ajaran'] : ($activeYear['tahun_ajaran'] ?? '-');
+    // Prioritas tahun ajaran: dari tahun aktif global, atau fallback ke data ujian
+    $tahun = !empty($activeYear['tahun_ajaran']) ? $activeYear['tahun_ajaran'] : (!empty($exam['tahun_ajaran']) ? $exam['tahun_ajaran'] : '-');
     $subtitle = 'TAHUN PELAJARAN ' . $tahun;
     $pdf->text($x, $contentTop + 37, $subtitle, 7, 'F2', 'center', $cardW);
     
@@ -242,23 +251,19 @@ function renderExamCard($pdf, $x, $y, $cardW, $cardH, $student, $exam, $schoolNa
     $photoX = $x + 8 + 42.52; // digeser 1.5cm ke kanan
     $photoY = ($footerY + 2) - $photoH - 5;
     
-    $fotoPath = $student['foto_path'] ?? '';
-    if (empty($fotoPath) && !empty($student['nis'])) {
-        $stmtP = db()->prepare("SELECT foto_path FROM students WHERE nis = ? AND foto_path IS NOT NULL AND foto_path <> '' ORDER BY id DESC LIMIT 1");
-        $stmtP->execute([$student['nis']]);
-        $fotoPath = $stmtP->fetchColumn() ?: '';
-    }
-
-    if ($fotoPath !== '') {
-        $fullPhotoPath = $root . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, ltrim($fotoPath, '/\\'));
-        if (file_exists($fullPhotoPath)) {
-            $dims = $pdf->imageDimensions($fullPhotoPath);
-            if ($dims) {
-                $photoW = $photoH * $dims['width'] / max(1, $dims['height']);
-                $pdf->rect($photoX - 1, $photoY - 1, $photoW + 2, $photoH + 2);
-                $pdf->image($fullPhotoPath, $photoX, $photoY, 0, $photoH);
-            }
+    $resolvedPhoto = xam_resolve_student_photo($student['foto_path'] ?? '', $student['nis'] ?? '');
+    if ($resolvedPhoto && file_exists($resolvedPhoto['full_path'])) {
+        $dims = $pdf->imageDimensions($resolvedPhoto['full_path']);
+        if ($dims) {
+            $photoW = $photoH * $dims['width'] / max(1, $dims['height']);
+            $pdf->rect($photoX - 1, $photoY - 1, $photoW + 2, $photoH + 2);
+            $pdf->image($resolvedPhoto['full_path'], $photoX, $photoY, 0, $photoH);
         }
+    } else {
+        // Kotak FOTO 3X4 jika belum ada file foto
+        $photoW = 38.26; // rasio 3:4
+        $pdf->rect($photoX, $photoY, $photoW, $photoH);
+        $pdf->text($photoX, $photoY + ($photoH / 2) + 2, 'FOTO 3X4', 6, 'F1', 'center', $photoW);
     }
 
     // --- BIODATA (4 baris) ---
@@ -377,11 +382,17 @@ function reportStudents($examId, $scope, $kelas, $studentId)
         if (!empty($stu['nis'])) {
             $latest = xam_get_latest_student_info($stu['nis']);
             if ($latest) {
+                if (!empty($latest['nama'])) {
+                    $stu['nama'] = $latest['nama'];
+                }
                 if (!empty($latest['kelas'])) {
                     $stu['kelas'] = $latest['kelas'];
                 }
                 if (!empty($latest['foto_path'])) {
                     $stu['foto_path'] = $latest['foto_path'];
+                }
+                if (!empty($latest['nisn'])) {
+                    $stu['nisn'] = $latest['nisn'];
                 }
             }
         }

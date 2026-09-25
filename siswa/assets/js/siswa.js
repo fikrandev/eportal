@@ -298,6 +298,29 @@ const App = {
                         </div>
                     </div>
 
+                    <!-- Kartu Ujian Banner -->
+                    <div class="card" style="margin-bottom: 12px; background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%); color: white; border: none; padding: 18px; border-radius: 18px; position: relative; overflow: hidden; box-shadow: 0 4px 15px rgba(15, 23, 42, 0.25);">
+                        <div style="position: absolute; right: -20px; top: -20px; width: 100px; height: 100px; border-radius: 50%; background: rgba(255, 255, 255, 0.08); pointer-events: none;"></div>
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; position: relative; z-index: 1;">
+                            <div style="display: flex; align-items: center; gap: 14px;">
+                                <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(255,255,255,0.18); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #fff;">
+                                    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+                                        <rect x="2" y="3" width="20" height="14" rx="2"/>
+                                        <line x1="8" y1="21" x2="16" y2="21"/>
+                                        <line x1="12" y1="17" x2="12" y2="21"/>
+                                    </svg>
+                                </div>
+                                <div>
+                                    <div style="font-weight: 800; font-size: 1.05rem; color: #fff; margin-bottom: 2px;">Kartu Ujian</div>
+                                    <div style="font-size: 0.78rem; color: rgba(255,255,255,0.85);">Cek status, pratinjau & unduh PDF</div>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-sm" onclick="App.openExamCard()" style="background: #ffffff; color: #0f172a; font-weight: 700; border-radius: 10px; border: none; padding: 8px 14px; white-space: nowrap; box-shadow: 0 2px 6px rgba(0,0,0,0.15); cursor: pointer;">
+                                Buka Kartu
+                            </button>
+                        </div>
+                    </div>
+
                     <!-- Shortcut Action Cards -->
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
                         <button class="card" onclick="location.hash='#/izin'" style="text-align: left; padding: 16px; border-radius: 18px; cursor: pointer; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 12px; width: 100%;">
@@ -617,6 +640,216 @@ const App = {
                 if (submitBtn) {
                     submitBtn.classList.remove('loading');
                     submitBtn.disabled = false;
+                }
+            });
+    },
+
+    closeActiveModal() {
+        const container = document.getElementById('modalContainer');
+        if (container) {
+            const overlay = container.querySelector('.modal-overlay');
+            const sheet = container.querySelector('.modal-sheet');
+            if (overlay) {
+                overlay.style.opacity = '0';
+                if (sheet) sheet.style.transform = 'translateY(100%)';
+                setTimeout(() => { container.innerHTML = ''; }, 250);
+            } else {
+                container.innerHTML = '';
+            }
+        }
+    },
+
+    openExamCard() {
+        this.showToast('Memeriksa status kartu ujian...', 'info');
+        this.apiGet('api/exam_card.php')
+            .then(res => {
+                if (!res || !res.success || !res.data) {
+                    this.showToast(res.message || 'Gagal memuat status kartu ujian.', 'error');
+                    return;
+                }
+
+                const d = res.data;
+                if (!d.has_exam) {
+                    this._showExamCardModalEmpty(d.message || 'Belum ada ujian aktif yang dijadwalkan.');
+                    return;
+                }
+
+                if (d.status === 'DITANGGUHKAN') {
+                    this._showExamCardModalSuspended(d);
+                    return;
+                }
+
+                this._showExamCardModalSuccess(d);
+            })
+            .catch(err => {
+                this.showToast('Gagal terhubung ke server. Periksa koneksi Anda.', 'error');
+            });
+    },
+
+    _showExamCardModalEmpty(message) {
+        const modalHtml = `
+            <div class="modal-overlay" id="examCardModalOverlay">
+                <div class="modal-sheet" style="text-align:center;">
+                    <div class="modal-sheet-header">
+                        <h3 class="modal-sheet-title">Kartu Ujian</h3>
+                        <button type="button" class="modal-sheet-close" onclick="App.closeActiveModal()" title="Tutup">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
+                    <div style="padding: 10px 0 20px;">
+                        <div style="width: 56px; height: 56px; border-radius: 16px; background: var(--info-light); color: var(--info); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 14px;">
+                            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        </div>
+                        <h4 style="font-size: 1.15rem; font-weight: 700; color: var(--text-primary); margin-bottom: 6px;">Belum Tersedia</h4>
+                        <p style="font-size: 0.88rem; color: var(--text-muted); line-height: 1.5; margin-bottom: 20px;">${message}</p>
+                        <button type="button" class="btn btn-secondary btn-block" onclick="App.closeActiveModal()">Tutup</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        const container = document.getElementById('modalContainer');
+        if (container) {
+            container.innerHTML = modalHtml;
+            document.getElementById('examCardModalOverlay')?.addEventListener('click', (e) => {
+                if (e.target.id === 'examCardModalOverlay') App.closeActiveModal();
+            });
+        }
+    },
+
+    _showExamCardModalSuspended(d) {
+        const modalHtml = `
+            <div class="modal-overlay" id="examCardModalOverlay">
+                <div class="modal-sheet" style="text-align:center;">
+                    <div class="modal-sheet-header">
+                        <h3 class="modal-sheet-title">Status Kartu Ujian</h3>
+                        <button type="button" class="modal-sheet-close" onclick="App.closeActiveModal()" title="Tutup">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
+                    <div style="padding: 10px 0 10px;">
+                        <div style="width: 58px; height: 58px; border-radius: 16px; background: var(--danger-light); color: var(--danger); display: inline-flex; align-items: center; justify-content: center; margin-bottom: 12px; border: 1px solid var(--danger-border);">
+                            <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                        </div>
+                        <div style="margin-bottom: 6px;">
+                            <span class="badge badge-danger" style="font-size: 0.8rem; padding: 4px 12px;">STATUS: DITANGGUHKAN</span>
+                        </div>
+                        <h4 style="font-size: 1.18rem; font-weight: 800; color: #0f172a; margin-bottom: 2px;">${d.exam_name}</h4>
+                        <div style="font-size: 0.8rem; color: #64748b; margin-bottom: 16px;">Tahun Pelajaran ${d.tahun_ajaran}</div>
+                        
+                        <div style="background: #fef2f2; border: 1.5px solid #fecaca; border-radius: 14px; padding: 14px 16px; margin-bottom: 16px; text-align: left;">
+                            <div style="font-size: 0.75rem; font-weight: 700; text-transform: uppercase; color: #b91c1c; letter-spacing: 0.5px; margin-bottom: 4px;">Catatan Penangguhan:</div>
+                            <div style="font-size: 0.92rem; color: #991b1b; line-height: 1.45; font-weight: 600;">${d.suspension_note || 'Silakan hubungi Wali Kelas / Waka. Kesiswaan'}</div>
+                        </div>
+
+                        <p style="font-size: 0.82rem; color: #64748b; line-height: 1.45; margin-bottom: 20px;">
+                            Kartu ujian belum dapat diunduh karena masih berstatus ditangguhkan. Silakan hubungi Wali Kelas atau Waka. Kesiswaan untuk informasi lebih lanjut.
+                        </p>
+
+                        <button type="button" class="btn btn-secondary btn-block" onclick="App.closeActiveModal()">Tutup</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        const container = document.getElementById('modalContainer');
+        if (container) {
+            container.innerHTML = modalHtml;
+            document.getElementById('examCardModalOverlay')?.addEventListener('click', (e) => {
+                if (e.target.id === 'examCardModalOverlay') App.closeActiveModal();
+            });
+        }
+    },
+
+    _showExamCardModalSuccess(d) {
+        const modalHtml = `
+            <div class="modal-overlay" id="examCardModalOverlay">
+                <div class="modal-sheet" style="text-align:center;">
+                    <div class="modal-sheet-header">
+                        <h3 class="modal-sheet-title">Kartu Ujian Resmi</h3>
+                        <button type="button" class="modal-sheet-close" onclick="App.closeActiveModal()" title="Tutup">
+                            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
+                    <div style="padding: 6px 0 10px;">
+                        <div style="margin-bottom: 8px;">
+                            <span class="badge badge-success" style="font-size: 0.8rem; padding: 4px 12px;">✅ TERVERIFIKASI &bull; SIAP DIUNDUH</span>
+                        </div>
+                        <h4 style="font-size: 1.25rem; font-weight: 800; color: #0f172a; margin-bottom: 2px;">${d.exam_name}</h4>
+                        <div style="font-size: 0.82rem; color: #64748b; margin-bottom: 16px;">Tahun Pelajaran ${d.tahun_ajaran}</div>
+                        
+                        <!-- Account Details Box -->
+                        <div style="background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 14px; padding: 14px 16px; margin-bottom: 18px; text-align: left; font-size: 0.88rem;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding: 6px 0; border-bottom: 1px dashed #e2e8f0;">
+                                <span style="color: #64748b;">Ruang Ujian:</span>
+                                <strong style="color: #0f172a;">${d.ruang_ujian || '-'}</strong>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding: 6px 0; border-bottom: 1px dashed #e2e8f0;">
+                                <span style="color: #64748b;">Username Ujian:</span>
+                                <strong style="color: #1e40af; font-family: monospace; font-size: 1rem; letter-spacing: 0.5px;">${d.exam_username || '-'}</strong>
+                            </div>
+                            <div style="display:flex; justify-content:space-between; align-items:center; padding: 6px 0;">
+                                <span style="color: #64748b;">Password Ujian:</span>
+                                <strong style="color: #1e40af; font-family: monospace; font-size: 1rem; letter-spacing: 0.5px;">${d.exam_password || '-'}</strong>
+                            </div>
+                        </div>
+
+                        <!-- Action Buttons -->
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <button type="button" class="btn btn-primary btn-block" id="btnDownloadCardPortal" onclick="App.downloadExamCardPdf('${d.download_url}', '${encodeURIComponent(d.exam_name)}')" style="display:flex; align-items:center; justify-content:center; gap:8px; padding: 12px; font-weight: 700;">
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                <span class="btn-label">Unduh Kartu Ujian (PDF)</span>
+                            </button>
+                            <a href="${d.preview_url}" target="_blank" class="btn btn-secondary btn-block" style="text-decoration:none; display:flex; align-items:center; justify-content:center; gap:8px; padding: 12px; font-weight: 600;">
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                <span>Lihat Pratinjau & Cetak</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        const container = document.getElementById('modalContainer');
+        if (container) {
+            container.innerHTML = modalHtml;
+            document.getElementById('examCardModalOverlay')?.addEventListener('click', (e) => {
+                if (e.target.id === 'examCardModalOverlay') App.closeActiveModal();
+            });
+        }
+    },
+
+    downloadExamCardPdf(downloadUrl, examName) {
+        const btn = document.getElementById('btnDownloadCardPortal');
+        const origHtml = btn ? btn.innerHTML : '';
+        if (btn) {
+            btn.classList.add('loading');
+            btn.disabled = true;
+        }
+        this.showToast('Menyiapkan file PDF kartu ujian...', 'info');
+
+        fetch(downloadUrl)
+            .then(res => {
+                if (!res.ok) throw new Error('Gagal mengunduh kartu');
+                return res.blob();
+            })
+            .then(blob => {
+                const link = document.createElement('a');
+                link.href = window.URL.createObjectURL(blob);
+                const studentName = (this.state.student?.nama || 'Siswa').replace(/[^a-zA-Z0-9]/g, '_');
+                link.download = `Kartu-Ujian-${studentName}.pdf`;
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+                this.showToast('Kartu ujian berhasil diunduh!', 'success');
+            })
+            .catch(err => {
+                console.error(err);
+                // Fallback: open directly in new window
+                window.open(downloadUrl, '_blank');
+            })
+            .finally(() => {
+                if (btn) {
+                    btn.classList.remove('loading');
+                    btn.disabled = false;
+                    btn.innerHTML = origHtml;
                 }
             });
     },

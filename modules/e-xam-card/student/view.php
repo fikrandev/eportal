@@ -31,13 +31,13 @@ $stmt = db()->prepare("
            e.id as exam_id, e.exam_name, e.card_template, e.academic_year_id as exam_year_id,
            es.letter_manual_no, es.letter_code, es.letter_date, es.sign_date,
            es.headmaster_name, es.headmaster_user_id,
-           COALESCE(ay_exam.tahun_ajaran, ay_student.tahun_ajaran, ay_active.tahun_ajaran) as tahun_ajaran
+           COALESCE(ay_active.tahun_ajaran, ay_student.tahun_ajaran, ay_exam.tahun_ajaran) as tahun_ajaran
     FROM xam_exam_students xs
     JOIN xam_exams e ON e.id = xs.exam_id
     JOIN students s ON s.id = xs.student_id
-    LEFT JOIN academic_years ay_exam ON ay_exam.id = e.academic_year_id
-    LEFT JOIN academic_years ay_student ON ay_student.id = s.academic_year_id
     LEFT JOIN academic_years ay_active ON ay_active.is_active = 1
+    LEFT JOIN academic_years ay_student ON ay_student.id = s.academic_year_id
+    LEFT JOIN academic_years ay_exam ON ay_exam.id = e.academic_year_id
     LEFT JOIN xam_exam_settings es ON es.exam_id = e.id
     WHERE xs.exam_id = ? AND xs.student_id = ?
 ");
@@ -51,13 +51,13 @@ if (!$data) {
                e.id as exam_id, e.exam_name, e.card_template, e.academic_year_id as exam_year_id,
                es.letter_manual_no, es.letter_code, es.letter_date, es.sign_date,
                es.headmaster_name, es.headmaster_user_id,
-               COALESCE(ay_exam.tahun_ajaran, ay_student.tahun_ajaran, ay_active.tahun_ajaran) as tahun_ajaran
+               COALESCE(ay_active.tahun_ajaran, ay_student.tahun_ajaran, ay_exam.tahun_ajaran) as tahun_ajaran
         FROM students s
         LEFT JOIN xam_exam_students xs ON xs.student_id = s.id AND xs.exam_id = ?
         LEFT JOIN xam_exams e ON e.id = ?
-        LEFT JOIN academic_years ay_exam ON ay_exam.id = e.academic_year_id
-        LEFT JOIN academic_years ay_student ON ay_student.id = s.academic_year_id
         LEFT JOIN academic_years ay_active ON ay_active.is_active = 1
+        LEFT JOIN academic_years ay_student ON ay_student.id = s.academic_year_id
+        LEFT JOIN academic_years ay_exam ON ay_exam.id = e.academic_year_id
         LEFT JOIN xam_exam_settings es ON es.exam_id = e.id
         WHERE s.id = ?
     ");
@@ -69,41 +69,47 @@ if (!$data || ($data['status'] ?? '') !== 'OKE') {
     die('Data tidak tersedia atau status kartu ditangguhkan.');
 }
 
-// Ensure latest student class & photo for this student's NIS
+// Ensure latest student class, name, photo & nisn for this student's NIS
 if (!empty($data['nis'])) {
-    $latest = xam_get_latest_student_info($data['nis'], (int)($data['exam_year_id'] ?? 0));
+    $latest = xam_get_latest_student_info($data['nis']);
     if ($latest) {
+        if (!empty($latest['nama'])) {
+            $data['nama'] = $latest['nama'];
+        }
         if (!empty($latest['kelas'])) {
             $data['kelas'] = $latest['kelas'];
         }
         if (!empty($latest['foto_path'])) {
             $data['foto_path'] = $latest['foto_path'];
         }
+        if (!empty($latest['nisn'])) {
+            $data['nisn'] = $latest['nisn'];
+        }
     }
 }
 
 $root = realpath(__DIR__ . '/../../../') ?: dirname(dirname(dirname(__DIR__)));
+$normRoot = str_replace('\\', '/', $root);
 
 // Resolve template
 $templateFile = xam_resolve_template_path($data['card_template'] ?? '', $examId);
 $hasTemplate = ($templateFile !== '' && file_exists($templateFile));
 $templateWebUrl = '';
 if ($hasTemplate) {
-    $rel = str_replace(['\\', $root], ['/', ''], $templateFile);
+    $realTpl = realpath($templateFile) ?: $templateFile;
+    $normTpl = str_replace('\\', '/', $realTpl);
+    if (strpos($normTpl, $normRoot) === 0) {
+        $rel = substr($normTpl, strlen($normRoot));
+    } else {
+        $rel = 'modules/e-xam-card/uploads/templates/' . basename($realTpl);
+    }
     $templateWebUrl = BASE_URL . ltrim($rel, '/');
 }
 
 // Resolve photo
-$fotoPath = $data['foto_path'] ?? '';
-$hasPhoto = false;
-$photoWebUrl = '';
-if ($fotoPath !== '') {
-    $cleanPhoto = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, ltrim($fotoPath, '/\\'));
-    if (file_exists($root . DIRECTORY_SEPARATOR . $cleanPhoto)) {
-        $hasPhoto = true;
-        $photoWebUrl = BASE_URL . str_replace('\\', '/', $cleanPhoto);
-    }
-}
+$resolvedPhoto = xam_resolve_student_photo($data['foto_path'] ?? '', $data['nis'] ?? '');
+$hasPhoto = ($resolvedPhoto !== null);
+$photoWebUrl = $hasPhoto ? $resolvedPhoto['web_url'] : '';
 
 // Resolve headmaster name
 $headmasterName = trim((string) ($data['headmaster_name'] ?? ''));
@@ -335,6 +341,11 @@ $verifyUrl = absoluteBaseUrl() . "modules/e-xam-card/v.php?c=" . urlencode($targ
                 <?php if ($hasPhoto): ?>
                 <div class="photo-area">
                     <img src="<?php echo $photoWebUrl; ?>" alt="Foto Siswa">
+                </div>
+                <?php else: ?>
+                <div class="photo-area" style="display:flex; flex-direction:column; align-items:center; justify-content:center; width:68px; font-size:10px; color:#64748b; font-family:Arial, sans-serif; text-align:center; background:#f8fafc;">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+                    <span style="margin-top:2px; font-size:9px; font-weight:600;">FOTO 3X4</span>
                 </div>
                 <?php endif; ?>
                 

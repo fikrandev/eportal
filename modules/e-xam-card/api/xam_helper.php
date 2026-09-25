@@ -229,21 +229,25 @@ function xam_resolve_template_path($cardTemplate, $examId = 0)
 }
 
 /**
- * Get latest active student record info (class, photo, name) by NIS.
+ * Get latest active student record info (class, photo, name, nisn) by NIS.
+ * Prioritizes current active academic year, then newest academic year and ID.
  */
 function xam_get_latest_student_info($nis, $preferredYearId = 0)
 {
     if (empty($nis)) return null;
     try {
+        $activeYear = get_active_academic_year();
+        $targetYearId = $preferredYearId > 0 ? (int)$preferredYearId : (int)($activeYear['id'] ?? 0);
+
         $sql = "
             SELECT id, nama, nis, nisn, kelas, foto_path, academic_year_id, tanggal_lahir
             FROM students
             WHERE nis = ? AND status = 1
         ";
         $params = [$nis];
-        if ($preferredYearId > 0) {
+        if ($targetYearId > 0) {
             $sql .= " ORDER BY (academic_year_id = ?) DESC, academic_year_id DESC, id DESC LIMIT 1";
-            $params[] = (int)$preferredYearId;
+            $params[] = $targetYearId;
         } else {
             $sql .= " ORDER BY academic_year_id DESC, id DESC LIMIT 1";
         }
@@ -254,4 +258,58 @@ function xam_get_latest_student_info($nis, $preferredYearId = 0)
         return null;
     }
 }
+
+/**
+ * Resolve student photo on disk and return full path and web URL.
+ * Checks student's foto_path and common photo upload paths by NIS.
+ */
+function xam_resolve_student_photo($fotoPath = '', $nis = '')
+{
+    $root = realpath(__DIR__ . '/../../../') ?: dirname(dirname(dirname(__DIR__)));
+    $normRoot = str_replace('\\', '/', $root);
+
+    // 1. Direct path from database
+    if (!empty($fotoPath)) {
+        $clean = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, ltrim($fotoPath, '/\\'));
+        $full = $root . DIRECTORY_SEPARATOR . $clean;
+        if (file_exists($full)) {
+            $normFull = str_replace('\\', '/', realpath($full) ?: $full);
+            $rel = (strpos($normFull, $normRoot) === 0) ? substr($normFull, strlen($normRoot)) : $clean;
+            return [
+                'full_path' => $full,
+                'web_url' => BASE_URL . ltrim($rel, '/')
+            ];
+        }
+    }
+
+    // 2. Fallback search by NIS in uploads/students/ folders
+    if (!empty($nis)) {
+        $cleanNis = preg_replace('/[^A-Za-z0-9_-]/', '', $nis);
+        $candidates = [
+            'uploads/students/photos/' . $cleanNis . '.jpg',
+            'uploads/students/photos/' . $cleanNis . '.png',
+            'uploads/students/photos/' . $cleanNis . '.jpeg',
+            'uploads/students/photos/' . $cleanNis . '.webp',
+            'uploads/students/' . $cleanNis . '.jpg',
+            'uploads/students/' . $cleanNis . '.png',
+            'uploads/students/' . $cleanNis . '.jpeg',
+            'uploads/students/' . $cleanNis . '.webp',
+            'uploads/students/graduation/' . $cleanNis . '.png',
+            'uploads/students/graduation/' . $cleanNis . '.jpg',
+        ];
+
+        foreach ($candidates as $cand) {
+            $full = $root . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $cand);
+            if (file_exists($full)) {
+                return [
+                    'full_path' => $full,
+                    'web_url' => BASE_URL . ltrim($cand, '/')
+                ];
+            }
+        }
+    }
+
+    return null;
+}
+
 
