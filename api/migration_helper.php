@@ -6,7 +6,7 @@
 require_once __DIR__ . '/config.php';
 
 function run_auto_migrations() {
-    $target_version = 16;
+    $target_version = 17;
     
     // 1. Get current version (default to 0 if not set or if table settings doesn't exist yet)
     $current_version = 0;
@@ -712,6 +712,116 @@ function run_auto_migrations() {
                 $cols = $pdo->query("SHOW COLUMNS FROM `exam_soal` LIKE 'audio_play_limit'")->fetchAll();
                 if (empty($cols)) {
                     $pdo->exec("ALTER TABLE `exam_soal` ADD COLUMN `audio_play_limit` INT NOT NULL DEFAULT 0 AFTER `audio`");
+                }
+            }
+        } catch (Exception $e) {}
+    }
+
+    // Version 17 migrations (Portal Role & Module Access Permission System)
+    if ($current_version < 17) {
+        try {
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `portal_roles_def` (
+                    `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+                    `nama` VARCHAR(100) NOT NULL,
+                    `deskripsi` VARCHAR(255) DEFAULT NULL,
+                    `is_locked` TINYINT(1) NOT NULL DEFAULT 0,
+                    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    PRIMARY KEY (`id`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            ");
+
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `portal_role_permissions` (
+                    `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+                    `role_id` INT(11) UNSIGNED NOT NULL,
+                    `permission_key` VARCHAR(100) NOT NULL,
+                    PRIMARY KEY (`id`),
+                    KEY `idx_portal_role_id` (`role_id`),
+                    KEY `idx_portal_perm_key` (`permission_key`),
+                    CONSTRAINT `fk_portal_role_perms` FOREIGN KEY (`role_id`) REFERENCES `portal_roles_def`(`id`) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            ");
+
+            $pdo->exec("
+                CREATE TABLE IF NOT EXISTS `portal_user_roles` (
+                    `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+                    `user_id` INT(11) UNSIGNED NOT NULL,
+                    `role_id` INT(11) UNSIGNED NOT NULL,
+                    `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                    `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    PRIMARY KEY (`id`),
+                    UNIQUE KEY `uk_portal_user` (`user_id`),
+                    CONSTRAINT `fk_portal_user_roles_user` FOREIGN KEY (`user_id`) REFERENCES `users`(`id`) ON DELETE CASCADE,
+                    CONSTRAINT `fk_portal_user_roles_def` FOREIGN KEY (`role_id`) REFERENCES `portal_roles_def`(`id`) ON DELETE CASCADE
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+            ");
+
+            // Seed default roles if empty
+            $count = (int)$pdo->query("SELECT COUNT(*) FROM `portal_roles_def`")->fetchColumn();
+            if ($count === 0) {
+                // 1. Superadmin role
+                $pdo->exec("
+                    INSERT INTO `portal_roles_def` (`nama`, `deskripsi`, `is_locked`)
+                    VALUES ('Super Administrator', 'Akses penuh ke semua modul dan administrasi sistem E-Portal', 1)
+                ");
+                $superadminRoleId = (int)$pdo->lastInsertId();
+
+                $allPerms = [
+                    '*',
+                    'admin_panel', 'admin_dashboard', 'academic_years_manage', 'students_manage',
+                    'siswa_lulus_manage', 'foto_siswa_manage', 'gurus_manage', 'referensi_manage',
+                    'users_manage', 'modules_manage', 'roles_manage', 'settings_manage', 'reset_data_manage'
+                ];
+                $modules = $pdo->query("SELECT slug FROM `modules`")->fetchAll(PDO::FETCH_COLUMN);
+                foreach ($modules as $slug) {
+                    $allPerms[] = 'module_' . $slug;
+                }
+
+                $stmtP = $pdo->prepare("INSERT IGNORE INTO `portal_role_permissions` (`role_id`, `permission_key`) VALUES (?, ?)");
+                foreach (array_unique($allPerms) as $pk) {
+                    $stmtP->execute([$superadminRoleId, $pk]);
+                }
+
+                // 2. Operator Sarpras role
+                $pdo->exec("
+                    INSERT INTO `portal_roles_def` (`nama`, `deskripsi`, `is_locked`)
+                    VALUES ('Operator Sarpras', 'Akses khusus modul E-Sarpras dan referensi terkait', 0)
+                ");
+                $sarprasRoleId = (int)$pdo->lastInsertId();
+                $sarprasPerms = ['module_e-sarpras', 'admin_panel', 'admin_dashboard', 'referensi_manage'];
+                foreach ($sarprasPerms as $pk) {
+                    $stmtP->execute([$sarprasRoleId, $pk]);
+                }
+
+                // 3. Staff Kesiswaan & Ujian role
+                $pdo->exec("
+                    INSERT INTO `portal_roles_def` (`nama`, `deskripsi`, `is_locked`)
+                    VALUES ('Staff Kesiswaan & Ujian', 'Akses modul E-Xam Card, E-Examination, dan data siswa', 0)
+                ");
+                $examRoleId = (int)$pdo->lastInsertId();
+                $examPerms = ['module_e-xam-card', 'module_e-examination', 'admin_panel', 'admin_dashboard', 'students_manage', 'foto_siswa_manage'];
+                foreach ($examPerms as $pk) {
+                    $stmtP->execute([$examRoleId, $pk]);
+                }
+
+                // 4. Guru Pengajar role
+                $pdo->exec("
+                    INSERT INTO `portal_roles_def` (`nama`, `deskripsi`, `is_locked`)
+                    VALUES ('Guru Pengajar', 'Akses modul pembelajaran, jadwal, dan kurikulum', 0)
+                ");
+                $guruRoleId = (int)$pdo->lastInsertId();
+                $guruPerms = ['module_e-schedule', 'module_e-performance', 'module_e-curriculum', 'module_e-examination', 'module_landing-page'];
+                foreach ($guruPerms as $pk) {
+                    $stmtP->execute([$guruRoleId, $pk]);
+                }
+
+                // Auto assign superadmin users to Super Administrator role
+                $saUsers = $pdo->query("SELECT id FROM users WHERE role = 'superadmin'")->fetchAll(PDO::FETCH_COLUMN);
+                $stmtAssign = $pdo->prepare("INSERT IGNORE INTO `portal_user_roles` (`user_id`, `role_id`) VALUES (?, ?)");
+                foreach ($saUsers as $uid) {
+                    $stmtAssign->execute([$uid, $superadminRoleId]);
                 }
             }
         } catch (Exception $e) {}

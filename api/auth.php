@@ -165,14 +165,31 @@ function handleLogin() {
         $kopSurat = get_setting('kop_surat', '');
         $activeAcademicYear = get_active_academic_year();
 
+        // Get user role info and permissions
+        $permissions = portal_get_user_permissions($user['id']);
+        if ($user['role'] === 'superadmin') {
+            $permissions[] = '*';
+        }
+        $stmtR = db()->prepare("
+            SELECT pur.role_id, prd.nama as role_nama 
+            FROM portal_user_roles pur 
+            JOIN portal_roles_def prd ON prd.id = pur.role_id 
+            WHERE pur.user_id = ?
+        ");
+        $stmtR->execute([$user['id']]);
+        $uRole = $stmtR->fetch();
+
         json_response(200, true, 'Login berhasil!', [
             'token'        => $token,
             'user'         => [
-                'id'            => $user['id'],
-                'username'      => $user['username'],
-                'nama_lengkap'  => $user['nama_lengkap'],
-                'role'          => $user['role'],
-                'avatar'        => $user['avatar']
+                'id'               => (int) $user['id'],
+                'username'         => $user['username'],
+                'nama_lengkap'     => $user['nama_lengkap'],
+                'role'             => $user['role'],
+                'avatar'           => $user['avatar'],
+                'portal_role_id'   => (int) ($uRole['role_id'] ?? 0),
+                'portal_role_nama' => $uRole['role_nama'] ?? '',
+                'permissions'      => array_values(array_unique($permissions))
             ],
             'school' => [
                 'nama' => $namaSekolah,

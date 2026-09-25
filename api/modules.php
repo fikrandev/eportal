@@ -35,8 +35,26 @@ switch ($action) {
  */
 function listModules() {
     try {
+        $user = null;
+        try {
+            $user = auth_check();
+        } catch (Exception $e) {}
+
         $stmt = db()->query("SELECT * FROM modules WHERE status = 1 ORDER BY urutan ASC, nama_modul ASC");
         $modules = $stmt->fetchAll();
+
+        if ($user && ($user['role'] ?? '') !== 'superadmin') {
+            $userPerms = $user['permissions'] ?? [];
+            if (!in_array('*', $userPerms, true) && !empty($user['portal_role_id'])) {
+                $filtered = [];
+                foreach ($modules as $m) {
+                    if (in_array('module_' . $m['slug'], $userPerms, true)) {
+                        $filtered[] = $m;
+                    }
+                }
+                $modules = $filtered;
+            }
+        }
 
         json_response(200, true, 'Data modul berhasil dimuat.', $modules);
     } catch (PDOException $e) {

@@ -10,11 +10,28 @@ const Admin = {
         const user = App.state.user;
         const school = App.state.school;
 
-        if (user.role !== 'superadmin') {
+        if (user.role !== 'superadmin' && !App.hasPermission('admin_panel')) {
             App.navigate('dashboard');
-            EModal.toast({ type: 'error', title: 'Akses Ditolak', message: 'Hanya superadmin.' });
+            EModal.toast({ type: 'error', title: 'Akses Ditolak', message: 'Hanya administrator.' });
             return;
         }
+
+        const canDashboard = App.hasPermission('admin_dashboard');
+        const canYears = App.hasPermission('academic_years_manage');
+        const canStudents = App.hasPermission('students_manage');
+        const canLulus = App.hasPermission('siswa_lulus_manage');
+        const canFoto = App.hasPermission('foto_siswa_manage');
+        const canGurus = App.hasPermission('gurus_manage');
+        const canReferensi = App.hasPermission('referensi_manage');
+        const canUsers = App.hasPermission('users_manage');
+        const canModules = App.hasPermission('modules_manage');
+        const canRoles = App.hasPermission('roles_manage');
+        const canSettings = App.hasPermission('settings_manage');
+        const canReset = App.hasPermission('reset_data_manage');
+
+        const hasAkademik = canYears || canStudents || canLulus || canFoto || canGurus || canReferensi;
+        const hasAdminPortal = canUsers || canModules || canRoles;
+        const hasSistem = canSettings || canReset;
 
         container.innerHTML = `
         <div class="admin-wrapper">
@@ -30,69 +47,91 @@ const Admin = {
                     </div>
                 </div>
                 <nav class="sidebar-nav">
+                    ${canDashboard ? `
                     <div class="sidebar-nav-group">
                         <div class="sidebar-nav-label">Ringkasan</div>
                         <button class="sidebar-nav-item ${section==='dashboard'?'active':''}" data-section="dashboard" onclick="Admin.goTo('dashboard')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
                             Dashboard
                         </button>
-                    </div>
+                    </div>` : ''}
+
+                    ${hasAkademik ? `
                     <div class="sidebar-nav-group">
                         <div class="sidebar-nav-label">Data Akademik</div>
+                        ${canYears ? `
                         <button class="sidebar-nav-item ${section==='academic-years'?'active':''}" data-section="academic-years" onclick="Admin.goTo('academic-years')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/><path d="m9 16 2 2 4-5"/></svg>
                             Tahun Ajaran
-                        </button>
+                        </button>` : ''}
+                        ${canStudents ? `
                         <button class="sidebar-nav-item ${section==='students'?'active':''}" data-section="students" onclick="Admin.goTo('students')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10.5 12 5 2 10.5 12 16l10-5.5Z"/><path d="M6 13v4c2 1.5 10 1.5 12 0v-4"/><path d="M12 16v5"/></svg>
                             Data Siswa
-                        </button>
+                        </button>` : ''}
+                        ${canLulus ? `
                         <button class="sidebar-nav-item ${section==='siswa-lulus'?'active':''}" data-section="siswa-lulus" onclick="Admin.goTo('siswa-lulus')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10.5 12 5 2 10.5 12 16l10-5.5Z"/><path d="M6 13v4c2 1.5 10 1.5 12 0v-4"/><circle cx="12" cy="12" r="9" opacity="0.15"/></svg>
                             Siswa Lulus
-                        </button>
+                        </button>` : ''}
+                        ${canFoto ? `
                         <button class="sidebar-nav-item ${section==='foto-siswa'?'active':''}" data-section="foto-siswa" onclick="Admin.goTo('foto-siswa')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                             Foto Siswa
-                        </button>
+                        </button>` : ''}
+                        ${canGurus ? `
                         <button class="sidebar-nav-item ${section==='gurus'?'active':''}" data-section="gurus" onclick="Admin.goTo('gurus')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                             Data Guru
-                        </button>
+                        </button>` : ''}
+                        ${canReferensi ? `
                         <button class="sidebar-nav-item ${section==='referensi'?'active':''}" data-section="referensi" onclick="Admin.goTo('referensi')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/><circle cx="12" cy="12" r="10" opacity="0.3"/></svg>
                             Data Referensi
-                        </button>
-                    </div>
+                        </button>` : ''}
+                    </div>` : ''}
+
+                    ${hasAdminPortal ? `
                     <div class="sidebar-nav-group">
                         <div class="sidebar-nav-label">Administrasi Portal</div>
+                        ${canUsers ? `
                         <button class="sidebar-nav-item ${section==='users'?'active':''}" data-section="users" onclick="Admin.goTo('users')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                             Kelola User
-                        </button>
+                        </button>` : ''}
+                        ${canModules ? `
                         <button class="sidebar-nav-item ${section==='modules'?'active':''}" data-section="modules" onclick="Admin.goTo('modules')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M12 8v8M8 12h8"/></svg>
                             Kelola Modul
-                        </button>
-                    </div>
+                        </button>` : ''}
+                        ${canRoles ? `
+                        <button class="sidebar-nav-item ${section==='roles'?'active':''}" data-section="roles" onclick="Admin.goTo('roles')">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                            Akses Modul
+                        </button>` : ''}
+                    </div>` : ''}
+
+                    ${hasSistem ? `
                     <div class="sidebar-nav-group">
                         <div class="sidebar-nav-label">Sistem</div>
+                        ${canSettings ? `
                         <button class="sidebar-nav-item ${section==='settings'?'active':''}" data-section="settings" onclick="Admin.goTo('settings')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
                             Pengaturan
-                        </button>
+                        </button>` : ''}
+                        ${canReset ? `
                         <button class="sidebar-nav-item ${section==='reset-data'?'active':''}" data-section="reset-data" onclick="Admin.goTo('reset-data')">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="m12 7v5l4 2"/></svg>
                             Reset Data
-                        </button>
-                    </div>
+                        </button>` : ''}
+                    </div>` : ''}
                 </nav>
                 <div class="sidebar-footer">
                     <div class="sidebar-user">
                         <div class="sidebar-user-avatar">${App.getInitials(user.nama_lengkap)}</div>
                         <div class="sidebar-user-info">
                             <div class="name">${App.escapeHtml(user.nama_lengkap)}</div>
-                            <div class="role">Super Admin</div>
+                            <div class="role">${App.escapeHtml(user.portal_role_nama || (user.role === 'superadmin' ? 'Super Administrator' : user.role))}</div>
                         </div>
                     </div>
                 </div>
@@ -137,7 +176,36 @@ const Admin = {
 
     loadSection(section) {
         this.closeSidebar();
-        const titles = { dashboard:'Dashboard', users:'Kelola User', gurus:'Data Guru', students:'Data Siswa', 'siswa-lulus':'Siswa Lulus (Alumni)', 'foto-siswa':'Foto Siswa', referensi: 'Data Referensi', modules:'Kelola Modul', 'academic-years':'Tahun Ajaran', settings:'Pengaturan', 'reset-data':'Reset Data' };
+
+        const permMap = {
+            'dashboard': 'admin_dashboard',
+            'users': 'users_manage',
+            'roles': 'roles_manage',
+            'gurus': 'gurus_manage',
+            'students': 'students_manage',
+            'siswa-lulus': 'siswa_lulus_manage',
+            'foto-siswa': 'foto_siswa_manage',
+            'referensi': 'referensi_manage',
+            'modules': 'modules_manage',
+            'academic-years': 'academic_years_manage',
+            'settings': 'settings_manage',
+            'reset-data': 'reset_data_manage'
+        };
+
+        const requiredPerm = permMap[section];
+        if (requiredPerm && !App.hasPermission(requiredPerm)) {
+            EModal.toast({ type: 'warning', title: 'Akses Ditolak', message: 'Anda tidak memiliki hak akses untuk menu ini.' });
+            for (const [sec, perm] of Object.entries(permMap)) {
+                if (App.hasPermission(perm)) {
+                    this.goTo(sec);
+                    return;
+                }
+            }
+            App.navigate('dashboard');
+            return;
+        }
+
+        const titles = { dashboard:'Dashboard', users:'Kelola User', roles:'Akses Modul & Role', gurus:'Data Guru', students:'Data Siswa', 'siswa-lulus':'Siswa Lulus (Alumni)', 'foto-siswa':'Foto Siswa', referensi: 'Data Referensi', modules:'Kelola Modul', 'academic-years':'Tahun Ajaran', settings:'Pengaturan', 'reset-data':'Reset Data' };
         $('#adminPageTitle').text(titles[section] || 'Dashboard');
         $('.sidebar-nav-item').removeClass('active');
         $(`.sidebar-nav-item[data-section="${section}"]`).addClass('active');
@@ -145,6 +213,7 @@ const Admin = {
         switch(section) {
             case 'dashboard': this.renderAdminDashboard(); break;
             case 'users': this.renderUserTabs(this.userTab || 'gurus'); break;
+            case 'roles': this.renderRoles(); break;
             case 'gurus': this.usersType = 'gurus'; this.renderUsers("gurus"); break;
             case 'students': this.renderStudents(); break;
             case 'siswa-lulus': this.renderSiswaLulus(); break;
@@ -2898,6 +2967,521 @@ const Admin = {
         });
     },
 
+    // ==================== ROLES & MODULE ACCESS SECTION ====================
+    roleTab: 'accounts',
+    _portalAccountsCache: [],
+
+    renderRoles() {
+        $('#adminContent').html(`
+            <div class="admin-card">
+                <div style="display:flex; gap:0; border-bottom:2px solid var(--border-color, #e2e8f0); margin-bottom:20px; padding: 0 16px;">
+                    <button class="role-tab-btn ${this.roleTab==='accounts'?'active':''}" data-tab="accounts" onclick="Admin.switchRoleTab('accounts')">
+                        Manajemen Akun
+                    </button>
+                    <button class="role-tab-btn ${this.roleTab==='roles'?'active':''}" data-tab="roles" onclick="Admin.switchRoleTab('roles')">
+                        Role &amp; Izin
+                    </button>
+                </div>
+
+                <!-- TAB 1: MANAJEMEN AKUN -->
+                <div class="role-tab-content" id="tab-portal-accounts" style="${this.roleTab==='accounts'?'':'display:none'}">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:16px;">
+                        <div>
+                            <h3 style="margin:0 0 4px; font-size:1.1rem; font-weight:700;">Pengaturan Akses Pengguna</h3>
+                            <div style="font-size:0.84rem; color:var(--text-muted);">
+                                Semua akun aktif E-Portal ditampilkan di sini. Atur siapa yang boleh mengakses modul & menu admin.
+                            </div>
+                        </div>
+                        <div style="min-width:280px; flex:1; max-width:420px;">
+                            <input type="text" class="form-input" id="portalAccountsSearch" placeholder="Cari username, nama, atau role...">
+                        </div>
+                    </div>
+                    <div id="portalAccountsSummary" style="font-size:0.84rem; color:var(--text-muted); margin-bottom:14px;">Memuat data akun...</div>
+                    <div id="portalAccountsTableWrapper">
+                        <div class="skeleton" style="height:220px; border-radius:8px;"></div>
+                    </div>
+                </div>
+
+                <!-- TAB 2: ROLE & IZIN -->
+                <div class="role-tab-content" id="tab-portal-roles" style="${this.roleTab==='roles'?'':'display:none'}">
+                    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
+                        <div>
+                            <h3 style="margin:0 0 4px; font-size:1.1rem; font-weight:700;">Konfigurasi Role &amp; Hak Akses</h3>
+                            <div style="font-size:0.84rem; color:var(--text-muted);">
+                                Buat role baru atau ubah hak akses (centang modul aplikasi dan fitur admin yang diizinkan).
+                            </div>
+                        </div>
+                        <button class="btn btn-primary btn-sm" onclick="Admin.showRoleForm()">
+                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            Tambah Role
+                        </button>
+                    </div>
+                    <div id="portalRolesTableWrapper">
+                        <div class="skeleton" style="height:220px; border-radius:8px;"></div>
+                    </div>
+                </div>
+            </div>
+        `);
+
+        this.loadPortalAccounts();
+        this.loadPortalRoles();
+
+        $('#portalAccountsSearch').on('input', (e) => {
+            this.renderPortalAccountsTable($(e.currentTarget).val());
+        });
+    },
+
+    switchRoleTab(tab) {
+        this.roleTab = tab;
+        $('.role-tab-btn').removeClass('active');
+        $(`.role-tab-btn[data-tab="${tab}"]`).addClass('active');
+        $('.role-tab-content').hide();
+        $(`#tab-portal-${tab}`).show();
+    },
+
+    loadPortalAccounts() {
+        App.api('api/roles.php?action=accounts_list').done(res => {
+            if (!res.success) {
+                $('#portalAccountsTableWrapper').html('<div class="empty-state"><h3>Gagal Memuat Akun</h3></div>');
+                return;
+            }
+            this._portalAccountsCache = Array.isArray(res.data) ? res.data : [];
+            this.renderPortalAccountsTable($('#portalAccountsSearch').val() || '');
+        });
+    },
+
+    renderPortalAccountsTable(query = '') {
+        const data = this._portalAccountsCache || [];
+        const q = String(query || '').trim().toLowerCase();
+        const filtered = !q ? data : data.filter(u => {
+            const str = [u.username, u.nama_lengkap, u.nik, u.email, u.portal_role_nama, u.system_role].filter(Boolean).join(' ').toLowerCase();
+            return str.includes(q);
+        });
+
+        const withRoleCount = data.filter(u => parseInt(u.portal_role_id || 0) > 0).length;
+        $('#portalAccountsSummary').html(`
+            <strong>${filtered.length}</strong> akun tampil dari total <strong>${data.length}</strong> akun aktif.
+            Role Akses aktif: <strong>${withRoleCount}</strong> akun.
+        `);
+
+        if (!filtered.length) {
+            $('#portalAccountsTableWrapper').html('<div class="empty-state" style="padding:30px 0;"><h3>Tidak Ada Akun Ditemukan</h3><p>Sesuaikan kata kunci pencarian Anda.</p></div>');
+            return;
+        }
+
+        const rows = filtered.map(u => {
+            const hasRole = parseInt(u.portal_role_id || 0) > 0;
+            const roleBadge = hasRole 
+                ? `<span class="badge badge-info" style="font-weight:700;">${App.escapeHtml(u.portal_role_nama)}</span>`
+                : `<span class="badge" style="background:#f1f5f9; color:#64748b;">Tanpa Role Khusus</span>`;
+            
+            const safeName = (u.nama_lengkap || '').replace(/'/g, "\\'");
+
+            return `
+                <tr>
+                    <td><div style="font-weight:700; color:var(--primary);">@${App.escapeHtml(u.username)}</div></td>
+                    <td><strong>${App.escapeHtml(u.nama_lengkap || '-')}</strong></td>
+                    <td><span class="badge" style="background:#e0f2fe; color:#0369a1; text-transform:capitalize;">${u.system_role || 'user'}</span></td>
+                    <td>${roleBadge}</td>
+                    <td>
+                        <div style="display:flex; gap:8px; align-items:center;">
+                            <button class="btn btn-sm btn-ghost" style="border:1px solid var(--border-color);" onclick="Admin.showAssignAccountModal(${u.id}, '${safeName}', ${u.portal_role_id || 0})">
+                                ${hasRole ? 'Ubah Akses' : 'Atur Akses'}
+                            </button>
+                            ${hasRole ? `
+                                <button class="btn btn-sm btn-danger" onclick="Admin.revokeAccountAccess(${u.id}, '${safeName}')">
+                                    Cabut
+                                </button>
+                            ` : ''}
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        $('#portalAccountsTableWrapper').html(`
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Username Portal</th>
+                        <th>Nama Lengkap</th>
+                        <th>Role Sistem</th>
+                        <th>Role Akses Portal</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `);
+    },
+
+    loadPortalRoles() {
+        App.api('api/roles.php?action=list_roles').done(res => {
+            if (!res.success || !res.data) {
+                $('#portalRolesTableWrapper').html('<div class="empty-state"><h3>Gagal Memuat Role</h3></div>');
+                return;
+            }
+
+            const roles = res.data;
+            if (!roles.length) {
+                $('#portalRolesTableWrapper').html('<div class="empty-state"><h3>Belum Ada Role</h3><p>Klik tombol "+ Tambah Role" untuk membuat role baru.</p></div>');
+                return;
+            }
+
+            const rows = roles.map(r => {
+                const perms = (r.permissions || '').split(',').filter(Boolean);
+                const isAll = perms.includes('*');
+                let badgesHtml = '';
+
+                if (isAll) {
+                    badgesHtml = '<span class="badge badge-success" style="font-size:11px;">Semua Akses (Superadmin)</span>';
+                } else {
+                    badgesHtml = perms.map(p => {
+                        const isMod = p.startsWith('module_');
+                        const label = isMod ? '📱 ' + p.replace('module_', '') : '⚙️ ' + p;
+                        return `<span class="badge ${isMod?'badge-info':'badge-outline'}" style="font-size:10px; margin:2px;">${label}</span>`;
+                    }).join('');
+                }
+
+                const safeName = (r.nama || '').replace(/'/g, "\\'");
+                const lockIcon = parseInt(r.is_locked) ? ' 🔒' : '';
+
+                return `
+                    <tr>
+                        <td style="min-width:180px;">
+                            <div style="font-weight:700; font-size:14px; color:var(--text-primary);">${App.escapeHtml(r.nama)}${lockIcon}</div>
+                            <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">${App.escapeHtml(r.deskripsi || '-')}</div>
+                        </td>
+                        <td style="width:110px;">
+                            <span class="badge" style="background:#f8fafc; border:1px solid #cbd5e1; font-weight:700;">${r.user_count || 0} Akun</span>
+                        </td>
+                        <td style="max-width:380px;">
+                            <div style="display:flex; flex-wrap:wrap; gap:3px;">
+                                ${badgesHtml || '<span style="color:#94a3b8; font-size:11px;">Tidak ada izin</span>'}
+                            </div>
+                        </td>
+                        <td style="width:100px;">
+                            <div class="actions">
+                                <button class="btn-icon" title="Edit Role & Hak Akses" onclick="Admin.showRoleForm(${r.id})">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                </button>
+                                ${!parseInt(r.is_locked) ? `
+                                    <button class="btn-icon danger" title="Hapus Role" onclick="Admin.deleteRole(${r.id}, '${safeName}')">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                                    </button>
+                                ` : ''}
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            $('#portalRolesTableWrapper').html(`
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Nama Role &amp; Deskripsi</th>
+                            <th>Pengguna</th>
+                            <th>Hak Akses (Izin)</th>
+                            <th>Aksi</th>
+                        </tr>
+                    </thead>
+                    <tbody>${rows}</tbody>
+                </table>
+            `);
+        });
+    },
+
+    showRoleForm(roleId = null) {
+        const isEdit = roleId !== null && roleId !== undefined;
+
+        App.api('api/roles.php?action=get_permissions_def').done(res => {
+            if (!res.success) {
+                EModal.toast({ type:'error', title:'Gagal', message:'Tidak dapat memuat daftar hak akses.' });
+                return;
+            }
+
+            const def = res.data || { modules: [], admin: [] };
+            
+            const modChecks = (def.modules || []).map(m => `
+                <label class="role-perm-item">
+                    <input type="checkbox" class="portal-perm-chk" value="${m.key}">
+                    <div class="perm-text">
+                        <div class="perm-title" style="display:flex; align-items:center; gap:6px;">
+                            <span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${m.color};"></span>
+                            ${App.escapeHtml(m.label)}
+                        </div>
+                        <div class="perm-desc">Akses modul ${App.escapeHtml(m.slug)}</div>
+                    </div>
+                </label>
+            `).join('');
+
+            const adminChecks = (def.admin || []).map(a => `
+                <label class="role-perm-item">
+                    <input type="checkbox" class="portal-perm-chk" value="${a.key}">
+                    <div class="perm-text">
+                        <div class="perm-title">${App.escapeHtml(a.label)}</div>
+                        <div class="perm-desc">${App.escapeHtml(a.desc)}</div>
+                    </div>
+                </label>
+            `).join('');
+
+            const modalHtml = `
+                <div class="admin-form-modal show" id="portalRoleModal" onclick="if(event.target===this)Admin.closeFormModal('portalRoleModal')">
+                    <div class="admin-form-panel" style="max-width:760px; width:95%;">
+                        <div class="panel-header">
+                            <h3>${isEdit ? 'Edit Role &amp; Hak Akses' : 'Tambah Role Baru'}</h3>
+                            <button class="panel-close" onclick="Admin.closeFormModal('portalRoleModal')">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                        </div>
+                        <div class="panel-body" style="max-height:calc(85vh - 130px); overflow-y:auto; padding:20px;">
+                            <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+                                <div class="form-group">
+                                    <label class="form-label">Nama Role <span style="color:#ef4444;">*</span></label>
+                                    <input class="form-input" id="f_pRoleNama" placeholder="Contoh: Operator Sarpras / Staff TU" required>
+                                </div>
+                                <div class="form-group">
+                                    <label class="form-label">Deskripsi</label>
+                                    <input class="form-input" id="f_pRoleDesc" placeholder="Keterangan singkat mengenai tugas role">
+                                </div>
+                            </div>
+
+                            <!-- Header Section Permissions with Toggle All -->
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin: 18px 0 10px; padding-bottom:6px; border-bottom:1px solid #e2e8f0;">
+                                <h4 style="margin:0; font-size:1rem; color:var(--text-primary); font-weight:700;">
+                                    Centang Hak Akses yang Diizinkan:
+                                </h4>
+                                <button type="button" class="btn btn-sm btn-ghost" id="btnToggleAllPerms" onclick="Admin.toggleAllRolePerms()" style="border:1px solid #cbd5e1; font-size:12px; padding:4px 10px;">
+                                    Pilih Semua
+                                </button>
+                            </div>
+
+                            <!-- GROUP 1: MODUL APLIKASI -->
+                            <div style="margin-bottom:18px;">
+                                <div style="font-weight:700; font-size:13px; color:#1e40af; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+                                    <span>📱</span> Modul-Modul Aplikasi E-Portal
+                                </div>
+                                <div class="role-perm-grid">
+                                    ${modChecks}
+                                </div>
+                            </div>
+
+                            <!-- GROUP 2: ADMINISTRASI PORTAL -->
+                            <div>
+                                <div style="font-weight:700; font-size:13px; color:#0f766e; margin-bottom:8px; display:flex; align-items:center; gap:6px;">
+                                    <span>⚙️</span> Menu &amp; Fitur Admin Panel E-Portal
+                                </div>
+                                <div class="role-perm-grid">
+                                    ${adminChecks}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="panel-footer" style="display:flex; justify-content:flex-end; gap:10px;">
+                            <button type="button" class="btn btn-ghost" onclick="Admin.closeFormModal('portalRoleModal')">Batal</button>
+                            <button type="button" class="btn btn-primary" id="btnSavePortalRole" onclick="Admin.savePortalRole(${isEdit ? roleId : 'null'})">
+                                <span class="btn-text">Simpan Role</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            $('body').append(modalHtml);
+
+            if (isEdit) {
+                App.api(`api/roles.php?action=get_role&id=${roleId}`).done(resR => {
+                    if (resR.success && resR.data) {
+                        const r = resR.data;
+                        $('#f_pRoleNama').val(r.nama);
+                        $('#f_pRoleDesc').val(r.deskripsi || '');
+                        if (parseInt(r.is_locked)) {
+                            $('#f_pRoleNama').prop('readonly', true).css('opacity', '0.7');
+                        }
+                        const perms = r.permissions || [];
+                        const isAll = perms.includes('*');
+
+                        $('.portal-perm-chk').each(function() {
+                            if (isAll || perms.includes($(this).val())) {
+                                $(this).prop('checked', true);
+                            }
+                        });
+                    }
+                });
+            }
+        });
+    },
+
+    toggleAllRolePerms() {
+        const chks = $('.portal-perm-chk');
+        const anyUnchecked = chks.toArray().some(el => !el.checked);
+        chks.prop('checked', anyUnchecked);
+        $('#btnToggleAllPerms').text(anyUnchecked ? 'Batal Pilih Semua' : 'Pilih Semua');
+    },
+
+    savePortalRole(id) {
+        const nama = $('#f_pRoleNama').val().trim();
+        const deskripsi = $('#f_pRoleDesc').val().trim();
+        const perms = [];
+        $('.portal-perm-chk:checked').each(function() {
+            perms.push($(this).val());
+        });
+
+        if (!nama) {
+            EModal.toast({ type:'warning', title:'Perhatian', message:'Nama role wajib diisi.' });
+            return;
+        }
+
+        const btn = document.getElementById('btnSavePortalRole');
+        EModal.btnLoading(btn, true);
+
+        const data = { id: id || 0, nama, deskripsi, permissions: perms };
+
+        App.api('api/roles.php?action=save_role', { method: 'POST', data })
+            .done(res => {
+                if (res.success) {
+                    this.closeFormModal('portalRoleModal');
+                    EModal.info({ type:'success', title:'Tersimpan!', message:res.message });
+                    this.loadPortalRoles();
+                    this.loadPortalAccounts();
+                } else {
+                    EModal.toast({ type:'error', title:'Gagal', message:res.message || 'Gagal menyimpan role.' });
+                }
+            })
+            .fail(xhr => {
+                EModal.toast({ type:'error', title:'Gagal', message:xhr.responseJSON?.message || 'Error server.' });
+            })
+            .always(() => EModal.btnLoading(btn, false));
+    },
+
+    deleteRole(id, name) {
+        EModal.confirm({
+            title: 'Hapus Role',
+            message: `Yakin ingin menghapus role <strong>${name}</strong>? Pengguna dengan role ini akan kehilangan izin khususnya.`,
+            type: 'danger',
+            confirmText: 'Ya, Hapus',
+            onConfirm: () => {
+                const l = EModal.loading('Menghapus role...');
+                App.api('api/roles.php?action=delete_role', { method: 'POST', data: { id } })
+                    .done(res => {
+                        EModal.close(l);
+                        if (res.success) {
+                            EModal.info({ type:'success', title:'Dihapus!', message:res.message });
+                            this.loadPortalRoles();
+                            this.loadPortalAccounts();
+                        } else {
+                            EModal.toast({ type:'error', title:'Gagal', message:res.message });
+                        }
+                    })
+                    .fail(xhr => {
+                        EModal.close(l);
+                        EModal.toast({ type:'error', title:'Gagal', message:xhr.responseJSON?.message || 'Error server.' });
+                    });
+            }
+        });
+    },
+
+    showAssignAccountModal(userId, userName, currentRoleId = 0) {
+        App.api('api/roles.php?action=list_roles').done(res => {
+            if (!res.success || !res.data) {
+                EModal.toast({ type:'error', title:'Gagal', message:'Tidak dapat memuat daftar role.' });
+                return;
+            }
+
+            const options = res.data.map(r => `
+                <option value="${r.id}" ${parseInt(r.id) === parseInt(currentRoleId) ? 'selected' : ''}>
+                    ${App.escapeHtml(r.nama)} ${parseInt(r.is_locked) ? '(Sistem)' : ''}
+                </option>
+            `).join('');
+
+            const modalHtml = `
+                <div class="admin-form-modal show" id="assignAccountModal" onclick="if(event.target===this)Admin.closeFormModal('assignAccountModal')">
+                    <div class="admin-form-panel" style="max-width:480px; width:95%;">
+                        <div class="panel-header">
+                            <h3>Atur Akses Pengguna</h3>
+                            <button class="panel-close" onclick="Admin.closeFormModal('assignAccountModal')">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                            </button>
+                        </div>
+                        <div class="panel-body" style="padding:20px;">
+                            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:12px 16px; margin-bottom:18px;">
+                                <div style="font-size:12px; color:var(--text-muted);">Nama Pengguna:</div>
+                                <div style="font-weight:700; font-size:15px; color:var(--text-primary);">${App.escapeHtml(userName)}</div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Pilih Role Akses</label>
+                                <select class="form-select" id="f_assignRoleId">
+                                    <option value="0">-- Tanpa Role Khusus (Default) --</option>
+                                    ${options}
+                                </select>
+                            </div>
+                            <div style="font-size:12px; color:var(--text-muted); background:#f1f5f9; padding:10px 12px; border-radius:8px; line-height:1.45;">
+                                <strong>Info:</strong> Pengguna ini akan memiliki hak akses modul aplikasi dan menu admin sesuai yang dicentang pada role terpilih.
+                            </div>
+                        </div>
+                        <div class="panel-footer" style="display:flex; justify-content:flex-end; gap:10px;">
+                            <button type="button" class="btn btn-ghost" onclick="Admin.closeFormModal('assignAccountModal')">Batal</button>
+                            <button type="button" class="btn btn-primary" id="btnSaveAssignRole" onclick="Admin.saveAssignAccount(${userId})">
+                                <span class="btn-text">Simpan Akses</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            $('body').append(modalHtml);
+        });
+    },
+
+    saveAssignAccount(userId) {
+        const roleId = parseInt($('#f_assignRoleId').val() || 0);
+        const btn = document.getElementById('btnSaveAssignRole');
+        EModal.btnLoading(btn, true);
+
+        App.api('api/roles.php?action=assign_account', { method: 'POST', data: { user_id: userId, role_id: roleId } })
+            .done(res => {
+                if (res.success) {
+                    this.closeFormModal('assignAccountModal');
+                    EModal.toast({ type:'success', title:'Berhasil', message:res.message });
+                    this.loadPortalAccounts();
+                    this.loadPortalRoles();
+                } else {
+                    EModal.toast({ type:'error', title:'Gagal', message:res.message });
+                }
+            })
+            .fail(xhr => {
+                EModal.toast({ type:'error', title:'Gagal', message:xhr.responseJSON?.message || 'Error server.' });
+            })
+            .always(() => EModal.btnLoading(btn, false));
+    },
+
+    revokeAccountAccess(userId, userName) {
+        EModal.confirm({
+            title: 'Cabut Akses Role',
+            message: `Yakin ingin mencabut role akses khusus untuk <strong>${userName}</strong>?`,
+            type: 'warning',
+            confirmText: 'Ya, Cabut',
+            onConfirm: () => {
+                const l = EModal.loading('Mencabut akses...');
+                App.api('api/roles.php?action=assign_account', { method: 'POST', data: { user_id: userId, role_id: 0 } })
+                    .done(res => {
+                        EModal.close(l);
+                        if (res.success) {
+                            EModal.toast({ type:'success', title:'Akses Dicabut', message:res.message });
+                            this.loadPortalAccounts();
+                            this.loadPortalRoles();
+                        } else {
+                            EModal.toast({ type:'error', title:'Gagal', message:res.message });
+                        }
+                    })
+                    .fail(xhr => {
+                        EModal.close(l);
+                        EModal.toast({ type:'error', title:'Gagal', message:xhr.responseJSON?.message || 'Error server.' });
+                    });
+            }
+        });
+    },
+
     // ==================== SETTINGS SECTION ====================
     renderSettings() {
         $('#adminContent').html(`<div class="admin-card"><div class="admin-card-body" id="settingsContent"><div class="skeleton" style="height:300px;border-radius:8px"></div></div></div>`);
@@ -3817,6 +4401,635 @@ const Admin = {
             EModal.toast({ type: 'error', title: 'Gagal Upload ZIP', message: xhr.responseJSON?.message || 'Terjadi kesalahan.' });
         }).always(() => {
             $('#photoZipInput').val('');
+        });
+    },
+
+    // ==================== AKSES MODUL & ROLE MANAGEMENT ====================
+    roleActiveTab: 'accounts',
+    accountsCache: [],
+    rolesDefCache: [],
+    permsDefCache: null,
+
+    renderRoles() {
+        if (!App.hasPermission('roles_manage')) {
+            $('#adminContent').html(`
+                <div class="admin-card">
+                    <div class="admin-card-body" style="text-align:center; padding:50px 20px;">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:48px; height:48px; color:#ef4444; margin-bottom:12px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        <h3 style="margin-bottom:6px;">Akses Ditolak</h3>
+                        <p style="color:var(--text-muted);">Anda tidak memiliki izin untuk mengelola Akses Modul & Role.</p>
+                    </div>
+                </div>
+            `);
+            return;
+        }
+
+        $('#adminContent').html(`
+            <div class="admin-card">
+                <div class="admin-card-header" style="border-bottom:none; padding-bottom:0;">
+                    <div>
+                        <h3 style="display:flex; align-items:center; gap:8px;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px; height:20px; color:#1565C0;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                            Akses Modul & Role Pengguna
+                        </h3>
+                        <p class="admin-subtitle">Kelola pembagian hak akses aplikasi modul E-Portal dan menu administrasi untuk setiap akun pengguna.</p>
+                    </div>
+                </div>
+
+                <!-- TAB NAVIGATION -->
+                <div style="display:flex; gap:0; border-bottom:2px solid var(--border-color, #e2e8f0); padding: 0 24px;">
+                    <button class="role-tab-btn ${this.roleActiveTab === 'accounts' ? 'active' : ''}" id="tabBtnAccounts" onclick="Admin.switchRoleTab('accounts')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px; height:16px; margin-right:6px; vertical-align:text-bottom;"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                        Manajemen Akun
+                    </button>
+                    <button class="role-tab-btn ${this.roleActiveTab === 'roles' ? 'active' : ''}" id="tabBtnRoles" onclick="Admin.switchRoleTab('roles')">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px; height:16px; margin-right:6px; vertical-align:text-bottom;"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                        Role & Izin
+                    </button>
+                </div>
+
+                <div class="admin-card-body" style="padding-top:20px;">
+                    <!-- TAB 1: MANAJEMEN AKUN -->
+                    <div id="roleTabAccounts" style="${this.roleActiveTab === 'accounts' ? '' : 'display:none;'}">
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:16px;">
+                            <div id="accountsSummary" style="font-size:0.85rem; color:var(--text-muted);">
+                                Memuat data akun...
+                            </div>
+                            <div style="min-width:280px; flex:1; max-width:420px;" class="search-box">
+                                <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                <input type="text" id="roleAccountsSearch" placeholder="Cari username, nama, atau role...">
+                            </div>
+                        </div>
+
+                        <div id="roleAccountsTableWrapper">
+                            <div style="text-align:center; padding:40px; color:#94a3b8;">Memuat data akun...</div>
+                        </div>
+                    </div>
+
+                    <!-- TAB 2: ROLE & IZIN -->
+                    <div id="roleTabRoles" style="${this.roleActiveTab === 'roles' ? '' : 'display:none;'}">
+                        <div style="display:flex; justify-content:space-between; align-items:center; gap:16px; flex-wrap:wrap; margin-bottom:16px;">
+                            <div>
+                                <h4 style="margin:0 0 4px 0; font-size:1rem; font-weight:700;">Daftar Role & Akses Modul</h4>
+                                <p style="margin:0; font-size:0.82rem; color:var(--text-muted);">Tentukan role baru dan centang modul aplikasi serta menu admin yang dapat diakses.</p>
+                            </div>
+                            <button class="btn btn-primary btn-sm" onclick="Admin.showRoleForm()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px; height:16px; margin-right:4px;"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                + Tambah Role
+                            </button>
+                        </div>
+
+                        <div id="rolesDefTableWrapper">
+                            <div style="text-align:center; padding:40px; color:#94a3b8;">Memuat data role...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `);
+
+        // Search event listener
+        $('#roleAccountsSearch').on('input', App.debounce((e) => {
+            this.renderPortalAccountsTable($(e.target).val());
+        }, 200));
+
+        this.loadPortalAccounts();
+        this.loadPortalRoles();
+    },
+
+    switchRoleTab(tab) {
+        this.roleActiveTab = tab;
+        $('.role-tab-btn').removeClass('active');
+        if (tab === 'accounts') {
+            $('#tabBtnAccounts').addClass('active');
+            $('#roleTabAccounts').show();
+            $('#roleTabRoles').hide();
+        } else {
+            $('#tabBtnRoles').addClass('active');
+            $('#roleTabAccounts').hide();
+            $('#roleTabRoles').show();
+        }
+    },
+
+    loadPortalAccounts() {
+        App.api('api/roles.php?action=accounts_list').done(res => {
+            if (!res.success) {
+                $('#roleAccountsTableWrapper').html('<div style="text-align:center; padding:40px; color:#ef4444;">Gagal memuat akun.</div>');
+                return;
+            }
+            this.accountsCache = res.data || [];
+            this.renderPortalAccountsTable($('#roleAccountsSearch').val() || '');
+        }).fail(xhr => {
+            $('#roleAccountsTableWrapper').html(`<div style="text-align:center; padding:40px; color:#ef4444;">Gagal memuat: ${xhr.responseJSON?.message || 'Error'}</div>`);
+        });
+    },
+
+    renderPortalAccountsTable(query = '') {
+        const data = Array.isArray(this.accountsCache) ? this.accountsCache : [];
+        const keyword = String(query || '').trim().toLowerCase();
+        const filtered = !keyword ? data : data.filter(u => {
+            const haystack = [
+                u.username,
+                u.nama_lengkap,
+                u.nik,
+                u.email,
+                u.system_role,
+                u.portal_role_nama
+            ].filter(Boolean).join(' ').toLowerCase();
+            return haystack.includes(keyword);
+        });
+
+        const withAccess = data.filter(u => parseInt(u.portal_role_id || 0) > 0 || u.system_role === 'superadmin').length;
+        $('#accountsSummary').html(
+            `Menampilkan <strong>${filtered.length}</strong> dari <strong>${data.length}</strong> akun aktif. ` +
+            `Akun dengan role/akses: <strong>${withAccess}</strong> pengguna.`
+        );
+
+        if (!filtered.length) {
+            $('#roleAccountsTableWrapper').html('<div style="text-align:center; padding:40px; color:#94a3b8;">Tidak ada data akun yang sesuai pencarian.</div>');
+            return;
+        }
+
+        const rows = filtered.map(u => {
+            const isSuper = u.system_role === 'superadmin';
+            const hasPortalRole = parseInt(u.portal_role_id || 0) > 0;
+            
+            let roleBadge = '';
+            if (isSuper) {
+                roleBadge = '<span class="badge" style="background:#e0e7ff; color:#3730a3; font-weight:700;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px;height:12px;margin-right:4px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg> Super Administrator</span>';
+            } else if (hasPortalRole) {
+                roleBadge = `<span class="badge badge-primary" style="font-weight:700;">${App.escapeHtml(u.portal_role_nama)}</span> <small style="color:#64748b; font-size:11px;">(${u.perms_count || 0} izin)</small>`;
+            } else {
+                roleBadge = '<span class="badge" style="background:#f1f5f9; color:#64748b;">Standar / Belum Diatur</span>';
+            }
+
+            const safeName = (u.nama_lengkap || '').replace(/'/g, "\\'");
+            const safeUsername = App.escapeHtml(u.username || '-');
+
+            let actionBtns = '';
+            if (isSuper) {
+                actionBtns = '<span style="font-size:11px; color:#94a3b8; font-style:italic;">Akses Penuh (Sistem)</span>';
+            } else {
+                actionBtns = `
+                    <button class="btn btn-sm btn-ghost" style="border:1px solid var(--border-color, #cbd5e1);" onclick="Admin.showAssignAccountModal(${u.id}, '${safeName}', ${u.portal_role_id || 0})">
+                        ${hasPortalRole ? 'Ubah Akses' : 'Atur Akses'}
+                    </button>
+                    ${hasPortalRole ? `<button class="btn btn-sm btn-danger" onclick="Admin.revokeAccountAccess(${u.id}, '${safeName}')">Cabut</button>` : ''}
+                `;
+            }
+
+            return `
+                <tr>
+                    <td>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <div class="sidebar-user-avatar" style="width:34px; height:34px; font-size:12px;">${App.getInitials(u.nama_lengkap)}</div>
+                            <div>
+                                <strong style="color:var(--text-primary); font-size:13px;">${App.escapeHtml(u.nama_lengkap || '-')}</strong>
+                                <div style="font-size:11px; color:#64748b;">@${safeUsername} ${u.email ? '• ' + App.escapeHtml(u.email) : ''}</div>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge" style="background:#f8fafc; border:1px solid #e2e8f0; color:#475569; text-transform:capitalize;">${App.escapeHtml(u.system_role || 'user')}</span>
+                    </td>
+                    <td>${roleBadge}</td>
+                    <td style="text-align:right;">
+                        <div style="display:flex; gap:6px; justify-content:flex-end; align-items:center;">
+                            ${actionBtns}
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        $('#roleAccountsTableWrapper').html(`
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Akun Pengguna</th>
+                        <th>Role Sistem</th>
+                        <th>Role & Hak Akses</th>
+                        <th style="text-align:right;">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `);
+    },
+
+    loadPortalRoles() {
+        App.api('api/roles.php?action=list_roles').done(res => {
+            if (!res.success) {
+                $('#rolesDefTableWrapper').html('<div style="text-align:center; padding:40px; color:#ef4444;">Gagal memuat role.</div>');
+                return;
+            }
+            this.rolesDefCache = res.data || [];
+            this.renderRolesDefTable();
+        }).fail(xhr => {
+            $('#rolesDefTableWrapper').html(`<div style="text-align:center; padding:40px; color:#ef4444;">Gagal memuat: ${xhr.responseJSON?.message || 'Error'}</div>`);
+        });
+    },
+
+    renderRolesDefTable() {
+        const roles = this.rolesDefCache || [];
+        if (!roles.length) {
+            $('#rolesDefTableWrapper').html('<div style="text-align:center; padding:40px; color:#94a3b8;">Belum ada role yang dibuat.</div>');
+            return;
+        }
+
+        const rows = roles.map(r => {
+            const perms = (r.permissions || '').split(',').filter(Boolean);
+            const isLocked = parseInt(r.is_locked || 0) === 1;
+            const safeName = (r.nama || '').replace(/'/g, "\\'");
+
+            let badgeList = '';
+            if (perms.includes('*')) {
+                badgeList = '<span class="badge" style="background:#dbeafe; color:#1e40af; font-weight:700;">★ Semua Akses Modul & Admin Panel</span>';
+            } else {
+                const maxShow = 6;
+                const shown = perms.slice(0, maxShow);
+                const remaining = perms.length - maxShow;
+
+                badgeList = shown.map(p => {
+                    const isMod = p.startsWith('module_');
+                    const clean = isMod ? '📱 ' + p.replace('module_', '') : '⚙️ ' + p;
+                    const bg = isMod ? '#f0fdf4' : '#f8fafc';
+                    const col = isMod ? '#15803d' : '#334155';
+                    const brd = isMod ? '#bbf7d0' : '#e2e8f0';
+                    return `<span class="badge" style="background:${bg}; color:${col}; border:1px solid ${brd}; font-size:11px; margin:2px;">${clean}</span>`;
+                }).join('');
+
+                if (remaining > 0) {
+                    badgeList += `<span class="badge" style="background:#f1f5f9; color:#64748b; font-size:10px; margin:2px;">+${remaining} izin lainnya</span>`;
+                }
+            }
+
+            const delBtn = isLocked
+                ? ''
+                : `<button class="btn-icon danger" onclick="Admin.deleteRole(${r.id}, '${safeName}')" title="Hapus Role"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>`;
+
+            return `
+                <tr>
+                    <td style="min-width:180px;">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <strong>${App.escapeHtml(r.nama)}</strong>
+                            ${isLocked ? '<span title="Role Sistem Terlindungi" style="font-size:13px;">🔒</span>' : ''}
+                        </div>
+                        <div style="font-size:12px; color:var(--text-muted); margin-top:2px;">${App.escapeHtml(r.deskripsi || '-')}</div>
+                    </td>
+                    <td>
+                        <div style="display:flex; flex-wrap:wrap; gap:4px; max-width:550px;">
+                            ${badgeList || '<span style="color:#94a3b8; font-style:italic; font-size:12px;">Tanpa Izin</span>'}
+                        </div>
+                    </td>
+                    <td style="text-align:center; width:100px;">
+                        <span class="badge ${parseInt(r.user_count || 0) > 0 ? 'badge-primary' : ''}" style="font-weight:700;">${r.user_count || 0} akun</span>
+                    </td>
+                    <td style="text-align:right; width:100px;">
+                        <div class="actions" style="justify-content:flex-end;">
+                            <button class="btn-icon" onclick="Admin.showRoleForm(${r.id})" title="Edit Role & Akses"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                            ${delBtn}
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        $('#rolesDefTableWrapper').html(`
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Role</th>
+                        <th>Izin & Modul Yang Dapat Diakses</th>
+                        <th style="text-align:center;">Total Akun</th>
+                        <th style="text-align:right;">Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>${rows}</tbody>
+            </table>
+        `);
+    },
+
+    showRoleForm(roleId = null) {
+        const isEdit = roleId !== null && roleId !== undefined;
+        const loader = EModal.loading('Memuat konfigurasi izin...');
+
+        App.api('api/roles.php?action=get_permissions_def').done(res => {
+            EModal.close(loader);
+            if (!res.success) {
+                EModal.toast({ type: 'error', title: 'Gagal', message: res.message || 'Gagal memuat definisi izin.' });
+                return;
+            }
+
+            const defs = res.data || { modules: [], admin: [] };
+            this.permsDefCache = defs;
+
+            // Generate module checkboxes
+            const modChecksHtml = (defs.modules || []).map(m => `
+                <label class="role-perm-item" for="perm_${m.key}">
+                    <input type="checkbox" id="perm_${m.key}" class="role-perm-chk" value="${m.key}">
+                    <div class="perm-text">
+                        <div class="perm-title" style="display:flex; align-items:center; gap:6px;">
+                            <span style="width:10px; height:10px; border-radius:50%; background:${m.color || '#1565C0'}; display:inline-block;"></span>
+                            ${App.escapeHtml(m.label)}
+                        </div>
+                        <div class="perm-desc">Modul URL: /${App.escapeHtml(m.slug)}</div>
+                    </div>
+                </label>
+            `).join('');
+
+            // Generate admin feature checkboxes
+            const adminChecksHtml = (defs.admin || []).map(a => `
+                <label class="role-perm-item" for="perm_${a.key}">
+                    <input type="checkbox" id="perm_${a.key}" class="role-perm-chk" value="${a.key}">
+                    <div class="perm-text">
+                        <div class="perm-title">${App.escapeHtml(a.label)}</div>
+                        <div class="perm-desc">${App.escapeHtml(a.desc || '')}</div>
+                    </div>
+                </label>
+            `).join('');
+
+            const modalHtml = `
+            <div class="admin-form-modal show" id="roleFormModal" onclick="if(event.target===this) Admin.closeFormModal('roleFormModal');">
+                <div class="admin-form-panel" style="max-width:840px;">
+                    <div class="panel-header">
+                        <h3>${isEdit ? 'Edit Role & Hak Akses' : 'Tambah Role Baru'}</h3>
+                        <button class="panel-close" onclick="Admin.closeFormModal('roleFormModal');">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
+                    <div class="panel-body" style="max-height: calc(85vh - 130px); overflow-y:auto; padding:20px 24px;">
+                        <div class="form-group">
+                            <label class="form-label">Nama Role <span style="color:#ef4444;">*</span></label>
+                            <input class="form-input" id="roleFormNama" placeholder="Contoh: Operator Sarpras, Guru Pengajar, Staff Ujian">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Deskripsi Role</label>
+                            <input class="form-input" id="roleFormDesc" placeholder="Keterangan singkat tugas atau batasan wewenang role ini">
+                        </div>
+
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin: 24px 0 12px 0;">
+                            <div>
+                                <h4 style="margin:0; font-size:15px; font-weight:700; color:var(--text-primary);">Centang Hak Akses Modul & Menu</h4>
+                                <span style="font-size:12px; color:var(--text-muted);">Pilih fitur apa saja yang dapat dibuka oleh pengguna dengan role ini.</span>
+                            </div>
+                            <div style="display:flex; gap:8px;">
+                                <button type="button" class="btn btn-sm btn-ghost" onclick="Admin.toggleAllRolePerms(true)" style="border:1px solid #cbd5e1; font-size:12px;">Pilih Semua</button>
+                                <button type="button" class="btn btn-sm btn-ghost" onclick="Admin.toggleAllRolePerms(false)" style="border:1px solid #cbd5e1; font-size:12px;">Batalkan Semua</button>
+                            </div>
+                        </div>
+
+                        <!-- SECTION 1: MODUL-MODUL APLIKASI -->
+                        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:16px; margin-bottom:16px;">
+                            <div style="display:flex; align-items:center; gap:6px; margin-bottom:12px;">
+                                <span style="font-size:16px;">📱</span>
+                                <strong style="font-size:14px; color:#1e293b;">Modul-Modul Aplikasi E-Portal</strong>
+                                <span style="font-size:11px; color:#64748b;">(Tampil pada layar Dashboard portal)</span>
+                            </div>
+                            <div class="role-perm-grid">
+                                ${modChecksHtml}
+                            </div>
+                        </div>
+
+                        <!-- SECTION 2: FITUR & MENU ADMIN PANEL -->
+                        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:12px; padding:16px;">
+                            <div style="display:flex; align-items:center; gap:6px; margin-bottom:12px;">
+                                <span style="font-size:16px;">⚙️</span>
+                                <strong style="font-size:14px; color:#1e293b;">Menu & Administrasi E-Portal</strong>
+                                <span style="font-size:11px; color:#64748b;">(Akses masuk dan wewenang kelola di Admin Panel)</span>
+                            </div>
+                            <div class="role-perm-grid">
+                                ${adminChecksHtml}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="panel-footer" style="padding:16px 24px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:10px;">
+                        <button class="btn btn-ghost" onclick="Admin.closeFormModal('roleFormModal');">Batal</button>
+                        <button class="btn btn-primary" id="btnSavePortalRole" onclick="Admin.savePortalRole(${roleId || 'null'})">
+                            <span class="btn-text">Simpan Role</span>
+                        </button>
+                    </div>
+                </div>
+            </div>`;
+
+            $('body').append(modalHtml);
+
+            if (isEdit) {
+                const loadRoleDetail = EModal.loading('Memuat data role...');
+                App.api(`api/roles.php?action=get_role&id=${roleId}`).done(rRes => {
+                    EModal.close(loadRoleDetail);
+                    if (rRes.success && rRes.data) {
+                        const r = rRes.data;
+                        $('#roleFormNama').val(r.nama || '');
+                        $('#roleFormDesc').val(r.deskripsi || '');
+                        if (parseInt(r.is_locked || 0) === 1) {
+                            $('#roleFormNama').prop('readonly', true).css('background', '#f1f5f9');
+                        }
+
+                        const perms = r.permissions || [];
+                        if (perms.includes('*')) {
+                            $('.role-perm-chk').prop('checked', true);
+                        } else {
+                            $('.role-perm-chk').each(function() {
+                                if (perms.includes($(this).val())) {
+                                    $(this).prop('checked', true);
+                                }
+                            });
+                        }
+                    }
+                }).fail(() => EModal.close(loadRoleDetail));
+            }
+        }).fail(() => {
+            EModal.close(loader);
+            EModal.toast({ type: 'error', title: 'Gagal', message: 'Gagal menghubungi server.' });
+        });
+    },
+
+    toggleAllRolePerms(selectAll) {
+        $('.role-perm-chk').prop('checked', selectAll);
+    },
+
+    savePortalRole(roleId = null) {
+        const isEdit = roleId !== null && roleId !== undefined;
+        const btn = document.getElementById('btnSavePortalRole');
+        const nama = ($('#roleFormNama').val() || '').trim();
+        const deskripsi = ($('#roleFormDesc').val() || '').trim();
+
+        if (!nama) {
+            EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Nama role wajib diisi.' });
+            return;
+        }
+
+        const perms = [];
+        $('.role-perm-chk:checked').each(function() {
+            perms.push($(this).val());
+        });
+
+        EModal.btnLoading(btn, true);
+
+        const data = {
+            id: isEdit ? roleId : 0,
+            nama,
+            deskripsi,
+            permissions: perms
+        };
+
+        App.api('api/roles.php?action=save_role', {
+            method: 'POST',
+            data: data
+        }).done(res => {
+            if (res.success) {
+                this.closeFormModal('roleFormModal');
+                EModal.info({ type: 'success', title: 'Berhasil!', message: res.message });
+                this.loadPortalRoles();
+                this.loadPortalAccounts();
+            }
+        }).fail(xhr => {
+            EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menyimpan role.' });
+        }).always(() => {
+            EModal.btnLoading(btn, false);
+        });
+    },
+
+    deleteRole(roleId, roleName) {
+        EModal.confirm({
+            title: 'Hapus Role',
+            message: `Apakah Anda yakin ingin menghapus role <strong>${App.escapeHtml(roleName)}</strong>?<br><small style="color:var(--text-muted)">Pengguna yang memiliki role ini akan kembali ke pengaturan default.</small>`,
+            type: 'danger',
+            confirmText: 'Ya, Hapus',
+            onConfirm: () => {
+                const loader = EModal.loading('Menghapus role...');
+                App.api('api/roles.php?action=delete_role', {
+                    method: 'POST',
+                    data: { id: roleId }
+                }).done(res => {
+                    EModal.close(loader);
+                    if (res.success) {
+                        EModal.info({ type: 'success', title: 'Dihapus!', message: res.message });
+                        this.loadPortalRoles();
+                        this.loadPortalAccounts();
+                    }
+                }).fail(xhr => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menghapus role.' });
+                });
+            }
+        });
+    },
+
+    showAssignAccountModal(userId, userName, currentRoleId = 0) {
+        const loader = EModal.loading('Memuat daftar role...');
+        App.api('api/roles.php?action=list_roles').done(res => {
+            EModal.close(loader);
+            if (!res.success) {
+                EModal.toast({ type: 'error', title: 'Gagal', message: res.message });
+                return;
+            }
+
+            const roles = res.data || [];
+            const roleOpts = roles.map(r => `
+                <option value="${r.id}" ${parseInt(r.id) === parseInt(currentRoleId) ? 'selected' : ''}>
+                    ${App.escapeHtml(r.nama)} ${parseInt(r.is_locked || 0) === 1 ? '(Sistem)' : ''}
+                </option>
+            `).join('');
+
+            const modalHtml = `
+            <div class="admin-form-modal show" id="assignAccountModal" onclick="if(event.target===this) Admin.closeFormModal('assignAccountModal');">
+                <div class="admin-form-panel" style="max-width:520px;">
+                    <div class="panel-header">
+                        <h3>Atur Akses Pengguna</h3>
+                        <button class="panel-close" onclick="Admin.closeFormModal('assignAccountModal');">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
+                    <div class="panel-body" style="padding:20px 24px;">
+                        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:14px; margin-bottom:18px; display:flex; align-items:center; gap:12px;">
+                            <div class="sidebar-user-avatar" style="width:40px; height:40px; font-size:14px;">${App.getInitials(userName)}</div>
+                            <div>
+                                <strong style="display:block; font-size:14px; color:#1e293b;">${App.escapeHtml(userName)}</strong>
+                                <span style="font-size:12px; color:#64748b;">Pilih role hak akses yang akan diterapkan untuk pengguna ini.</span>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Pilih Role Hak Akses <span style="color:#ef4444;">*</span></label>
+                            <select class="form-select" id="assignSelectRole">
+                                <option value="0">-- Tanpa Role Khusus (Standar) --</option>
+                                ${roleOpts}
+                            </select>
+                        </div>
+
+                        <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:8px; padding:12px; font-size:12px; color:#1e40af; line-height:1.5;">
+                            <strong>💡 Catatan:</strong> Pengguna akan otomatis hanya dapat melihat modul aplikasi dan menu administrasi E-Portal sesuai centang izin pada role yang dipilih.
+                        </div>
+                    </div>
+                    <div class="panel-footer" style="padding:14px 24px; border-top:1px solid #e2e8f0; display:flex; justify-content:flex-end; gap:10px;">
+                        <button class="btn btn-ghost" onclick="Admin.closeFormModal('assignAccountModal');">Batal</button>
+                        <button class="btn btn-primary" id="btnSaveAssignAccount" onclick="Admin.saveAssignAccount(${userId})">
+                            <span class="btn-text">Simpan Akses</span>
+                        </button>
+                    </div>
+                </div>
+            </div>`;
+
+            $('body').append(modalHtml);
+        }).fail(() => {
+            EModal.close(loader);
+            EModal.toast({ type: 'error', title: 'Gagal', message: 'Gagal memuat role.' });
+        });
+    },
+
+    saveAssignAccount(userId) {
+        const btn = document.getElementById('btnSaveAssignAccount');
+        const roleId = parseInt($('#assignSelectRole').val() || 0);
+
+        EModal.btnLoading(btn, true);
+
+        App.api('api/roles.php?action=assign_account', {
+            method: 'POST',
+            data: {
+                user_id: userId,
+                role_id: roleId
+            }
+        }).done(res => {
+            if (res.success) {
+                this.closeFormModal('assignAccountModal');
+                EModal.info({ type: 'success', title: 'Berhasil!', message: res.message });
+                this.loadPortalAccounts();
+                this.loadPortalRoles();
+            }
+        }).fail(xhr => {
+            EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menyimpan akses.' });
+        }).always(() => {
+            EModal.btnLoading(btn, false);
+        });
+    },
+
+    revokeAccountAccess(userId, userName) {
+        EModal.confirm({
+            title: 'Cabut Akses Pengguna',
+            message: `Apakah Anda yakin ingin mencabut role hak akses untuk <strong>${App.escapeHtml(userName)}</strong>?<br><small style="color:var(--text-muted)">Pengguna akan kembali ke hak akses default sistem.</small>`,
+            type: 'danger',
+            confirmText: 'Ya, Cabut Akses',
+            onConfirm: () => {
+                const loader = EModal.loading('Mencabut akses...');
+                App.api('api/roles.php?action=assign_account', {
+                    method: 'POST',
+                    data: {
+                        user_id: userId,
+                        role_id: 0
+                    }
+                }).done(res => {
+                    EModal.close(loader);
+                    if (res.success) {
+                        EModal.info({ type: 'success', title: 'Akses Dicabut', message: res.message });
+                        this.loadPortalAccounts();
+                        this.loadPortalRoles();
+                    }
+                }).fail(xhr => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal mencabut akses.' });
+                });
+            }
         });
     }
 };

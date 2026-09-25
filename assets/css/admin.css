@@ -1597,3 +1597,68 @@
     .admin-photo-name { font-size: 0.75rem; }
     .admin-photo-del { opacity: 1; }
 }
+
+/* ==================== ROLE & MODULE ACCESS STYLES ==================== */
+.role-tab-btn {
+    padding: 12px 22px;
+    border: none;
+    background: none;
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -2px;
+    color: var(--text-muted);
+    transition: all 0.2s ease;
+}
+.role-tab-btn:hover {
+    color: var(--primary);
+}
+.role-tab-btn.active {
+    border-bottom-color: var(--primary);
+    color: var(--primary);
+}
+.role-perm-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 10px;
+}
+.role-perm-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-color, #e2e8f0);
+    border-radius: 10px;
+    background: #ffffff;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+.role-perm-item:hover {
+    border-color: #3b82f6;
+    background: #f8fafc;
+}
+.role-perm-item input[type="checkbox"] {
+    margin-top: 3px;
+    cursor: pointer;
+    width: 16px;
+    height: 16px;
+    accent-color: #1565C0;
+}
+.role-perm-item .perm-text {
+    flex: 1;
+    min-width: 0;
+}
+.role-perm-item .perm-title {
+    font-weight: 700;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+.role-perm-item .perm-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 1px;
+    line-height: 1.3;
+}
+

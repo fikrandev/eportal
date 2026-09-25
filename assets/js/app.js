@@ -220,6 +220,17 @@ const App = {
     },
 
     /**
+     * Check if current user has permission
+     */
+    hasPermission(permKey) {
+        const user = this.state.user;
+        if (!user) return false;
+        if (user.role === 'superadmin') return true;
+        const perms = user.permissions || [];
+        return perms.includes('*') || perms.includes(permKey);
+    },
+
+    /**
      * Format date
      */
     formatDate(dateStr) {
@@ -246,6 +257,16 @@ const App = {
             .join('')
             .substring(0, 2)
             .toUpperCase();
+    },
+
+    /**
+     * Check if current user has permission
+     */
+    hasPermission(permKey) {
+        if (!this.state.user) return false;
+        if (this.state.user.role === 'superadmin') return true;
+        const perms = this.state.user.permissions || [];
+        return perms.includes('*') || perms.includes(permKey);
     },
 
     /**

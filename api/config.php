@@ -199,9 +199,12 @@ function auth_check()
 
     try {
         $stmt = db()->prepare("
-            SELECT s.*, u.id as user_id, u.username, u.nama_lengkap, u.role, u.avatar
+            SELECT s.*, u.id as user_id, u.username, u.nama_lengkap, u.role, u.avatar,
+                   pur.role_id as portal_role_id, prd.nama as portal_role_nama
             FROM sessions s 
             JOIN users u ON s.user_id = u.id 
+            LEFT JOIN portal_user_roles pur ON pur.user_id = u.id
+            LEFT JOIN portal_roles_def prd ON prd.id = pur.role_id
             WHERE s.token = ? AND s.expired_at > NOW()
         ");
         $stmt->execute([$token]);
@@ -211,16 +214,71 @@ function auth_check()
             json_response(401, false, 'Sesi telah berakhir. Silakan login kembali.');
         }
 
+        $permissions = portal_get_user_permissions($session['user_id']);
+        if ($session['role'] === 'superadmin') {
+            $permissions[] = '*';
+        }
+
         return [
-            'user_id' => $session['user_id'],
+            'user_id' => (int) $session['user_id'],
             'username' => $session['username'],
             'nama_lengkap' => $session['nama_lengkap'],
             'role' => $session['role'],
-            'avatar' => $session['avatar']
+            'avatar' => $session['avatar'],
+            'portal_role_id' => (int) ($session['portal_role_id'] ?? 0),
+            'portal_role_nama' => $session['portal_role_nama'] ?? '',
+            'permissions' => array_values(array_unique($permissions))
         ];
     } catch (PDOException $e) {
         json_response(500, false, 'Server error: ' . $e->getMessage());
     }
+}
+
+/**
+ * Get user permissions array
+ */
+function portal_get_user_permissions($userId) {
+    if (!$userId) return [];
+    try {
+        $stmt = db()->prepare("
+            SELECT prp.permission_key 
+            FROM portal_user_roles pur
+            JOIN portal_role_permissions prp ON prp.role_id = pur.role_id
+            WHERE pur.user_id = ?
+        ");
+        $stmt->execute([(int)$userId]);
+        return $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+    } catch (Exception $e) {
+        return [];
+    }
+}
+
+/**
+ * Check if user has a permission
+ */
+function portal_has_permission($user, $permissionKey) {
+    if (!$user) return false;
+    if (($user['role'] ?? '') === 'superadmin') return true;
+    
+    $userId = (int)($user['id'] ?? ($user['user_id'] ?? 0));
+    if (!$userId) return false;
+    
+    $perms = $user['permissions'] ?? portal_get_user_permissions($userId);
+    if (in_array('*', $perms, true) || in_array($permissionKey, $perms, true)) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * Require permission or 403
+ */
+function portal_require_permission($permissionKey) {
+    $user = auth_check();
+    if (!portal_has_permission($user, $permissionKey)) {
+        json_response(403, false, 'Akses ditolak. Anda tidak memiliki izin untuk fitur ini.');
+    }
+    return $user;
 }
 
 /**
@@ -229,8 +287,8 @@ function auth_check()
 function require_superadmin()
 {
     $user = auth_check();
-    if ($user['role'] !== 'superadmin') {
-        json_response(403, false, 'Akses ditolak. Hanya superadmin yang dapat mengakses.');
+    if ($user['role'] !== 'superadmin' && !portal_has_permission($user, 'admin_panel')) {
+        json_response(403, false, 'Akses ditolak. Hanya administrator yang dapat mengakses.');
     }
     return $user;
 }
