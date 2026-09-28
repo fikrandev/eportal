@@ -1803,7 +1803,7 @@ const Sarpras = {
                             ${pjHtml}
                         </div>
                         <div class="sp-toolbar">
-                            <input type="text" class="form-input form-input-sm" style="width:200px; padding: 6px 12px; height: 32px;" placeholder="Cari barang..." onkeyup="Sarpras.filterTable(this, 'sarprasTableData')">
+                            <input type="text" id="ruangAssetLiveSearch" class="form-input form-input-sm" style="width:200px; padding: 6px 12px; height: 32px;" placeholder="Cari barang...">
                             ${canImportBuku ? `<button class="btn btn-secondary btn-sm" onclick="Sarpras.formImportBuku(${ruangId})">Import Buku</button>` : ''}
                             <button class="btn btn-secondary btn-sm" onclick="Sarpras.formCopySarpras(${ruangId})">Salin Aset</button>
                             
@@ -1814,41 +1814,84 @@ const Sarpras = {
                         </div>
                     </div>
                     <div class="sp-card-body">
-                        <div class="sp-table-wrapper" id="sarprasTable"></div>
+                        <div class="sp-table-wrapper" id="sarprasTable"><div class="skeleton" style="height:200px"></div></div>
                     </div>
                 </div>
             `);
             
-            this.api(`sarpras.php?action=list&ruang_id=${ruangId}`).done(res => {
-                if (!res.data.data.length) { $('#sarprasTable').html('<div class="sp-empty">Belum ada barang di ruang ini.</div>'); return; }
-                const rows = res.data.data.map(s => {
-                    const groupBadge = this.getAssetGroupBadge(s.grup_pintasan);
-                    return `
-                    <tr>
-                        <td><strong>${s.nama}</strong><br><small>${s.kode_inventaris}</small></td>
-                        <td>${s.kategori_nama}${groupBadge}</td>
-                        <td>${s.jumlah} Unit</td>
-                        <td>
-                            <div style="font-size:0.7rem">
-                                <span style="color:var(--success)">B: ${s.kondisi_baik}</span> | 
-                                <span style="color:var(--warning)">RR: ${s.kondisi_rusak_ringan}</span> | 
-                                <span style="color:var(--danger)">RB: ${s.kondisi_rusak_berat}</span>
-                            </div>
-                        </td>
-                        <td>
-                            <div class="sp-actions">
-                                <button class="sp-btn-icon" title="Detail" onclick="Sarpras.navigate('sarpras-detail', {id: ${s.id}})">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                                </button>
-                                <button class="sp-btn-icon" onclick="Sarpras.formSarpras(${s.id}, ${ruangId})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
-                                <button class="sp-btn-icon danger" onclick="Sarpras.delSarpras(${s.id}, '${s.nama}', ${ruangId})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
-                            </div>
-                        </td>
-                    </tr>
-                `;
-                }).join('');
-                $('#sarprasTable').html(`<table class="sp-table" id="sarprasTableData"><thead><tr><th>Nama / Kode</th><th>Kategori</th><th>Jml</th><th>Kondisi</th><th>Aksi</th></tr></thead><tbody>${rows}</tbody></table>`);
+            let searchTimer;
+            $('#ruangAssetLiveSearch').on('keyup', (e) => {
+                clearTimeout(searchTimer);
+                searchTimer = setTimeout(() => {
+                    this._loadRuangSarprasTable(ruangId, 1, $(e.target).val());
+                }, 500);
             });
+            
+            this._loadRuangSarprasTable(ruangId, 1, '');
+        });
+    },
+
+    _loadRuangSarprasTable(ruangId, page, searchKeyword = '') {
+        $('#sarprasTable').html('<div class="skeleton" style="height:200px"></div>');
+        let apiEndpoint = `sarpras.php?action=list&ruang_id=${ruangId}&per_page=15&page=${page}`;
+        if (searchKeyword) {
+            apiEndpoint += `&search=${encodeURIComponent(searchKeyword)}`;
+        }
+
+        this.api(apiEndpoint).done(res => {
+            if (!res.data.data || !res.data.data.length) { 
+                $('#sarprasTable').html('<div class="sp-empty">Belum ada barang di ruang ini.</div>'); 
+                return; 
+            }
+            const rows = res.data.data.map(s => {
+                const groupBadge = this.getAssetGroupBadge(s.grup_pintasan);
+                return `
+                <tr>
+                    <td><strong>${s.nama}</strong><br><small>${s.kode_inventaris}</small></td>
+                    <td>${s.kategori_nama}${groupBadge}</td>
+                    <td>${s.jumlah} Unit</td>
+                    <td>
+                        <div style="font-size:0.7rem">
+                            <span style="color:var(--success)">B: ${s.kondisi_baik}</span> | 
+                            <span style="color:var(--warning)">RR: ${s.kondisi_rusak_ringan}</span> | 
+                            <span style="color:var(--danger)">RB: ${s.kondisi_rusak_berat}</span>
+                        </div>
+                    </td>
+                    <td>
+                        <div class="sp-actions">
+                            <button class="sp-btn-icon" title="Detail" onclick="Sarpras.navigate('sarpras-detail', {id: ${s.id}})">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            </button>
+                            <button class="sp-btn-icon" onclick="Sarpras.formSarpras(${s.id}, ${ruangId})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                            <button class="sp-btn-icon danger" onclick="Sarpras.delSarpras(${s.id}, '${s.nama.replace(/'/g, "\\'")}', ${ruangId})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+            }).join('');
+            
+            $('#sarprasTable').html(`<table class="sp-table" id="sarprasTableData"><thead><tr><th>Nama / Kode</th><th>Kategori</th><th>Jml</th><th>Kondisi</th><th>Aksi</th></tr></thead><tbody>${rows}</tbody></table>`);
+            
+            // Pagination UI
+            if (res.data.total_pages > 1) {
+                let safeSearch = searchKeyword ? searchKeyword.replace(/'/g, "\\'") : '';
+                let paginationHtml = '<div style="display:flex; justify-content:center; align-items:center; gap:5px; margin-top:20px; padding-top:15px; border-top:1px solid var(--border-color);">';
+                if (res.data.page > 1) {
+                    paginationHtml += `<button class="btn btn-outline btn-sm" onclick="Sarpras._loadRuangSarprasTable(${ruangId}, ${res.data.page - 1}, '${safeSearch}')">&laquo; Prev</button>`;
+                }
+                
+                let startP = Math.max(1, res.data.page - 2);
+                let endP = Math.min(res.data.total_pages, res.data.page + 2);
+                for(let p = startP; p <= endP; p++) {
+                    paginationHtml += `<button class="btn ${p === res.data.page ? 'btn-primary' : 'btn-outline'} btn-sm" onclick="Sarpras._loadRuangSarprasTable(${ruangId}, ${p}, '${safeSearch}')">${p}</button>`;
+                }
+                
+                if (res.data.page < res.data.total_pages) {
+                    paginationHtml += `<button class="btn btn-outline btn-sm" onclick="Sarpras._loadRuangSarprasTable(${ruangId}, ${res.data.page + 1}, '${safeSearch}')">Next &raquo;</button>`;
+                }
+                paginationHtml += '</div>';
+                $('#sarprasTable').append(paginationHtml);
+            }
         });
     },
 

@@ -796,7 +796,7 @@ const ExamApp = {
                 ${voiceHtml}
             `);
         }
-        else if (s.tipe_soal === 'essai') {
+        else if (s.tipe_soal === 'esai' || s.tipe_soal === 'essai') {
             const voiceHtml = `
                 <div class="voice-recorder-wrapper" style="margin-top:16px;padding:16px;background:#f8fafc;border-radius:12px;border:1px solid #e2e8f0;">
                     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">

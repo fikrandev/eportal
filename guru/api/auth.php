@@ -129,8 +129,13 @@ function getTeacherMetadata($userId, $username) {
     // 3. Determine if Guru Mata Pelajaran
     $isGuruMapel = (strpos($tupoksiStr, 'guru mata pelajaran') !== false);
     
-    // has_mapel now represents if they are supposed to have teaching schedules (KBM) based on tupoksi
-    $hasMapel = $isGuruMapel;
+    // Check if they actually have a schedule
+    $stmtJadwal = db()->prepare("SELECT COUNT(*) FROM sch_distribusi d JOIN sch_guru g ON d.guru_id = g.id WHERE g.kode_guru = ?");
+    $stmtJadwal->execute([$username]);
+    $hasJadwal = ((int)$stmtJadwal->fetchColumn() > 0);
+
+    // has_mapel now represents if they are supposed to have teaching schedules (KBM) based on tupoksi or actual assignment
+    $hasMapel = $isGuruMapel || $hasJadwal;
 
     $teacherType = 'kbm';
     if (!$hasMapel) {
@@ -153,8 +158,11 @@ function getTeacherMetadata($userId, $username) {
     
     // 5. Guru Wali check (from students table)
     $namaLengkap = $userRow['nama_lengkap'] ?? $username;
-    $stmtGw = db()->prepare("SELECT COUNT(*) FROM students WHERE guru_wali = ? AND status = 1");
-    $stmtGw->execute([$namaLengkap]);
+    $baseName = trim(preg_replace('/,.*$/', '', $namaLengkap));
+    $baseName = trim(preg_replace('/^(Drs\.|Dra\.|Ir\.|H\.|Hj\.)\s*/i', '', $baseName));
+    
+    $stmtGw = db()->prepare("SELECT COUNT(*) FROM students WHERE guru_wali LIKE ? AND status = 1");
+    $stmtGw->execute(['%' . $baseName . '%']);
     $isGuruWali = ((int)$stmtGw->fetchColumn() > 0);
 
     // Fallback: Check if tupoksi or jabatan contains 'guru wali'

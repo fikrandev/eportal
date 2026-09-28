@@ -145,6 +145,11 @@ const App = {
         this.checkAuth();
     },
 
+    openExamCard() {
+        // Arahkan ke modul E-Examination untuk melihat Kartu Ujian dan Ujian Aktif
+        window.location.href = '../modules/e-examination/student/';
+    },
+
     setupRouter() {
         window.addEventListener('hashchange', () => {
             let hash = window.location.hash.replace(/^#\/?/, '');
@@ -212,6 +217,24 @@ const App = {
                     }
                 });
                 break;
+            case 'jadwal':
+                this.apiGet('api/jadwal.php').then(res => {
+                    if (res.success) {
+                        contentDiv.innerHTML = this.views.jadwal(res.data || {});
+                    } else {
+                        contentDiv.innerHTML = this.views.error('Gagal memuat jadwal pelajaran', () => this.loadView('jadwal'));
+                    }
+                });
+                break;
+            case 'konsultasi':
+                this.apiGet('api/konsultasi.php').then(res => {
+                    if (res.success) {
+                        contentDiv.innerHTML = this.views.konsultasi(res.data || []);
+                    } else {
+                        contentDiv.innerHTML = this.views.error('Gagal memuat riwayat konsultasi', () => this.loadView('konsultasi'));
+                    }
+                });
+                break;
             default:
                 contentDiv.innerHTML = `
                     <div style="text-align:center; padding:50px 20px;">
@@ -236,6 +259,66 @@ const App = {
                     <button class="btn btn-primary btn-sm" onclick="App.navigate(App.state.currentRoute)">Coba Lagi</button>
                 </div>
             `;
+        },
+
+        jadwal(data) {
+            let html = '<div class="page-enter">';
+            html += '<div style="margin-bottom: 18px;">';
+            html += '<h2 style="margin: 0 0 2px; font-size: 1.35rem;">Jadwal Pelajaran</h2>';
+            html += '<p style="margin: 0; font-size: 0.8rem; color: var(--text-muted);">Jadwal kelas ' + (App.state.student.kelas || '') + '</p>';
+            html += '</div>';
+
+            if (Object.keys(data).length === 0) {
+                html += '<div class="card" style="text-align: center; padding: 40px 20px; color: var(--text-muted);">Belum ada jadwal</div>';
+            } else {
+                for (let hari in data) {
+                    html += '<div style="margin-bottom: 16px;">';
+                    html += '<h3 style="font-size: 1rem; color: var(--primary); margin-bottom: 8px;">' + hari + '</h3>';
+                    html += '<div style="display:flex; flex-direction:column; gap:8px;">';
+                    data[hari].forEach(j => {
+                        html += \`
+                            <div class="card" style="padding: 12px 14px; border-left: 4px solid var(--primary);">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                                    <div style="font-weight: 700; font-size: 0.95rem;">\${j.nama_mapel}</div>
+                                    <div style="font-size: 0.8rem; background: #e0f2fe; color: #0284c7; padding: 2px 8px; border-radius: 12px; font-weight: 600;">\${j.nama_jam}</div>
+                                </div>
+                                <div style="font-size: 0.85rem; color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                                    \${j.nama_guru || 'Guru Belum Ditentukan'}
+                                </div>
+                            </div>
+                        \`;
+                    });
+                    html += '</div></div>';
+                }
+            }
+            html += '</div>';
+            return html;
+        },
+
+        konsultasi(data) {
+            let html = '<div class="page-enter">';
+            html += '<div style="margin-bottom: 18px;">';
+            html += '<h2 style="margin: 0 0 2px; font-size: 1.35rem;">Riwayat Konsultasi</h2>';
+            html += '<p style="margin: 0; font-size: 0.8rem; color: var(--text-muted);">Jurnal harian Guru Wali</p>';
+            html += '</div>';
+
+            if (data.length === 0) {
+                html += '<div class="card" style="text-align: center; padding: 40px 20px; color: var(--text-muted);">Belum ada riwayat konsultasi</div>';
+            } else {
+                html += '<div style="display:flex; flex-direction:column; gap:12px;">';
+                data.forEach(k => {
+                    html += \`
+                        <div class="card" style="padding: 14px;">
+                            <div style="font-weight: 700; color: var(--primary); font-size: 0.9rem; margin-bottom: 6px;">📅 \${k.tanggal_indo || k.tanggal}</div>
+                            <div style="font-size: 0.9rem; color: var(--text-primary); line-height: 1.5; white-space: pre-wrap;">\${k.catatan}</div>
+                        </div>
+                    \`;
+                });
+                html += '</div>';
+            }
+            html += '</div>';
+            return html;
         },
 
         dashboard(data) {
@@ -342,8 +425,53 @@ const App = {
                             </div>
                         </button>
                     </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px;">
+                        <button class="card" onclick="location.hash='#/jadwal'" style="text-align: left; padding: 16px; border-radius: 18px; cursor: pointer; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 12px; width: 100%;">
+                            <div style="width: 40px; height: 40px; border-radius: 12px; background: #e0f2fe; color: #0284c7; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                            </div>
+                            <div>
+                                <div style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary);">Jadwal</div>
+                                <div style="font-size: 0.75rem; color: var(--text-muted);">Pelajaran</div>
+                            </div>
+                        </button>
+                        <button class="card" onclick="location.hash='#/konsultasi'" style="text-align: left; padding: 16px; border-radius: 18px; cursor: pointer; border: 1px solid #e2e8f0; display: flex; align-items: center; gap: 12px; width: 100%;">
+                            <div style="width: 40px; height: 40px; border-radius: 12px; background: #dcfce7; color: #16a34a; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
+                            </div>
+                            <div>
+                                <div style="font-weight: 700; font-size: 0.95rem; color: var(--text-primary);">Konsultasi</div>
+                                <div style="font-size: 0.75rem; color: var(--text-muted);">Guru Wali</div>
+                            </div>
+                        </button>
+                    </div>
+
+                    <!-- Ujian Aktif Section -->
+                    <div style="margin-top: 24px;">
+                        <h3 style="font-size: 1.1rem; color: var(--text-primary); margin:0 0 12px;">Ujian Aktif (CBT)</h3>
+                        <div id="uiActiveExams">
+                            \${(data.active_exams && data.active_exams.length > 0) ? data.active_exams.map(e => \`
+                                <div class="card" style="margin-bottom: 12px; padding: 16px; border-radius: 18px; border: 1px solid #e2e8f0; display:flex; flex-direction:column; gap:12px; background: white;">
+                                    <div>
+                                        <div style="font-weight:700; font-size:1.05rem; color:#0f172a; margin-bottom:4px;">\${e.judul}</div>
+                                        <div style="font-size:0.8rem; color:#64748b; margin-bottom: 8px;">\${e.nama_bank_soal} • \${e.durasi_menit} Menit</div>
+                                    </div>
+                                    <button class="btn btn-primary" onclick="window.location.href='../modules/e-examination/student/'" style="width:100%; border-radius:12px; font-weight:600; padding:10px;">
+                                        Menuju CBT
+                                    </button>
+                                </div>
+                            \`).join('') : \`
+                                <div class="card" style="text-align:center; padding:24px; color:#94a3b8; border-radius:18px; border:1px dashed #cbd5e1; background:transparent;">
+                                    <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:8px; opacity:0.5; margin-left:auto; margin-right:auto; display:block;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                                    <div style="font-size:0.85rem;">Tidak ada ujian aktif saat ini.</div>
+                                </div>
+                            \`}
+                        </div>
+                    </div>
+
                 </div>
-            `;
+            \`;
         },
 
         izin(data) {

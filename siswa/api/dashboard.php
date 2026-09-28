@@ -120,6 +120,22 @@ try {
             }
         } catch (Exception $e) {}
     }
+    // Fetch Active Exams (CBT) for the student's class
+    $active_exams = [];
+    if (!empty($siswa['kelas'])) {
+        try {
+            $stmtExams = db()->prepare("
+                SELECT u.id, u.judul, u.jenis_ujian, u.durasi_menit, u.metode_login, u.status, b.judul as nama_bank_soal
+                FROM exam_ujian u
+                JOIN exam_bank_soal b ON u.bank_soal_id = b.id
+                JOIN exam_ujian_kelas uk ON uk.ujian_id = u.id
+                WHERE u.status = 'aktif' AND uk.kelas = ?
+                ORDER BY u.created_at DESC
+            ");
+            $stmtExams->execute([$siswa['kelas']]);
+            $active_exams = $stmtExams->fetchAll(PDO::FETCH_ASSOC);
+        } catch (Exception $e) {}
+    }
 
     json_response(200, true, 'Dashboard loaded', [
         'hadir' => $hadir,
@@ -127,7 +143,8 @@ try {
         'sakit' => $sakit,
         'alfa' => $alfa,
         'wali_kelas' => $wali_kelas,
-        'guru_wali' => $guru_wali
+        'guru_wali' => $guru_wali,
+        'active_exams' => $active_exams
     ]);
 } catch (PDOException $e) {
     json_response(500, false, 'Database Error: ' . $e->getMessage());
