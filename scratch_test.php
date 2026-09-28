@@ -1,4 +1,5 @@
 <?php
-require_once __DIR__ . '/api/config.php';
-$r = db()->query("SHOW INDEX FROM sch_guru")->fetchAll(PDO::FETCH_ASSOC);
-print_r($r);
+require 'api/config.php';
+$stmt = db()->query("DESCRIBE students");
+$res = $stmt->fetchAll(PDO::FETCH_ASSOC);
+print_r($res);

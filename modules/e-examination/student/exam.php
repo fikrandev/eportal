@@ -214,6 +214,7 @@ if (!$session_id) {
             overflow-y: auto;
             overflow-x: hidden;
             flex: 1;
+            min-height: 0; /* Ensures the grid can shrink and keep the footer visible */
             width: 100%;
             box-sizing: border-box;
             align-content: start;

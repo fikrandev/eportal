@@ -91,6 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'id' => (int)$student['id'],
                     'nama' => $student['nama'],
                     'nis' => $student['nis'],
+                    'nisn' => $student['nisn'] ?? '',
                     'kelas' => $student['kelas'] ?? '',
                     'jenis_kelamin' => $student['jenis_kelamin'] ?? ''
                 ]

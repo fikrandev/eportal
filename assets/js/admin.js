@@ -4739,18 +4739,31 @@ const Admin = {
             const defs = res.data || { modules: [], admin: [] };
             this.permsDefCache = defs;
 
-            // Generate module checkboxes
+            // Generate module checkboxes with CRUD options
             const modChecksHtml = (defs.modules || []).map(m => `
-                <label class="role-perm-item" for="perm_${m.key}">
-                    <input type="checkbox" id="perm_${m.key}" class="role-perm-chk" value="${m.key}">
-                    <div class="perm-text">
-                        <div class="perm-title" style="display:flex; align-items:center; gap:6px;">
-                            <span style="width:10px; height:10px; border-radius:50%; background:${m.color || '#1565C0'}; display:inline-block;"></span>
-                            ${App.escapeHtml(m.label)}
+                <div class="role-perm-item" style="display:flex; flex-direction:column; gap:8px;">
+                    <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer;">
+                        <input type="checkbox" id="perm_${m.key}" class="role-perm-chk" value="${m.key}">
+                        <div class="perm-text" style="flex:1;">
+                            <div class="perm-title" style="display:flex; align-items:center; gap:6px; font-weight:700;">
+                                <span style="width:10px; height:10px; border-radius:50%; background:${m.color || '#1565C0'}; display:inline-block;"></span>
+                                ${App.escapeHtml(m.label)}
+                            </div>
+                            <div class="perm-desc" style="font-size:12px; color:var(--text-muted); margin-top:2px;">Modul URL: /${App.escapeHtml(m.slug)}</div>
                         </div>
-                        <div class="perm-desc">Modul URL: /${App.escapeHtml(m.slug)}</div>
+                    </label>
+                    <div style="padding-left:26px; display:flex; gap:12px; flex-wrap:wrap; margin-top:2px;">
+                        <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer; color:#475569;">
+                            <input type="checkbox" class="role-perm-chk" value="${m.key}_add"> Tambah
+                        </label>
+                        <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer; color:#475569;">
+                            <input type="checkbox" class="role-perm-chk" value="${m.key}_edit"> Edit/Update
+                        </label>
+                        <label style="display:flex; align-items:center; gap:4px; font-size:12px; cursor:pointer; color:#475569;">
+                            <input type="checkbox" class="role-perm-chk" value="${m.key}_delete"> Hapus
+                        </label>
                     </div>
-                </label>
+                </div>
             `).join('');
 
             // Generate admin feature checkboxes

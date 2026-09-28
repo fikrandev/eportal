@@ -109,7 +109,7 @@ $app_icon = get_setting('app_icon_siswa', $school_icon);
             <div class="app-header-left">
                 <div class="app-header-avatar" id="headerAvatar">S</div>
                 <div>
-                    <div class="app-header-greeting" id="headerGreeting">Halo 👋</div>
+                    <div class="app-header-greeting" id="headerGreeting">Assalamualaikum 👋</div>
                     <div class="app-header-name" id="headerName">Siswa</div>
                 </div>
             </div>

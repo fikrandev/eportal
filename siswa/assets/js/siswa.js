@@ -332,10 +332,13 @@ const App = {
                         
                         <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.8); margin-bottom: 4px; font-weight: 600;">Kartu Siswa Digital</div>
                         <h2 style="font-size: 1.45rem; margin-bottom: 4px; color: #ffffff; font-weight: 700;">${student.nama || 'Siswa'}</h2>
-                        <div style="display: flex; gap: 8px; flex-wrap: wrap; opacity: 0.9; font-size: 0.85rem; margin-bottom: 8px;">
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap; opacity: 0.9; font-size: 0.85rem; margin-bottom: 4px;">
                             <span>NIS: <strong>${student.nis || '-'}</strong></span>
                             <span>•</span>
                             <span>Kelas: <strong>${student.kelas || '-'}</strong></span>
+                        </div>
+                        <div style="display: flex; gap: 8px; flex-wrap: wrap; opacity: 0.9; font-size: 0.85rem; margin-bottom: 8px;">
+                            <span>NISN: <strong>${student.nisn || '-'}</strong></span>
                         </div>
                         <div style="background: rgba(0,0,0,0.15); padding: 8px 12px; border-radius: 10px; font-size: 0.75rem; display: flex; flex-direction: column; gap: 4px;">
                             <div style="display: flex; justify-content: space-between;">
@@ -377,7 +380,7 @@ const App = {
                         </div>
                         <div style="background: white; border-radius: 18px; padding: 16px 12px; text-align: center; box-shadow: var(--shadow-sm); border: 1px solid #e2e8f0;">
                             <div style="color: var(--danger); font-size: 1.6rem; font-weight: 800; line-height: 1.1; margin-bottom: 4px;">${data.alfa || 0}</div>
-                            <div style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 600;">Alfa</div>
+                            <div style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 600;">Alpha</div>
                         </div>
                     </div>
 
