@@ -295,19 +295,23 @@ try {
             $metodeLoginUjian = $ujian['metode_login'] ?? 'nis_dob';
             $studentLoginType = $student['login_type'] ?? 'nis_dob';
 
-            if ($metodeLoginUjian === 'examcard' || $studentLoginType === 'examcard') {
+            if ($metodeLoginUjian === 'examcard' && $studentLoginType !== 'examcard') {
+                throw new Exception('Ujian ini mewajibkan login menggunakan Kartu Ujian (E-xam Card). Silakan logout dan login kembali menggunakan Kartu Ujian.', 403);
+            }
+
+            if ($studentLoginType === 'examcard' && !empty($student['card_username'])) {
                 try {
                     $stmtCheckSuspended = db()->prepare("
                         SELECT status, suspension_note 
                         FROM xam_exam_students 
-                        WHERE student_id = ? 
-                        ORDER BY id DESC LIMIT 1
+                        WHERE username = ? 
+                        LIMIT 1
                     ");
-                    $stmtCheckSuspended->execute([$student['id']]);
+                    $stmtCheckSuspended->execute([$student['card_username']]);
                     $susp = $stmtCheckSuspended->fetch();
                     if ($susp && $susp['status'] === 'DITANGGUHKAN') {
                         $note = $susp['suspension_note'] ? " ({$susp['suspension_note']})" : "";
-                        throw new Exception("Status ujian Kartu Ujian Anda ditangguhkan{$note}. Harap hubungi panitia ujian/keuangan.", 403);
+                        throw new Exception("Status Kartu Ujian Anda ditangguhkan{$note}. Harap hubungi panitia ujian/keuangan.", 403);
                     }
                 } catch (Exception $e) {
                     if ($e->getCode() === 403) throw $e;
