@@ -57,6 +57,20 @@ $app_icon = get_setting('app_icon_guru', $school_icon);
             }
         };
     </script>
+    
+    <!-- OneSignal Web Push -->
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+    <script>
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+      OneSignalDeferred.push(function(OneSignal) {
+        let appId = "<?php echo get_setting('onesignal_app_id', ''); ?>";
+        if (appId) {
+            OneSignal.init({
+              appId: appId,
+            });
+        }
+      });
+    </script>
 </head>
 <body>
     <!-- Global Loading -->

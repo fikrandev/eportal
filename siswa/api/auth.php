@@ -93,7 +93,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'nis' => $student['nis'],
                     'nisn' => $student['nisn'] ?? '',
                     'kelas' => $student['kelas'] ?? '',
-                    'jenis_kelamin' => $student['jenis_kelamin'] ?? ''
+                    'jenis_kelamin' => $student['jenis_kelamin'] ?? '',
+                    'foto_path' => $student['foto_path'] ?? ''
                 ]
             ]);
         } else {

@@ -37,6 +37,7 @@ function initClient() {
         authStrategy: new LocalAuth({
             dataPath: AUTH_DIR
         }),
+        webVersionCache: { type: 'none' },
         puppeteer: {
             headless: true,
             args: [
@@ -46,7 +47,19 @@ function initClient() {
                 '--disable-accelerated-2d-canvas',
                 '--no-first-run',
                 '--no-zygote',
-                '--disable-gpu'
+                '--disable-gpu',
+                '--disable-software-rasterizer',
+                '--disable-background-networking',
+                '--disable-default-apps',
+                '--disable-extensions',
+                '--disable-sync',
+                '--disable-translate',
+                '--hide-scrollbars',
+                '--metrics-recording-only',
+                '--mute-audio',
+                '--no-default-browser-check',
+                '--safebrowsing-disable-auto-update',
+                '--memory-pressure-off'
             ]
         }
     });

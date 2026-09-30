@@ -30,11 +30,18 @@ function triggerWAGateway($phone, $message) {
 }
 
 try {
+    // 1. CRON JOB: Check WA Group Guru Absensi Batch (Runs regardless of fingerprint status)
+    try {
+        require_once __DIR__ . '/../../e-curriculum/api/wa_group_helper.php';
+        checkAndSendWaGroupGuruAbsensiBatch();
+    } catch (Exception $ex) {}
+
+    // 2. FINGERPRINT SYNC: Tarik log absen
     $stmt = db()->query("SELECT * FROM absen_mesin WHERE status = 1");
     $mesins = $stmt->fetchAll();
     
     if (!$mesins || count($mesins) === 0) {
-        json_response(400, false, 'Tidak ada mesin aktif.');
+        json_response(400, false, 'Cron WA berhasil dicek, tetapi tidak ada mesin aktif untuk sinkronisasi fingerprint.');
     }
 
     $waTemplateStmt = db()->query("SELECT setting_value FROM settings WHERE setting_key = 'wa_message_template'");
@@ -123,12 +130,6 @@ try {
         db()->commit();
     }
     
-    // Check if 10 teachers threshold reached for WA Group auto notification
-    try {
-        require_once __DIR__ . '/../../e-curriculum/api/wa_group_helper.php';
-        checkAndSendWaGroupGuruAbsensiBatch();
-    } catch (Exception $ex) {}
-
     json_response(200, true, "Auto-Sync selesai. $newLogsCount log baru.");
 } catch (Exception $e) {
     if (db()->inTransaction()) db()->rollBack();

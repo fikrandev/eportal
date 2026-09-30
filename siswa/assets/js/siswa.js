@@ -50,7 +50,22 @@ const App = {
                 
             const avatarEl = document.getElementById('headerAvatar');
             const nameEl = document.getElementById('headerName');
-            if (avatarEl) avatarEl.textContent = initials || 'S';
+            
+            if (avatarEl) {
+                if (this.state.student.foto_path) {
+                    const rootUrl = window.APP_CONFIG.baseUrl.replace('siswa/', '');
+                    const fotoUrl = rootUrl + this.state.student.foto_path.replace(/^[\/\\]/, '');
+                    avatarEl.innerHTML = `<img src="${fotoUrl}" alt="Foto Profil" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`;
+                    avatarEl.style.background = 'transparent';
+                    avatarEl.style.color = 'transparent';
+                } else {
+                    avatarEl.textContent = initials || 'S';
+                    avatarEl.innerHTML = '';
+                    avatarEl.style.background = '';
+                    avatarEl.style.color = '';
+                    avatarEl.textContent = initials || 'S';
+                }
+            }
             if (nameEl) nameEl.textContent = this.state.student.nama || 'Siswa';
 
             if (loginPage) loginPage.style.display = 'none';
@@ -329,9 +344,14 @@ const App = {
                     <div style="background: var(--primary-gradient); color: white; padding: 22px 20px 26px; border-radius: 22px; margin-bottom: 20px; box-shadow: var(--shadow-primary); position: relative; overflow: hidden;">
                         <div style="position: absolute; right: -25px; bottom: -25px; width: 130px; height: 130px; border-radius: 50%; background: rgba(255, 255, 255, 0.05); pointer-events: none;"></div>
                         <div style="position: absolute; right: 40px; top: -30px; width: 80px; height: 80px; border-radius: 50%; background: rgba(255, 255, 255, 0.03); pointer-events: none;"></div>
+                        ${student.foto_path ? `
+                        <div style="position: absolute; right: 20px; top: 20px; width: 65px; height: 65px; border-radius: 12px; overflow: hidden; border: 2px solid rgba(255,255,255,0.3); box-shadow: 0 4px 10px rgba(0,0,0,0.1); background: rgba(255,255,255,0.1);">
+                            <img src="${window.APP_CONFIG.baseUrl.replace('siswa/', '') + student.foto_path.replace(/^[\/\\]/, '')}" alt="Foto" style="width: 100%; height: 100%; object-fit: cover;">
+                        </div>
+                        ` : ''}
                         
-                        <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.8); margin-bottom: 4px; font-weight: 600;">Kartu Siswa Digital</div>
-                        <h2 style="font-size: 1.45rem; margin-bottom: 4px; color: #ffffff; font-weight: 700;">${student.nama || 'Siswa'}</h2>
+                        <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.8); margin-bottom: 4px; font-weight: 600; padding-right: ${student.foto_path ? '75px' : '0'};">Kartu Siswa Digital</div>
+                        <h2 style="font-size: 1.45rem; margin-bottom: 4px; color: #ffffff; font-weight: 700; padding-right: ${student.foto_path ? '75px' : '0'};">${student.nama || 'Siswa'}</h2>
                         <div style="display: flex; gap: 8px; flex-wrap: wrap; opacity: 0.9; font-size: 0.85rem; margin-bottom: 4px;">
                             <span>NIS: <strong>${student.nis || '-'}</strong></span>
                             <span>•</span>

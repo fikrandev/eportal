@@ -38,9 +38,22 @@ $app_icon = get_setting('app_icon_siswa', $school_icon);
 
     <!-- CSS -->
     <link rel="stylesheet" href="assets/css/siswa.css?v=<?php echo time(); ?>">
-    
     <script>
         window.APP_CONFIG = { baseUrl: "<?php echo BASE_URL; ?>siswa/" };
+    </script>
+    
+    <!-- OneSignal Web Push -->
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
+    <script>
+      window.OneSignalDeferred = window.OneSignalDeferred || [];
+      OneSignalDeferred.push(function(OneSignal) {
+        let appId = "<?php echo get_setting('onesignal_app_id', ''); ?>";
+        if (appId) {
+            OneSignal.init({
+              appId: appId,
+            });
+        }
+      });
     </script>
 </head>
 <body>
