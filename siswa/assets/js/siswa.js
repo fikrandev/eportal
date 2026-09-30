@@ -410,6 +410,7 @@ const App = {
                     </div>
 
                     <!-- Kartu Ujian Banner -->
+                    ${data.global_cbt_active ? `
                     <div class="card" style="margin-bottom: 12px; background: linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%); color: white; border: none; padding: 18px; border-radius: 18px; position: relative; overflow: hidden; box-shadow: 0 4px 15px rgba(15, 23, 42, 0.25);">
                         <div style="position: absolute; right: -20px; top: -20px; width: 100px; height: 100px; border-radius: 50%; background: rgba(255, 255, 255, 0.08); pointer-events: none;"></div>
                         <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; position: relative; z-index: 1;">
@@ -431,6 +432,23 @@ const App = {
                             </button>
                         </div>
                     </div>
+                    ` : `
+                    <div class="card" style="margin-bottom: 12px; background: rgba(0,0,0,0.03); border: 1px dashed rgba(0,0,0,0.1); padding: 18px; border-radius: 18px;">
+                        <div style="display: flex; align-items: center; gap: 14px;">
+                            <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(0,0,0,0.05); display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #64748b;">
+                                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="2" y="3" width="20" height="14" rx="2"/>
+                                    <line x1="8" y1="21" x2="16" y2="21"/>
+                                    <line x1="12" y1="17" x2="12" y2="21"/>
+                                </svg>
+                            </div>
+                            <div>
+                                <div style="font-weight: 700; font-size: 1.05rem; color: #475569; margin-bottom: 2px;">Kartu Ujian</div>
+                                <div style="font-size: 0.78rem; color: #64748b;">Belum ada kartu ujian Aktif</div>
+                            </div>
+                        </div>
+                    </div>
+                    `}
 
                     <!-- Shortcut Action Cards -->
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">

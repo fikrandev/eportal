@@ -121,6 +121,13 @@ try {
         } catch (Exception $e) {}
     }
 
+    // Check if any CBT exam is active globally
+    $global_cbt_active = false;
+    try {
+        $stmtCBT = db()->query("SELECT COUNT(*) FROM exam_ujian WHERE status = 'aktif'");
+        $global_cbt_active = ($stmtCBT->fetchColumn() > 0);
+    } catch (Exception $e) {}
+
     json_response(200, true, 'Dashboard loaded', [
         'hadir' => $hadir,
         'terlambat' => $terlambat,
@@ -130,7 +137,8 @@ try {
         'wali_kelas' => $wali_kelas,
         'guru_wali' => $guru_wali,
         'active_exams' => $active_exams,
-        'calendar_data' => $calendar_data
+        'calendar_data' => $calendar_data,
+        'global_cbt_active' => $global_cbt_active
     ]);
 } catch (PDOException $e) {
     json_response(500, false, 'Database Error: ' . $e->getMessage());
