@@ -69,6 +69,14 @@ if (!$data || ($data['status'] ?? '') !== 'OKE') {
     die('Data tidak tersedia atau status kartu ditangguhkan.');
 }
 
+// Cek apakah ujiannya masih aktif
+$stmtCheck = db()->prepare("SELECT status FROM xam_exams WHERE id = ?");
+$stmtCheck->execute([$examId]);
+$examIsActive = $stmtCheck->fetchColumn();
+if ($examIsActive != 1) {
+    die('Belum ada kartu ujian aktif atau ujian ini sudah ditutup.');
+}
+
 // Ensure latest student class, name, photo & nisn for this student's NIS
 if (!empty($data['nis'])) {
     $latest = xam_get_latest_student_info($data['nis']);

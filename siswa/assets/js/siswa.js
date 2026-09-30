@@ -391,19 +391,19 @@ const App = {
                     </div>
 
                     <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 22px;">
-                        <button type="button" onclick="App.showAbsensiList('Izin', 'I')" style="background: white; border-radius: 14px; padding: 12px 6px; text-align: center; box-shadow: var(--shadow-sm); border: 1px solid #e2e8f0; cursor: pointer;">
+                        <button type="button" onclick="App.showAbsensiList('Izin', 'I')" style="background: white; border-radius: 14px; padding: 12px 6px; text-align: center; box-shadow: var(--shadow-sm); border: 1px solid #e2e8f0; cursor: pointer; transition: transform 0.1s;">
                             <div style="color: var(--warning); font-size: 1.4rem; font-weight: 800; line-height: 1.1; margin-bottom: 4px;">${data.izin || 0}</div>
                             <div style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 600;">Izin</div>
                         </button>
-                        <button type="button" onclick="App.showAbsensiList('Sakit', 'S')" style="background: white; border-radius: 14px; padding: 12px 6px; text-align: center; box-shadow: var(--shadow-sm); border: 1px solid #e2e8f0; cursor: pointer;">
+                        <button type="button" onclick="App.showAbsensiList('Sakit', 'S')" style="background: white; border-radius: 14px; padding: 12px 6px; text-align: center; box-shadow: var(--shadow-sm); border: 1px solid #e2e8f0; cursor: pointer; transition: transform 0.1s;">
                             <div style="color: var(--info); font-size: 1.4rem; font-weight: 800; line-height: 1.1; margin-bottom: 4px;">${data.sakit || 0}</div>
                             <div style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 600;">Sakit</div>
                         </button>
-                        <button type="button" onclick="App.showAbsensiList('Alpha', 'A')" style="background: white; border-radius: 14px; padding: 12px 6px; text-align: center; box-shadow: var(--shadow-sm); border: 1px solid #e2e8f0; cursor: pointer;">
+                        <button type="button" onclick="App.showAbsensiList('Alpha', 'A')" style="background: white; border-radius: 14px; padding: 12px 6px; text-align: center; box-shadow: var(--shadow-sm); border: 1px solid #e2e8f0; cursor: pointer; transition: transform 0.1s;">
                             <div style="color: var(--danger); font-size: 1.4rem; font-weight: 800; line-height: 1.1; margin-bottom: 4px;">${data.alfa || 0}</div>
                             <div style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 600;">Alpha</div>
                         </button>
-                        <button type="button" onclick="App.showAbsensiList('Terlambat', 'T')" style="background: white; border-radius: 14px; padding: 12px 6px; text-align: center; box-shadow: var(--shadow-sm); border: 1px solid #e2e8f0; cursor: pointer;">
+                        <button type="button" onclick="App.showAbsensiList('Terlambat', 'T')" style="background: white; border-radius: 14px; padding: 12px 6px; text-align: center; box-shadow: var(--shadow-sm); border: 1px solid #e2e8f0; cursor: pointer; transition: transform 0.1s;">
                             <div style="color: #f97316; font-size: 1.4rem; font-weight: 800; line-height: 1.1; margin-bottom: 4px;">${data.terlambat || 0}</div>
                             <div style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 600;">Telat</div>
                         </button>
@@ -864,13 +864,13 @@ const App = {
             </div>
         `;
         
-        const c = document.getElementById('spModalContainer');
+        const c = document.getElementById('modalContainer');
         if (c) c.innerHTML = `
-            <div class="modal-overlay active" onclick="this.remove()">
+            <div class="modal-overlay active" id="calendarModalOverlay" onclick="this.innerHTML=''">
                 <div class="modal-sheet active" onclick="event.stopPropagation()">
                     <div class="modal-sheet-indicator"></div>
                     ${html}
-                    <button class="btn btn-block" style="margin-top:15px; background: #f1f5f9; color: #475569;" onclick="this.closest('.modal-overlay').remove()">Tutup</button>
+                    <button class="btn btn-block" style="margin-top:15px; background: #f1f5f9; color: #475569;" onclick="document.getElementById('modalContainer').innerHTML=''">Tutup</button>
                 </div>
             </div>
         `;
@@ -892,13 +892,13 @@ const App = {
             </div>
         `;
         
-        const c = document.getElementById('spModalContainer');
+        const c = document.getElementById('modalContainer');
         if (c) c.innerHTML = `
-            <div class="modal-overlay active" onclick="this.remove()">
+            <div class="modal-overlay active" id="absensiModalOverlay" onclick="this.innerHTML=''">
                 <div class="modal-sheet active" onclick="event.stopPropagation()">
                     <div class="modal-sheet-indicator"></div>
                     ${html}
-                    <button class="btn btn-block" style="margin-top:15px; background: #f1f5f9; color: #475569;" onclick="this.closest('.modal-overlay').remove()">Tutup</button>
+                    <button class="btn btn-block" style="margin-top:15px; background: #f1f5f9; color: #475569;" onclick="document.getElementById('modalContainer').innerHTML=''">Tutup</button>
                 </div>
             </div>
         `;

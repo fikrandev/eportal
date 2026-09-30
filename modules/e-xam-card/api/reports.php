@@ -23,13 +23,24 @@ if ($studentToken !== '') {
                 $_GET['student_id'] = (int) $payload['student_id'];
                 $_GET['exam_id'] = (int) $payload['exam_id'];
 
-                // Verify status is OKE
-                $stmtChk = db()->prepare("SELECT status FROM xam_exam_students WHERE exam_id = ? AND student_id = ?");
+                // Verify status is OKE and exam is active
+                $stmtChk = db()->prepare("
+                    SELECT xs.status, e.status as exam_status 
+                    FROM xam_exam_students xs
+                    JOIN xam_exams e ON e.id = xs.exam_id
+                    WHERE xs.exam_id = ? AND xs.student_id = ?
+                ");
                 $stmtChk->execute([(int)$payload['exam_id'], (int)$payload['student_id']]);
                 $stRow = $stmtChk->fetch();
+                
                 if ($stRow && ($stRow['status'] ?? '') !== 'OKE') {
                     http_response_code(403);
                     die('Status kartu ujian Anda ditangguhkan. Silakan hubungi pihak sekolah.');
+                }
+                
+                if ($stRow && (int)($stRow['exam_status'] ?? 0) !== 1) {
+                    http_response_code(403);
+                    die('Belum ada kartu ujian aktif atau ujian ini sudah ditutup.');
                 }
             }
         }
