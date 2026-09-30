@@ -566,7 +566,7 @@ if (!$session_id) {
 
             /* Action bar buttons on mobile */
             .action-bar {
-                padding: 12px 10px calc(24px + env(safe-area-inset-bottom));
+                padding: 12px 10px calc(38px + env(safe-area-inset-bottom));
                 gap: 6px;
                 background: rgba(255,255,255,0.98);
                 backdrop-filter: blur(8px);
@@ -680,12 +680,6 @@ if (!$session_id) {
             </div>
             <div class="nav-grid" id="uiNavGrid">
                 <!-- Buttons injected by JS -->
-            </div>
-            <div class="sidebar-footer">
-                <button class="btn-exam btn-finish" style="width:100%; justify-content:center;" onclick="ExamApp.finishExam()">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                    Selesai Ujian
-                </button>
             </div>
         </aside>
 

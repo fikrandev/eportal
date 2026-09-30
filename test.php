@@ -1,6 +1,4 @@
 <?php
 require 'api/config.php';
-$stmt = db()->query("SELECT COUNT(*) FROM xam_exam_students WHERE status = 'OKE'");
-echo "OKE count: " . $stmt->fetchColumn() . "\n";
-$stmt = db()->query("SELECT COUNT(*) FROM xam_exam_students WHERE status = 'DITANGGUHKAN'");
-echo "DITANGGUHKAN count: " . $stmt->fetchColumn() . "\n";
+$stmt = db()->query("SELECT id, exam_id, student_id, username, password_plain, status FROM xam_exam_students WHERE student_id = 315");
+print_r($stmt->fetchAll(PDO::FETCH_ASSOC));

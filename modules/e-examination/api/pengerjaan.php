@@ -60,33 +60,49 @@ try {
                     JOIN students s ON s.id = xs.student_id
                     WHERE xs.username = ?
                     ORDER BY xs.id DESC
-                    LIMIT 1
                 ");
                 $stmtCard->execute([$username]);
-                $cardRow = $stmtCard->fetch(PDO::FETCH_ASSOC);
+                $cardRows = $stmtCard->fetchAll(PDO::FETCH_ASSOC);
 
-                if (!$cardRow) {
+                if (!$cardRows) {
                     throw new Exception('Akun Kartu Ujian (Username) tidak ditemukan', 404);
                 }
 
-                // Check password (plain or hash)
-                $passPlain = (string)($cardRow['password_plain'] ?? '');
-                $passHash = (string)($cardRow['password_hash'] ?? '');
-                $matched = false;
-                if ($password === $passPlain) {
-                    $matched = true;
-                } elseif (!empty($passHash) && password_verify($password, $passHash)) {
-                    $matched = true;
-                }
+                $matchedCard = null;
+                $fallbackCard = null;
+                foreach ($cardRows as $row) {
+                    $passPlain = (string)($row['password_plain'] ?? '');
+                    $passHash = (string)($row['password_hash'] ?? '');
+                    
+                    $isMatch = false;
+                    if ($password === $passPlain) {
+                        $isMatch = true;
+                    } elseif (!empty($passHash) && password_verify($password, $passHash)) {
+                        $isMatch = true;
+                    }
 
-                if (!$matched) {
+                    if ($isMatch) {
+                        if (($row['card_status'] ?? '') === 'OKE') {
+                            $matchedCard = $row;
+                            break; // Prioritize OKE card
+                        } elseif (!$fallbackCard) {
+                            $fallbackCard = $row; // Keep as fallback if no OKE card found
+                        }
+                    }
+                }
+                
+                $matchedCard = $matchedCard ?? $fallbackCard;
+
+                if (!$matchedCard) {
                     throw new Exception('Password Kartu Ujian salah. Silakan periksa kartu ujian Anda.', 401);
                 }
 
-                if (($cardRow['card_status'] ?? '') === 'DITANGGUHKAN') {
-                    $note = $cardRow['suspension_note'] ? " ({$cardRow['suspension_note']})" : "";
+                if (($matchedCard['card_status'] ?? '') === 'DITANGGUHKAN') {
+                    $note = $matchedCard['suspension_note'] ? " ({$matchedCard['suspension_note']})" : "";
                     throw new Exception("Status Kartu Ujian Anda DITANGGUHKAN{$note}. Harap hubungi panitia ujian/keuangan.", 403);
                 }
+
+                $cardRow = $matchedCard;
 
                 $student = [
                     'id' => $cardRow['id'],
@@ -94,7 +110,8 @@ try {
                     'nama' => $cardRow['nama'],
                     'kelas' => $cardRow['kelas'],
                     'login_type' => 'examcard',
-                    'card_username' => $username
+                    'card_username' => $username,
+                    'card_id' => $cardRow['card_id']
                 ];
             } else {
                 // NIS & Tanggal Lahir (or Password)
@@ -299,15 +316,15 @@ try {
                 throw new Exception('Ujian ini mewajibkan login menggunakan Kartu Ujian (E-xam Card). Silakan logout dan login kembali menggunakan Kartu Ujian.', 403);
             }
 
-            if ($studentLoginType === 'examcard' && !empty($student['card_username'])) {
+            if ($studentLoginType === 'examcard' && !empty($student['card_id'])) {
                 try {
                     $stmtCheckSuspended = db()->prepare("
                         SELECT status, suspension_note 
                         FROM xam_exam_students 
-                        WHERE username = ? 
+                        WHERE id = ? 
                         LIMIT 1
                     ");
-                    $stmtCheckSuspended->execute([$student['card_username']]);
+                    $stmtCheckSuspended->execute([$student['card_id']]);
                     $susp = $stmtCheckSuspended->fetch();
                     if ($susp && $susp['status'] === 'DITANGGUHKAN') {
                         $note = $susp['suspension_note'] ? " ({$susp['suspension_note']})" : "";
