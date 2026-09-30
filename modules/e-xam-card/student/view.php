@@ -77,11 +77,16 @@ if ($examIsActive != 1) {
     die('Belum ada kartu ujian aktif atau ujian ini sudah ditutup.');
 }
 
-// Cek CBT Aktif
-$stmtCBT = db()->prepare("SELECT COUNT(*) FROM exam_ujian WHERE status = 'aktif'");
-$stmtCBT->execute();
+// Cek CBT Aktif untuk kelas siswa
+$stmtCBT = db()->prepare("
+    SELECT COUNT(*) 
+    FROM exam_ujian u
+    JOIN exam_ujian_kelas uk ON uk.ujian_id = u.id
+    WHERE u.status = 'aktif' AND uk.kelas = ?
+");
+$stmtCBT->execute([$data['kelas'] ?? '']);
 if ($stmtCBT->fetchColumn() == 0) {
-    die('Belum ada kartu ujian CBT aktif saat ini.');
+    die('Belum ada kartu ujian CBT aktif untuk kelas Anda saat ini.');
 }
 
 // Ensure latest student class, name, photo & nisn for this student's NIS

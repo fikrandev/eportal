@@ -121,12 +121,20 @@ try {
         } catch (Exception $e) {}
     }
 
-    // Check if any CBT exam is active globally
+    // Check if any CBT exam is active for this student's class
     $global_cbt_active = false;
-    try {
-        $stmtCBT = db()->query("SELECT COUNT(*) FROM exam_ujian WHERE status = 'aktif'");
-        $global_cbt_active = ($stmtCBT->fetchColumn() > 0);
-    } catch (Exception $e) {}
+    if (!empty($siswa['kelas'])) {
+        try {
+            $stmtCBT = db()->prepare("
+                SELECT COUNT(*) 
+                FROM exam_ujian u
+                JOIN exam_ujian_kelas uk ON uk.ujian_id = u.id
+                WHERE u.status = 'aktif' AND uk.kelas = ?
+            ");
+            $stmtCBT->execute([$siswa['kelas']]);
+            $global_cbt_active = ($stmtCBT->fetchColumn() > 0);
+        } catch (Exception $e) {}
+    }
 
     json_response(200, true, 'Dashboard loaded', [
         'hadir' => $hadir,

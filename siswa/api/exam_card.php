@@ -12,9 +12,14 @@ try {
     $student = siswa_auth();
     $nis = $student['nis'];
 
-    // CEK UJIAN CBT AKTIF
-    $stmtCBT = db()->prepare("SELECT COUNT(*) FROM exam_ujian WHERE status = 'aktif'");
-    $stmtCBT->execute();
+    // CEK UJIAN CBT AKTIF UNTUK KELAS SISWA
+    $stmtCBT = db()->prepare("
+        SELECT COUNT(*) 
+        FROM exam_ujian u
+        JOIN exam_ujian_kelas uk ON uk.ujian_id = u.id
+        WHERE u.status = 'aktif' AND uk.kelas = ?
+    ");
+    $stmtCBT->execute([$student['kelas']]);
     if ($stmtCBT->fetchColumn() == 0) {
         json_response(200, true, 'Tidak ada ujian CBT aktif', [
             'has_exam' => false,
