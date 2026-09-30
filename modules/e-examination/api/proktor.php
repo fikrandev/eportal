@@ -274,7 +274,70 @@ try {
             ");
             $stmtReset->execute($targetIds);
 
+            // Re-activate terminated sessions so they can continue
+            db()->prepare("
+                UPDATE exam_sesi 
+                SET status = 'mengerjakan' 
+                WHERE student_id IN ($placeholders) AND status = 'dihentikan'
+            ")->execute($targetIds);
+
             json_response(200, true, 'Berhasil mereset ' . count($targetIds) . ' akun siswa yang terkunci.');
+            break;
+
+        // ==========================================
+        // RESET SEMUA LOGIN (AKTIF & TERKUNCI)
+        // ==========================================
+        case 'reset_all_login':
+            exam_require_proktor();
+            if ($method !== 'POST') throw new Exception('Method not allowed', 405);
+
+            $data = get_input();
+            $kelas = trim($data['kelas'] ?? '');
+            $ujian_id = (int)($data['ujian_id'] ?? 0);
+
+            $where = ["el.status != 'logged_out'"];
+            $params = [];
+
+            if ($kelas !== '') {
+                $where[] = "s.kelas = ?";
+                $params[] = $kelas;
+            }
+            if ($ujian_id > 0) {
+                $where[] = "el.ujian_id = ?";
+                $params[] = $ujian_id;
+            }
+            $whereSql = implode(' AND ', $where);
+
+            // Fetch target student IDs
+            $stmtFind = db()->prepare("
+                SELECT el.student_id 
+                FROM exam_student_login el 
+                JOIN students s ON el.student_id = s.id 
+                WHERE $whereSql
+            ");
+            $stmtFind->execute($params);
+            $targetIds = $stmtFind->fetchAll(PDO::FETCH_COLUMN);
+
+            if (empty($targetIds)) {
+                json_response(200, true, 'Tidak ada akun siswa yang perlu di-reset.');
+            }
+
+            $placeholders = implode(',', array_fill(0, count($targetIds), '?'));
+            $stmtReset = db()->prepare("
+                UPDATE exam_student_login 
+                SET is_locked = 0, status = 'logged_out', lock_reason = NULL, updated_at = NOW() 
+                WHERE student_id IN ($placeholders)
+            ");
+            $stmtReset->execute($targetIds);
+
+            // Re-activate terminated sessions so they can continue
+            db()->prepare("
+                UPDATE exam_sesi 
+                SET status = 'mengerjakan' 
+                WHERE student_id IN ($placeholders) AND status = 'dihentikan'
+            ")->execute($targetIds);
+
+            json_response(200, true, 'Berhasil mereset ' . count($targetIds) . ' akun siswa.');
             break;
 
         // ==========================================

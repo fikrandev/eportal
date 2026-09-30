@@ -121,13 +121,35 @@ const ExamApp = {
             this.enterFullscreen();
         });
 
+        // Track last interaction to distinguish auto-sleep vs manual tab-switch
+        this.lastInteraction = Date.now();
+        ['touchstart', 'mousedown', 'keydown', 'scroll', 'wheel'].forEach(evt => {
+            document.addEventListener(evt, () => {
+                this.lastInteraction = Date.now();
+            }, { passive: true });
+        });
+
+        // Request WakeLock to prevent auto-sleep
+        const requestWakeLock = async () => {
+            if ('wakeLock' in navigator) {
+                try {
+                    this.wakeLock = await navigator.wakeLock.request('screen');
+                } catch (err) {}
+            }
+        };
+        requestWakeLock();
+
         // ===== 3. VISIBILITY CHANGE (Switch tab) =====
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
                 this.isTabActive = false;
-                this.reportCheating('tab_switch');
+                // If last interaction was > 15 seconds ago, it's likely auto-sleep
+                if (Date.now() - this.lastInteraction < 15000) {
+                    this.reportCheating('tab_switch');
+                }
             } else {
                 this.isTabActive = true;
+                requestWakeLock();
             }
         });
 
@@ -135,7 +157,11 @@ const ExamApp = {
         window.addEventListener('blur', () => {
             if (this.isTabActive) {
                 this.isTabActive = false;
-                this.reportCheating('window_blur');
+                // Avoid penalizing blur on mobile devices due to keyboard popups and sleep
+                const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+                if (!isMobile) {
+                    this.reportCheating('window_blur');
+                }
             }
         });
         window.addEventListener('focus', () => {

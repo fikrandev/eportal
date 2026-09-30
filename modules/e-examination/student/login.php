@@ -59,8 +59,13 @@ $initialMode = $requiredMethod ?: 'nis_dob';
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Login CBT Siswa — <?php echo htmlspecialchars($school_name); ?></title>
     
+    <link rel="manifest" href="manifest.php">
+    <meta name="theme-color" content="#2563EB">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+
     <?php if($school_icon): ?>
     <link rel="icon" href="<?php echo BASE_URL . $school_icon; ?>">
+    <link rel="apple-touch-icon" href="<?php echo BASE_URL . $school_icon; ?>">
     <?php endif; ?>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -536,6 +541,11 @@ $initialMode = $requiredMethod ?: 'nis_dob';
                 }
             });
         });
+    </script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+        }
     </script>
 </body>
 </html>

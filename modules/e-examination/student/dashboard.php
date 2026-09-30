@@ -47,7 +47,12 @@ $pastExams = $stmtPast->fetchAll();
     
     <?php if($school_icon): ?>
     <link rel="icon" href="<?php echo BASE_URL . $school_icon; ?>">
+    <link rel="apple-touch-icon" href="<?php echo BASE_URL . $school_icon; ?>">
     <?php endif; ?>
+    
+    <link rel="manifest" href="manifest.php">
+    <meta name="theme-color" content="#2563EB">
+    <meta name="apple-mobile-web-app-capable" content="yes">
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css">
@@ -146,9 +151,11 @@ $pastExams = $stmtPast->fetchAll();
                     <p>Tidak ada ujian yang sedang aktif untuk kelas Anda saat ini.</p>
                 </div>
             <?php else: ?>
+                <?php $finishedExamIds = array_column($pastExams, 'ujian_id'); ?>
                 <div class="exam-grid">
                     <?php foreach ($activeExams as $ex): ?>
-                        <div class="exam-card">
+                        <?php $isFinished = in_array($ex['id'], $finishedExamIds); ?>
+                        <div class="exam-card" <?php if($isFinished) echo 'style="opacity:0.8; background:#f8fafc;"'; ?>>
                             <h3 class="exam-card-title"><?php echo htmlspecialchars($ex['judul']); ?></h3>
                             <p class="exam-card-desc"><?php echo htmlspecialchars($ex['nama_bank_soal']); ?></p>
                             <div class="exam-meta">
@@ -156,7 +163,14 @@ $pastExams = $stmtPast->fetchAll();
                                 <span><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg> <?php echo $ex['jenis'] == 'psikologi' ? 'Psikotes' : 'Penilaian'; ?></span>
                             </div>
                             <div style="margin-top:auto;">
-                                <button class="btn-start" onclick="showTokenModal(<?php echo $ex['id']; ?>)">Mulai Ujian</button>
+                                <?php if($isFinished): ?>
+                                    <button class="btn-start" style="background:#10b981; cursor:default;" disabled>
+                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px;"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                        Selesai Dikerjakan
+                                    </button>
+                                <?php else: ?>
+                                    <button class="btn-start" onclick="showTokenModal(<?php echo $ex['id']; ?>)">Mulai Ujian</button>
+                                <?php endif; ?>
                             </div>
                         </div>
                     <?php endforeach; ?>
@@ -300,6 +314,11 @@ $pastExams = $stmtPast->fetchAll();
                 setTimeout(() => showTokenModal(examId, token), 500);
             }
         });
+    </script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+        }
     </script>
 </body>
 </html>

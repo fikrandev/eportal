@@ -23,8 +23,12 @@ if (!$session_id) {
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>CBT — Sedang Ujian</title>
+    
+    <link rel="manifest" href="manifest.php">
+    <meta name="theme-color" content="#2563EB">
+    <meta name="apple-mobile-web-app-capable" content="yes">
     
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css">
@@ -562,7 +566,7 @@ if (!$session_id) {
 
             /* Action bar buttons on mobile */
             .action-bar {
-                padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+                padding: 12px 10px calc(24px + env(safe-area-inset-bottom));
                 gap: 6px;
                 background: rgba(255,255,255,0.98);
                 backdrop-filter: blur(8px);
@@ -770,5 +774,10 @@ if (!$session_id) {
         const EXAM_BASE_URL = '<?php echo BASE_URL; ?>';
     </script>
     <script src="../assets/js/student_exam.js?v=<?php echo time(); ?>"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
+        }
+    </script>
 </body>
 </html>

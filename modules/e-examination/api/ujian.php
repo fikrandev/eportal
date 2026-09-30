@@ -260,6 +260,8 @@ try {
                 $updateData[] = $token;
             } elseif ($status === 'selesai') {
                 $sql .= ", tgl_selesai = NOW()";
+                // Force close all active sessions
+                db()->prepare("UPDATE exam_sesi SET status = 'selesai', waktu_selesai = NOW() WHERE ujian_id = ? AND status = 'mengerjakan'")->execute([$id]);
             }
 
             $sql .= " WHERE id = ?";

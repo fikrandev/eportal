@@ -80,9 +80,9 @@ $app_icon = get_setting('app_icon_siswa', $school_icon);
                     </div>
                 </div>
                 <div class="login-form-group">
-                    <label class="login-form-label" for="loginPassword">Tanggal Lahir</label>
+                    <label class="login-form-label" for="loginPassword">Tanggal Lahir (DDMMYYYY)</label>
                     <div class="login-form-input-wrap">
-                        <input type="date" class="login-form-input" id="loginPassword" required>
+                        <input type="text" inputmode="numeric" class="login-form-input" id="loginPassword" placeholder="Contoh: 12111998" required>
                         <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
                             <line x1="16" y1="2" x2="16" y2="6"/>
