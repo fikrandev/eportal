@@ -201,7 +201,7 @@ function syncExamStudents($examId, $yearId, $classes)
             $usedUsernames[$username] = true;
 
             $plain = substr(str_shuffle($chars), 0, 4);
-            $hash = password_hash($plain, PASSWORD_BCRYPT, ['cost' => 4]);
+            $hash = null;
 
             $newRows[] = [
                 'exam_id' => (int)$examId,

@@ -164,7 +164,7 @@ function saveStudentStatus()
     if ($password !== '') {
         $sql .= ', password_plain = ?, password_hash = ?';
         $params[] = $password;
-        $params[] = password_hash($password, PASSWORD_DEFAULT);
+        $params[] = null;
     }
 
     $sql .= ' WHERE id = ?';
@@ -222,7 +222,7 @@ function bulkGenerate()
         foreach ($rows as $row) {
             $username = xam_default_username($examId, $row);
             $pass = xam_default_password($row);
-            $upd->execute([$username, $pass, password_hash($pass, PASSWORD_DEFAULT), $row['id']]);
+            $upd->execute([$username, $pass, null, $row['id']]);
         }
 
         json_response(200, true, 'Username & password default berhasil digenerate ulang untuk kelas ini.');
@@ -316,7 +316,7 @@ function importAccounts()
 
             if ($nis === '' || $username === '') continue;
 
-            $passHash = $password !== '' ? password_hash($password, PASSWORD_DEFAULT) : null;
+            $passHash = null; // Do not hash to speed up import
             
             $stmt->execute([
                 $ruang,
