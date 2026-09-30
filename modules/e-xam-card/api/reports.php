@@ -42,6 +42,14 @@ if ($studentToken !== '') {
                     http_response_code(403);
                     die('Belum ada kartu ujian aktif atau ujian ini sudah ditutup.');
                 }
+
+                // Cek CBT Aktif
+                $stmtCBT = db()->prepare("SELECT COUNT(*) FROM exam_ujian WHERE status = 'aktif'");
+                $stmtCBT->execute();
+                if ($stmtCBT->fetchColumn() == 0) {
+                    http_response_code(403);
+                    die('Belum ada kartu ujian CBT aktif saat ini.');
+                }
             }
         }
     }

@@ -77,6 +77,13 @@ if ($examIsActive != 1) {
     die('Belum ada kartu ujian aktif atau ujian ini sudah ditutup.');
 }
 
+// Cek CBT Aktif
+$stmtCBT = db()->prepare("SELECT COUNT(*) FROM exam_ujian WHERE status = 'aktif'");
+$stmtCBT->execute();
+if ($stmtCBT->fetchColumn() == 0) {
+    die('Belum ada kartu ujian CBT aktif saat ini.');
+}
+
 // Ensure latest student class, name, photo & nisn for this student's NIS
 if (!empty($data['nis'])) {
     $latest = xam_get_latest_student_info($data['nis']);
