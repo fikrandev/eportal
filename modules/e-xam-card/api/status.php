@@ -186,6 +186,9 @@ function bulkGenerate()
         json_response(405, false, 'Method not allowed.');
     }
 
+    // Mencegah timeout saat hash ratusan password
+    set_time_limit(600);
+
     $input = get_input();
     $examId = (int) ($input['exam_id'] ?? 0);
     $kelas = sanitize($input['kelas'] ?? '');
@@ -277,6 +280,9 @@ function importAccounts()
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
         json_response(405, false, 'Method not allowed.');
     }
+
+    // Mencegah timeout saat hash ratusan password
+    set_time_limit(600);
 
     $input = get_input();
     $examId = (int) ($input['exam_id'] ?? 0);

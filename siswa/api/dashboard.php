@@ -13,80 +13,64 @@ $studentNis = (string)$siswa['nis'];
 $cleanPin = ltrim($studentNis, '0');
 
 try {
-    // 1. Kehadiran (Hadir) dari acad_absensi
-    $stmtHadir = db()->prepare("
-        SELECT COUNT(DISTINCT tanggal) FROM acad_absensi 
+    // Fetch Calendar Data (Dates and their statuses)
+    $calendar_data = [];
+    $stmtCal = db()->prepare("
+        SELECT tanggal, status 
+        FROM acad_absensi 
         WHERE (student_id = ? OR student_id = ?) 
-        AND MONTH(tanggal) = ? AND YEAR(tanggal) = ? AND status = 'H'
+        AND MONTH(tanggal) = ? AND YEAR(tanggal) = ?
     ");
-    $stmtHadir->execute([$studentId, $studentNis, $month, $year]);
-    $hadir = (int)$stmtHadir->fetchColumn();
-
-    // Jika belum ada input guru di acad_absensi, hitung dari absen_logs mesin
-    if ($hadir === 0) {
+    $stmtCal->execute([$studentId, $studentNis, $month, $year]);
+    foreach ($stmtCal->fetchAll(PDO::FETCH_ASSOC) as $row) {
+        $calendar_data[$row['tanggal']] = $row['status'];
+    }
+    
+    // Fallback to absen_logs if no manual H or T
+    $hasHadir = in_array('H', $calendar_data) || in_array('T', $calendar_data);
+    if (!$hasHadir) {
         try {
-            $stmtLogs = db()->prepare("
-                SELECT COUNT(DISTINCT DATE(waktu_absen)) FROM absen_logs 
+            $stmtLogsCal = db()->prepare("
+                SELECT DATE(waktu_absen) as tgl, MIN(TIME(waktu_absen)) as waktu 
+                FROM absen_logs 
                 WHERE (mesin_pin = ? OR mesin_pin = ?) 
                 AND MONTH(waktu_absen) = ? AND YEAR(waktu_absen) = ?
+                GROUP BY DATE(waktu_absen)
             ");
-            $stmtLogs->execute([$cleanPin, $studentNis, $month, $year]);
-            $hadir = (int)$stmtLogs->fetchColumn();
-        } catch (Exception $e) {
-            // Ignore if absen_logs doesn't exist
+            $stmtLogsCal->execute([$cleanPin, $studentNis, $month, $year]);
+            foreach ($stmtLogsCal->fetchAll(PDO::FETCH_ASSOC) as $row) {
+                if (!isset($calendar_data[$row['tgl']])) {
+                    $calendar_data[$row['tgl']] = ($row['waktu'] > '07:00:00') ? 'T' : 'H';
+                }
+            }
+        } catch (Exception $e) {}
+    }
+    
+    // Add approved Izin/Sakit from acad_izin_siswa if not in acad_absensi
+    try {
+        $stmtIzinCal = db()->prepare("
+            SELECT tanggal, jenis 
+            FROM acad_izin_siswa 
+            WHERE (student_id = ? OR student_id = ?) 
+            AND MONTH(tanggal) = ? AND YEAR(tanggal) = ? AND (status = 'Disetujui' OR status = 'Approved')
+        ");
+        $stmtIzinCal->execute([$studentId, $studentNis, $month, $year]);
+        foreach ($stmtIzinCal->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            if (!isset($calendar_data[$row['tanggal']])) {
+                $calendar_data[$row['tanggal']] = ($row['jenis'] === 'Sakit') ? 'S' : 'I';
+            }
         }
+    } catch (Exception $e) {}
+    
+    // Recalculate totals from calendar_data to ensure consistency
+    $hadir = 0; $terlambat = 0; $izin = 0; $sakit = 0; $alfa = 0;
+    foreach ($calendar_data as $date => $st) {
+        if ($st === 'H') $hadir++;
+        else if ($st === 'T') $terlambat++;
+        else if ($st === 'I') $izin++;
+        else if ($st === 'S') $sakit++;
+        else if ($st === 'A') $alfa++;
     }
-
-    // 2. Izin (dari acad_absensi atau acad_izin_siswa yang Disetujui/Approved)
-    $stmtIzin = db()->prepare("
-        SELECT COUNT(DISTINCT tanggal) FROM acad_absensi 
-        WHERE (student_id = ? OR student_id = ?) 
-        AND MONTH(tanggal) = ? AND YEAR(tanggal) = ? AND status = 'I'
-    ");
-    $stmtIzin->execute([$studentId, $studentNis, $month, $year]);
-    $izin = (int)$stmtIzin->fetchColumn();
-
-    if ($izin === 0) {
-        try {
-            $stmtIzinApp = db()->prepare("
-                SELECT COUNT(DISTINCT tanggal) FROM acad_izin_siswa 
-                WHERE (student_id = ? OR student_id = ?) 
-                AND MONTH(tanggal) = ? AND YEAR(tanggal) = ? AND (status = 'Disetujui' OR status = 'Approved') AND jenis = 'Izin'
-            ");
-            $stmtIzinApp->execute([$studentId, $studentNis, $month, $year]);
-            $izin = (int)$stmtIzinApp->fetchColumn();
-        } catch (Exception $e) {}
-    }
-
-    // 3. Sakit
-    $stmtSakit = db()->prepare("
-        SELECT COUNT(DISTINCT tanggal) FROM acad_absensi 
-        WHERE (student_id = ? OR student_id = ?) 
-        AND MONTH(tanggal) = ? AND YEAR(tanggal) = ? AND status = 'S'
-    ");
-    $stmtSakit->execute([$studentId, $studentNis, $month, $year]);
-    $sakit = (int)$stmtSakit->fetchColumn();
-
-    if ($sakit === 0) {
-        try {
-            $stmtSakitApp = db()->prepare("
-                SELECT COUNT(DISTINCT tanggal) FROM acad_izin_siswa 
-                WHERE (student_id = ? OR student_id = ?) 
-                AND MONTH(tanggal) = ? AND YEAR(tanggal) = ? AND (status = 'Disetujui' OR status = 'Approved') AND jenis = 'Sakit'
-            ");
-            $stmtSakitApp->execute([$studentId, $studentNis, $month, $year]);
-            $sakit = (int)$stmtSakitApp->fetchColumn();
-        } catch (Exception $e) {}
-    }
-
-    // 4. Alfa
-    $stmtAlfa = db()->prepare("
-        SELECT COUNT(DISTINCT tanggal) FROM acad_absensi 
-        WHERE (student_id = ? OR student_id = ?) 
-        AND MONTH(tanggal) = ? AND YEAR(tanggal) = ? AND status = 'A'
-    ");
-    $stmtAlfa->execute([$studentId, $studentNis, $month, $year]);
-    $alfa = (int)$stmtAlfa->fetchColumn();
 
     // Fetch Wali Kelas and Guru Wali
     $guru_wali = $siswa['guru_wali'] ?? '-';
@@ -139,12 +123,14 @@ try {
 
     json_response(200, true, 'Dashboard loaded', [
         'hadir' => $hadir,
+        'terlambat' => $terlambat,
         'izin' => $izin,
         'sakit' => $sakit,
         'alfa' => $alfa,
         'wali_kelas' => $wali_kelas,
         'guru_wali' => $guru_wali,
-        'active_exams' => $active_exams
+        'active_exams' => $active_exams,
+        'calendar_data' => $calendar_data
     ]);
 } catch (PDOException $e) {
     json_response(500, false, 'Database Error: ' . $e->getMessage());

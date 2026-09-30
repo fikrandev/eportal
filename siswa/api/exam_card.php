@@ -33,7 +33,8 @@ try {
     $stmt->execute([$activeYear['tahun_ajaran'] ?? '2026/2027', $nis, $activeYearId]);
     $examInfo = $stmt->fetch();
 
-    // Fallback: Check any exam where student is registered if no active (status=1) found
+    // Fallback dihapus atas permintaan: Jika tidak ada ujian aktif (walaupun kartu sudah OKE di ujian sebelumnya), maka tidak tampilkan kartu.
+    /*
     if (!$examInfo) {
         $stmt = db()->prepare("
             SELECT e.id as exam_id, e.exam_name, e.academic_year_id as exam_year_id,
@@ -51,6 +52,7 @@ try {
         $stmt->execute([$activeYear['tahun_ajaran'] ?? '2026/2027', $nis, $activeYearId]);
         $examInfo = $stmt->fetch();
     }
+    */
 
     // Auto-enroll if student is valid but not yet enrolled in active exam
     if (!$examInfo) {

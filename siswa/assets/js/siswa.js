@@ -199,6 +199,7 @@ const App = {
             case 'dashboard':
                 this.apiGet('api/dashboard.php').then(res => {
                     if (res.success) {
+                        App.state.calendarData = res.data.calendar_data || {};
                         contentDiv.innerHTML = this.views.dashboard(res.data || {});
                     } else {
                         contentDiv.innerHTML = this.views.error('Gagal memuat ringkasan dashboard', () => this.loadView('dashboard'));
@@ -372,15 +373,15 @@ const App = {
                         </div>
                         
                         <!-- Kehadiran Box -->
-                        <div style="background: rgba(255,255,255,0.12); border-radius: 16px; margin-top: 18px; padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; border: 1px solid rgba(255,255,255,0.18);">
+                        <button type="button" onclick="App.showCalendar()" style="width: 100%; text-align: left; cursor: pointer; background: rgba(255,255,255,0.12); border-radius: 16px; margin-top: 18px; padding: 14px 18px; display: flex; justify-content: space-between; align-items: center; border: 1px solid rgba(255,255,255,0.18); transition: all 0.2s;">
                             <div>
                                 <div style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.85; margin-bottom: 2px; font-weight: 500;">Kehadiran Bulan Ini</div>
                                 <div style="font-size: 1.6rem; font-weight: 800; color:#fff;">${data.hadir || 0} <span style="font-size: 0.9rem; font-weight: 500; opacity: 0.85;">Hari</span></div>
                             </div>
-                            <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center;">
-                                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                            <div style="width: 44px; height: 44px; border-radius: 12px; background: rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; color: white;">
+                                <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
                             </div>
-                        </div>
+                        </button>
                     </div>
 
                     <!-- Rekap Bulanan Grid -->
@@ -389,19 +390,23 @@ const App = {
                         <span style="font-size: 0.8rem; color: var(--text-muted); font-weight:500;">${new Date().toLocaleDateString('id-ID', { month: 'long', year: 'numeric' })}</span>
                     </div>
 
-                    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 22px;">
-                        <div style="background: white; border-radius: 18px; padding: 16px 12px; text-align: center; box-shadow: var(--shadow-sm); border: 1px solid #e2e8f0;">
-                            <div style="color: var(--warning); font-size: 1.6rem; font-weight: 800; line-height: 1.1; margin-bottom: 4px;">${data.izin || 0}</div>
-                            <div style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 600;">Izin</div>
-                        </div>
-                        <div style="background: white; border-radius: 18px; padding: 16px 12px; text-align: center; box-shadow: var(--shadow-sm); border: 1px solid #e2e8f0;">
-                            <div style="color: var(--info); font-size: 1.6rem; font-weight: 800; line-height: 1.1; margin-bottom: 4px;">${data.sakit || 0}</div>
-                            <div style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 600;">Sakit</div>
-                        </div>
-                        <div style="background: white; border-radius: 18px; padding: 16px 12px; text-align: center; box-shadow: var(--shadow-sm); border: 1px solid #e2e8f0;">
-                            <div style="color: var(--danger); font-size: 1.6rem; font-weight: 800; line-height: 1.1; margin-bottom: 4px;">${data.alfa || 0}</div>
-                            <div style="font-size: 0.8rem; color: var(--text-secondary); font-weight: 600;">Alpha</div>
-                        </div>
+                    <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 22px;">
+                        <button type="button" onclick="App.showAbsensiList('Izin', 'I')" style="background: white; border-radius: 14px; padding: 12px 6px; text-align: center; box-shadow: var(--shadow-sm); border: 1px solid #e2e8f0; cursor: pointer;">
+                            <div style="color: var(--warning); font-size: 1.4rem; font-weight: 800; line-height: 1.1; margin-bottom: 4px;">${data.izin || 0}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 600;">Izin</div>
+                        </button>
+                        <button type="button" onclick="App.showAbsensiList('Sakit', 'S')" style="background: white; border-radius: 14px; padding: 12px 6px; text-align: center; box-shadow: var(--shadow-sm); border: 1px solid #e2e8f0; cursor: pointer;">
+                            <div style="color: var(--info); font-size: 1.4rem; font-weight: 800; line-height: 1.1; margin-bottom: 4px;">${data.sakit || 0}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 600;">Sakit</div>
+                        </button>
+                        <button type="button" onclick="App.showAbsensiList('Alpha', 'A')" style="background: white; border-radius: 14px; padding: 12px 6px; text-align: center; box-shadow: var(--shadow-sm); border: 1px solid #e2e8f0; cursor: pointer;">
+                            <div style="color: var(--danger); font-size: 1.4rem; font-weight: 800; line-height: 1.1; margin-bottom: 4px;">${data.alfa || 0}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 600;">Alpha</div>
+                        </button>
+                        <button type="button" onclick="App.showAbsensiList('Terlambat', 'T')" style="background: white; border-radius: 14px; padding: 12px 6px; text-align: center; box-shadow: var(--shadow-sm); border: 1px solid #e2e8f0; cursor: pointer;">
+                            <div style="color: #f97316; font-size: 1.4rem; font-weight: 800; line-height: 1.1; margin-bottom: 4px;">${data.terlambat || 0}</div>
+                            <div style="font-size: 0.75rem; color: var(--text-secondary); font-weight: 600;">Telat</div>
+                        </button>
                     </div>
 
                     <!-- Kartu Ujian Banner -->
@@ -475,12 +480,12 @@ const App = {
                         <h3 style="font-size: 1.1rem; color: var(--text-primary); margin:0 0 12px;">Ujian Aktif (CBT)</h3>
                         <div id="uiActiveExams">
                             ${(data.active_exams && data.active_exams.length > 0) ? data.active_exams.map(e => `
-                                <div class="card" style="margin-bottom: 12px; padding: 16px; border-radius: 18px; border: 1px solid #e2e8f0; display:flex; flex-direction:column; gap:12px; background: white;">
+                                <div class="card" onclick="window.location.href='../modules/e-examination/student/login.php'" style="margin-bottom: 12px; padding: 16px; border-radius: 18px; border: 1px solid #e2e8f0; display:flex; flex-direction:column; gap:12px; background: white; cursor: pointer; transition: all 0.2s;">
                                     <div>
                                         <div style="font-weight:700; font-size:1.05rem; color:#0f172a; margin-bottom:4px;">${e.judul}</div>
                                         <div style="font-size:0.8rem; color:#64748b; margin-bottom: 8px;">${e.nama_bank_soal} • ${e.durasi_menit} Menit</div>
                                     </div>
-                                    <button class="btn btn-primary" onclick="window.location.href='../modules/e-examination/student/'" style="width:100%; border-radius:12px; font-weight:600; padding:10px;">
+                                    <button class="btn btn-primary" style="width:100%; border-radius:12px; font-weight:600; padding:10px; pointer-events: none;">
                                         Menuju CBT
                                     </button>
                                 </div>
@@ -808,6 +813,95 @@ const App = {
                 container.innerHTML = '';
             }
         }
+    },
+
+    showCalendar() {
+        const data = this.state.calendarData || {};
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = now.getMonth();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        
+        let html = `
+            <div style="padding: 15px;">
+                <h4 style="margin: 0 0 15px; text-align: center; color: var(--primary);">Kalender Kehadiran</h4>
+                <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; text-align: center; margin-bottom: 10px; font-weight: 600; font-size: 0.8rem; color: var(--text-secondary);">
+                    <div>M</div><div>S</div><div>S</div><div>R</div><div>K</div><div>J</div><div>S</div>
+                </div>
+                <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; text-align: center; font-size: 0.85rem;">
+        `;
+        
+        let firstDay = new Date(year, month, 1).getDay();
+        for (let i = 0; i < firstDay; i++) {
+            html += `<div></div>`;
+        }
+        
+        for (let i = 1; i <= daysInMonth; i++) {
+            const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`;
+            const st = data[dateStr];
+            let bg = '#f1f5f9';
+            let color = '#64748b';
+            let tooltip = '';
+            
+            if (st === 'H') { bg = '#dcfce7'; color = '#16a34a'; tooltip = 'Hadir Tepat Waktu'; }
+            else if (st === 'T') { bg = '#ffedd5'; color = '#ea580c'; tooltip = 'Hadir Terlambat'; }
+            else if (st === 'I') { bg = '#fef9c3'; color = '#ca8a04'; tooltip = 'Izin'; }
+            else if (st === 'S') { bg = '#e0f2fe'; color = '#0284c7'; tooltip = 'Sakit'; }
+            else if (st === 'A') { bg = '#fee2e2'; color = '#dc2626'; tooltip = 'Alpha'; }
+            
+            html += `<div title="${tooltip}" style="background: ${bg}; color: ${color}; border-radius: 8px; padding: 8px 0; font-weight: 600;">${i}</div>`;
+        }
+        
+        html += `
+                </div>
+                <div style="margin-top: 20px; font-size: 0.75rem; display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;">
+                    <div style="display: flex; align-items: center; gap: 4px;"><span style="display:inline-block; width:12px; height:12px; background:#dcfce7; border-radius:3px;"></span> Hadir</div>
+                    <div style="display: flex; align-items: center; gap: 4px;"><span style="display:inline-block; width:12px; height:12px; background:#ffedd5; border-radius:3px;"></span> Terlambat</div>
+                    <div style="display: flex; align-items: center; gap: 4px;"><span style="display:inline-block; width:12px; height:12px; background:#fef9c3; border-radius:3px;"></span> Izin</div>
+                    <div style="display: flex; align-items: center; gap: 4px;"><span style="display:inline-block; width:12px; height:12px; background:#e0f2fe; border-radius:3px;"></span> Sakit</div>
+                    <div style="display: flex; align-items: center; gap: 4px;"><span style="display:inline-block; width:12px; height:12px; background:#fee2e2; border-radius:3px;"></span> Alpha</div>
+                </div>
+            </div>
+        `;
+        
+        const c = document.getElementById('spModalContainer');
+        if (c) c.innerHTML = `
+            <div class="modal-overlay active" onclick="this.remove()">
+                <div class="modal-sheet active" onclick="event.stopPropagation()">
+                    <div class="modal-sheet-indicator"></div>
+                    ${html}
+                    <button class="btn btn-block" style="margin-top:15px; background: #f1f5f9; color: #475569;" onclick="this.closest('.modal-overlay').remove()">Tutup</button>
+                </div>
+            </div>
+        `;
+    },
+
+    showAbsensiList(title, type) {
+        const data = this.state.calendarData || {};
+        const dates = Object.keys(data).filter(k => data[k] === type).sort().reverse();
+        
+        let html = `
+            <div style="padding: 15px;">
+                <h4 style="margin: 0 0 15px; text-align: center; color: var(--primary);">Riwayat ${title}</h4>
+                ${dates.length === 0 ? '<div style="text-align:center; padding: 20px; color: var(--text-muted);">Tidak ada catatan</div>' : 
+                '<div style="display:flex; flex-direction:column; gap:8px;">' + dates.map(d => `
+                    <div style="padding: 12px 15px; background: #f8fafc; border-radius: 12px; border: 1px solid #e2e8f0; font-weight: 600; font-size: 0.9rem; color: var(--text-primary);">
+                        ${new Date(d).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                    </div>
+                `).join('') + '</div>'}
+            </div>
+        `;
+        
+        const c = document.getElementById('spModalContainer');
+        if (c) c.innerHTML = `
+            <div class="modal-overlay active" onclick="this.remove()">
+                <div class="modal-sheet active" onclick="event.stopPropagation()">
+                    <div class="modal-sheet-indicator"></div>
+                    ${html}
+                    <button class="btn btn-block" style="margin-top:15px; background: #f1f5f9; color: #475569;" onclick="this.closest('.modal-overlay').remove()">Tutup</button>
+                </div>
+            </div>
+        `;
     },
 
     openExamCard() {
