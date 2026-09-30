@@ -276,18 +276,18 @@ const App = {
                     html += '<h3 style="font-size: 1rem; color: var(--primary); margin-bottom: 8px;">' + hari + '</h3>';
                     html += '<div style="display:flex; flex-direction:column; gap:8px;">';
                     data[hari].forEach(j => {
-                        html += \`
+                        html += `
                             <div class="card" style="padding: 12px 14px; border-left: 4px solid var(--primary);">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-                                    <div style="font-weight: 700; font-size: 0.95rem;">\${j.nama_mapel}</div>
-                                    <div style="font-size: 0.8rem; background: #e0f2fe; color: #0284c7; padding: 2px 8px; border-radius: 12px; font-weight: 600;">\${j.nama_jam}</div>
+                                    <div style="font-weight: 700; font-size: 0.95rem;">${j.nama_mapel}</div>
+                                    <div style="font-size: 0.8rem; background: #e0f2fe; color: #0284c7; padding: 2px 8px; border-radius: 12px; font-weight: 600;">${j.nama_jam}</div>
                                 </div>
                                 <div style="font-size: 0.85rem; color: var(--text-secondary); display: flex; align-items: center; gap: 6px;">
                                     <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                                    \${j.nama_guru || 'Guru Belum Ditentukan'}
+                                    ${j.nama_guru || 'Guru Belum Ditentukan'}
                                 </div>
                             </div>
-                        \`;
+                        `;
                     });
                     html += '</div></div>';
                 }
@@ -308,12 +308,12 @@ const App = {
             } else {
                 html += '<div style="display:flex; flex-direction:column; gap:12px;">';
                 data.forEach(k => {
-                    html += \`
+                    html += `
                         <div class="card" style="padding: 14px;">
-                            <div style="font-weight: 700; color: var(--primary); font-size: 0.9rem; margin-bottom: 6px;">📅 \${k.tanggal_indo || k.tanggal}</div>
-                            <div style="font-size: 0.9rem; color: var(--text-primary); line-height: 1.5; white-space: pre-wrap;">\${k.catatan}</div>
+                            <div style="font-weight: 700; color: var(--primary); font-size: 0.9rem; margin-bottom: 6px;">📅 ${k.tanggal_indo || k.tanggal}</div>
+                            <div style="font-size: 0.9rem; color: var(--text-primary); line-height: 1.5; white-space: pre-wrap;">${k.catatan}</div>
                         </div>
-                    \`;
+                    `;
                 });
                 html += '</div>';
             }
@@ -454,27 +454,27 @@ const App = {
                     <div style="margin-top: 24px;">
                         <h3 style="font-size: 1.1rem; color: var(--text-primary); margin:0 0 12px;">Ujian Aktif (CBT)</h3>
                         <div id="uiActiveExams">
-                            \${(data.active_exams && data.active_exams.length > 0) ? data.active_exams.map(e => \`
+                            ${(data.active_exams && data.active_exams.length > 0) ? data.active_exams.map(e => `
                                 <div class="card" style="margin-bottom: 12px; padding: 16px; border-radius: 18px; border: 1px solid #e2e8f0; display:flex; flex-direction:column; gap:12px; background: white;">
                                     <div>
-                                        <div style="font-weight:700; font-size:1.05rem; color:#0f172a; margin-bottom:4px;">\${e.judul}</div>
-                                        <div style="font-size:0.8rem; color:#64748b; margin-bottom: 8px;">\${e.nama_bank_soal} • \${e.durasi_menit} Menit</div>
+                                        <div style="font-weight:700; font-size:1.05rem; color:#0f172a; margin-bottom:4px;">${e.judul}</div>
+                                        <div style="font-size:0.8rem; color:#64748b; margin-bottom: 8px;">${e.nama_bank_soal} • ${e.durasi_menit} Menit</div>
                                     </div>
                                     <button class="btn btn-primary" onclick="window.location.href='../modules/e-examination/student/'" style="width:100%; border-radius:12px; font-weight:600; padding:10px;">
                                         Menuju CBT
                                     </button>
                                 </div>
-                            \`).join('') : \`
+                            `).join('') : `
                                 <div class="card" style="text-align:center; padding:24px; color:#94a3b8; border-radius:18px; border:1px dashed #cbd5e1; background:transparent;">
                                     <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" style="margin-bottom:8px; opacity:0.5; margin-left:auto; margin-right:auto; display:block;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
                                     <div style="font-size:0.85rem;">Tidak ada ujian aktif saat ini.</div>
                                 </div>
-                            \`}
+                            `}
                         </div>
                     </div>
 
                 </div>
-            \`;
+            `;
         },
 
         izin(data) {
