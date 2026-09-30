@@ -884,11 +884,11 @@ const App = {
         
         const c = document.getElementById('modalContainer');
         if (c) c.innerHTML = `
-            <div class="modal-overlay active" id="calendarModalOverlay" onclick="this.innerHTML=''">
+            <div class="modal-overlay active" id="calendarModalOverlay" onclick="App.closeActiveModal()">
                 <div class="modal-sheet active" onclick="event.stopPropagation()">
                     <div class="modal-sheet-indicator"></div>
                     ${html}
-                    <button class="btn btn-block" style="margin-top:15px; background: #f1f5f9; color: #475569;" onclick="document.getElementById('modalContainer').innerHTML=''">Tutup</button>
+                    <button class="btn btn-block" style="margin-top:15px; background: #f1f5f9; color: #475569;" onclick="App.closeActiveModal()">Tutup</button>
                 </div>
             </div>
         `;
@@ -912,11 +912,11 @@ const App = {
         
         const c = document.getElementById('modalContainer');
         if (c) c.innerHTML = `
-            <div class="modal-overlay active" id="absensiModalOverlay" onclick="this.innerHTML=''">
+            <div class="modal-overlay active" id="absensiModalOverlay" onclick="App.closeActiveModal()">
                 <div class="modal-sheet active" onclick="event.stopPropagation()">
                     <div class="modal-sheet-indicator"></div>
                     ${html}
-                    <button class="btn btn-block" style="margin-top:15px; background: #f1f5f9; color: #475569;" onclick="document.getElementById('modalContainer').innerHTML=''">Tutup</button>
+                    <button class="btn btn-block" style="margin-top:15px; background: #f1f5f9; color: #475569;" onclick="App.closeActiveModal()">Tutup</button>
                 </div>
             </div>
         `;
