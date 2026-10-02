@@ -121,20 +121,19 @@ try {
         } catch (Exception $e) {}
     }
 
-    // Check if any CBT exam is active for this student's class
+    // Check if any exam card is configured in E-Xam Card module (xam_exams with status = 1)
     $global_cbt_active = false;
-    if (!empty($siswa['kelas'])) {
-        try {
-            $stmtCBT = db()->prepare("
-                SELECT COUNT(*) 
-                FROM exam_ujian u
-                JOIN exam_ujian_kelas uk ON uk.ujian_id = u.id
-                WHERE u.status = 'aktif' AND uk.kelas = ?
-            ");
-            $stmtCBT->execute([$siswa['kelas']]);
-            $global_cbt_active = ($stmtCBT->fetchColumn() > 0);
-        } catch (Exception $e) {}
-    }
+    try {
+        $activeYear = get_active_academic_year();
+        $activeYearId = (int) ($activeYear['id'] ?? 0);
+        $stmtXam = db()->prepare("
+            SELECT COUNT(*) 
+            FROM xam_exams 
+            WHERE status = 1 AND academic_year_id = ?
+        ");
+        $stmtXam->execute([$activeYearId]);
+        $global_cbt_active = ($stmtXam->fetchColumn() > 0);
+    } catch (Exception $e) {}
 
     json_response(200, true, 'Dashboard loaded', [
         'hadir' => $hadir,

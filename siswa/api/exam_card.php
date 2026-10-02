@@ -12,20 +12,7 @@ try {
     $student = siswa_auth();
     $nis = $student['nis'];
 
-    // CEK UJIAN CBT AKTIF UNTUK KELAS SISWA
-    $stmtCBT = db()->prepare("
-        SELECT COUNT(*) 
-        FROM exam_ujian u
-        JOIN exam_ujian_kelas uk ON uk.ujian_id = u.id
-        WHERE u.status = 'aktif' AND uk.kelas = ?
-    ");
-    $stmtCBT->execute([$student['kelas']]);
-    if ($stmtCBT->fetchColumn() == 0) {
-        json_response(200, true, 'Tidak ada ujian CBT aktif', [
-            'has_exam' => false,
-            'message' => 'Belum ada ujian CBT yang aktif saat ini. Kartu ujian belum tersedia.'
-        ]);
-    }
+    // Langsung cek ke xam_exams (E-Xam Card) — tidak perlu cek exam_ujian (CBT) lagi
 
     // 1. Resolve active academic year
     $activeYear = get_active_academic_year();
