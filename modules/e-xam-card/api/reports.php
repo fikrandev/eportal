@@ -48,18 +48,7 @@ if ($studentToken !== '') {
                 $stmtCls->execute([(int)$payload['student_id']]);
                 $studentClass = $stmtCls->fetchColumn();
 
-                // Cek CBT Aktif untuk kelas siswa
-                $stmtCBT = db()->prepare("
-                    SELECT COUNT(*) 
-                    FROM exam_ujian u
-                    JOIN exam_ujian_kelas uk ON uk.ujian_id = u.id
-                    WHERE u.status = 'aktif' AND uk.kelas = ?
-                ");
-                $stmtCBT->execute([$studentClass]);
-                if ($stmtCBT->fetchColumn() == 0) {
-                    http_response_code(403);
-                    die('Belum ada kartu ujian CBT aktif untuk kelas Anda saat ini.');
-                }
+                // Cek xam_exams sudah dilakukan di atas (exam_status = 1)
             }
         }
     }

@@ -331,12 +331,18 @@ const ExamCard = {
                 <div class="sp-card">
                     <div class="sp-card-header" style="display: flex; justify-content: space-between; align-items: center;">
                         <h3 style="margin: 0;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg> Form Ujian</h3>
-                        <button class="btn btn-primary btn-sm" id="btnSaveExam" style="border-radius: 8px;">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;margin-right:6px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
-                            Simpan Ujian
-                        </button>
+                        <div style="display: flex; gap: 6px; align-items: center;">
+                            <button class="btn btn-outline btn-sm" id="btnCancelEditExam" style="border-radius: 8px; display: none;">
+                                Batal Edit
+                            </button>
+                            <button class="btn btn-primary btn-sm" id="btnSaveExam" style="border-radius: 8px;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;height:16px;margin-right:6px;"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+                                <span id="btnSaveExamLabel">Simpan Ujian</span>
+                            </button>
+                        </div>
                     </div>
                     <div class="sp-card-body">
+                        <input type="hidden" id="examEditId" value="">
                         <div class="form-group">
                             <label class="form-label">Nama Ujian</label>
                             <input type="text" class="form-input" id="examName" placeholder="Contoh: Ujian Tengah Semester">
@@ -362,6 +368,7 @@ const ExamCard = {
             </div>
         `);
         $("#btnSaveExam").on("click", () => this.saveExam());
+        $("#btnCancelEditExam").on("click", () => this.resetExamForm());
         this.loadExamList();
     },
 
@@ -385,7 +392,8 @@ const ExamCard = {
                     <td style="text-align:center">${row.total_kelas || 0}</td>
                     <td style="text-align:center">${row.total_siswa || 0}</td>
                     <td>
-                        <div style="display:flex; gap:6px;">
+                        <div style="display:flex; gap:6px; flex-wrap: wrap;">
+                            <button class="btn btn-sm btn-edit-exam" data-id="${row.id}" style="background: #f0f9ff; color: #0369a1; border: 1px solid #bae6fd; border-radius: 8px;" title="Edit Ujian">Edit</button>
                             <button class="btn btn-primary btn-sm btn-tpl-exam" data-id="${row.id}" title="Upload Template Kartu">Template</button>
                             <button class="btn btn-outline btn-sm btn-del-exam" data-id="${row.id}">Hapus</button>
                         </div>
@@ -400,17 +408,46 @@ const ExamCard = {
                     <tbody>${rows}</tbody>
                 </table>
             `);
+            $(".btn-edit-exam").on("click", (event) => this.editExam(Number($(event.currentTarget).data("id"))));
             $(".btn-del-exam").on("click", (event) => this.deleteExam(Number($(event.currentTarget).data("id"))));
             $(".btn-tpl-exam").on("click", (event) => this.openTemplateUploadModal(Number($(event.currentTarget).data("id"))));
         }).fail(() => $("#examTableWrap").html(`<div style="padding:12px;color:#b91c1c">Gagal memuat data ujian.</div>`));
     },
 
+    editExam(id) {
+        if (!id) return;
+        const exam = (this.state.exams || []).find(e => e.id == id);
+        if (!exam) {
+            EModal.toast({ type: "error", title: "Error", message: "Data ujian tidak ditemukan." });
+            return;
+        }
+        $("#examEditId").val(exam.id);
+        $("#examName").val(exam.exam_name);
+        $("#examStartDate").val(exam.exam_start_date);
+        $("#examEndDate").val(exam.exam_end_date);
+        $("#btnSaveExamLabel").text("Update Ujian");
+        $("#btnCancelEditExam").show();
+        $("#examName").focus();
+        EModal.toast({ type: "info", title: "Mode Edit", message: `Mengedit ujian: ${this.escapeHtml(exam.exam_name)}` });
+    },
+
+    resetExamForm() {
+        $("#examEditId").val("");
+        $("#examName,#examStartDate,#examEndDate").val("");
+        $("#btnSaveExamLabel").text("Simpan Ujian");
+        $("#btnCancelEditExam").hide();
+    },
+
     saveExam() {
+        const editId = ($("#examEditId").val() || "").trim();
         const payload = {
             exam_name: ($("#examName").val() || "").trim(),
             exam_start_date: $("#examStartDate").val(),
             exam_end_date: $("#examEndDate").val()
         };
+        if (editId) {
+            payload.id = parseInt(editId, 10);
+        }
         if (!payload.exam_name || !payload.exam_start_date || !payload.exam_end_date) {
             EModal.toast({ type: "warning", title: "Data belum lengkap", message: "Lengkapi nama ujian dan tanggal." });
             return;
@@ -421,7 +458,7 @@ const ExamCard = {
                 return;
             }
             EModal.toast({ type: "success", title: "Berhasil", message: res.message || "Ujian tersimpan." });
-            $("#examName,#examStartDate,#examEndDate").val("");
+            this.resetExamForm();
             this.loadExamList();
         }).fail((err) => {
             console.error("Save exam failed:", err);
