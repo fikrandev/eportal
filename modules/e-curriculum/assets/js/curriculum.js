@@ -4578,6 +4578,7 @@ const Curriculum = {
             if (xhr.responseJSON && xhr.responseJSON.message) errMsg = xhr.responseJSON.message;
             $('#bukuTableWrapper').html(`<div class="acad-empty" style="color:#ef4444;"><h3>Gagal Memuat Data</h3><p>${this.escapeHtml(errMsg)}</p><button class="btn-acad btn-acad-outline" onclick="Curriculum.loadBukuTable()" style="margin-top:10px;">🔄 Coba Lagi</button></div>`);
         });
+    },
     exportBukuExcel() {
         const table = document.getElementById('tableExportBuku');
         if (!table) {
