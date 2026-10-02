@@ -43,11 +43,12 @@ function saveHariLibur($user) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed.');
 
     $input = get_input();
-    $tanggal = $input['tanggal'] ?? '';
+    $tanggal_mulai = $input['tanggal_mulai'] ?? ($input['tanggal'] ?? '');
+    $tanggal_akhir = $input['tanggal_akhir'] ?? $tanggal_mulai;
     $keterangan = $input['keterangan'] ?? '';
     $id = isset($input['id']) ? (int)$input['id'] : 0;
 
-    if (empty($tanggal) || empty($keterangan)) {
+    if (empty($tanggal_mulai) || empty($keterangan)) {
         json_response(400, false, 'Tanggal dan keterangan wajib diisi.');
     }
 
@@ -57,17 +58,25 @@ function saveHariLibur($user) {
     try {
         if ($id > 0) {
             $stmt = db()->prepare("UPDATE acad_hari_libur SET tanggal = ?, keterangan = ? WHERE id = ? AND academic_year_id = ?");
-            $stmt->execute([$tanggal, $keterangan, $id, $year_id]);
+            $stmt->execute([$tanggal_mulai, $keterangan, $id, $year_id]);
             json_response(200, true, 'Hari libur berhasil diupdate.');
         } else {
-            $stmt = db()->prepare("INSERT INTO acad_hari_libur (academic_year_id, tanggal, keterangan) VALUES (?, ?, ?)");
-            $stmt->execute([$year_id, $tanggal, $keterangan]);
+            $start_ts = strtotime($tanggal_mulai);
+            $end_ts = strtotime($tanggal_akhir);
+            if ($start_ts > $end_ts) {
+                json_response(400, false, 'Tanggal mulai tidak boleh lebih besar dari tanggal selesai.');
+            }
+
+            $stmt = db()->prepare("INSERT IGNORE INTO acad_hari_libur (academic_year_id, tanggal, keterangan) VALUES (?, ?, ?)");
+            $current_ts = $start_ts;
+            while ($current_ts <= $end_ts) {
+                $tgl = date('Y-m-d', $current_ts);
+                $stmt->execute([$year_id, $tgl, $keterangan]);
+                $current_ts = strtotime('+1 day', $current_ts);
+            }
             json_response(200, true, 'Hari libur berhasil ditambahkan.');
         }
     } catch (PDOException $e) {
-        if ($e->getCode() == 23000) {
-            json_response(400, false, 'Tanggal tersebut sudah diatur sebagai hari libur pada tahun ajaran ini.');
-        }
         json_response(500, false, 'Server error: ' . $e->getMessage());
     }
 }

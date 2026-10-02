@@ -4486,6 +4486,12 @@ const Curriculum = {
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
                             Kelola Jenis Catatan
                         </button>
+                        <button class="btn-acad btn-acad-success" onclick="Curriculum.exportBukuExcel()" style="display:flex;align-items:center;gap:6px;padding:7px 14px;font-size:13px;border-radius:6px;font-weight:600;background:#10B981;color:white;border:none;">
+                            📥 Export Excel
+                        </button>
+                        <button class="btn-acad btn-acad-primary" onclick="Curriculum.exportBukuPDF()" style="display:flex;align-items:center;gap:6px;padding:7px 14px;font-size:13px;border-radius:6px;font-weight:600;background:#EF4444;color:white;border:none;">
+                            🖨️ Cetak PDF
+                        </button>
                         <button class="btn-acad btn-acad-primary" onclick="Curriculum.showBukuForm()" style="display:flex;align-items:center;gap:6px;padding:7px 14px;font-size:13px;border-radius:6px;font-weight:600">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             Tambah Catatan
@@ -4566,12 +4572,74 @@ const Curriculum = {
                 </tr>
             `;
             }).join('');
-            $('#bukuTableWrapper').html(`<div class="data-table-wrapper"><table class="data-table"><thead><tr><th>Tanggal</th><th>Siswa</th><th>Kelas</th><th>Jenis</th><th>Catatan</th><th style="width:100px;">Aksi</th></tr></thead><tbody>${rows}</tbody></table></div>`);
+            $('#bukuTableWrapper').html(`<div class="data-table-wrapper"><table class="data-table" id="tableExportBuku"><thead><tr><th>Tanggal</th><th>Siswa</th><th>Kelas</th><th>Jenis</th><th>Catatan</th><th style="width:100px;" class="no-print">Aksi</th></tr></thead><tbody>${rows}</tbody></table></div>`);
         }).fail(xhr => {
             let errMsg = 'Gagal memuat catatan buku penghubung.';
             if (xhr.responseJSON && xhr.responseJSON.message) errMsg = xhr.responseJSON.message;
             $('#bukuTableWrapper').html(`<div class="acad-empty" style="color:#ef4444;"><h3>Gagal Memuat Data</h3><p>${this.escapeHtml(errMsg)}</p><button class="btn-acad btn-acad-outline" onclick="Curriculum.loadBukuTable()" style="margin-top:10px;">🔄 Coba Lagi</button></div>`);
         });
+    exportBukuExcel() {
+        const table = document.getElementById('tableExportBuku');
+        if (!table) {
+            EModal.toast({ type: 'warning', title: 'Kosong', message: 'Tidak ada data untuk diekspor.' });
+            return;
+        }
+
+        // Clone table and remove the Action column (last column)
+        const clone = table.cloneNode(true);
+        const trs = clone.querySelectorAll('tr');
+        trs.forEach(tr => {
+            if(tr.children.length > 0) tr.removeChild(tr.lastElementChild);
+        });
+
+        if (typeof XLSX === 'undefined') {
+            // Fallback load script if somehow not available
+            $.getScript('https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js', () => {
+                const wb = XLSX.utils.table_to_book(clone, { sheet: "Buku Penghubung" });
+                XLSX.writeFile(wb, `Buku_Penghubung_Siswa.xlsx`);
+            });
+        } else {
+            const wb = XLSX.utils.table_to_book(clone, { sheet: "Buku Penghubung" });
+            XLSX.writeFile(wb, `Buku_Penghubung_Siswa.xlsx`);
+        }
+    },
+
+    exportBukuPDF() {
+        const table = document.getElementById('tableExportBuku');
+        if (!table) {
+            EModal.toast({ type: 'warning', title: 'Kosong', message: 'Tidak ada data untuk dicetak.' });
+            return;
+        }
+        const clone = table.cloneNode(true);
+        const trs = clone.querySelectorAll('tr');
+        trs.forEach(tr => {
+            if(tr.children.length > 0) tr.removeChild(tr.lastElementChild);
+        });
+
+        const printWin = window.open('', '_blank');
+        printWin.document.write(`
+            <html><head><title>Buku Penghubung & Konseling</title>
+            <style>
+                body { font-family: Arial, sans-serif; padding: 20px; font-size: 12px; }
+                .header { text-align: center; margin-bottom: 20px; }
+                .title { font-size: 18px; font-weight: bold; margin-bottom: 5px; }
+                .subtitle { font-size: 14px; color: #555; }
+                table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+                th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                th { background-color: #f8fafc; }
+                .badge { font-weight: bold; }
+                .text-muted { color: #666; font-size: 10px; }
+            </style>
+            </head><body>
+            <div class="header">
+                <div class="title">Buku Penghubung & Konseling Siswa</div>
+                <div class="subtitle">Dicetak pada: ${new Date().toLocaleDateString('id-ID')}</div>
+            </div>
+            ${clone.outerHTML}
+            <script>window.print(); setTimeout(() => window.close(), 500);</script>
+            </body></html>
+        `);
+        printWin.document.close();
     },
 
     showBukuForm() {
@@ -8568,11 +8636,17 @@ const Curriculum = {
             form: `
                 <div class="acad-card" style="margin-bottom: 15px; background: #F8FAFC; border: 1px solid #E2E8F0;">
                     <div class="acad-card-body">
-                        <div class="form-group">
-                            <label>Tanggal Libur</label>
-                            <input type="date" id="fTanggalLibur" class="form-input">
+                        <div class="form-group" style="display:flex; gap:12px; margin-bottom:12px;">
+                            <div style="flex:1;">
+                                <label>Tanggal Mulai</label>
+                                <input type="date" id="fTanggalLiburMulai" class="form-input">
+                            </div>
+                            <div style="flex:1;">
+                                <label>Tanggal Selesai (Opsional)</label>
+                                <input type="date" id="fTanggalLiburAkhir" class="form-input">
+                            </div>
                         </div>
-                        <div class="form-group" style="margin-bottom: 10px;">
+                        <div class="form-group" style="margin-bottom: 12px;">
                             <label>Keterangan</label>
                             <input type="text" id="fKetLibur" class="form-input" placeholder="Misal: Libur Nasional / Cuti Bersama">
                         </div>
@@ -8639,20 +8713,21 @@ const Curriculum = {
     },
 
     saveHariLibur() {
-        const tanggal = $('#fTanggalLibur').val();
+        const tanggal_mulai = $('#fTanggalLiburMulai').val();
+        const tanggal_akhir = $('#fTanggalLiburAkhir').val();
         const keterangan = $('#fKetLibur').val();
 
-        if (!tanggal || !keterangan) {
-            EModal.toast({type: 'error', title: 'Error', message: 'Tanggal dan Keterangan harus diisi.'});
+        if (!tanggal_mulai || !keterangan) {
+            EModal.toast({type: 'error', title: 'Error', message: 'Tanggal Mulai dan Keterangan harus diisi.'});
             return;
         }
 
         this.api('hari_libur.php?action=save', {
             method: 'POST',
-            data: { tanggal, keterangan }
+            data: { tanggal_mulai, tanggal_akhir, keterangan }
         }).done(res => {
             EModal.toast({type: 'success', title: 'Berhasil', message: res.message});
-            $('#fTanggalLibur').val('');
+            $('#fTanggalLiburMulai, #fTanggalLiburAkhir').val('');
             $('#fKetLibur').val('');
             this.loadHariLiburList();
             
