@@ -38,9 +38,11 @@ try {
                 GROUP BY DATE(waktu_absen)
             ");
             $stmtLogsCal->execute([$cleanPin, $studentNis, $month, $year]);
+            $waktu_terlambat = get_setting('waktu_terlambat_siswa', '06:30:00');
+            if (strlen($waktu_terlambat) === 5) $waktu_terlambat .= ':00';
             foreach ($stmtLogsCal->fetchAll(PDO::FETCH_ASSOC) as $row) {
                 if (!isset($calendar_data[$row['tgl']])) {
-                    $calendar_data[$row['tgl']] = ($row['waktu'] > '07:00:00') ? 'T' : 'H';
+                    $calendar_data[$row['tgl']] = ($row['waktu'] > $waktu_terlambat) ? 'T' : 'H';
                 }
             }
         } catch (Exception $e) {}

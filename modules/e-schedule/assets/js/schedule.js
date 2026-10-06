@@ -1254,76 +1254,322 @@ const Schedule = {
     },
 
     viewJadwal(kelasId) {
-        // Fetch structural jam to build the grid headers
+        // Fetch structural jam to build the grid headers and ALL schedules to detect clashes globally
         Promise.all([
-            this.api('jadwal.php?action=list' + (kelasId ? `&kelas_id=${kelasId}` : '')),
+            this.api('jadwal.php?action=list'),
             this.api('jam.php?action=list')
         ]).then(res => {
-            const jadwal = res[0].data;
-            const jams = res[1].data;
-            if(!jadwal.length) { $('#jdwViewer').html('<div class="sch-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg><h3>Jadwal Masih Kosong</h3><p>Silakan klik tombol <strong>Generate Jadwal</strong> untuk mulai memproses distribusi mengajar.</p></div>'); return; }
+            const allJadwal = res[0].data || [];
+            const jams = res[1].data || [];
+            if (!allJadwal.length) { 
+                $('#jdwViewer').html('<div class="sch-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg><h3>Jadwal Masih Kosong</h3><p>Silakan klik tombol <strong>Generate Jadwal</strong> untuk mulai memproses distribusi mengajar.</p></div>'); 
+                return; 
+            }
 
-            // Because a full school view is huge, we'll split by Kelas if no filter, or show one if filter.
-            // Using a simple grid approach grouped by Kelas.
+            // Map kelas Name -> ID
+            const kelasNameToId = {};
+            allJadwal.forEach(j => {
+                if (j.nama_kelas && j.kelas_id) {
+                    kelasNameToId[j.nama_kelas] = j.kelas_id;
+                }
+            });
+
+            // Filter for display if class is selected
+            const displayJadwal = kelasId ? allJadwal.filter(x => x.kelas_id == kelasId) : allJadwal;
+
+            // Group by Kelas
             const kelasGroups = {};
-            jadwal.forEach(j => {
-                if(!kelasGroups[j.nama_kelas]) kelasGroups[j.nama_kelas] = [];
+            displayJadwal.forEach(j => {
+                if (!kelasGroups[j.nama_kelas]) kelasGroups[j.nama_kelas] = [];
                 kelasGroups[j.nama_kelas].push(j);
+            });
+
+            // Deteksi tabrakan / bentrok guru secara global
+            const teacherSlotMap = {};
+            allJadwal.forEach(j => {
+                const key = `${j.jam_belajar_id}_${j.guru_id}`;
+                if (!teacherSlotMap[key]) teacherSlotMap[key] = [];
+                teacherSlotMap[key].push(j);
+            });
+
+            const clashingIds = new Set();
+            const clashDetails = {};
+            Object.values(teacherSlotMap).forEach(list => {
+                if (list.length > 1) {
+                    const classNames = list.map(x => x.nama_kelas).join(', ');
+                    list.forEach(item => {
+                        clashingIds.add(item.id);
+                        clashDetails[item.id] = `⚠️ BENTROK: Guru ${item.nama_guru} mengajar di ${list.length} kelas (${classNames}) pada jam ini!`;
+                    });
+                }
             });
 
             // Group Jam structure
             let daysMap = {};
             let maxJams = 0;
             jams.forEach(j => { 
-                if(!daysMap[j.hari]) daysMap[j.hari] = []; 
+                if (!daysMap[j.hari]) daysMap[j.hari] = []; 
                 daysMap[j.hari].push(j); 
             });
-            Object.values(daysMap).forEach(arr => { if(arr.length > maxJams) maxJams = arr.length; });
+            Object.values(daysMap).forEach(arr => { if (arr.length > maxJams) maxJams = arr.length; });
             const daysArr = Object.keys(daysMap);
 
             let html = '';
-            for(let kname in kelasGroups) {
-                const kjadwal = kelasGroups[kname];
+
+            // Banner Status Tabrakan / Validitas
+            if (clashingIds.size > 0) {
+                html += `
+                    <div style="background:#fef2f2; border:1px solid #fca5a5; border-left:5px solid #ef4444; border-radius:10px; padding:12px 18px; margin-bottom:18px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; box-shadow:0 2px 6px rgba(239,68,68,0.1);">
+                        <div style="display:flex; align-items:center; gap:12px;">
+                            <div style="width:36px; height:36px; border-radius:8px; background:#ef4444; color:white; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            </div>
+                            <div>
+                                <div style="font-weight:800; font-size:0.95rem; color:#991b1b;">Terdeteksi ${clashingIds.size} Jadwal Tabrakan / Bentrok Guru!</div>
+                                <div style="font-size:0.8rem; color:#b91c1c; margin-top:2px;">Slot berwarna <strong>Merah</strong> menandakan guru mengajar di lebih dari 1 kelas pada jam yang sama. Gunakan fitur <strong>Drag & Drop</strong> (geser & lepas) ke slot lain untuk memindahkan atau menukar jadwal.</div>
+                            </div>
+                        </div>
+                        <div style="font-size:0.75rem; background:#fee2e2; color:#991b1b; padding:4px 10px; border-radius:6px; font-weight:700;">Drag & Drop Aktif</div>
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div style="background:#f0fdf4; border:1px solid #86efac; border-left:5px solid #22c55e; border-radius:10px; padding:10px 16px; margin-bottom:18px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; font-size:0.85rem; color:#166534;">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                            <span><strong>Jadwal Rapi & Bebas Bentrok:</strong> Semua jam mengajar tersusun padat tanpa jam kosong di tengah dan tanpa guru tabrakan. Anda dapat menggunakan <strong>Drag & Drop</strong> untuk menukar slot jadwal secara fleksibel.</span>
+                        </div>
+                        <div style="font-size:0.75rem; background:#dcfce7; color:#166534; padding:4px 10px; border-radius:6px; font-weight:700;">Drag & Drop Aktif</div>
+                    </div>
+                `;
+            }
+            
+            const renderCell = (cellJam, kjadwal, targetKelasId) => {
+                if (!cellJam) return `<td style="background:#f1f5f9; border:1px solid #e2e8f0;"></td>`;
                 
-                html += `<div style="margin-bottom:40px">
-                    <h4 style="font-size:1.1rem;padding:8px 16px;background:var(--primary);color:white;display:inline-block;border-radius:8px">Kelas: ${kname}</h4>
-                    <div style="overflow-x:auto;margin-top:12px;border:1px solid var(--border-color)">
-                        <table class="sch-table matrix-table" style="min-width:800px;background:white">
-                            <thead>
-                                <tr><th style="width:100px">HARI / JAM</th>`;
-                                for(let idx=1; idx<=maxJams; idx++) html += `<th>Jam ke-${idx}</th>`;
-                                html += `</tr>
-                            </thead>
-                            <tbody>`;
+                if (cellJam.tipe !== 'Pembelajaran') {
+                    return `<td style="background:#f8fafc; border:1px solid #e2e8f0; text-align:center; vertical-align:middle; padding:6px; min-width:92px;">
+                                <div style="font-size:0.7rem; font-weight:700; color:#64748b; letter-spacing:0.5px;">${cellJam.nama_jam.toUpperCase()}</div>
+                            </td>`;
+                }
+
+                const slotApp = kjadwal.find(x => x.jam_belajar_id == cellJam.id);
+                if (!slotApp) {
+                    return `<td class="sch-cell-slot sch-cell-empty"
+                                data-kelas-id="${targetKelasId}"
+                                data-jam-id="${cellJam.id}"
+                                data-hari="${cellJam.hari}"
+                                data-jam-ke="${cellJam.jam_ke}"
+                                title="Slot Kosong (Lepaskan jadwal di sini untuk memindahkan)"
+                                style="background:#fff; min-width:92px; border:1px dashed #cbd5e1; text-align:center; vertical-align:middle; padding:8px 6px; transition:all 0.15s;">
+                                <div style="font-size:0.7rem; color:#94a3b8; font-weight:500; pointer-events:none;">(Kosong)</div>
+                            </td>`;
+                }
+                
+                const isClash = clashingIds.has(slotApp.id);
+                const tooltip = isClash 
+                    ? (clashDetails[slotApp.id] || '⚠️ Jadwal Bertabrakan!') 
+                    : 'Tahan & Geser (Drag & Drop) untuk menukar atau memindahkan jadwal';
+
+                let bgWarna = isClash ? '#fee2e2' : '#f8fafc';
+                let borderWarna = isClash ? 'border: 2px solid #ef4444 !important;' : 'border: 1px solid #cbd5e1;';
+                
+                return `<td class="sch-cell-slot sch-cell-filled ${isClash ? 'sch-clash-cell' : ''}"
+                            draggable="true"
+                            data-jadwal-id="${slotApp.id}"
+                            data-kelas-id="${slotApp.kelas_id || targetKelasId}"
+                            data-jam-id="${cellJam.id}"
+                            data-hari="${cellJam.hari}"
+                            data-jam-ke="${cellJam.jam_ke}"
+                            title="${tooltip}"
+                            style="background-color:${bgWarna}; ${borderWarna} padding:8px 6px; min-width:92px; text-align:center; vertical-align:middle; cursor:grab; transition:all 0.15s;">
+                            <div style="font-weight:800; color:${isClash ? '#991b1b' : 'var(--primary)'}; font-size:0.78rem;">${slotApp.kode_mapel}</div>
+                            <div style="font-size:0.67rem; color:${isClash ? '#b91c1c' : 'var(--text-muted)'}; line-height:1.2; margin-top:2px; font-weight:700;">${slotApp.singkatan || slotApp.nama_guru}</div>
+                            ${isClash ? '<div class="sch-clash-badge">⚠️ TABRAKAN</div>' : ''}
+                        </td>`;
+            };
+
+            if (kelasId) {
+                // TAMPILAN PER KELAS
+                for (let kname in kelasGroups) {
+                    const kjadwal = kelasGroups[kname];
+                    const kId = kelasNameToId[kname] || (kjadwal[0] ? kjadwal[0].kelas_id : kelasId);
+
+                    html += `<div style="margin-bottom:40px">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                            <h4 style="font-size:1.1rem; padding:8px 16px; background:var(--primary); color:white; display:inline-block; border-radius:8px; margin:0;">Kelas: ${kname}</h4>
+                            <span style="font-size:0.8rem; color:var(--text-muted);">💡 Tarik & lepaskan kotak pelajaran untuk menukar / memindahkan jam.</span>
+                        </div>
+                        <div style="overflow-x:auto; border:1px solid var(--border-color); border-radius:8px;">
+                            <table class="sch-table matrix-table" style="min-width:800px; background:white; border-collapse:collapse;">
+                                <thead>
+                                    <tr><th style="width:100px; background:var(--primary); color:white; border:1px solid #cbd5e1;">HARI</th>
+                                    <th colspan="${maxJams}" style="background:var(--primary); color:white; border:1px solid #cbd5e1;">JADWAL</th></tr>
+                                </thead>
+                                <tbody>`;
+                    
+                    daysArr.forEach(d => {
+                        html += `<tr><td style="font-weight:700; text-align:center; vertical-align:middle; background:#f8fafc; border:1px solid #cbd5e1; border-right:2px solid #94a3b8; text-transform:uppercase;">${d}</td>`;
+                        
+                        let dayJams = jams.filter(x => x.hari === d).sort((a,b) => parseInt(a.jam_ke) - parseInt(b.jam_ke));
+                        
+                        for (let idx = 0; idx < maxJams; idx++) {
+                            html += renderCell(dayJams[idx], kjadwal, kId);
+                        }
+                        html += `</tr>`;
+                    });
+                    html += `</tbody></table></div></div>`;
+                }
+            } else {
+                // TAMPILAN MASTER JADWAL (SEMUA KELAS)
+                const kelasNames = Object.keys(kelasGroups).sort();
+                
+                html += `<div style="overflow-x:auto; border:1px solid var(--border-color); border-radius:8px;">
+                    <table class="sch-table matrix-table" style="min-width:1000px; background:white; border-collapse:collapse;">`;
                 
                 daysArr.forEach(d => {
-                    html += `<tr><td style="font-weight:700">${d}</td>`;
-                    const dayJams = daysMap[d] || [];
+                    const dayJams = jams.filter(x => x.hari === d).sort((a,b) => parseInt(a.jam_ke) - parseInt(b.jam_ke));
                     
-                    for(let idx=0; idx<maxJams; idx++) {
-                        const cellJam = dayJams[idx];
-                        if (!cellJam) {
-                            html += `<td style="background:#f1f5f9"></td>`; // Empty slot (no jam defined for this idx on this day)
-                        } else {
-                            if (cellJam.tipe !== 'Pembelajaran') {
-                                html += `<td style="background:#FFF3E0;color:#F57F17;font-weight:600;font-size:0.8rem">${cellJam.nama_jam}</td>`;
-                            } else {
-                                // Find exactly if placed here
-                                const slotApp = kjadwal.find(x => x.jam_belajar_id == cellJam.id);
-                                if (slotApp) {
-                                    html += `<td><div style="font-weight:700;color:var(--text-main);font-size:0.85rem">${slotApp.nama_mapel}</div><div style="font-size:0.75rem;color:var(--text-muted)">${slotApp.nama_guru}</div></td>`;
-                                } else {
-                                    html += `<td></td>`; // Free
-                                }
-                            }
-                        }
-                    }
+                    html += `<tbody>`;
+                    // Baris Nama Hari
+                    html += `<tr><td colspan="${kelasNames.length + 1}" style="font-weight:800; font-size:1.2rem; text-align:center; padding:12px 16px; background:var(--primary); border:1px solid #cbd5e1; color:white; text-transform:uppercase; letter-spacing:1px;">${d}</td></tr>`;
+                    
+                    // Baris Nama Kelas (Header Horizontal)
+                    html += `<tr>`;
+                    html += `<td style="font-weight:700; background:#e2e8f0; border:1px solid #cbd5e1; color:var(--primary-dark); text-align:center; width:80px; font-size:0.8rem;">JAM</td>`;
+                    kelasNames.forEach(kname => {
+                        html += `<td style="font-weight:700; background:#f1f5f9; border:1px solid #cbd5e1; color:var(--primary-dark); text-align:center; min-width:92px; font-size:0.8rem;">${kname}</td>`;
+                    });
                     html += `</tr>`;
+                    
+                    // Baris Jam (Data vertikal)
+                    for (let idx = 0; idx < maxJams; idx++) {
+                        const cellJam = dayJams[idx];
+                        let labelJam = cellJam ? (cellJam.tipe === 'Pembelajaran' ? cellJam.nama_jam : cellJam.nama_jam.toUpperCase()) : (idx+1);
+                        
+                        html += `<tr>`;
+                        if (cellJam && cellJam.tipe !== 'Pembelajaran') {
+                            html += `<td colspan="${kelasNames.length + 1}" style="background:#f8fafc; border:1px solid #e2e8f0; text-align:center; vertical-align:middle; padding:6px; letter-spacing: 2px;">
+                                        <div style="font-size:0.75rem; font-weight:800; color:#64748b;">${cellJam.nama_jam.toUpperCase()}</div>
+                                     </td>`;
+                        } else {
+                            html += `<td style="font-weight:700; background:#f8fafc; border:1px solid #e2e8f0; border-right:2px solid #94a3b8; color:var(--primary-dark); text-align:center; font-size:0.75rem; letter-spacing:0.5px;">${labelJam}</td>`;
+                            kelasNames.forEach(kname => {
+                                const kjadwal = kelasGroups[kname];
+                                const kId = kelasNameToId[kname] || (kjadwal[0] ? kjadwal[0].kelas_id : '');
+                                html += renderCell(cellJam, kjadwal, kId);
+                            });
+                        }
+                        html += `</tr>`;
+                    }
+                    html += `</tbody>`;
                 });
-                html += `</tbody></table></div></div>`;
+                
+                html += `</table></div>`;
             }
 
             $('#jdwViewer').html(html);
+            this.initJadwalDragAndDrop();
+        });
+    },
+
+    initJadwalDragAndDrop() {
+        const $viewer = $('#jdwViewer');
+        let draggedItem = null;
+
+        $viewer.find('.sch-cell-filled').on('dragstart', function(e) {
+            draggedItem = {
+                id: $(this).data('jadwal-id'),
+                kelasId: $(this).data('kelas-id'),
+                jamId: $(this).data('jam-id'),
+                hari: $(this).data('hari'),
+                jamKe: $(this).data('jam-ke')
+            };
+            $(this).addClass('sch-dragging');
+            e.originalEvent.dataTransfer.effectAllowed = 'move';
+            try {
+                e.originalEvent.dataTransfer.setData('text/plain', JSON.stringify(draggedItem));
+            } catch(err) {}
+        });
+
+        $viewer.find('.sch-cell-filled').on('dragend', function() {
+            $(this).removeClass('sch-dragging');
+            $viewer.find('.sch-cell-slot').removeClass('sch-drop-target-empty sch-drop-target-swap');
+            draggedItem = null;
+        });
+
+        $viewer.find('.sch-cell-slot').on('dragover', function(e) {
+            if (!draggedItem) return;
+            e.preventDefault();
+            e.originalEvent.dataTransfer.dropEffect = 'move';
+        });
+
+        $viewer.find('.sch-cell-slot').on('dragenter', function(e) {
+            if (!draggedItem) return;
+            const targetJamId = $(this).data('jam-id');
+            const targetKelasId = $(this).data('kelas-id');
+
+            if (draggedItem.jamId == targetJamId && draggedItem.kelasId == targetKelasId) return;
+
+            if ($(this).hasClass('sch-cell-empty')) {
+                $(this).addClass('sch-drop-target-empty');
+            } else {
+                $(this).addClass('sch-drop-target-swap');
+            }
+        });
+
+        $viewer.find('.sch-cell-slot').on('dragleave', function(e) {
+            $(this).removeClass('sch-drop-target-empty sch-drop-target-swap');
+        });
+
+        $viewer.find('.sch-cell-slot').on('drop', function(e) {
+            e.preventDefault();
+            $viewer.find('.sch-cell-slot').removeClass('sch-drop-target-empty sch-drop-target-swap');
+            if (!draggedItem) return;
+
+            const targetJamId = $(this).data('jam-id');
+            const targetKelasId = $(this).data('kelas-id');
+            const sourceId = draggedItem.id;
+
+            if (!targetJamId || !targetKelasId) return;
+            if (draggedItem.jamId == targetJamId && draggedItem.kelasId == targetKelasId) return;
+
+            const isSwap = $(this).hasClass('sch-cell-filled');
+            const actionDesc = isSwap ? 'menukar' : 'memindahkan';
+
+            const loader = EModal.loading('Sedang ' + actionDesc + ' jadwal...');
+
+            Schedule.api('jadwal.php?action=move_slot', {
+                method: 'POST',
+                data: {
+                    source_id: sourceId,
+                    target_jam_id: targetJamId,
+                    target_kelas_id: targetKelasId
+                }
+            }).done(res => {
+                EModal.close(loader);
+                if (res.data?.has_clashes) {
+                    EModal.toast({
+                        type: 'warning',
+                        title: 'Perhatian!',
+                        message: res.message
+                    });
+                } else {
+                    EModal.toast({
+                        type: 'success',
+                        title: 'Berhasil',
+                        message: res.message
+                    });
+                }
+                Schedule.viewJadwal($('#jdwFilter').val());
+            }).fail(err => {
+                EModal.close(loader);
+                EModal.toast({
+                    type: 'error',
+                    title: 'Gagal',
+                    message: err.responseJSON?.message || 'Gagal memindahkan jadwal.'
+                });
+            });
         });
     },
 

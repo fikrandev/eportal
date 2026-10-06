@@ -574,18 +574,47 @@ const App = {
         kehadiran(data) {
             const logs = Array.isArray(data.logs) ? data.logs : [];
             const kelas = Array.isArray(data.kelas) ? data.kelas : [];
+            const sesi = data.sesi || {};
+            const settings = data.settings || {};
 
-            let logsHTML = logs.length ? logs.map(l => `
+            // Format Datang
+            const masukData = sesi.masuk;
+            const masukWaktu = masukData ? (masukData.waktu + (masukData.waktu.includes(':') ? ' WIB' : '')) : '--:--';
+            const masukBadge = masukData 
+                ? `<span class="badge ${masukData.is_terlambat ? 'badge-danger' : 'badge-success'}">${masukData.status || (masukData.is_terlambat ? 'Terlambat' : 'Tepat Waktu')}</span>`
+                : `<span class="badge" style="background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0;">Belum Tap</span>`;
+
+            // Format Istirahat
+            const istirahatData = sesi.istirahat;
+            const istirahatWaktu = istirahatData ? (istirahatData.waktu + (istirahatData.waktu.includes(':') ? ' WIB' : '')) : '--:--';
+            const istirahatBadge = istirahatData
+                ? `<span class="badge badge-info">${istirahatData.status || 'Istirahat'}</span>`
+                : `<span class="badge" style="background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0;">Belum Tap</span>`;
+
+            // Format Pulang
+            const pulangData = sesi.pulang;
+            const pulangWaktu = pulangData ? (pulangData.waktu + (pulangData.waktu.includes(':') ? ' WIB' : '')) : '--:--';
+            const pulangBadge = pulangData
+                ? `<span class="badge badge-warning">${pulangData.status || 'Pulang'}</span>`
+                : `<span class="badge" style="background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0;">Belum Tap</span>`;
+
+            let logsHTML = logs.length ? logs.map(l => {
+                const badgeCls = l.badge_class || (l.sesi === 'masuk' ? 'badge-success' : (l.sesi === 'istirahat' ? 'badge-info' : 'badge-warning'));
+                const statusLbl = l.status_label || (l.sesi === 'masuk' ? 'Masuk' : (l.sesi === 'istirahat' ? 'Istirahat' : 'Pulang'));
+                const desc = l.keterangan_sesi || 'Mesin Presensi Gerbang (Fingerprint/Face)';
+
+                return `
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px dashed #e2e8f0;">
                     <div>
                         <div style="font-weight: 700; color: var(--text-primary); font-size: 1.05rem;">${l.waktu} WIB</div>
-                        <div style="font-size: 0.78rem; color: var(--text-muted);">Mesin Presensi Gerbang (Fingerprint/Face)</div>
+                        <div style="font-size: 0.78rem; color: var(--text-muted);">${desc}</div>
                     </div>
-                    <span class="badge ${l.status_absen == 0 ? 'badge-info' : 'badge-warning'}">
-                        ${l.status_absen == 0 ? 'Masuk' : 'Pulang'}
+                    <span class="badge ${badgeCls}">
+                        ${statusLbl}
                     </span>
                 </div>
-            `).join('') : '<div style="text-align: center; font-size: 0.85rem; color: var(--text-muted); padding: 20px 0;">Belum ada tap mesin presensi hari ini</div>';
+            `;
+            }).join('') : '<div style="text-align: center; font-size: 0.85rem; color: var(--text-muted); padding: 20px 0;">Belum ada tap mesin presensi hari ini</div>';
 
             let kelasHTML = kelas.length ? kelas.map(k => `
                 <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px dashed #e2e8f0;">
@@ -604,6 +633,40 @@ const App = {
                     <div style="margin-bottom: 18px;">
                         <h2 style="margin: 0 0 2px; font-size: 1.35rem;">Kehadiran Hari Ini</h2>
                         <p style="margin: 0; font-size: 0.8rem; color: var(--text-muted);">${new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                    </div>
+
+                    <!-- Ringkasan 3 Sesi Sesuai Aturan E-Curriculum -->
+                    <div class="card" style="margin-bottom: 16px; padding: 16px;">
+                        <div style="font-size: 0.85rem; font-weight: 700; color: var(--text-primary); margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;">
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                                <span>Status Sesi Hari Ini</span>
+                            </div>
+                            <span style="font-size: 0.72rem; color: var(--primary); font-weight: 600; background: rgba(59, 130, 246, 0.1); padding: 3px 8px; border-radius: 6px;">Jadwal E-Curriculum</span>
+                        </div>
+                        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; text-align: center;">
+                            <!-- Sesi 1: Datang -->
+                            <div style="background: var(--bg-surface, #f8fafc); border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 6px; display: flex; flex-direction: column; justify-content: space-between; min-height: 105px;">
+                                <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; letter-spacing: 0.5px;">DATANG</div>
+                                <div style="font-size: 1.05rem; font-weight: 800; color: var(--text-primary); margin: 4px 0;">${masukWaktu}</div>
+                                <div>${masukBadge}</div>
+                                <div style="font-size: 0.68rem; color: var(--text-muted); margin-top: 6px;">Batas ${settings.waktu_terlambat || '06:30'}</div>
+                            </div>
+                            <!-- Sesi 2: Istirahat -->
+                            <div style="background: var(--bg-surface, #f8fafc); border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 6px; display: flex; flex-direction: column; justify-content: space-between; min-height: 105px;">
+                                <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; letter-spacing: 0.5px;">ISTIRAHAT</div>
+                                <div style="font-size: 1.05rem; font-weight: 800; color: var(--text-primary); margin: 4px 0;">${istirahatWaktu}</div>
+                                <div>${istirahatBadge}</div>
+                                <div style="font-size: 0.68rem; color: var(--text-muted); margin-top: 6px;">${settings.waktu_istirahat_mulai || '09:30'} - ${settings.waktu_istirahat_selesai || '10:15'}</div>
+                            </div>
+                            <!-- Sesi 3: Pulang -->
+                            <div style="background: var(--bg-surface, #f8fafc); border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 6px; display: flex; flex-direction: column; justify-content: space-between; min-height: 105px;">
+                                <div style="font-size: 0.72rem; color: var(--text-muted); font-weight: 700; letter-spacing: 0.5px;">PULANG</div>
+                                <div style="font-size: 1.05rem; font-weight: 800; color: var(--text-primary); margin: 4px 0;">${pulangWaktu}</div>
+                                <div>${pulangBadge}</div>
+                                <div style="font-size: 0.68rem; color: var(--text-muted); margin-top: 6px;">Mulai ${settings.waktu_pulang_mulai || '13:30'}</div>
+                            </div>
+                        </div>
                     </div>
                     
                     <!-- Presensi Gerbang Card -->

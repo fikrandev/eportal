@@ -2321,7 +2321,8 @@ const Perf = {
                     </div>
                     
                     <div id="tabContent-aturan_sejawat" class="pf-tab-content" style="display:none;">
-                        <div class="pf-toolbar" style="margin-top: 16px; margin-bottom: 16px; display: flex; justify-content: flex-end;">
+                        <div class="pf-toolbar" style="margin-top: 16px; margin-bottom: 16px; display: flex; justify-content: flex-end; gap: 8px; flex-wrap: wrap;">
+                            <button class="btn btn-outline btn-sm" onclick="Perf.navigate('acak_penilai')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg> Hasil / Acak Penilai</button>
                             <button class="btn btn-primary btn-sm" onclick="Perf.modalTambahAturanSejawat()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg> Tambah Aturan</button>
                         </div>
                         <div class="pf-table-wrapper" id="aturanSejawatTable">
@@ -4482,27 +4483,40 @@ const Perf = {
     renderAcakPenilai($container) {
         let html = `
             <div class="pf-card" style="min-height: 400px;">
-                <div class="pf-card-header" style="display:flex; flex-wrap:wrap; gap:16px;">
-                    <div style="display:flex; align-items:center; gap:16px; margin-right:auto;">
-                        <h3 style="margin:0;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg> Hasil Pengacakan Penilai (Teman Sejawat)</h3>
+                <div class="pf-card-header" style="display:flex; flex-wrap:wrap; gap:16px; align-items:center; justify-content:space-between;">
+                    <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+                        <h3 style="margin:0; display:flex; align-items:center; gap:8px;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                            Hasil Pengacakan Penilai (Teman Sejawat)
+                        </h3>
                         <div style="display:flex; align-items:center; gap:10px;">
                             <span style="font-weight:600; color:var(--text-muted);">Periode:</span>
-                            <select id="acakPeriodeSelector" class="form-input" style="width: 400px; max-width: 100%;"></select>
+                            <select id="acakPeriodeSelector" class="form-input" style="width: 320px; max-width: 100%;"></select>
                         </div>
                     </div>
-                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
-                        <input type="text" id="acakSearch" class="form-input" placeholder="Cari nama penilai..." style="min-width: 200px;">
+                    <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">
+                        <input type="text" id="acakSearch" class="form-input" placeholder="Cari nama penilai / target..." style="min-width: 180px;">
+                        <button class="btn btn-primary" id="btnAcakPenilai" onclick="Perf.generateAcakPenilai()" title="Acak penugasan teman sejawat">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                            Acak Penilai Sekarang
+                        </button>
+                        <button class="btn btn-outline" onclick="Perf.navigate('instrumen')" title="Lihat atau sesuaikan aturan sejawat">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                            Aturan Sejawat
+                        </button>
                     </div>
                 </div>
                 
-                <div class="table-responsive">
+                <div id="acakBannerNotice" style="padding: 16px 20px 0 20px; display: none;"></div>
+                
+                <div class="table-responsive" style="padding-top: 12px;">
                     <table class="pf-table">
                         <thead>
                             <tr>
                                 <th style="width:50px; text-align:center;">No</th>
                                 <th>Nama PTK (Target)</th>
                                 <th>Dinilai Oleh Siapa Saja? (Sejawat)</th>
-                                <th style="width:120px; text-align:center;">Jumlah Penilai</th>
+                                <th style="width:140px; text-align:center;">Jumlah Penilai</th>
                             </tr>
                         </thead>
                         <tbody id="acakTable">
@@ -4537,6 +4551,7 @@ const Perf = {
                 if(this.state.selectedPeriodeId) {
                     this.loadAcakData();
                 } else {
+                    $('#acakBannerNotice').hide();
                     $('#acakTable').html('<tr><td colspan="4" style="text-align:center; padding:30px;" class="text-muted">Silakan pilih Periode terlebih dahulu.</td></tr>');
                 }
             });
@@ -4553,6 +4568,7 @@ const Perf = {
         this.api(`pengaturan_sejawat.php?action=list&periode_id=${this.state.selectedPeriodeId}`, {method:'GET'}).done(res => {
             if(!res.data || res.data.length === 0) {
                 $('#acakTable').html('<tr><td colspan="4" style="text-align:center; padding:30px;" class="text-muted">Tidak ada data PTK.</td></tr>');
+                $('#acakBannerNotice').hide();
                 return;
             }
             
@@ -4566,7 +4582,38 @@ const Perf = {
         let html = '';
         let no = 1;
 
-        const data = this.state.acakData.filter(d => 
+        const allData = this.state.acakData || [];
+        const totalAssigned = allData.reduce((acc, d) => acc + (parseInt(d.jumlah_penilai) || 0), 0);
+
+        if (totalAssigned === 0) {
+            $('#btnAcakPenilai').html(`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg> Acak Penilai Sekarang`);
+            $('#acakBannerNotice').html(`
+                <div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:8px; padding:14px 18px; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#2563EB" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        <div>
+                            <strong style="color:#1E40AF; font-size:14px;">Penugasan Teman Sejawat Belum Diacak!</strong>
+                            <div style="font-size:13px; color:#3B82F6; margin-top:2px;">Aturan siapa menilai siapa sudah disetting. Silakan klik tombol <strong>Acak Penilai Sekarang</strong> untuk mendistribusikan penilai secara otomatis.</div>
+                        </div>
+                    </div>
+                    <button class="btn btn-primary btn-sm" onclick="Perf.generateAcakPenilai()">
+                        🎲 Acak Penilai Sekarang
+                    </button>
+                </div>
+            `).show();
+        } else {
+            $('#btnAcakPenilai').html(`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg> Acak Ulang Penilai`);
+            $('#acakBannerNotice').html(`
+                <div style="background:#F0FDF4; border:1px solid #BBF7D0; border-radius:8px; padding:10px 16px; display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap;">
+                    <div style="display:flex; align-items:center; gap:10px; font-size:13px; color:#166534;">
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#16A34A" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                        <span>Total <strong>${totalAssigned}</strong> penugasan teman sejawat aktif. Anda dapat memindahkan tugas penilai dengan menggeser (drag & drop) kotak penilai ke baris guru lain.</span>
+                    </div>
+                </div>
+            `).show();
+        }
+
+        const data = allData.filter(d => 
             (d.target_nama || '').toLowerCase().includes(q) || 
             (d.detail_penilai && d.detail_penilai.some(t => (t.penilai_nama || '').toLowerCase().includes(q)))
         );
@@ -4707,6 +4754,52 @@ const Perf = {
                         EModal.toast({type:'error', message:res.message});
                     }
                 }).fail(xhr => EModal.toast({type:'error', message:xhr.responseJSON?.message}));
+            }
+        });
+    },
+
+    generateAcakPenilai() {
+        if (!this.state.selectedPeriodeId) {
+            EModal.toast({ type: 'warning', message: 'Silakan pilih Periode terlebih dahulu.' });
+            return;
+        }
+
+        const totalAssigned = (this.state.acakData || []).reduce((acc, d) => acc + (parseInt(d.jumlah_penilai) || 0), 0);
+        const confirmMsg = totalAssigned > 0 
+            ? 'Sistem akan mengacak ulang penugasan teman sejawat untuk periode ini berdasarkan Aturan Sejawat. Penugasan yang nilainya sudah terisi akan tetap dipertahankan. Lanjutkan pengacakan ulang?'
+            : 'Sistem akan mengacak dan mendistribusikan penilai teman sejawat untuk seluruh PTK berdasarkan Aturan Sejawat yang telah disetting. Lanjutkan pengacakan sekarang?';
+
+        EModal.confirm({
+            title: totalAssigned > 0 ? 'Acak Ulang Penilai Sejawat' : 'Acak Penilai Sejawat',
+            type: 'warning',
+            message: confirmMsg,
+            confirmText: 'Ya, Jalankan Pengacakan',
+            onConfirm: () => {
+                const $btn = $('#btnAcakPenilai');
+                const origHtml = $btn.html();
+                $btn.prop('disabled', true).html('<span class="pf-spin" style="margin-right:6px;">⌛</span> Mengacak...');
+
+                this.api('pengaturan_sejawat.php?action=generate', {
+                    method: 'POST',
+                    contentType: 'application/json',
+                    data: JSON.stringify({ periode_id: this.state.selectedPeriodeId })
+                }).done(res => {
+                    $btn.prop('disabled', false).html(origHtml);
+                    if (res.success) {
+                        EModal.alert('Berhasil', res.message);
+                        this.loadAcakData();
+                    } else {
+                        EModal.alert('Gagal', res.message);
+                    }
+                }).fail(xhr => {
+                    $btn.prop('disabled', false).html(origHtml);
+                    let msg = 'Terjadi kesalahan saat mengacak penilai.';
+                    try {
+                        const err = JSON.parse(xhr.responseText);
+                        if (err && err.message) msg = err.message;
+                    } catch(e) {}
+                    EModal.alert('Gagal', msg);
+                });
             }
         });
     },

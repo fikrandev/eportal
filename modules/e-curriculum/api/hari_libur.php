@@ -43,39 +43,79 @@ function saveHariLibur($user) {
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed.');
 
     $input = get_input();
-    $tanggal_mulai = $input['tanggal_mulai'] ?? ($input['tanggal'] ?? '');
-    $tanggal_akhir = $input['tanggal_akhir'] ?? $tanggal_mulai;
-    $keterangan = $input['keterangan'] ?? '';
+    $keterangan = trim($input['keterangan'] ?? '');
     $id = isset($input['id']) ? (int)$input['id'] : 0;
+    $dates = $input['dates'] ?? [];
+    $tanggal_mulai = trim($input['tanggal_mulai'] ?? ($input['tanggal'] ?? ''));
+    $tanggal_akhir = trim($input['tanggal_akhir'] ?? $tanggal_mulai);
 
-    if (empty($tanggal_mulai) || empty($keterangan)) {
-        json_response(400, false, 'Tanggal dan keterangan wajib diisi.');
+    if (empty($keterangan)) {
+        json_response(400, false, 'Keterangan hari libur wajib diisi.');
     }
 
     $active_year = get_active_academic_year();
     $year_id = $active_year['id'] ?? 0;
 
     try {
+        // 1. Update single record by ID
         if ($id > 0) {
+            $tgl = !empty($tanggal_mulai) ? $tanggal_mulai : (!empty($dates) && is_array($dates) ? $dates[0] : '');
+            if (empty($tgl)) {
+                json_response(400, false, 'Tanggal wajib diisi.');
+            }
             $stmt = db()->prepare("UPDATE acad_hari_libur SET tanggal = ?, keterangan = ? WHERE id = ? AND academic_year_id = ?");
-            $stmt->execute([$tanggal_mulai, $keterangan, $id, $year_id]);
+            $stmt->execute([$tgl, $keterangan, $id, $year_id]);
             json_response(200, true, 'Hari libur berhasil diupdate.');
-        } else {
+        }
+
+        // 2. Multi-date selection (array of dates dari klik satu per satu di kalender)
+        if (!empty($dates) && is_array($dates)) {
+            $stmt = db()->prepare("
+                INSERT INTO acad_hari_libur (academic_year_id, tanggal, keterangan) 
+                VALUES (?, ?, ?) 
+                ON DUPLICATE KEY UPDATE keterangan = VALUES(keterangan)
+            ");
+            $count = 0;
+            foreach ($dates as $tgl) {
+                $tgl = trim($tgl);
+                if (!empty($tgl) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $tgl)) {
+                    $stmt->execute([$year_id, $tgl, $keterangan]);
+                    $count++;
+                }
+            }
+
+            if ($count === 0) {
+                json_response(400, false, 'Pilih minimal satu tanggal yang valid.');
+            }
+
+            json_response(200, true, "Berhasil menambahkan/memperbarui {$count} hari libur.");
+        }
+
+        // 3. Fallback: single date or date range
+        if (!empty($tanggal_mulai)) {
             $start_ts = strtotime($tanggal_mulai);
             $end_ts = strtotime($tanggal_akhir);
             if ($start_ts > $end_ts) {
                 json_response(400, false, 'Tanggal mulai tidak boleh lebih besar dari tanggal selesai.');
             }
 
-            $stmt = db()->prepare("INSERT IGNORE INTO acad_hari_libur (academic_year_id, tanggal, keterangan) VALUES (?, ?, ?)");
+            $stmt = db()->prepare("
+                INSERT INTO acad_hari_libur (academic_year_id, tanggal, keterangan) 
+                VALUES (?, ?, ?) 
+                ON DUPLICATE KEY UPDATE keterangan = VALUES(keterangan)
+            ");
             $current_ts = $start_ts;
+            $count = 0;
             while ($current_ts <= $end_ts) {
                 $tgl = date('Y-m-d', $current_ts);
                 $stmt->execute([$year_id, $tgl, $keterangan]);
+                $count++;
                 $current_ts = strtotime('+1 day', $current_ts);
             }
-            json_response(200, true, 'Hari libur berhasil ditambahkan.');
+            json_response(200, true, "Berhasil menambahkan {$count} hari libur.");
         }
+
+        json_response(400, false, 'Pilih tanggal libur terlebih dahulu.');
     } catch (PDOException $e) {
         json_response(500, false, 'Server error: ' . $e->getMessage());
     }
@@ -86,13 +126,30 @@ function deleteHariLibur($user) {
 
     $input = get_input();
     $id = isset($input['id']) ? (int)$input['id'] : 0;
+    $tanggal = isset($input['tanggal']) ? trim($input['tanggal']) : '';
+    $ids = isset($input['ids']) && is_array($input['ids']) ? $input['ids'] : [];
 
-    if ($id <= 0) json_response(400, false, 'ID tidak valid.');
+    $active_year = get_active_academic_year();
+    $year_id = $active_year['id'] ?? 0;
 
     try {
-        $stmt = db()->prepare("DELETE FROM acad_hari_libur WHERE id = ?");
-        $stmt->execute([$id]);
-        json_response(200, true, 'Hari libur berhasil dihapus.');
+        if (!empty($ids)) {
+            $placeholders = implode(',', array_fill(0, count($ids), '?'));
+            $params = array_merge($ids, [$year_id]);
+            $stmt = db()->prepare("DELETE FROM acad_hari_libur WHERE id IN ($placeholders) AND academic_year_id = ?");
+            $stmt->execute($params);
+            json_response(200, true, 'Hari libur berhasil dihapus.');
+        } elseif ($id > 0) {
+            $stmt = db()->prepare("DELETE FROM acad_hari_libur WHERE id = ? AND academic_year_id = ?");
+            $stmt->execute([$id, $year_id]);
+            json_response(200, true, 'Hari libur berhasil dihapus.');
+        } elseif (!empty($tanggal)) {
+            $stmt = db()->prepare("DELETE FROM acad_hari_libur WHERE tanggal = ? AND academic_year_id = ?");
+            $stmt->execute([$tanggal, $year_id]);
+            json_response(200, true, 'Hari libur berhasil dihapus.');
+        } else {
+            json_response(400, false, 'ID atau tanggal tidak valid.');
+        }
     } catch (PDOException $e) {
         json_response(500, false, 'Server error: ' . $e->getMessage());
     }

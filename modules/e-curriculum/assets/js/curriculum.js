@@ -7291,66 +7291,149 @@ const Curriculum = {
             this.api('sch_jadwal.php?action=list'),
             this.api('sch_jam.php?action=list')
         ]).then(res => {
-            const allJadwal = res[0].data;
-            const jams = res[1].data;
-            if(!allJadwal.length) { $('#jdwViewer').html('<div class="sch-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg><h3>Jadwal Masih Kosong</h3><p>Silakan klik tombol <strong>Generate Jadwal</strong> untuk mulai memproses distribusi mengajar.</p></div>'); return; }
+            const allJadwal = res[0].data || [];
+            const jams = res[1].data || [];
+            if (!allJadwal.length) { 
+                $('#jdwViewer').html('<div class="sch-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg><h3>Jadwal Masih Kosong</h3><p>Silakan klik tombol <strong>Generate Jadwal</strong> untuk mulai memproses distribusi mengajar.</p></div>'); 
+                return; 
+            }
+
+            // Map kelas Name -> ID
+            const kelasNameToId = {};
+            allJadwal.forEach(j => {
+                if (j.nama_kelas && j.kelas_id) {
+                    kelasNameToId[j.nama_kelas] = j.kelas_id;
+                }
+            });
 
             // Filter for display if class is selected
             const displayJadwal = kelasId ? allJadwal.filter(x => x.kelas_id == kelasId) : allJadwal;
 
-            // Because a full school view is huge, we'll split by Kelas if no filter, or show one if filter.
-            // Using a simple grid approach grouped by Kelas.
+            // Group by Kelas
             const kelasGroups = {};
             displayJadwal.forEach(j => {
-                if(!kelasGroups[j.nama_kelas]) kelasGroups[j.nama_kelas] = [];
+                if (!kelasGroups[j.nama_kelas]) kelasGroups[j.nama_kelas] = [];
                 kelasGroups[j.nama_kelas].push(j);
+            });
+
+            // Deteksi tabrakan / bentrok guru secara global
+            const teacherSlotMap = {};
+            allJadwal.forEach(j => {
+                const key = `${j.jam_belajar_id}_${j.guru_id}`;
+                if (!teacherSlotMap[key]) teacherSlotMap[key] = [];
+                teacherSlotMap[key].push(j);
+            });
+
+            const clashingIds = new Set();
+            const clashDetails = {};
+            Object.values(teacherSlotMap).forEach(list => {
+                if (list.length > 1) {
+                    const classNames = list.map(x => x.nama_kelas).join(', ');
+                    list.forEach(item => {
+                        clashingIds.add(item.id);
+                        clashDetails[item.id] = `⚠️ BENTROK: Guru ${item.nama_guru} mengajar di ${list.length} kelas (${classNames}) pada jam ini!`;
+                    });
+                }
             });
 
             // Group Jam structure
             let daysMap = {};
             let maxJams = 0;
             jams.forEach(j => { 
-                if(!daysMap[j.hari]) daysMap[j.hari] = []; 
+                if (!daysMap[j.hari]) daysMap[j.hari] = []; 
                 daysMap[j.hari].push(j); 
             });
-            Object.values(daysMap).forEach(arr => { if(arr.length > maxJams) maxJams = arr.length; });
+            Object.values(daysMap).forEach(arr => { if (arr.length > maxJams) maxJams = arr.length; });
             const daysArr = Object.keys(daysMap);
 
             let html = '';
+
+            // Banner Status Tabrakan / Validitas
+            if (clashingIds.size > 0) {
+                html += `
+                    <div style="background:#fef2f2; border:1px solid #fca5a5; border-left:5px solid #ef4444; border-radius:10px; padding:12px 18px; margin-bottom:18px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; box-shadow:0 2px 6px rgba(239,68,68,0.1);">
+                        <div style="display:flex; align-items:center; gap:12px;">
+                            <div style="width:36px; height:36px; border-radius:8px; background:#ef4444; color:white; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                            </div>
+                            <div>
+                                <div style="font-weight:800; font-size:0.95rem; color:#991b1b;">Terdeteksi ${clashingIds.size} Jadwal Tabrakan / Bentrok Guru!</div>
+                                <div style="font-size:0.8rem; color:#b91c1c; margin-top:2px;">Slot berwarna <strong>Merah</strong> menandakan guru mengajar di lebih dari 1 kelas pada jam yang sama. Gunakan fitur <strong>Drag & Drop</strong> (geser & lepas) ke slot lain untuk memindahkan atau menukar jadwal.</div>
+                            </div>
+                        </div>
+                        <div style="font-size:0.75rem; background:#fee2e2; color:#991b1b; padding:4px 10px; border-radius:6px; font-weight:700;">Drag & Drop Aktif</div>
+                    </div>
+                `;
+            } else {
+                html += `
+                    <div style="background:#f0fdf4; border:1px solid #86efac; border-left:5px solid #22c55e; border-radius:10px; padding:10px 16px; margin-bottom:18px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px; font-size:0.85rem; color:#166534;">
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                            <span><strong>Jadwal Rapi & Bebas Bentrok:</strong> Semua jam mengajar tersusun padat tanpa jam kosong di tengah dan tanpa guru tabrakan. Anda dapat menggunakan <strong>Drag & Drop</strong> untuk menukar slot jadwal secara fleksibel.</span>
+                        </div>
+                        <div style="font-size:0.75rem; background:#dcfce7; color:#166534; padding:4px 10px; border-radius:6px; font-weight:700;">Drag & Drop Aktif</div>
+                    </div>
+                `;
+            }
             
-            const renderCell = (cellJam, kjadwal) => {
+            const renderCell = (cellJam, kjadwal, targetKelasId) => {
                 if (!cellJam) return `<td style="background:#f1f5f9; border:1px solid #e2e8f0;"></td>`;
                 
                 if (cellJam.tipe !== 'Pembelajaran') {
-                    return `<td style="background:#f8fafc; border:1px solid #e2e8f0; text-align:center; vertical-align:middle; padding:6px; min-width:90px;">
+                    return `<td style="background:#f8fafc; border:1px solid #e2e8f0; text-align:center; vertical-align:middle; padding:6px; min-width:92px;">
                                 <div style="font-size:0.7rem; font-weight:700; color:#64748b; letter-spacing:0.5px;">${cellJam.nama_jam.toUpperCase()}</div>
                             </td>`;
                 }
 
                 const slotApp = kjadwal.find(x => x.jam_belajar_id == cellJam.id);
-                if (!slotApp) return `<td style="background:#fff;min-width:90px; border:1px solid #e2e8f0;"></td>`;
+                if (!slotApp) {
+                    return `<td class="sch-cell-slot sch-cell-empty"
+                                data-kelas-id="${targetKelasId}"
+                                data-jam-id="${cellJam.id}"
+                                data-hari="${cellJam.hari}"
+                                data-jam-ke="${cellJam.jam_ke}"
+                                title="Slot Kosong (Lepaskan jadwal di sini untuk memindahkan)"
+                                style="background:#fff; min-width:92px; border:1px dashed #cbd5e1; text-align:center; vertical-align:middle; padding:8px 6px; transition:all 0.15s;">
+                                <div style="font-size:0.7rem; color:#94a3b8; font-weight:500; pointer-events:none;">(Kosong)</div>
+                            </td>`;
+                }
                 
-                const clashingSlots = allJadwal.filter(x => x.jam_belajar_id == cellJam.id && x.guru_id == slotApp.guru_id);
-                const isClash = clashingSlots.length > 1;
+                const isClash = clashingIds.has(slotApp.id);
+                const tooltip = isClash 
+                    ? (clashDetails[slotApp.id] || '⚠️ Jadwal Bertabrakan!') 
+                    : 'Tahan & Geser (Drag & Drop) untuk menukar atau memindahkan jadwal';
+
+                let bgWarna = isClash ? '#fee2e2' : '#f8fafc';
+                let borderWarna = isClash ? 'border: 2px solid #ef4444 !important;' : 'border: 1px solid #cbd5e1;';
                 
-                let bgWarna = isClash ? '#fee2e2' : 'transparent';
-                let borderWarna = isClash ? 'border: 2px solid #ef4444;' : 'border: 1px solid #e2e8f0;';
-                
-                return `<td style="background-color:${bgWarna}; ${borderWarna} padding:6px; min-width:90px; text-align:center; vertical-align:middle;">
-                            <div style="font-weight:800;color:${isClash ? '#b91c1c' : 'var(--primary)'};font-size:0.75rem;">${slotApp.kode_mapel}</div>
-                            <div style="font-size:0.65rem;color:${isClash ? '#ef4444' : 'var(--text-muted)'}; line-height:1.2; margin-top:2px; font-weight:700;">${slotApp.singkatan || slotApp.nama_guru}</div>
-                            ${isClash ? '<div style="font-size:0.55rem;color:white;background:#ef4444;padding:2px 4px;border-radius:4px;display:inline-block;margin-top:3px;font-weight:bold;letter-spacing:0.5px;">TABRAKAN</div>' : ''}
+                return `<td class="sch-cell-slot sch-cell-filled ${isClash ? 'sch-clash-cell' : ''}"
+                            draggable="true"
+                            data-jadwal-id="${slotApp.id}"
+                            data-kelas-id="${slotApp.kelas_id || targetKelasId}"
+                            data-jam-id="${cellJam.id}"
+                            data-hari="${cellJam.hari}"
+                            data-jam-ke="${cellJam.jam_ke}"
+                            title="${tooltip}"
+                            style="background-color:${bgWarna}; ${borderWarna} padding:8px 6px; min-width:92px; text-align:center; vertical-align:middle; cursor:grab; transition:all 0.15s;">
+                            <div style="font-weight:800; color:${isClash ? '#991b1b' : 'var(--primary)'}; font-size:0.78rem;">${slotApp.kode_mapel}</div>
+                            <div style="font-size:0.67rem; color:${isClash ? '#b91c1c' : 'var(--text-muted)'}; line-height:1.2; margin-top:2px; font-weight:700;">${slotApp.singkatan || slotApp.nama_guru}</div>
+                            ${isClash ? '<div class="sch-clash-badge">⚠️ TABRAKAN</div>' : ''}
                         </td>`;
             };
 
             if (kelasId) {
                 // TAMPILAN PER KELAS
-                for(let kname in kelasGroups) {
+                for (let kname in kelasGroups) {
                     const kjadwal = kelasGroups[kname];
+                    const kId = kelasNameToId[kname] || (kjadwal[0] ? kjadwal[0].kelas_id : kelasId);
+
                     html += `<div style="margin-bottom:40px">
-                        <h4 style="font-size:1.1rem;padding:8px 16px;background:var(--primary);color:white;display:inline-block;border-radius:8px">Kelas: ${kname}</h4>
-                        <div style="overflow-x:auto;margin-top:12px;border:1px solid var(--border-color);border-radius:8px;">
-                            <table class="sch-table matrix-table" style="min-width:800px;background:white; border-collapse:collapse;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                            <h4 style="font-size:1.1rem; padding:8px 16px; background:var(--primary); color:white; display:inline-block; border-radius:8px; margin:0;">Kelas: ${kname}</h4>
+                            <span style="font-size:0.8rem; color:var(--text-muted);">💡 Tarik & lepaskan kotak pelajaran untuk menukar / memindahkan jam.</span>
+                        </div>
+                        <div style="overflow-x:auto; border:1px solid var(--border-color); border-radius:8px;">
+                            <table class="sch-table matrix-table" style="min-width:800px; background:white; border-collapse:collapse;">
                                 <thead>
                                     <tr><th style="width:100px; background:var(--primary); color:white; border:1px solid #cbd5e1;">HARI</th>
                                     <th colspan="${maxJams}" style="background:var(--primary); color:white; border:1px solid #cbd5e1;">JADWAL</th></tr>
@@ -7362,8 +7445,8 @@ const Curriculum = {
                         
                         let dayJams = jams.filter(x => x.hari === d).sort((a,b) => parseInt(a.jam_ke) - parseInt(b.jam_ke));
                         
-                        for(let idx=0; idx<maxJams; idx++) {
-                            html += renderCell(dayJams[idx], kjadwal);
+                        for (let idx = 0; idx < maxJams; idx++) {
+                            html += renderCell(dayJams[idx], kjadwal, kId);
                         }
                         html += `</tr>`;
                     });
@@ -7371,15 +7454,10 @@ const Curriculum = {
                 }
             } else {
                 // TAMPILAN MASTER JADWAL (SEMUA KELAS)
-                // Layout:
-                // SENIN
-                // JAM | 10.1 | 10.2 | 10.3
-                // Jam 1 | ... | ... | ...
-                
                 const kelasNames = Object.keys(kelasGroups).sort();
                 
                 html += `<div style="overflow-x:auto; border:1px solid var(--border-color); border-radius:8px;">
-                    <table class="sch-table matrix-table" style="min-width:1000px;background:white; border-collapse:collapse;">`;
+                    <table class="sch-table matrix-table" style="min-width:1000px; background:white; border-collapse:collapse;">`;
                 
                 daysArr.forEach(d => {
                     const dayJams = jams.filter(x => x.hari === d).sort((a,b) => parseInt(a.jam_ke) - parseInt(b.jam_ke));
@@ -7392,14 +7470,13 @@ const Curriculum = {
                     html += `<tr>`;
                     html += `<td style="font-weight:700; background:#e2e8f0; border:1px solid #cbd5e1; color:var(--primary-dark); text-align:center; width:80px; font-size:0.8rem;">JAM</td>`;
                     kelasNames.forEach(kname => {
-                        html += `<td style="font-weight:700; background:#f1f5f9; border:1px solid #cbd5e1; color:var(--primary-dark); text-align:center; min-width:90px; font-size:0.8rem;">${kname}</td>`;
+                        html += `<td style="font-weight:700; background:#f1f5f9; border:1px solid #cbd5e1; color:var(--primary-dark); text-align:center; min-width:92px; font-size:0.8rem;">${kname}</td>`;
                     });
                     html += `</tr>`;
                     
                     // Baris Jam (Data vertikal)
-                    for(let idx=0; idx<maxJams; idx++) {
+                    for (let idx = 0; idx < maxJams; idx++) {
                         const cellJam = dayJams[idx];
-                        
                         let labelJam = cellJam ? (cellJam.tipe === 'Pembelajaran' ? cellJam.nama_jam : cellJam.nama_jam.toUpperCase()) : (idx+1);
                         
                         html += `<tr>`;
@@ -7411,7 +7488,8 @@ const Curriculum = {
                             html += `<td style="font-weight:700; background:#f8fafc; border:1px solid #e2e8f0; border-right:2px solid #94a3b8; color:var(--primary-dark); text-align:center; font-size:0.75rem; letter-spacing:0.5px;">${labelJam}</td>`;
                             kelasNames.forEach(kname => {
                                 const kjadwal = kelasGroups[kname];
-                                html += renderCell(cellJam, kjadwal);
+                                const kId = kelasNameToId[kname] || (kjadwal[0] ? kjadwal[0].kelas_id : '');
+                                html += renderCell(cellJam, kjadwal, kId);
                             });
                         }
                         html += `</tr>`;
@@ -7423,6 +7501,107 @@ const Curriculum = {
             }
 
             $('#jdwViewer').html(html);
+            this.initJadwalDragAndDrop();
+        });
+    },
+
+    initJadwalDragAndDrop() {
+        const $viewer = $('#jdwViewer');
+        let draggedItem = null;
+
+        $viewer.find('.sch-cell-filled').on('dragstart', function(e) {
+            draggedItem = {
+                id: $(this).data('jadwal-id'),
+                kelasId: $(this).data('kelas-id'),
+                jamId: $(this).data('jam-id'),
+                hari: $(this).data('hari'),
+                jamKe: $(this).data('jam-ke')
+            };
+            $(this).addClass('sch-dragging');
+            e.originalEvent.dataTransfer.effectAllowed = 'move';
+            try {
+                e.originalEvent.dataTransfer.setData('text/plain', JSON.stringify(draggedItem));
+            } catch(err) {}
+        });
+
+        $viewer.find('.sch-cell-filled').on('dragend', function() {
+            $(this).removeClass('sch-dragging');
+            $viewer.find('.sch-cell-slot').removeClass('sch-drop-target-empty sch-drop-target-swap');
+            draggedItem = null;
+        });
+
+        $viewer.find('.sch-cell-slot').on('dragover', function(e) {
+            if (!draggedItem) return;
+            e.preventDefault();
+            e.originalEvent.dataTransfer.dropEffect = 'move';
+        });
+
+        $viewer.find('.sch-cell-slot').on('dragenter', function(e) {
+            if (!draggedItem) return;
+            const targetJamId = $(this).data('jam-id');
+            const targetKelasId = $(this).data('kelas-id');
+
+            if (draggedItem.jamId == targetJamId && draggedItem.kelasId == targetKelasId) return;
+
+            if ($(this).hasClass('sch-cell-empty')) {
+                $(this).addClass('sch-drop-target-empty');
+            } else {
+                $(this).addClass('sch-drop-target-swap');
+            }
+        });
+
+        $viewer.find('.sch-cell-slot').on('dragleave', function(e) {
+            $(this).removeClass('sch-drop-target-empty sch-drop-target-swap');
+        });
+
+        $viewer.find('.sch-cell-slot').on('drop', function(e) {
+            e.preventDefault();
+            $viewer.find('.sch-cell-slot').removeClass('sch-drop-target-empty sch-drop-target-swap');
+            if (!draggedItem) return;
+
+            const targetJamId = $(this).data('jam-id');
+            const targetKelasId = $(this).data('kelas-id');
+            const sourceId = draggedItem.id;
+
+            if (!targetJamId || !targetKelasId) return;
+            if (draggedItem.jamId == targetJamId && draggedItem.kelasId == targetKelasId) return;
+
+            const isSwap = $(this).hasClass('sch-cell-filled');
+            const actionDesc = isSwap ? 'menukar' : 'memindahkan';
+
+            const loader = EModal.loading('Sedang ' + actionDesc + ' jadwal...');
+
+            Curriculum.api('sch_jadwal.php?action=move_slot', {
+                method: 'POST',
+                data: {
+                    source_id: sourceId,
+                    target_jam_id: targetJamId,
+                    target_kelas_id: targetKelasId
+                }
+            }).done(res => {
+                EModal.close(loader);
+                if (res.data?.has_clashes) {
+                    EModal.toast({
+                        type: 'warning',
+                        title: 'Perhatian!',
+                        message: res.message
+                    });
+                } else {
+                    EModal.toast({
+                        type: 'success',
+                        title: 'Berhasil',
+                        message: res.message
+                    });
+                }
+                Curriculum.viewJadwal($('#jdwFilter').val());
+            }).fail(err => {
+                EModal.close(loader);
+                EModal.toast({
+                    type: 'error',
+                    title: 'Gagal',
+                    message: err.responseJSON?.message || 'Gagal memindahkan jadwal.'
+                });
+            });
         });
     },
 
@@ -8628,79 +8807,504 @@ const Curriculum = {
         });
     },
 
-    // ==================== HARI LIBUR ====================
+    // ==================== HARI LIBUR (KLIK 1 PER SATU VIA KALENDER) ====================
     showHariLiburModal() {
-        const modalId = 'modalHariLibur_' + Date.now();
+        const now = new Date();
+        this._holidayCalYear = now.getFullYear();
+        this._holidayCalMonth = now.getMonth();
+        if (!this._selectedHolidayDates) this._selectedHolidayDates = new Set();
+        this._selectedHolidayDates.clear();
+        this._existingHolidaysList = [];
+        this._existingHolidaysMap = {};
+
         EModal.form({
             title: '🏖️ Pengaturan Hari Libur (Non-Efektif)',
-            width: '600px',
+            size: 'lg',
+            confirmText: 'Tutup',
+            cancelText: 'Selesai',
             form: `
-                <div class="acad-card" style="margin-bottom: 15px; background: #F8FAFC; border: 1px solid #E2E8F0;">
-                    <div class="acad-card-body">
-                        <div class="form-group" style="display:flex; gap:12px; margin-bottom:12px;">
-                            <div style="flex:1;">
-                                <label>Tanggal Mulai</label>
-                                <input type="date" id="fTanggalLiburMulai" class="form-input">
-                            </div>
-                            <div style="flex:1;">
-                                <label>Tanggal Selesai (Opsional)</label>
-                                <input type="date" id="fTanggalLiburAkhir" class="form-input">
-                            </div>
+                <style>
+                    .holiday-cal-wrap {
+                        background: #FFFFFF;
+                        border: 1px solid #E2E8F0;
+                        border-radius: 12px;
+                        padding: 16px;
+                        margin-bottom: 16px;
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+                    }
+                    .holiday-cal-header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        margin-bottom: 12px;
+                        flex-wrap: wrap;
+                        gap: 8px;
+                    }
+                    .holiday-cal-grid-head {
+                        display: grid;
+                        grid-template-columns: repeat(7, 1fr);
+                        text-align: center;
+                        font-weight: 700;
+                        font-size: 0.8rem;
+                        color: #64748B;
+                        padding-bottom: 8px;
+                        margin-bottom: 6px;
+                        border-bottom: 1px solid #F1F5F9;
+                    }
+                    .holiday-cal-grid-days {
+                        display: grid;
+                        grid-template-columns: repeat(7, 1fr);
+                        gap: 6px;
+                    }
+                    .holiday-day-cell {
+                        aspect-ratio: 1;
+                        min-height: 44px;
+                        display: flex;
+                        flex-direction: column;
+                        align-items: center;
+                        justify-content: center;
+                        border-radius: 10px;
+                        font-size: 0.95rem;
+                        font-weight: 600;
+                        color: #334155;
+                        background: #F8FAFC;
+                        border: 1px solid #E2E8F0;
+                        cursor: pointer;
+                        transition: all 0.15s ease-in-out;
+                        position: relative;
+                        user-select: none;
+                    }
+                    .holiday-day-cell:hover:not(.other-month) {
+                        background: #F3E8FF;
+                        border-color: #C4B5FD;
+                        color: #6D28D9;
+                        transform: translateY(-1px);
+                    }
+                    .holiday-day-cell.other-month {
+                        opacity: 0.35;
+                        background: #F8FAFC;
+                    }
+                    .holiday-day-cell.is-sunday {
+                        color: #DC2626;
+                    }
+                    .holiday-day-cell.is-saturday {
+                        color: #D97706;
+                    }
+                    .holiday-day-cell.is-today::before {
+                        content: '';
+                        position: absolute;
+                        top: 4px;
+                        left: 4px;
+                        width: 6px;
+                        height: 6px;
+                        background: #3B82F6;
+                        border-radius: 50%;
+                    }
+                    .holiday-day-cell.is-saved-holiday {
+                        background: #FEF2F2 !important;
+                        border-color: #FECACA !important;
+                        color: #B91C1C !important;
+                    }
+                    .holiday-day-cell .holiday-indicator {
+                        display: block;
+                        font-size: 0.65rem;
+                        font-weight: 700;
+                        line-height: 1;
+                        margin-top: 2px;
+                    }
+                    .holiday-day-cell.is-saved-holiday .holiday-indicator {
+                        color: #DC2626;
+                    }
+                    .holiday-day-cell.is-selected {
+                        background: #7C3AED !important;
+                        border-color: #6D28D9 !important;
+                        color: #FFFFFF !important;
+                        box-shadow: 0 4px 10px rgba(124, 58, 237, 0.35);
+                        transform: scale(1.02);
+                    }
+                    .holiday-day-cell.is-selected .holiday-indicator {
+                        color: #DDD6FE !important;
+                    }
+                    .holiday-chip {
+                        display: inline-flex;
+                        align-items: center;
+                        gap: 6px;
+                        background: #EDE9FE;
+                        color: #6D28D9;
+                        border: 1px solid #DDD6FE;
+                        border-radius: 20px;
+                        padding: 4px 10px;
+                        font-size: 0.8rem;
+                        font-weight: 600;
+                        transition: all 0.15s ease;
+                    }
+                    .holiday-chip button {
+                        background: none;
+                        border: none;
+                        padding: 0;
+                        cursor: pointer;
+                        color: #6D28D9;
+                        font-weight: 700;
+                        font-size: 0.85rem;
+                        line-height: 1;
+                        display: flex;
+                        align-items: center;
+                    }
+                    .holiday-chip button:hover {
+                        color: #DC2626;
+                    }
+                    .btn-tag-shortcut {
+                        background: #F1F5F9;
+                        border: 1px solid #CBD5E1;
+                        border-radius: 14px;
+                        padding: 4px 10px;
+                        font-size: 0.75rem;
+                        color: #475569;
+                        cursor: pointer;
+                        transition: all 0.15s;
+                    }
+                    .btn-tag-shortcut:hover {
+                        background: #E2E8F0;
+                        color: #1E293B;
+                        border-color: #94A3B8;
+                    }
+                </style>
+
+                <!-- Panduan Singkat -->
+                <div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:10px; padding:10px 14px; margin-bottom:14px; font-size:0.85rem; color:#1E40AF; display:flex; align-items:center; gap:8px;">
+                    <span style="font-size:1.1rem;">💡</span>
+                    <span><strong>Pilih Tanggal 1 per 1:</strong> Klik langsung pada tanggal di kalender untuk memilih hari libur (bisa memilih beberapa tanggal sekaligus). Klik kembali tanggal untuk membatalkannya.</span>
+                </div>
+
+                <!-- Calendar Card -->
+                <div class="holiday-cal-wrap">
+                    <div class="holiday-cal-header">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <button type="button" class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.navHolidayCal(-1)" style="padding:6px 12px; font-weight:700;">◀</button>
+                            <h4 id="lblHolidayCalMonth" style="margin:0; font-size:1.1rem; font-weight:700; color:#1E293B; min-width:160px; text-align:center;">Maret 2026</h4>
+                            <button type="button" class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.navHolidayCal(1)" style="padding:6px 12px; font-weight:700;">▶</button>
+                            <button type="button" class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.jumpHolidayCalToday()" style="padding:4px 10px; font-size:0.75rem;">Hari Ini</button>
                         </div>
-                        <div class="form-group" style="margin-bottom: 12px;">
-                            <label>Keterangan</label>
-                            <input type="text" id="fKetLibur" class="form-input" placeholder="Misal: Libur Nasional / Cuti Bersama">
+                        <div style="display:flex; align-items:center; gap:8px; font-size:0.75rem; color:#64748B;">
+                            <span style="display:inline-flex; align-items:center; gap:4px;">
+                                <span style="width:12px; height:12px; border-radius:3px; background:#7C3AED; display:inline-block;"></span> Dipilih
+                            </span>
+                            <span style="display:inline-flex; align-items:center; gap:4px;">
+                                <span style="width:12px; height:12px; border-radius:3px; background:#FEE2E2; border:1px solid #FCA5A5; display:inline-block;"></span> Sudah Libur
+                            </span>
                         </div>
-                        <button type="button" class="btn-acad btn-acad-primary" onclick="Curriculum.saveHariLibur()" style="width: 100%;">
-                            ➕ Tambah Hari Libur
+                    </div>
+
+                    <div class="holiday-cal-grid-head">
+                        <div style="color:#EF4444;">Min</div>
+                        <div>Sen</div>
+                        <div>Sel</div>
+                        <div>Rab</div>
+                        <div>Kam</div>
+                        <div>Jum</div>
+                        <div style="color:#D97706;">Sab</div>
+                    </div>
+
+                    <div id="gridHolidayDays" class="holiday-cal-grid-days">
+                        <!-- Rendered by _renderHolidayCalendarGrid -->
+                    </div>
+                </div>
+
+                <!-- Selected Dates & Form Box -->
+                <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; padding:14px; margin-bottom:16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <div style="font-weight:600; font-size:0.875rem; color:#1E293B; display:flex; align-items:center; gap:6px;">
+                            <span>📌 Tanggal Dipilih:</span>
+                            <span id="badgeSelectedCount" style="background:#7C3AED; color:white; border-radius:12px; padding:2px 8px; font-size:0.75rem; font-weight:700;">0 tanggal</span>
+                        </div>
+                        <button type="button" class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.clearSelectedHolidayDates()" id="btnClearSelectedDates" style="display:none; padding:2px 8px; font-size:0.75rem; color:#EF4444; border-color:#FCA5A5;">
+                            Reset Pilihan
+                        </button>
+                    </div>
+
+                    <div id="containerSelectedChips" style="display:flex; flex-wrap:wrap; gap:6px; min-height:36px; align-items:center; margin-bottom:12px;">
+                        <span style="font-size:0.8rem; color:#94A3B8; font-style:italic;">💡 Klik tanggal satu per satu pada kalender di atas untuk menandai hari libur.</span>
+                    </div>
+
+                    <div style="padding-top:12px; border-top:1px dashed #CBD5E1;">
+                        <div class="form-group" style="margin-bottom:8px;">
+                            <label style="font-weight:600; font-size:0.875rem; color:#334155;">Keterangan Hari Libur <span style="color:#EF4444;">*</span></label>
+                            <input type="text" id="fKetLibur" class="form-input" placeholder="Misal: Libur Nasional / Cuti Bersama / Libur Idul Fitri" style="width:100%; font-size:0.9rem;">
+                        </div>
+
+                        <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; align-items:center;">
+                            <span style="font-size:0.75rem; color:#64748B;">Pilihan Cepat:</span>
+                            <button type="button" class="btn-tag-shortcut" onclick="Curriculum.setKetLiburQuick('Libur Nasional')">Libur Nasional</button>
+                            <button type="button" class="btn-tag-shortcut" onclick="Curriculum.setKetLiburQuick('Cuti Bersama')">Cuti Bersama</button>
+                            <button type="button" class="btn-tag-shortcut" onclick="Curriculum.setKetLiburQuick('Libur Semester')">Libur Semester</button>
+                            <button type="button" class="btn-tag-shortcut" onclick="Curriculum.setKetLiburQuick('Awal Ramadhan')">Awal Ramadhan</button>
+                            <button type="button" class="btn-tag-shortcut" onclick="Curriculum.setKetLiburQuick('Hari Raya Idul Fitri')">Idul Fitri</button>
+                            <button type="button" class="btn-tag-shortcut" onclick="Curriculum.setKetLiburQuick('Kegiatan Sekolah')">Kegiatan Sekolah</button>
+                        </div>
+
+                        <button type="button" class="btn-acad btn-acad-primary" id="btnSimpanLibur" onclick="Curriculum.saveHariLibur()" style="width:100%; padding:10px; font-weight:600; font-size:0.95rem;">
+                            ➕ Simpan Hari Libur Terpilih
                         </button>
                     </div>
                 </div>
 
-                <div class="table-responsive">
-                    <table class="acad-table" id="tableHariLibur">
-                        <thead>
-                            <tr>
-                                <th>Tanggal</th>
-                                <th>Keterangan</th>
-                                <th width="80">Aksi</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr><td colspan="3" class="text-center" style="padding:20px;">Memuat data...</td></tr>
-                        </tbody>
-                    </table>
+                <!-- Table of Saved Holidays -->
+                <div style="margin-top:16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                        <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#1E293B;">📋 Daftar Hari Libur Terdaftar</h4>
+                        <span id="totalHariLiburCount" style="font-size:0.8rem; color:#64748B; background:#F1F5F9; padding:2px 8px; border-radius:10px;">0 hari</span>
+                    </div>
+                    <div class="table-responsive" style="max-height:260px; overflow-y:auto; border:1px solid #E2E8F0; border-radius:10px;">
+                        <table class="acad-table" id="tableHariLibur" style="margin-bottom:0;">
+                            <thead>
+                                <tr>
+                                    <th width="40" class="text-center">No</th>
+                                    <th>Hari & Tanggal</th>
+                                    <th>Keterangan</th>
+                                    <th width="70" class="text-center">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td colspan="4" class="text-center" style="padding:20px;">Memuat data...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             `,
             onOpen: () => {
                 this.loadHariLiburList();
+                this._renderHolidayCalendarGrid();
+                this._renderSelectedHolidayChips();
             },
             onConfirm: () => {
-                // Return true to just close the modal
                 return true;
-            },
-            confirmText: 'Tutup'
+            }
         });
+    },
+
+    _formatDateKey(y, m, d) {
+        const mm = String(m + 1).padStart(2, '0');
+        const dd = String(d).padStart(2, '0');
+        return `${y}-${mm}-${dd}`;
+    },
+
+    _formatDateIndo(dateStr) {
+        if (!dateStr) return '';
+        const parts = dateStr.split('-');
+        if (parts.length !== 3) return dateStr;
+        const y = parseInt(parts[0], 10);
+        const m = parseInt(parts[1], 10) - 1;
+        const d = parseInt(parts[2], 10);
+        const dt = new Date(y, m, d);
+        const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agt', 'Sep', 'Okt', 'Nov', 'Des'];
+        return `${days[dt.getDay()]}, ${d} ${months[m]} ${y}`;
+    },
+
+    navHolidayCal(delta) {
+        this._holidayCalMonth += delta;
+        if (this._holidayCalMonth < 0) {
+            this._holidayCalMonth = 11;
+            this._holidayCalYear--;
+        } else if (this._holidayCalMonth > 11) {
+            this._holidayCalMonth = 0;
+            this._holidayCalYear++;
+        }
+        this._renderHolidayCalendarGrid();
+    },
+
+    jumpHolidayCalToday() {
+        const now = new Date();
+        this._holidayCalYear = now.getFullYear();
+        this._holidayCalMonth = now.getMonth();
+        this._renderHolidayCalendarGrid();
+    },
+
+    toggleHolidayDate(dateKey) {
+        if (!this._selectedHolidayDates) this._selectedHolidayDates = new Set();
+        if (this._selectedHolidayDates.has(dateKey)) {
+            this._selectedHolidayDates.delete(dateKey);
+        } else {
+            this._selectedHolidayDates.add(dateKey);
+            if (this._existingHolidaysMap && this._existingHolidaysMap[dateKey]) {
+                const cur = $('#fKetLibur').val().trim();
+                if (!cur) {
+                    $('#fKetLibur').val(this._existingHolidaysMap[dateKey].keterangan);
+                }
+            }
+        }
+        this._renderHolidayCalendarGrid();
+        this._renderSelectedHolidayChips();
+    },
+
+    removeHolidayDate(dateKey) {
+        if (this._selectedHolidayDates) {
+            this._selectedHolidayDates.delete(dateKey);
+        }
+        this._renderHolidayCalendarGrid();
+        this._renderSelectedHolidayChips();
+    },
+
+    clearSelectedHolidayDates() {
+        if (this._selectedHolidayDates) {
+            this._selectedHolidayDates.clear();
+        }
+        this._renderHolidayCalendarGrid();
+        this._renderSelectedHolidayChips();
+    },
+
+    setKetLiburQuick(text) {
+        $('#fKetLibur').val(text).focus();
+    },
+
+    _renderHolidayCalendarGrid() {
+        const monthNames = [
+            'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+            'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+        ];
+        const year = this._holidayCalYear || (new Date()).getFullYear();
+        const month = (this._holidayCalMonth !== undefined) ? this._holidayCalMonth : (new Date()).getMonth();
+
+        $('#lblHolidayCalMonth').text(`${monthNames[month]} ${year}`);
+
+        const todayObj = new Date();
+        const todayStr = this._formatDateKey(todayObj.getFullYear(), todayObj.getMonth(), todayObj.getDate());
+
+        const firstDayIndex = new Date(year, month, 1).getDay();
+        const daysInMonth = new Date(year, month + 1, 0).getDate();
+        const prevMonthDays = new Date(year, month, 0).getDate();
+
+        let cellsHtml = '';
+
+        // Previous month days
+        for (let i = firstDayIndex - 1; i >= 0; i--) {
+            const d = prevMonthDays - i;
+            const prevYear = (month === 0) ? year - 1 : year;
+            const prevMonth = (month === 0) ? 11 : month - 1;
+            const dateKey = this._formatDateKey(prevYear, prevMonth, d);
+            const isSelected = this._selectedHolidayDates && this._selectedHolidayDates.has(dateKey);
+            const isSaved = this._existingHolidaysMap && this._existingHolidaysMap[dateKey];
+
+            cellsHtml += `
+                <div class="holiday-day-cell other-month ${isSelected ? 'is-selected' : ''} ${isSaved ? 'is-saved-holiday' : ''}" 
+                     onclick="Curriculum.toggleHolidayDate('${dateKey}')" 
+                     title="${isSaved ? `Libur: ${this.escapeHtml(isSaved.keterangan)}` : dateKey}">
+                    <span>${d}</span>
+                    ${isSaved ? `<span class="holiday-indicator">${isSelected ? '✓' : 'Libur'}</span>` : (isSelected ? '<span class="holiday-indicator">✓</span>' : '')}
+                </div>
+            `;
+        }
+
+        // Current month days
+        for (let d = 1; d <= daysInMonth; d++) {
+            const dateKey = this._formatDateKey(year, month, d);
+            const dayOfWeek = new Date(year, month, d).getDay();
+            const isSunday = (dayOfWeek === 0);
+            const isSaturday = (dayOfWeek === 6);
+            const isToday = (dateKey === todayStr);
+            const isSelected = this._selectedHolidayDates && this._selectedHolidayDates.has(dateKey);
+            const isSaved = this._existingHolidaysMap && this._existingHolidaysMap[dateKey];
+
+            let cellClasses = ['holiday-day-cell'];
+            if (isSunday) cellClasses.push('is-sunday');
+            if (isSaturday) cellClasses.push('is-saturday');
+            if (isToday) cellClasses.push('is-today');
+            if (isSaved) cellClasses.push('is-saved-holiday');
+            if (isSelected) cellClasses.push('is-selected');
+
+            const tooltip = isSaved ? `Sudah Libur: ${this.escapeHtml(isSaved.keterangan)}` : `${dateKey} (Klik untuk pilih)`;
+
+            cellsHtml += `
+                <div class="${cellClasses.join(' ')}" 
+                     onclick="Curriculum.toggleHolidayDate('${dateKey}')" 
+                     title="${tooltip}">
+                    <span>${d}</span>
+                    ${isSelected ? '<span class="holiday-indicator">✓</span>' : (isSaved ? '<span class="holiday-indicator">Libur</span>' : '')}
+                </div>
+            `;
+        }
+
+        // Next month days to complete 7-column grid
+        const totalCellsSoFar = firstDayIndex + daysInMonth;
+        const remainingCells = (totalCellsSoFar % 7 === 0) ? 0 : 7 - (totalCellsSoFar % 7);
+        for (let nextD = 1; nextD <= remainingCells; nextD++) {
+            const nextYear = (month === 11) ? year + 1 : year;
+            const nextMonth = (month === 11) ? 0 : month + 1;
+            const dateKey = this._formatDateKey(nextYear, nextMonth, nextD);
+            const isSelected = this._selectedHolidayDates && this._selectedHolidayDates.has(dateKey);
+            const isSaved = this._existingHolidaysMap && this._existingHolidaysMap[dateKey];
+
+            cellsHtml += `
+                <div class="holiday-day-cell other-month ${isSelected ? 'is-selected' : ''} ${isSaved ? 'is-saved-holiday' : ''}" 
+                     onclick="Curriculum.toggleHolidayDate('${dateKey}')" 
+                     title="${isSaved ? `Libur: ${this.escapeHtml(isSaved.keterangan)}` : dateKey}">
+                    <span>${nextD}</span>
+                    ${isSaved ? `<span class="holiday-indicator">${isSelected ? '✓' : 'Libur'}</span>` : (isSelected ? '<span class="holiday-indicator">✓</span>' : '')}
+                </div>
+            `;
+        }
+
+        $('#gridHolidayDays').html(cellsHtml);
+    },
+
+    _renderSelectedHolidayChips() {
+        const dates = Array.from(this._selectedHolidayDates || []).sort();
+        const count = dates.length;
+        $('#badgeSelectedCount').text(`${count} tanggal`);
+
+        if (count > 0) {
+            $('#btnClearSelectedDates').show();
+            let chipsHtml = '';
+            dates.forEach(d => {
+                const label = this._formatDateIndo(d);
+                chipsHtml += `
+                    <div class="holiday-chip">
+                        <span>${label}</span>
+                        <button type="button" onclick="Curriculum.removeHolidayDate('${d}')" title="Hapus dari pilihan">✕</button>
+                    </div>
+                `;
+            });
+            $('#containerSelectedChips').html(chipsHtml);
+            $('#btnSimpanLibur').html(`<span>➕ Simpan ${count} Hari Libur Terpilih</span>`);
+        } else {
+            $('#btnClearSelectedDates').hide();
+            $('#containerSelectedChips').html('<span style="font-size:0.8rem; color:#94A3B8; font-style:italic;">💡 Klik tanggal satu per satu pada kalender di atas untuk menandai hari libur.</span>');
+            $('#btnSimpanLibur').html('<span>➕ Simpan Hari Libur Terpilih</span>');
+        }
     },
 
     loadHariLiburList() {
         this.api('hari_libur.php?action=list').done(res => {
             if (!res.success) return;
             const data = res.data || [];
+            this._existingHolidaysList = data;
+            this._existingHolidaysMap = {};
+            data.forEach(item => {
+                this._existingHolidaysMap[item.tanggal] = {
+                    id: item.id,
+                    keterangan: item.keterangan
+                };
+            });
+
+            this._renderHolidayCalendarGrid();
+
             let html = '';
             if (data.length === 0) {
-                html = '<tr><td colspan="3" class="text-center" style="padding:20px; color:#64748B;">Belum ada data hari libur.</td></tr>';
+                html = '<tr><td colspan="4" class="text-center" style="padding:20px; color:#64748B;">Belum ada data hari libur yang tersimpan.</td></tr>';
             } else {
-                data.forEach(item => {
-                    const tglParts = item.tanggal.split('-');
-                    const tglIndo = tglParts[2] + '-' + tglParts[1] + '-' + tglParts[0];
+                data.forEach((item, idx) => {
+                    const tglIndo = this._formatDateIndo(item.tanggal);
                     html += `
                         <tr>
-                            <td style="font-weight:600;">${tglIndo}</td>
-                            <td>${item.keterangan}</td>
-                            <td>
-                                <button class="sch-btn-icon danger" onclick="Curriculum.deleteHariLibur(${item.id})" title="Hapus">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <td class="text-center" style="color:#64748B; font-size:0.85rem;">${idx + 1}</td>
+                            <td style="font-weight:600; color:#1E293B;">
+                                <span style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#EF4444; margin-right:6px;"></span>
+                                ${tglIndo}
+                            </td>
+                            <td style="color:#475569;">${this.escapeHtml(item.keterangan)}</td>
+                            <td class="text-center">
+                                <button class="sch-btn-icon danger" onclick="Curriculum.deleteHariLibur(${item.id}, '${item.tanggal}')" title="Hapus hari libur ini">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px; height:16px;">
                                         <polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/>
                                     </svg>
                                 </button>
@@ -8710,54 +9314,94 @@ const Curriculum = {
                 });
             }
             $('#tableHariLibur tbody').html(html);
+            $('#totalHariLiburCount').text(`${data.length} hari`);
         });
     },
 
     saveHariLibur() {
-        const tanggal_mulai = $('#fTanggalLiburMulai').val();
-        const tanggal_akhir = $('#fTanggalLiburAkhir').val();
-        const keterangan = $('#fKetLibur').val();
+        const dates = Array.from(this._selectedHolidayDates || []);
+        const keterangan = $('#fKetLibur').val().trim();
 
-        if (!tanggal_mulai || !keterangan) {
-            EModal.toast({type: 'error', title: 'Error', message: 'Tanggal Mulai dan Keterangan harus diisi.'});
+        if (dates.length === 0) {
+            EModal.toast({
+                type: 'warning', 
+                title: 'Pilih Tanggal', 
+                message: 'Silakan klik minimal satu tanggal pada kalender di atas.'
+            });
             return;
         }
 
+        if (!keterangan) {
+            EModal.toast({
+                type: 'warning', 
+                title: 'Keterangan Kosong', 
+                message: 'Harap masukkan keterangan untuk hari libur ini.'
+            });
+            $('#fKetLibur').focus();
+            return;
+        }
+
+        const $btn = $('#btnSimpanLibur');
+        $btn.prop('disabled', true).html('<span>⏳ Menyimpan...</span>');
+
         this.api('hari_libur.php?action=save', {
             method: 'POST',
-            data: { tanggal_mulai, tanggal_akhir, keterangan }
+            data: { dates, keterangan }
         }).done(res => {
-            EModal.toast({type: 'success', title: 'Berhasil', message: res.message});
-            $('#fTanggalLiburMulai, #fTanggalLiburAkhir').val('');
+            EModal.toast({type: 'success', title: 'Berhasil', message: res.message || 'Hari libur berhasil disimpan.'});
+            if (this._selectedHolidayDates) this._selectedHolidayDates.clear();
             $('#fKetLibur').val('');
+            this._renderSelectedHolidayChips();
             this.loadHariLiburList();
-            
-            // Reload absensi UI if they are open
-            if ($('#absenDate').length) {
-                this.loadAbsensi(true);
-            }
+            this._reloadActiveAbsensiUI();
+        }).fail(xhr => {
+            let msg = 'Gagal menyimpan hari libur.';
+            try {
+                if (xhr.responseJSON && xhr.responseJSON.message) msg = xhr.responseJSON.message;
+            } catch(e) {}
+            EModal.toast({type: 'error', title: 'Gagal', message: msg});
+        }).always(() => {
+            $btn.prop('disabled', false).html(`<span>➕ Simpan Hari Libur Terpilih</span>`);
         });
     },
 
-    deleteHariLibur(id) {
+    deleteHariLibur(id, tanggal) {
+        const tglInfo = tanggal ? `pada tanggal <strong>${this._formatDateIndo(tanggal)}</strong>` : '';
         EModal.confirm({
             title: 'Hapus Hari Libur',
-            message: 'Yakin ingin menghapus hari libur ini?',
+            message: `Yakin ingin menghapus hari libur ${tglInfo}?`,
+            type: 'danger',
+            confirmText: 'Ya, Hapus',
             onConfirm: () => {
                 this.api('hari_libur.php?action=delete', {
                     method: 'POST',
                     data: { id: id }
                 }).done(res => {
-                    EModal.toast({type: 'success', title: 'Berhasil', message: res.message});
-                    this.loadHariLiburList();
-                    
-                    // Reload absensi UI if they are open
-                    if ($('#absenDate').length) {
-                        this.loadAbsensi(true);
+                    EModal.toast({type: 'success', title: 'Berhasil', message: res.message || 'Hari libur berhasil dihapus.'});
+                    if (tanggal && this._selectedHolidayDates) {
+                        this._selectedHolidayDates.delete(tanggal);
                     }
+                    this.loadHariLiburList();
+                    this._renderSelectedHolidayChips();
+                    this._reloadActiveAbsensiUI();
                 });
             }
         });
+    },
+
+    _reloadActiveAbsensiUI() {
+        if ($('#absensiTanggal').length && typeof this.loadAbsensiTable === 'function') {
+            this.loadAbsensiTable();
+            if ($('#absensiTabRekap').is(':visible') && typeof this.loadAbsensiRekapTable === 'function') {
+                this.loadAbsensiRekapTable();
+            }
+        }
+        if ($('#absensiGuruTanggal').length && typeof this.loadAbsensiGuruTable === 'function') {
+            this.loadAbsensiGuruTable();
+            if ($('#absensiGuruTabRekap').is(':visible') && typeof this.loadAbsensiGuruRekapTable === 'function') {
+                this.loadAbsensiGuruRekapTable();
+            }
+        }
     }
 
 };

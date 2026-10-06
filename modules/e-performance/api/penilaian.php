@@ -179,31 +179,37 @@ function listTarget() {
             
             // Validasi apakah assignment masih sesuai dengan aturan sejawat saat ini
             if ($self) {
-                $stmtPeer = $db->prepare("SELECT jenis_ptk FROM perf_ptk WHERE id = ?");
+                $stmtPeer = $db->prepare("SELECT id, jenis_ptk, status FROM perf_ptk WHERE id = ?");
                 $stmtPeer->execute([$peer_id]);
                 $peerInfo = $stmtPeer->fetch(PDO::FETCH_ASSOC);
                 
                 if ($peerInfo) {
-                    $stmtAturanCheck = $db->prepare("SELECT id FROM perf_aturan_sejawat WHERE periode_id = ? AND penilai_jenis = ? AND dinilai_jenis = ?");
-                    $stmtAturanCheck->execute([$periode_id, $self['jenis_ptk'], $peerInfo['jenis_ptk']]);
-                    
-                    $aturanValid = $stmtAturanCheck->fetch() !== false;
-
-                    // Validasi tambahan: jika tupoksi sama, tapi jumlahnya kurang dari 5, maka aturan tidak valid
-                    if ($aturanValid && $self['jenis_ptk'] === $peerInfo['jenis_ptk']) {
-                        $stmtCount = $db->prepare("SELECT COUNT(*) FROM perf_ptk WHERE status = 1 AND jenis_ptk = ?");
-                        $stmtCount->execute([$self['jenis_ptk']]);
-                        $tupoksiCount = $stmtCount->fetchColumn();
-                        if ($tupoksiCount < 5) {
-                            $aturanValid = false;
-                        }
-                    }
-
-                    if (!$aturanValid) {
-                        // Aturan tidak ada/dihapus atau melanggar aturan < 5 tupoksi sama, batalkan dan hapus penugasan
+                    if ($peerInfo['status'] != 1 || $peer_id == $ptk_id) {
                         $db->prepare("DELETE FROM perf_penugasan_sejawat WHERE periode_id = ? AND penilai_ptk_id = ?")->execute([$periode_id, $ptk_id]);
                         $peer_id = null;
+                    } else {
+                        $stmtAturanCheck = $db->prepare("SELECT id FROM perf_aturan_sejawat WHERE periode_id = ? AND TRIM(penilai_jenis) = ? AND TRIM(dinilai_jenis) = ?");
+                        $stmtAturanCheck->execute([$periode_id, trim($self['jenis_ptk']), trim($peerInfo['jenis_ptk'])]);
+                        $aturanValid = $stmtAturanCheck->fetch() !== false;
+
+                        // Validasi tambahan: jika tupoksi sama, tapi jumlahnya kurang dari 2, maka aturan tidak valid (tidak bisa menilai diri sendiri)
+                        if ($aturanValid && trim($self['jenis_ptk']) === trim($peerInfo['jenis_ptk'])) {
+                            $stmtCount = $db->prepare("SELECT COUNT(*) FROM perf_ptk WHERE status = 1 AND TRIM(jenis_ptk) = ?");
+                            $stmtCount->execute([trim($self['jenis_ptk'])]);
+                            $tupoksiCount = (int)$stmtCount->fetchColumn();
+                            if ($tupoksiCount < 2) {
+                                $aturanValid = false;
+                            }
+                        }
+
+                        if (!$aturanValid) {
+                            $db->prepare("DELETE FROM perf_penugasan_sejawat WHERE periode_id = ? AND penilai_ptk_id = ?")->execute([$periode_id, $ptk_id]);
+                            $peer_id = null;
+                        }
                     }
+                } else {
+                    $db->prepare("DELETE FROM perf_penugasan_sejawat WHERE periode_id = ? AND penilai_ptk_id = ?")->execute([$periode_id, $ptk_id]);
+                    $peer_id = null;
                 }
             }
         }
@@ -211,31 +217,39 @@ function listTarget() {
         if (!$peer_id) {
             if ($self) {
                 // Cek aturan sejawat untuk tupoksi penilai ini
-                $stmtAturan = $db->prepare("SELECT dinilai_jenis FROM perf_aturan_sejawat WHERE periode_id = ? AND penilai_jenis = ?");
-                $stmtAturan->execute([$periode_id, $self['jenis_ptk']]);
+                $stmtAturan = $db->prepare("SELECT dinilai_jenis FROM perf_aturan_sejawat WHERE periode_id = ? AND TRIM(penilai_jenis) = ?");
+                $stmtAturan->execute([$periode_id, trim($self['jenis_ptk'])]);
                 $aturan = $stmtAturan->fetchAll(PDO::FETCH_COLUMN);
 
                 if (count($aturan) > 0) {
+                    $trimmedAturan = array_map('trim', $aturan);
                     // Cek apakah jenis_ptk sendiri ada di dalam aturan
-                    if (in_array($self['jenis_ptk'], $aturan)) {
+                    if (in_array(trim($self['jenis_ptk']), $trimmedAturan)) {
                         // Hitung jumlah PTK di tupoksi ini
-                        $stmtCount = $db->prepare("SELECT COUNT(*) FROM perf_ptk WHERE status = 1 AND jenis_ptk = ?");
-                        $stmtCount->execute([$self['jenis_ptk']]);
-                        $tupoksiCount = $stmtCount->fetchColumn();
+                        $stmtCount = $db->prepare("SELECT COUNT(*) FROM perf_ptk WHERE status = 1 AND TRIM(jenis_ptk) = ?");
+                        $stmtCount->execute([trim($self['jenis_ptk'])]);
+                        $tupoksiCount = (int)$stmtCount->fetchColumn();
 
-                        // Jika jumlah orang di tupoksinya kurang dari 5, jangan pertemukan sesama
-                        if ($tupoksiCount < 5) {
+                        // Jika jumlah orang di tupoksinya kurang dari 2, jangan pertemukan sesama
+                        if ($tupoksiCount < 2) {
                             $aturan = array_filter($aturan, function($val) use ($self) {
-                                return $val !== $self['jenis_ptk'];
+                                return trim($val) !== trim($self['jenis_ptk']);
                             });
                         }
                     }
 
                     if (count($aturan) > 0) {
                         $inPlaceholders = implode(',', array_fill(0, count($aturan), '?'));
-                        $sql = "SELECT id FROM perf_ptk WHERE id != ? AND status = 1 AND jenis_ptk IN ($inPlaceholders) ORDER BY RAND() LIMIT 1";
+                        // Prioritaskan rekan yang belum banyak dinilai (load balance merata)
+                        $sql = "SELECT p.id 
+                                FROM perf_ptk p 
+                                LEFT JOIN perf_penugasan_sejawat ps ON p.id = ps.dinilai_ptk_id AND ps.periode_id = ?
+                                WHERE p.id != ? AND p.status = 1 AND p.jenis_ptk IN ($inPlaceholders) 
+                                GROUP BY p.id
+                                ORDER BY COUNT(ps.id) ASC, RAND() 
+                                LIMIT 1";
                         $stmtRandom = $db->prepare($sql);
-                        $params = array_merge([$ptk_id], array_values($aturan));
+                        $params = array_merge([$periode_id, $ptk_id], array_values($aturan));
                         $stmtRandom->execute($params);
                         $randomPeer = $stmtRandom->fetch(PDO::FETCH_ASSOC);
 
