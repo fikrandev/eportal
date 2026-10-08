@@ -129,7 +129,7 @@ function listSarpras() {
             (SELECT SUM(jumlah) FROM sarpras WHERE kode_inventaris = s.kode_inventaris AND is_hapus=0) as total_batch,
             (SELECT SUM(jumlah) FROM sarpras WHERE kode_inventaris = s.kode_inventaris AND ruang_id IS NOT NULL AND is_hapus=0) as terpakai_batch,
             (SELECT COUNT(*) FROM sarpras_foto WHERE sarpras_id=s.id) as jumlah_foto,
-            (SELECT foto_path FROM sarpras_foto WHERE sarpras_id=s.id ORDER BY urutan LIMIT 1) as foto_utama
+            (SELECT foto_path FROM sarpras_foto WHERE sarpras_id=s.id ORDER BY urutan ASC, id ASC LIMIT 1) as foto_utama
             FROM sarpras s 
             JOIN kategori_sarpras k ON s.kategori_id=k.id 
             $where AND s.ruang_id IS NULL
@@ -137,7 +137,7 @@ function listSarpras() {
     } else {
         $stmt = db()->prepare("SELECT s.*, k.nama as kategori_nama, k.kode as kategori_kode, k.nama as jenis_kategori, r.nama as ruang_nama, r.kode_ruang, b.nama as bangunan_nama, t.nama as tanah_nama,
             (SELECT COUNT(*) FROM sarpras_foto WHERE sarpras_id=s.id) as jumlah_foto,
-            (SELECT foto_path FROM sarpras_foto WHERE sarpras_id=s.id ORDER BY urutan LIMIT 1) as foto_utama
+            (SELECT foto_path FROM sarpras_foto WHERE sarpras_id=s.id ORDER BY urutan ASC, id ASC LIMIT 1) as foto_utama
             FROM sarpras s 
             JOIN kategori_sarpras k ON s.kategori_id=k.id 
             LEFT JOIN ruang r ON s.ruang_id=r.id 

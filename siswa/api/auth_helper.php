@@ -119,3 +119,73 @@ if (!function_exists('format_tanggal')) {
         return $dayName . ', ' . date('j', $ts) . ' ' . $monthName . ' ' . date('Y', $ts);
     }
 }
+
+/**
+ * Resolve student photo on disk and return valid relative path and web URL.
+ * Checks student's foto_path and candidate photo upload paths by NIS.
+ */
+function siswa_resolve_photo($student) {
+    if (!$student || !is_array($student)) {
+        return ['foto_path' => '', 'foto_url' => ''];
+    }
+
+    $fotoPath = trim((string)($student['foto_path'] ?? ''));
+    $nis = trim((string)($student['nis'] ?? ''));
+    $root = realpath(__DIR__ . '/../../') ?: dirname(dirname(__DIR__));
+    $normRoot = str_replace('\\', '/', $root);
+
+    // 1. Direct path check from database
+    if (!empty($fotoPath)) {
+        $clean = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, ltrim($fotoPath, '/\\'));
+        $full = $root . DIRECTORY_SEPARATOR . $clean;
+        if (file_exists($full)) {
+            $normFull = str_replace('\\', '/', realpath($full) ?: $full);
+            $rel = (strpos($normFull, $normRoot) === 0) ? substr($normFull, strlen($normRoot)) : $clean;
+            $rel = ltrim(str_replace('\\', '/', $rel), '/');
+            return [
+                'foto_path' => $rel,
+                'foto_url' => BASE_URL . $rel
+            ];
+        }
+    }
+
+    // 2. Candidate paths by NIS in common folders
+    if (!empty($nis)) {
+        $cleanNis = preg_replace('/[^A-Za-z0-9_-]/', '', $nis);
+        $candidates = [
+            'uploads/students/photos/' . $cleanNis . '.jpg',
+            'uploads/students/photos/' . $cleanNis . '.png',
+            'uploads/students/photos/' . $cleanNis . '.jpeg',
+            'uploads/students/photos/' . $cleanNis . '.webp',
+            'uploads/students/' . $cleanNis . '.jpg',
+            'uploads/students/' . $cleanNis . '.png',
+            'uploads/students/' . $cleanNis . '.jpeg',
+            'uploads/students/' . $cleanNis . '.webp',
+            'uploads/students/graduation/' . $cleanNis . '.png',
+            'uploads/students/graduation/' . $cleanNis . '.jpg',
+        ];
+
+        foreach ($candidates as $cand) {
+            $full = $root . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $cand);
+            if (file_exists($full)) {
+                // Auto-sync / heal database if path was incorrect
+                if (!empty($student['id']) && $fotoPath !== $cand) {
+                    try {
+                        $upStmt = db()->prepare("UPDATE students SET foto_path = ? WHERE id = ?");
+                        $upStmt->execute([$cand, (int)$student['id']]);
+                    } catch (Exception $e) {}
+                }
+                return [
+                    'foto_path' => $cand,
+                    'foto_url' => BASE_URL . $cand
+                ];
+            }
+        }
+    }
+
+    return [
+        'foto_path' => '',
+        'foto_url' => ''
+    ];
+}
+

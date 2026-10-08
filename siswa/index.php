@@ -39,7 +39,10 @@ $app_icon = get_setting('app_icon_siswa', $school_icon);
     <!-- CSS -->
     <link rel="stylesheet" href="assets/css/siswa.css?v=<?php echo time(); ?>">
     <script>
-        window.APP_CONFIG = { baseUrl: "<?php echo BASE_URL; ?>siswa/" };
+        window.APP_CONFIG = {
+            baseUrl: "<?php echo BASE_URL; ?>siswa/",
+            rootUrl: "<?php echo BASE_URL; ?>"
+        };
     </script>
     
     <!-- OneSignal Web Push -->

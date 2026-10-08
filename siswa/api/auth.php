@@ -5,6 +5,7 @@
  * Responds with JSON for SPA to handle
  */
 require_once __DIR__ . '/../../api/config.php';
+require_once __DIR__ . '/auth_helper.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $input = json_decode(file_get_contents('php://input'), true) ?: $_POST;
@@ -85,6 +86,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Set cookie for 10 years (Persistent session)
             setcookie('siswa_token', $token, time() + (86400 * 365 * 10), "/", "", false, false);
 
+            $photoInfo = siswa_resolve_photo($student);
+
             json_response(200, true, 'Login berhasil.', [
                 'token' => $token,
                 'student' => [
@@ -94,7 +97,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'nisn' => $student['nisn'] ?? '',
                     'kelas' => $student['kelas'] ?? '',
                     'jenis_kelamin' => $student['jenis_kelamin'] ?? '',
-                    'foto_path' => $student['foto_path'] ?? ''
+                    'foto_path' => $photoInfo['foto_path'],
+                    'foto_url' => $photoInfo['foto_url']
                 ]
             ]);
         } else {

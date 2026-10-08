@@ -137,7 +137,19 @@ try {
         $global_cbt_active = ($stmtXam->fetchColumn() > 0);
     } catch (Exception $e) {}
 
+    $photoInfo = siswa_resolve_photo($siswa);
+
     json_response(200, true, 'Dashboard loaded', [
+        'student' => [
+            'id' => (int)$siswa['id'],
+            'nama' => $siswa['nama'],
+            'nis' => $siswa['nis'],
+            'nisn' => $siswa['nisn'] ?? '',
+            'kelas' => $siswa['kelas'] ?? '',
+            'jenis_kelamin' => $siswa['jenis_kelamin'] ?? '',
+            'foto_path' => $photoInfo['foto_path'],
+            'foto_url' => $photoInfo['foto_url']
+        ],
         'hadir' => $hadir,
         'terlambat' => $terlambat,
         'izin' => $izin,

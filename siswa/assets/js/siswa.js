@@ -18,6 +18,48 @@ const App = {
         this.bindEvents();
     },
 
+    getStudentPhotoUrl(student = null) {
+        const s = student || this.state.student || {};
+        if (s.foto_url) return s.foto_url;
+        if (!s.foto_path) return '';
+        if (s.foto_path.startsWith('http://') || s.foto_path.startsWith('https://') || s.foto_path.startsWith('//')) {
+            return s.foto_path;
+        }
+        const root = (window.APP_CONFIG && window.APP_CONFIG.rootUrl) ? window.APP_CONFIG.rootUrl : (window.APP_CONFIG.baseUrl || '/').replace(/siswa\/?$/, '');
+        const cleanRoot = root.endsWith('/') ? root : root + '/';
+        const cleanPath = s.foto_path.replace(/^[\\\/]+/, '');
+        return cleanRoot + cleanPath;
+    },
+
+    renderHeaderAvatar() {
+        const avatarEl = document.getElementById('headerAvatar');
+        const nameEl = document.getElementById('headerName');
+        const student = this.state.student || {};
+        
+        if (nameEl) nameEl.textContent = student.nama || 'Siswa';
+        if (!avatarEl) return;
+
+        const initials = (student.nama || 'Siswa')
+            .split(' ')
+            .filter(Boolean)
+            .map(w => w[0])
+            .slice(0, 2)
+            .join('')
+            .toUpperCase() || 'S';
+
+        const photoUrl = this.getStudentPhotoUrl(student);
+        if (photoUrl) {
+            avatarEl.innerHTML = `<img src="${photoUrl}" alt="Foto Profil" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%; display: block;" onerror="this.onerror=null;const p=this.parentElement;if(p){p.innerHTML='${initials}';p.style.background='';p.style.color='';}">`;
+            avatarEl.style.background = 'transparent';
+            avatarEl.style.color = 'transparent';
+        } else {
+            avatarEl.innerHTML = '';
+            avatarEl.textContent = initials;
+            avatarEl.style.background = '';
+            avatarEl.style.color = '';
+        }
+    },
+
     checkAuth() {
         const token = localStorage.getItem('siswa_token') || this.getCookie('siswa_token');
         const storedStudent = localStorage.getItem('siswa_data');
@@ -40,33 +82,7 @@ const App = {
             this.setCookie('siswa_token', this.state.token, 365);
 
             // Set header user info
-            const initials = (this.state.student.nama || 'Siswa')
-                .split(' ')
-                .filter(Boolean)
-                .map(w => w[0])
-                .slice(0, 2)
-                .join('')
-                .toUpperCase();
-                
-            const avatarEl = document.getElementById('headerAvatar');
-            const nameEl = document.getElementById('headerName');
-            
-            if (avatarEl) {
-                if (this.state.student.foto_path) {
-                    const rootUrl = window.APP_CONFIG.baseUrl.replace('siswa/', '');
-                    const fotoUrl = rootUrl + this.state.student.foto_path.replace(/^[\/\\]/, '');
-                    avatarEl.innerHTML = `<img src="${fotoUrl}" alt="Foto Profil" style="width: 100%; height: 100%; object-fit: cover; border-radius: 50%;">`;
-                    avatarEl.style.background = 'transparent';
-                    avatarEl.style.color = 'transparent';
-                } else {
-                    avatarEl.textContent = initials || 'S';
-                    avatarEl.innerHTML = '';
-                    avatarEl.style.background = '';
-                    avatarEl.style.color = '';
-                    avatarEl.textContent = initials || 'S';
-                }
-            }
-            if (nameEl) nameEl.textContent = this.state.student.nama || 'Siswa';
+            this.renderHeaderAvatar();
 
             if (loginPage) loginPage.style.display = 'none';
             if (appShell) appShell.style.display = 'flex';
@@ -199,6 +215,11 @@ const App = {
             case 'dashboard':
                 this.apiGet('api/dashboard.php').then(res => {
                     if (res.success) {
+                        if (res.data && res.data.student) {
+                            App.state.student = { ...(App.state.student || {}), ...res.data.student };
+                            try { localStorage.setItem('siswa_data', JSON.stringify(App.state.student)); } catch(e) {}
+                            App.renderHeaderAvatar();
+                        }
                         App.state.calendarData = res.data.calendar_data || {};
                         contentDiv.innerHTML = this.views.dashboard(res.data || {});
                     } else {
@@ -339,20 +360,21 @@ const App = {
 
         dashboard(data) {
             const student = App.state.student || {};
+            const photoUrl = App.getStudentPhotoUrl(student);
             return `
                 <div class="page-enter">
                     <!-- Welcome Hero Header -->
                     <div style="background: var(--primary-gradient); color: white; padding: 22px 20px 26px; border-radius: 22px; margin-bottom: 20px; box-shadow: var(--shadow-primary); position: relative; overflow: hidden;">
                         <div style="position: absolute; right: -25px; bottom: -25px; width: 130px; height: 130px; border-radius: 50%; background: rgba(255, 255, 255, 0.05); pointer-events: none;"></div>
                         <div style="position: absolute; right: 40px; top: -30px; width: 80px; height: 80px; border-radius: 50%; background: rgba(255, 255, 255, 0.03); pointer-events: none;"></div>
-                        ${student.foto_path ? `
-                        <div style="position: absolute; right: 20px; top: 20px; width: 65px; height: 65px; border-radius: 12px; overflow: hidden; border: 2px solid rgba(255,255,255,0.3); box-shadow: 0 4px 10px rgba(0,0,0,0.1); background: rgba(255,255,255,0.1);">
-                            <img src="${window.APP_CONFIG.baseUrl.replace('siswa/', '') + student.foto_path.replace(/^[\/\\]/, '')}" alt="Foto" style="width: 100%; height: 100%; object-fit: cover;">
+                        ${photoUrl ? `
+                        <div id="studentCardPhotoBox" style="position: absolute; right: 20px; top: 20px; width: 65px; height: 65px; border-radius: 12px; overflow: hidden; border: 2px solid rgba(255,255,255,0.3); box-shadow: 0 4px 10px rgba(0,0,0,0.1); background: rgba(255,255,255,0.1);">
+                            <img src="${photoUrl}" alt="Foto" style="width: 100%; height: 100%; object-fit: cover; display: block;" onerror="this.onerror=null;const b=document.getElementById('studentCardPhotoBox');if(b)b.style.display='none';const t=document.getElementById('studentCardTitle');if(t)t.style.paddingRight='0';const n=document.getElementById('studentCardName');if(n)n.style.paddingRight='0';">
                         </div>
                         ` : ''}
                         
-                        <div style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.8); margin-bottom: 4px; font-weight: 600; padding-right: ${student.foto_path ? '75px' : '0'};">Kartu Siswa Digital</div>
-                        <h2 style="font-size: 1.45rem; margin-bottom: 4px; color: #ffffff; font-weight: 700; padding-right: ${student.foto_path ? '75px' : '0'};">${student.nama || 'Siswa'}</h2>
+                        <div id="studentCardTitle" style="font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.8); margin-bottom: 4px; font-weight: 600; padding-right: ${photoUrl ? '75px' : '0'};">Kartu Siswa Digital</div>
+                        <h2 id="studentCardName" style="font-size: 1.45rem; margin-bottom: 4px; color: #ffffff; font-weight: 700; padding-right: ${photoUrl ? '75px' : '0'};">${student.nama || 'Siswa'}</h2>
                         <div style="display: flex; gap: 8px; flex-wrap: wrap; opacity: 0.9; font-size: 0.85rem; margin-bottom: 4px;">
                             <span>NIS: <strong>${student.nis || '-'}</strong></span>
                             <span>•</span>

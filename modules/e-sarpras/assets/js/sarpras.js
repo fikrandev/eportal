@@ -20,6 +20,62 @@ const Sarpras = {
         return div.innerHTML;
     },
 
+    getPhotoUrl(path) {
+        if (!path) return '';
+        if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('//')) {
+            return path;
+        }
+        const base = this.state.baseUrl || '/';
+        const cleanBase = base.endsWith('/') ? base : base + '/';
+        const cleanPath = path.replace(/^[\\\/]+/, '');
+        return cleanBase + cleanPath;
+    },
+
+    renderPhotoThumb(fotoPath, name = 'Foto') {
+        const url = this.getPhotoUrl(fotoPath);
+        if (!url) {
+            return `<div class="sp-table-thumb-placeholder" title="Tidak ada foto">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="18" height="18"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+            </div>`;
+        }
+        const escapedUrl = this.escapeHtml(url);
+        const escapedName = this.escapeHtml(name || 'Foto');
+        const quoteSafeUrl = url.replace(/'/g, "\\'");
+        const quoteSafeName = (name || 'Foto').replace(/'/g, "\\'");
+        return `<div class="sp-table-thumb-wrap" title="Klik untuk melihat foto" onclick="Sarpras.previewImage('${quoteSafeUrl}', '${quoteSafeName}')">
+            <img src="${escapedUrl}" alt="${escapedName}" style="width:100%;height:100%;object-fit:cover;" onerror="this.onerror=null;this.parentElement.outerHTML='<div class=\\'sp-table-thumb-placeholder\\' title=\\'Foto tidak ditemukan\\'><svg viewBox=\\'0 0 24 24\\' fill=\\'none\\' stroke=\\'currentColor\\' stroke-width=\\'1.8\\' width=\\'18\\' height=\\'18\\'><rect x=\\'3\\' y=\\'3\\' width=\\'18\\' height=\\'18\\' rx=\\'2\\' ry=\\'2\\'/><circle cx=\\'8.5\\' cy=\\'8.5\\' r=\\'1.5\\'/><polyline points=\\'21 15 16 10 5 21\\'/></svg></div>';" />
+        </div>`;
+    },
+
+    previewImage(url, title = 'Foto Barang') {
+        if (!url) return;
+        const safeUrl = this.escapeHtml(url);
+        const safeTitle = this.escapeHtml(title || 'Foto Barang');
+        const modalId = `emodal-img-${Date.now()}`;
+        const html = `
+        <div class="emodal-overlay show" id="${modalId}" style="z-index:999999;" onclick="EModal.close(this)">
+            <div class="emodal-card emodal-md" style="max-width:560px; padding:20px; text-align:center; position:relative; background:#ffffff; border-radius:16px;" onclick="event.stopPropagation()">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                    <h4 style="margin:0; font-size:1rem; font-weight:600; color:#1e293b;">${safeTitle}</h4>
+                    <button type="button" style="border:none; background:transparent; cursor:pointer; font-size:1.4rem; line-height:1; color:#64748b;" onclick="EModal.close(this.closest('.emodal-overlay'))">&times;</button>
+                </div>
+                <div style="background:#f8fafc; border-radius:12px; overflow:hidden; border:1px solid #e2e8f0; display:flex; align-items:center; justify-content:center; min-height:220px;">
+                    <img src="${safeUrl}" alt="${safeTitle}" style="max-width:100%; max-height:70vh; object-fit:contain; display:block; margin:0 auto;">
+                </div>
+                <div style="margin-top:14px; display:flex; justify-content:flex-end; gap:8px;">
+                    <a href="${safeUrl}" target="_blank" class="btn btn-outline btn-sm" style="display:inline-flex; align-items:center; gap:4px; font-size:0.8rem; padding:6px 14px; border-radius:8px; text-decoration:none;">
+                        Buka Tab Baru
+                    </a>
+                    <button type="button" class="btn btn-primary btn-sm" style="font-size:0.8rem; padding:6px 18px; border-radius:8px;" onclick="EModal.close(this.closest('.emodal-overlay'))">
+                        Tutup
+                    </button>
+                </div>
+            </div>
+        </div>`;
+        const container = document.getElementById('modalContainer') || document.body;
+        container.insertAdjacentHTML('beforeend', html);
+    },
+
     filterTable(input, tableId) {
         const query = input.value.toLowerCase();
         $(`#${tableId} tbody tr`).filter(function() {
@@ -1847,7 +1903,14 @@ const Sarpras = {
                 const groupBadge = this.getAssetGroupBadge(s.grup_pintasan);
                 return `
                 <tr>
-                    <td><strong>${s.nama}</strong><br><small>${s.kode_inventaris}</small></td>
+                    <td>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            ${this.renderPhotoThumb(s.foto_utama, s.nama)}
+                            <div>
+                                <strong>${s.nama}</strong><br><small style="color:var(--text-muted)">${s.kode_inventaris}</small>
+                            </div>
+                        </div>
+                    </td>
                     <td>${s.kategori_nama}${groupBadge}</td>
                     <td>${s.jumlah} Unit</td>
                     <td>
@@ -1983,8 +2046,13 @@ const Sarpras = {
                 const rows = items.map(s => `
                     <tr>
                         <td>
-                            <strong>${s.nama}</strong><br>
-                            <small style="color:var(--text-muted)">${s.kode_inventaris}</small>
+                            <div style="display:flex; align-items:center; gap:10px;">
+                                ${this.renderPhotoThumb(s.foto_utama, s.nama)}
+                                <div>
+                                    <strong>${s.nama}</strong><br>
+                                    <small style="color:var(--text-muted)">${s.kode_inventaris}</small>
+                                </div>
+                            </div>
                         </td>
                         <td>${s.jenis_sarana || s.kategori_nama || '-'}</td>
                         <td>${s.merk || '-'}</td>
@@ -2015,8 +2083,13 @@ const Sarpras = {
                 const rows = items.map(s => `
                     <tr>
                         <td>
-                            <strong>${s.judul_buku || s.nama}</strong><br>
-                            <small style="color:var(--text-muted)">${s.kode_inventaris}</small>
+                            <div style="display:flex; align-items:center; gap:10px;">
+                                ${this.renderPhotoThumb(s.foto_utama, s.judul_buku || s.nama)}
+                                <div>
+                                    <strong>${s.judul_buku || s.nama}</strong><br>
+                                    <small style="color:var(--text-muted)">${s.kode_inventaris}</small>
+                                </div>
+                            </div>
                         </td>
                         <td>${s.pengarang || '-'}</td>
                         <td>${s.penerbit || '-'}</td>
@@ -2045,7 +2118,7 @@ const Sarpras = {
                     <tr>
                         <td>
                             <div style="display:flex; align-items:center; gap:10px;">
-                                ${s.foto_utama ? `<img src="../api/uploads/${s.foto_utama}" style="width:40px; height:40px; border-radius:6px; object-fit:cover; border:1px solid #e2e8f0;">` : `<div style="width:40px; height:40px; border-radius:6px; background:#f1f5f9; display:flex; align-items:center; justify-content:center; color:#94a3b8;"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>`}
+                                ${this.renderPhotoThumb(s.foto_utama, s.nama)}
                                 <div>
                                     <strong>${s.nama}</strong><br>
                                     <small style="color:var(--text-muted)">${s.kode_inventaris}</small>
@@ -2265,11 +2338,21 @@ const Sarpras = {
                             $('#f_agHarga').val(Sarpras.formatNumber(d.harga_perolehan || 0));
 
                             if (d.fotos && d.fotos.length > 0) {
-                                $('#ag_photo_preview img').attr('src', window.SARPRAS_CONFIG.baseUrl + d.fotos[0].foto_path);
+                                $('#ag_photo_preview img').attr('src', Sarpras.getPhotoUrl(d.fotos[0].foto_path));
                                 $('#ag_photo_preview').show();
                             }
                         });
                     }
+                    $('#f_agFoto').on('change', function() {
+                        if (this.files && this.files[0]) {
+                            const reader = new FileReader();
+                            reader.onload = function(e) {
+                                $('#ag_photo_preview img').attr('src', e.target.result);
+                                $('#ag_photo_preview').show();
+                            };
+                            reader.readAsDataURL(this.files[0]);
+                        }
+                    });
                 },
                 onConfirm: () => {
                     const jenisSarana = $('#f_agJenisSarana').val();
@@ -2436,11 +2519,21 @@ const Sarpras = {
                             }
 
                             if (d.fotos && d.fotos.length > 0 && !isAddMore) {
-                                $('#bk_photo_preview img').attr('src', window.SARPRAS_CONFIG.baseUrl + d.fotos[0].foto_path);
+                                $('#bk_photo_preview img').attr('src', Sarpras.getPhotoUrl(d.fotos[0].foto_path));
                                 $('#bk_photo_preview').show();
                             }
                         });
                     }
+                    $('#f_bkFoto').on('change', function() {
+                        if (this.files && this.files[0]) {
+                            const reader = new FileReader();
+                            reader.onload = function(e) {
+                                $('#bk_photo_preview img').attr('src', e.target.result);
+                                $('#bk_photo_preview').show();
+                            };
+                            reader.readAsDataURL(this.files[0]);
+                        }
+                    });
                 },
                 onConfirm: () => {
                     const judul = $('#f_bkJudul').val().trim();
@@ -2945,7 +3038,13 @@ const Sarpras = {
                                 Media & Catatan
                             </div>
                             <div class="sp-form-grid-2" style="grid-template-columns: 2fr 3fr;">
-                                <div class="form-group"><label>Upload Foto Utama</label><input type="file" class="form-input" id="f_sFoto" accept="image/*"></div>
+                                <div class="form-group">
+                                    <label>Upload Foto Utama</label>
+                                    <div id="s_photo_preview" style="display:none; margin-bottom:8px; width:70px; height:70px; border-radius:8px; overflow:hidden; border:1px solid #e2e8f0;">
+                                        <img src="" style="width:100%; height:100%; object-fit:cover;">
+                                    </div>
+                                    <input type="file" class="form-input" id="f_sFoto" accept="image/*">
+                                </div>
                                 <div class="form-group"><label>Keterangan Tambahan</label><textarea class="form-input" id="f_sKet" rows="2" placeholder="Catatan opsional..."></textarea></div>
                             </div>
                         </div>
@@ -3148,8 +3247,23 @@ const Sarpras = {
                                 $('#f_sNoBPKB').val(d.no_bpkb);
                                 $('#f_sAlamat').val(d.alamat);
                                 $('#f_sKepemilikan').val(d.kepemilikan || 'Milik Sendiri');
+
+                                if (d.fotos && d.fotos.length > 0 && !isAddMore) {
+                                    $('#s_photo_preview img').attr('src', Sarpras.getPhotoUrl(d.fotos[0].foto_path));
+                                    $('#s_photo_preview').show();
+                                }
                             });
                         }
+                        $('#f_sFoto').on('change', function() {
+                            if (this.files && this.files[0]) {
+                                const reader = new FileReader();
+                                reader.onload = function(e) {
+                                    $('#s_photo_preview img').attr('src', e.target.result);
+                                    $('#s_photo_preview').show();
+                                };
+                                reader.readAsDataURL(this.files[0]);
+                            }
+                        });
                     },
                     onConfirm: () => {
                         let finalNama = ($('#f_sNamaHidden').val() || '').trim();
