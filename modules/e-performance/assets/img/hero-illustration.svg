@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 240" width="100%" height="100%" fill="none">
+    <defs>
+        <linearGradient id="bgGrad" x1="0" y1="0" x2="400" y2="240" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#ecfdf5"/>
+            <stop offset="100%" stop-color="#d1fae5"/>
+        </linearGradient>
+        <linearGradient id="cardGrad" x1="0" y1="0" x2="200" y2="150" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#ffffff"/>
+            <stop offset="100%" stop-color="#f0fdf4"/>
+        </linearGradient>
+        <linearGradient id="accentGrad" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#10b981"/>
+            <stop offset="100%" stop-color="#059669"/>
+        </linearGradient>
+        <filter id="shadow" x="-10%" y="-10%" width="120%" height="130%" filterUnits="userSpaceOnUse">
+            <feDropShadow dx="0" dy="8" stdDeviation="12" flood-color="#047857" flood-opacity="0.12"/>
+        </filter>
+    </defs>
+
+    <!-- Background Blob -->
+    <rect width="400" height="240" rx="20" fill="url(#bgGrad)"/>
+    <circle cx="340" cy="50" r="45" fill="#a7f3d0" opacity="0.5"/>
+    <circle cx="60" cy="190" r="35" fill="#6ee7b7" opacity="0.4"/>
+
+    <!-- Central Evaluation Dashboard Card -->
+    <g filter="url(#shadow)">
+        <rect x="90" y="35" width="220" height="155" rx="14" fill="url(#cardGrad)" stroke="#a7f3d0" stroke-width="1.5"/>
+        
+        <!-- Header bar -->
+        <rect x="110" y="55" width="110" height="12" rx="6" fill="#047857"/>
+        <rect x="110" y="75" width="60" height="8" rx="4" fill="#94a3b8"/>
+
+        <!-- Mini Stats Bars -->
+        <rect x="110" y="100" width="180" height="8" rx="4" fill="#e2e8f0"/>
+        <rect x="110" y="100" width="145" height="8" rx="4" fill="url(#accentGrad)"/>
+
+        <rect x="110" y="118" width="180" height="8" rx="4" fill="#e2e8f0"/>
+        <rect x="110" y="118" width="165" height="8" rx="4" fill="url(#accentGrad)"/>
+
+        <rect x="110" y="136" width="180" height="8" rx="4" fill="#e2e8f0"/>
+        <rect x="110" y="136" width="130" height="8" rx="4" fill="url(#accentGrad)"/>
+
+        <!-- Checkmark Badge -->
+        <circle cx="265" cy="65" r="16" fill="url(#accentGrad)"/>
+        <path d="M259 65l4 4 8-8" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+
+    <!-- Decorative Stars/Badges -->
+    <g transform="translate(65, 85)">
+        <circle cx="15" cy="15" r="18" fill="#ffffff" filter="url(#shadow)"/>
+        <path d="M15 8l2.2 4.4 4.8.7-3.5 3.4.8 4.8-4.3-2.3-4.3 2.3.8-4.8-3.5-3.4 4.8-.7z" fill="#f59e0b"/>
+    </g>
+
+    <g transform="translate(305, 120)">
+        <circle cx="15" cy="15" r="18" fill="#ffffff" filter="url(#shadow)"/>
+        <path d="M10 15l3 3 7-7" stroke="#10b981" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+</svg>

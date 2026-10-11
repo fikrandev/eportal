@@ -391,7 +391,7 @@
                             <div style="display:flex; align-items:center; gap:12px;">
                                 <div class="welcome-avatar" style="width:48px; height:48px; border-radius:50%; border:2px solid white; background:#fff; color:var(--primary); display:flex; align-items:center; justify-content:center; font-family:var(--font-heading); font-size:1.15rem; font-weight:800; overflow:hidden; flex-shrink:0;">
                                     ${Auth.user?.avatar 
-                                        ? `<img src="${BASE_URL}${Auth.user.avatar}" alt="Avatar" style="width:100%; height:100%; object-fit:cover;">` 
+                                        ? `<img src="${BASE_URL}${String(Auth.user.avatar).replace(/^[\\\/]+/, '').replace(/\\/g, '/')}" alt="Avatar" style="width:100%; height:100%; object-fit:cover;" onerror="this.parentElement.textContent='${getInitials(Auth.user?.nama_lengkap)}';">` 
                                         : getInitials(Auth.user?.nama_lengkap)
                                     }
                                 </div>

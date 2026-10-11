@@ -304,7 +304,7 @@ $verifyUrl = absoluteBaseUrl() . "modules/e-xam-card/v.php?c=" . urlencode($targ
             <div class="kop-area">
                 <div class="kop-logo">
                     <?php if ($school_icon && file_exists($root . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, ltrim($school_icon, '/\\')))): ?>
-                        <img src="<?php echo BASE_URL . ltrim(str_replace('\\', '/', $school_icon), '/'); ?>" style="width:100%; height:100%; object-fit:contain;">
+                        <img src="<?php echo BASE_URL . ltrim(str_replace('\\', '/', $school_icon), '/'); ?>" style="width:100%; height:100%; object-fit:contain;" onerror="this.style.display='none'">
                     <?php else: ?>
                         <div style="width:100%; height:100%; background:#f1f5f9; border-radius:50%; display:flex; align-items:center; justify-content:center; color:#cbd5e1;"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c3 3 9 3 12 0v-5"></path></svg></div>
                     <?php endif; ?>
@@ -350,7 +350,7 @@ $verifyUrl = absoluteBaseUrl() . "modules/e-xam-card/v.php?c=" . urlencode($targ
                 
                 <?php if ($hasPhoto): ?>
                 <div class="photo-area">
-                    <img src="<?php echo $photoWebUrl; ?>" alt="Foto Siswa">
+                    <img src="<?php echo $photoWebUrl; ?>" alt="Foto Siswa" onerror="this.onerror=null; this.parentElement.innerHTML='<div style=\'display:flex; flex-direction:column; align-items:center; justify-content:center; width:68px; font-size:10px; color:#64748b; font-family:Arial, sans-serif; text-align:center; background:#f8fafc; height:100%;\'><svg width=\'24\' height=\'24\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.5\'><path d=\'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2\'></path><circle cx=\'12\' cy=\'7\' r=\'4\'></circle></svg><span style=\'margin-top:2px; font-size:9px; font-weight:600;\'>FOTO 3X4</span></div>';">
                 </div>
                 <?php else: ?>
                 <div class="photo-area" style="display:flex; flex-direction:column; align-items:center; justify-content:center; width:68px; font-size:10px; color:#64748b; font-family:Arial, sans-serif; text-align:center; background:#f8fafc;">

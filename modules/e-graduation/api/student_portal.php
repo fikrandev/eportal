@@ -168,7 +168,7 @@ function announcementPayload($yearId, $student)
         'student_name' => $student['nama'] ?? '',
         'nis' => $student['nis'] ?? '',
         'kelas' => $student['kelas'] ?? '',
-        'foto_url' => !empty($student['foto_path']) ? BASE_URL . $student['foto_path'] : ''
+        'foto_url' => !empty($student['foto_path']) ? BASE_URL . ltrim(str_replace('\\', '/', $student['foto_path']), '/') : ''
     ];
 }
 
@@ -181,7 +181,7 @@ function studentPayload($row)
         'nama' => $row['nama'],
         'kelas' => $row['kelas'],
         'tanggal_lahir' => $row['tanggal_lahir'],
-        'foto_url' => !empty($row['foto_path']) ? BASE_URL . $row['foto_path'] : ''
+        'foto_url' => !empty($row['foto_path']) ? BASE_URL . ltrim(str_replace('\\', '/', $row['foto_path']), '/') : ''
     ];
 }
 

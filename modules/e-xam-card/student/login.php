@@ -66,7 +66,7 @@ $school_icon = get_setting('icon_sekolah', '');
     <div class="login-card">
         <div class="logo-box">
             <?php if ($school_icon): ?>
-                <img src="<?php echo BASE_URL . $school_icon; ?>" alt="Logo">
+                <img src="<?php echo BASE_URL . ltrim(str_replace('\\', '/', $school_icon), '/'); ?>" alt="Logo" onerror="this.onerror=null;this.parentElement.innerHTML='<svg viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\'><path d=\'M22 10v6M2 10l10-5 10 5-10 5z\'></path><path d=\'M6 12v5c3 3 9 3 12 0v-5\'></path></svg>'">
             <?php else: ?>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c3 3 9 3 12 0v-5"></path></svg>
             <?php endif; ?>

@@ -563,9 +563,12 @@ $qr_url = $full_base_url . "/modules/e-xam-card/api/qr.php?size=4&data=" . urlen
 
     <div class="container">
         
-        <?php if (!empty($kop_surat)): ?>
+        <?php if (!empty($kop_surat)): 
+            $clean_kop = ltrim(str_replace('\\', '/', $kop_surat), '/');
+            $kop_img_src = (preg_match('/^https?:\/\//i', $kop_surat)) ? $kop_surat : (defined('BASE_URL') ? BASE_URL . $clean_kop : '../../../' . $clean_kop);
+        ?>
             <div class="kop-surat">
-                <img src="../../../<?php echo htmlspecialchars($kop_surat); ?>" alt="Kop Surat">
+                <img src="<?php echo htmlspecialchars($kop_img_src); ?>" alt="Kop Surat" onerror="this.style.display='none'">
             </div>
         <?php endif; ?>
         <?php 

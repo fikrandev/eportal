@@ -1199,7 +1199,7 @@ const Sarpras = {
     renderTanahFotos(fotos, tanahId) {
         let html = fotos.map(f => `
             <div class="sp-foto-item">
-                <img src="${this.state.baseUrl}${f.foto_path}">
+                <img src="${this.state.baseUrl}${String(f.foto_path || '').replace(/^[\\\/]+/, '')}" onerror="this.style.opacity='0.4'; this.title='Gambar tidak ditemukan';">
                 <button class="sp-foto-delete" onclick="Sarpras.delTanahFoto(${f.id}, ${tanahId})">&times;</button>
             </div>
         `).join('');
@@ -1536,7 +1536,7 @@ const Sarpras = {
         if (fotos && fotos.length) {
             html = fotos.map(f => `
                 <div class="sp-foto-item">
-                    <img src="${this.state.baseUrl}${f.foto_path}" onclick="window.open(this.src,'_blank')">
+                    <img src="${this.state.baseUrl}${String(f.foto_path || '').replace(/^[\\\/]+/, '')}" onclick="window.open(this.src,'_blank')" onerror="this.style.opacity='0.4'; this.title='Gambar tidak ditemukan';">
                     <button class="btn-del" onclick="Sarpras._delBgFoto(${f.id}, ${bgId}, ${tanahId})">&times;</button>
                 </div>
             `).join('');
@@ -4379,7 +4379,7 @@ const Sarpras = {
         fotos = Array.isArray(fotos) ? fotos : [];
         let html = fotos.map(f => `
             <div class="sp-foto-item">
-                <img src="${this.state.baseUrl}${f.foto_path}">
+                <img src="${this.state.baseUrl}${String(f.foto_path || '').replace(/^[\\\/]+/, '')}" onerror="this.style.opacity='0.4'; this.title='Gambar tidak ditemukan';">
                 <button class="sp-foto-delete" onclick="Sarpras.delSarprasFoto(${f.id}, ${sarprasId})">&times;</button>
             </div>
         `).join('');
@@ -5545,7 +5545,7 @@ const Sarpras = {
         if (fotos && fotos.length) {
             html = fotos.map(f => `
                 <div class="sp-foto-item">
-                    <img src="${this.state.baseUrl}${f.foto_path}" onclick="window.open(this.src)">
+                    <img src="${this.state.baseUrl}${String(f.foto_path || '').replace(/^[\\\/]+/, '')}" onclick="window.open(this.src)" onerror="this.style.opacity='0.4'; this.title='Gambar tidak ditemukan';">
                     <button class="btn-del" onclick="Sarpras.deleteSarprasFoto(${f.id}, ${sarprasId})">&times;</button>
                 </div>
             `).join('');
@@ -6073,7 +6073,7 @@ const Sarpras = {
         this.api('manage.php?entity=settings&action=get').done(res => {
             const d = res.data;
             const kopPreview = d.kop_surat 
-                ? `<img src="${this.state.baseUrl}${d.kop_surat}" style="max-width:100%; max-height:120px; border:1px solid #ddd; border-radius:8px; padding:5px; margin-bottom:10px;">` 
+                ? `<img src="${this.state.baseUrl}${String(d.kop_surat || '').replace(/^[\\\/]+/, '')}" onerror="this.style.display='none'" style="max-width:100%; max-height:120px; border:1px solid #ddd; border-radius:8px; padding:5px; margin-bottom:10px;">` 
                 : '<div style="padding:20px; background:#f8fafc; border:2px dashed #cbd5e1; border-radius:8px; text-align:center; color:#94a3b8; margin-bottom:10px;">Belum ada kop surat di Pengaturan E-Portal.</div>';
             
             $container.html(`

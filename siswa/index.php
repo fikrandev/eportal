@@ -73,7 +73,7 @@ $app_icon = get_setting('app_icon_siswa', $school_icon);
         <div class="login-card">
             <div class="login-logo">
                 <?php if($school_icon): ?>
-                    <img src="<?php echo BASE_URL . htmlspecialchars($school_icon); ?>" alt="Logo Sekolah">
+                    <img src="<?php echo BASE_URL . ltrim(str_replace('\\', '/', htmlspecialchars($school_icon)), '/'); ?>" alt="Logo Sekolah" onerror="this.onerror=null;this.parentElement.innerHTML='<svg class=\'login-logo-fallback\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'1.8\'><path d=\'M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z\'/><path d=\'M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z\'/></svg>'">
                 <?php else: ?>
                     <svg class="login-logo-fallback" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
                         <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>

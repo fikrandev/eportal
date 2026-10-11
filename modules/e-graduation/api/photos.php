@@ -58,7 +58,7 @@ function listPhotos()
             'nama'      => $s['nama'],
             'kelas'     => $s['kelas'],
             'foto_path' => $s['foto_path'] ?: '',
-            'foto_url'  => !empty($s['foto_path']) ? $baseUrl . $s['foto_path'] : '',
+            'foto_url'  => !empty($s['foto_path']) ? $baseUrl . ltrim(str_replace('\\', '/', $s['foto_path']), '/') : '',
             'has_photo'  => !empty($s['foto_path']) && file_exists(realpath(__DIR__ . '/../../../') . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, ltrim($s['foto_path'], '/\\')))
         ];
     }

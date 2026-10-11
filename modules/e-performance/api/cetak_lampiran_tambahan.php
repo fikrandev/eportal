@@ -69,7 +69,9 @@ if ($show_diri) {
     if (!empty($grouped_diri)) {
         echo '<div style="page-break-before: always;"></div>';
         if (!empty($kop_surat)) {
-            echo '<div class="kop-surat"><img src="../../../' . htmlspecialchars($kop_surat) . '" alt="Kop Surat"></div>';
+            $clean_kop = ltrim(str_replace('\\', '/', $kop_surat), '/');
+            $kop_img_src = (preg_match('/^https?:\/\//i', $kop_surat)) ? $kop_surat : (defined('BASE_URL') ? BASE_URL . $clean_kop : '../../../' . $clean_kop);
+            echo '<div class="kop-surat"><img src="' . htmlspecialchars($kop_img_src) . '" alt="Kop Surat" onerror="this.style.display=\'none\'"></div>';
         }
         echo '<div class="title" style="margin-bottom: 20px;">REKAPITULASI PENILAIAN DIRI SENDIRI<br>' . htmlspecialchars($ptk['nama_lengkap']) . '</div>';
         echo '<table class="main-table">';
@@ -157,7 +159,9 @@ if ($show_siswa) {
         if (!empty($penilai_list_siswa) && !empty($grouped_siswa)) {
             echo '<div style="page-break-before: always;"></div>';
             if (!empty($kop_surat)) {
-                echo '<div class="kop-surat"><img src="../../../' . htmlspecialchars($kop_surat) . '" alt="Kop Surat"></div>';
+                $clean_kop = ltrim(str_replace('\\', '/', $kop_surat), '/');
+                $kop_img_src = (preg_match('/^https?:\/\//i', $kop_surat)) ? $kop_surat : (defined('BASE_URL') ? BASE_URL . $clean_kop : '../../../' . $clean_kop);
+                echo '<div class="kop-surat"><img src="' . htmlspecialchars($kop_img_src) . '" alt="Kop Surat" onerror="this.style.display=\'none\'"></div>';
             }
             echo '<div class="title" style="margin-bottom: 20px;">REKAPITULASI PENILAIAN OLEH SISWA<br>' . htmlspecialchars($ptk['nama_lengkap']) . '</div>';
             echo '<table class="main-table" style="font-size:10px;">';

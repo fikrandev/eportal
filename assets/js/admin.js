@@ -3510,11 +3510,11 @@ const Admin = {
                     <div class="form-group"><label class="form-label">Nama Sekolah</label><input class="form-input" id="setNamaSekolah" value="${App.escapeHtml(s.nama_sekolah?.value||'')}"></div>
                     <div class="form-group"><label class="form-label">Nama Kepala Sekolah</label><input class="form-input" id="setKepalaSekolah" value="${App.escapeHtml(s.kepala_sekolah?.value||'')}" placeholder="Nama kepala sekolah"></div>
                     <div class="form-group"><label class="form-label">Icon/Logo Sekolah</label>
-                        <div class="icon-preview" id="iconPreview">${s.icon_sekolah?.value?`<img src="${App.baseUrl}${s.icon_sekolah.value}">`:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>'}</div>
+                        <div class="icon-preview" id="iconPreview">${s.icon_sekolah?.value?`<img src="${App.baseUrl}${String(s.icon_sekolah.value).replace(/^[\\\/]+/,'')}" onerror="this.style.display='none'">`:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>'}</div>
                         <input type="file" class="form-input" id="schoolIconFile" accept="image/*" style="padding:10px" onchange="Admin.uploadSchoolIcon()">
                     </div>
                     <div class="form-group"><label class="form-label">Kop Surat</label>
-                        <div class="kop-preview" id="kopPreview">${s.kop_surat?.value?`<img src="${App.baseUrl}${s.kop_surat.value}">`:'<span>Belum ada kop surat</span>'}</div>
+                        <div class="kop-preview" id="kopPreview">${s.kop_surat?.value?`<img src="${App.baseUrl}${String(s.kop_surat.value).replace(/^[\\\/]+/,'')}" onerror="this.style.display='none'">`:'<span>Belum ada kop surat</span>'}</div>
                         <input type="file" class="form-input" id="kopSuratFile" accept="image/*" style="padding:10px" onchange="Admin.uploadKopSurat()">
                         <p class="admin-subtitle">Kop ini menjadi kop default untuk surat di semua modul.</p>
                     </div>
@@ -3526,7 +3526,7 @@ const Admin = {
                             <h5 style="margin-bottom:12px;">Portal Siswa</h5>
                             <div class="form-group"><label class="form-label">Nama Aplikasi</label><input class="form-input" id="setAppNameSiswa" value="${App.escapeHtml(s.app_name_siswa?.value||'Portal Murid E-Portal')}"></div>
                             <div class="form-group"><label class="form-label">Icon / Logo Siswa</label>
-                                <div class="icon-preview" id="iconPreviewSiswa">${s.app_icon_siswa?.value?`<img src="${App.baseUrl}${s.app_icon_siswa.value}">`:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>'}</div>
+                                <div class="icon-preview" id="iconPreviewSiswa">${s.app_icon_siswa?.value?`<img src="${App.baseUrl}${String(s.app_icon_siswa.value).replace(/^[\\\/]+/,'')}" onerror="this.style.display='none'">`:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>'}</div>
                                 <input type="file" class="form-input" id="iconSiswaFile" accept="image/*" style="padding:10px" onchange="Admin.uploadIconSiswa()">
                             </div>
                         </div>
@@ -3534,7 +3534,7 @@ const Admin = {
                             <h5 style="margin-bottom:12px;">Portal Guru</h5>
                             <div class="form-group"><label class="form-label">Nama Aplikasi</label><input class="form-input" id="setAppNameGuru" value="${App.escapeHtml(s.app_name_guru?.value||'Portal Guru E-Portal')}"></div>
                             <div class="form-group"><label class="form-label">Icon / Logo Guru</label>
-                                <div class="icon-preview" id="iconPreviewGuru">${s.app_icon_guru?.value?`<img src="${App.baseUrl}${s.app_icon_guru.value}">`:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>'}</div>
+                                <div class="icon-preview" id="iconPreviewGuru">${s.app_icon_guru?.value?`<img src="${App.baseUrl}${String(s.app_icon_guru.value).replace(/^[\\\/]+/,'')}" onerror="this.style.display='none'">`:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>'}</div>
                                 <input type="file" class="form-input" id="iconGuruFile" accept="image/*" style="padding:10px" onchange="Admin.uploadIconGuru()">
                             </div>
                         </div>
@@ -4288,7 +4288,7 @@ const Admin = {
 
         const html = items.map(s => {
             const photoHtml = s.has_photo
-                ? `<img src="${s.foto_url}?t=${Date.now()}" alt="${App.escapeHtml(s.nama)}" loading="lazy">`
+                ? `<img src="${s.foto_url}?t=${Date.now()}" alt="${App.escapeHtml(s.nama)}" loading="lazy" onerror="this.onerror=null;this.parentElement.innerHTML='<div class=\\'admin-photo-placeholder\\'><svg viewBox=\\'0 0 24 24\\' fill=\\'none\\' stroke=\\'currentColor\\' stroke-width=\\'1.5\\' style=\\'width:40px;height:40px;color:#cbd5e1\\'><path d=\\'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2\\'/><circle cx=\\'12\\' cy=\\'7\\' r=\\'4\\'/></svg></div>';">`
                 : `<div class="admin-photo-placeholder"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:40px;height:40px;color:#cbd5e1"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div>`;
             const deleteBtn = s.has_photo
                 ? `<button class="admin-photo-del" data-id="${s.id}" title="Hapus foto"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px;height:14px"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>`

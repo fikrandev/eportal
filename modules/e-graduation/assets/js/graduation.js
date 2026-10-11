@@ -440,7 +440,7 @@ const Graduation = {
                         <div class="grad-muted">Upload gambar kop surat dan lengkapi data keputusan untuk cetak SKL.</div>
                     </div>
                     <div class="grad-skl-preview">
-                        ${setting.kop_image ? `<img src="${this.state.baseUrl}${this.escapeAttr(setting.kop_image)}" alt="Kop SKL">` : '<span>Belum ada kop</span>'}
+                        ${setting.kop_image ? `<img src="${this.state.baseUrl}${String(setting.kop_image || '').replace(/^[\\\/]+/, '').replace(/\\/g, '/')}" alt="Kop SKL" onerror="this.style.display='none'">` : '<span>Belum ada kop</span>'}
                     </div>
                     <button class="btn btn-outline btn-sm" type="button" onclick="Graduation.openSklSettings()">Pengaturan Format SKL</button>
                 </div>
@@ -508,7 +508,7 @@ const Graduation = {
             size: 'lg',
             form: `
                 <div class="grad-skl-modal-preview">
-                    ${setting.kop_image ? `<img src="${this.state.baseUrl}${this.escapeAttr(setting.kop_image)}" alt="Kop SKL">` : '<div class="grad-muted">Belum ada kop surat. Upload gambar kop sesuai format sekolah.</div>'}
+                    ${setting.kop_image ? `<img src="${this.state.baseUrl}${String(setting.kop_image || '').replace(/^[\\\/]+/, '').replace(/\\/g, '/')}" alt="Kop SKL" onerror="this.style.display='none'">` : '<div class="grad-muted">Belum ada kop surat. Upload gambar kop sesuai format sekolah.</div>'}
                 </div>
                 <div class="form-group">
                     <label class="form-label">Upload Gambar Kop Surat</label>

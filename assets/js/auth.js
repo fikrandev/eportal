@@ -8,14 +8,12 @@ const Auth = {
      */
     renderLogin(container) {
         const schoolName = App.state.school.nama || 'E-Portal Sekolah';
-        const schoolIcon = App.state.school.icon;
+        const schoolIcon = App.state.school.icon ? String(App.state.school.icon).replace(/^[\\\/]+/, '').replace(/\\/g, '/') : '';
+        const fallbackSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 20h20"/><path d="M5 20V8.5L12 4l7 4.5V20"/><path d="M9 20v-4h6v4"/><path d="M9 12h1"/><path d="M14 12h1"/></svg>`;
 
         const logoContent = schoolIcon 
-            ? `<img src="${App.baseUrl}${schoolIcon}" alt="Logo">`
-            : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M2 20h20"/><path d="M5 20V8.5L12 4l7 4.5V20"/><path d="M9 20v-4h6v4"/>
-                <path d="M9 12h1"/><path d="M14 12h1"/>
-               </svg>`;
+            ? `<img src="${App.baseUrl}${schoolIcon}" alt="Logo" onerror="this.onerror=null;this.parentElement.innerHTML='${fallbackSvg}';">`
+            : fallbackSvg;
 
         container.innerHTML = `
         <div class="login-wrapper">
