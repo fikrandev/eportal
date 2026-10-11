@@ -220,6 +220,7 @@ $shades = getThemeShades($module_color);
 
     <script src="<?php echo BASE_URL; ?>assets/vendor/jquery-3.7.1.min.js"></script>
     <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=<?php echo time(); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/pagination.js?v=<?php echo time(); ?>"></script>
     <script src="assets/js/graduation.js?v=<?php echo time(); ?>"></script>
 </body>
 </html>

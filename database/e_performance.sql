@@ -172,6 +172,7 @@ CREATE TABLE IF NOT EXISTS `perf_sessions` (
 CREATE TABLE IF NOT EXISTS `perf_deskripsi` (
   `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
   `tupoksi` VARCHAR(100) NOT NULL,
+  `predikat` VARCHAR(50) DEFAULT NULL,
   `min_nilai` DECIMAL(5,2) NOT NULL,
   `max_nilai` DECIMAL(5,2) NOT NULL,
   `deskripsi` TEXT NOT NULL,

@@ -13,11 +13,47 @@ if (!$auth) {
 
 $db = db();
 
-function getDeskripsiPenilaian($db, $tupoksi, $nilai) {
-    $stmt = $db->prepare("SELECT deskripsi FROM perf_deskripsi WHERE tupoksi = ? AND ? >= min_nilai AND ? <= max_nilai LIMIT 1");
+function getDeskripsiInfo($db, $tupoksi, $nilai) {
+    // Check direct scale
+    $stmt = $db->prepare("SELECT predikat, deskripsi FROM perf_deskripsi WHERE tupoksi = ? AND ? >= min_nilai AND ? <= max_nilai LIMIT 1");
     $stmt->execute([$tupoksi, $nilai, $nilai]);
     $res = $stmt->fetch(PDO::FETCH_ASSOC);
-    return $res ? $res['deskripsi'] : '-';
+    if ($res) return $res;
+
+    // Check converted scale 1-5 -> 100 if applicable
+    if ($nilai > 0 && $nilai <= 5.0) {
+        $nilai100 = ($nilai / 5.0) * 100;
+        $stmt->execute([$tupoksi, $nilai100, $nilai100]);
+        $res = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($res) return $res;
+    }
+
+    return null;
+}
+
+function getDefaultDeskripsiText($tupoksi, $predikat) {
+    $sebutan = (strpos(strtolower($tupoksi), 'guru') !== false) ? 'Guru' : 'Pegawai';
+    $pLower = strtolower($predikat);
+    if (strpos($pLower, 'sangat baik') !== false || strpos($pLower, 'sb') !== false || strpos($pLower, 'istimewa') !== false) {
+        return "{$sebutan} telah menunjukkan standar kompetensi yang sangat luar biasa dalam mengajar dan memberikan pelayanan pendidikan secara optimal.";
+    } elseif (strpos($pLower, 'baik') !== false || $pLower === 'b') {
+        return "{$sebutan} telah memenuhi standar kompetensi dengan baik dalam mengajar dan memberikan pelayanan pendidikan secara optimal.";
+    } elseif (strpos($pLower, 'cukup') !== false || $pLower === 'c') {
+        return "{$sebutan} telah memenuhi standar kompetensi dasar dalam mengajar, namun masih memerlukan bimbingan atau peningkatan pada beberapa aspek tertentu agar lebih optimal dalam pelayanan pendidikan.";
+    } else {
+        return "{$sebutan} perlu banyak bimbingan untuk mencapai standar kompetensi dasar dalam pelayanan pendidikan.";
+    }
+}
+
+function getDeskripsiPenilaian($db, $tupoksi, $nilai, $fallbackPredikat = '') {
+    $info = getDeskripsiInfo($db, $tupoksi, $nilai);
+    if ($info && !empty($info['deskripsi'])) {
+        return $info['deskripsi'];
+    }
+    if ($fallbackPredikat) {
+        return getDefaultDeskripsiText($tupoksi, $fallbackPredikat);
+    }
+    return '-';
 }
 
 
@@ -226,20 +262,22 @@ foreach ($scores as $ptype => &$data) {
 unset($data);
 
 // Tentukan Predikat
-$predikat = "Kurang";
-if ($total_nilai_akhir >= 4.5) $predikat = "Sangat Baik";
-elseif ($total_nilai_akhir >= 3.5) $predikat = "Baik";
-elseif ($total_nilai_akhir >= 2.5) $predikat = "Cukup";
+$info_db_l1 = getDeskripsiInfo($db, $ptk_jenis, $total_nilai_akhir);
+if ($info_db_l1 && !empty($info_db_l1['predikat'])) {
+    $predikat = $info_db_l1['predikat'];
+} else {
+    $predikat = "Kurang";
+    if ($total_nilai_akhir >= 4.5) $predikat = "Sangat Baik";
+    elseif ($total_nilai_akhir >= 3.5) $predikat = "Baik";
+    elseif ($total_nilai_akhir >= 2.5) $predikat = "Cukup";
+}
 
 // Deskripsi
 $sebutan = (strpos(strtolower($ptk_jenis), 'guru') !== false) ? 'Guru' : 'Pegawai';
-$deskripsi = "{$sebutan} perlu banyak bimbingan untuk mencapai standar kompetensi dasar dalam pelayanan pendidikan.";
-if ($predikat == "Sangat Baik") {
-    $deskripsi = "{$sebutan} telah menunjukkan standar kompetensi yang sangat luar biasa dalam mengajar dan memberikan pelayanan pendidikan secara optimal.";
-} elseif ($predikat == "Baik") {
-    $deskripsi = "{$sebutan} telah memenuhi standar kompetensi dengan baik dalam mengajar dan memberikan pelayanan pendidikan secara optimal.";
-} elseif ($predikat == "Cukup") {
-    $deskripsi = "{$sebutan} telah memenuhi standar kompetensi dasar dalam mengajar, namun masih memerlukan bimbingan atau peningkatan pada beberapa aspek tertentu agar lebih optimal dalam pelayanan pendidikan.";
+if ($info_db_l1 && !empty($info_db_l1['deskripsi'])) {
+    $deskripsi = $info_db_l1['deskripsi'];
+} else {
+    $deskripsi = getDefaultDeskripsiText($ptk_jenis, $predikat);
 }
 
 // Hitung Konversi Kategori
@@ -671,10 +709,15 @@ $qr_url = $full_base_url . "/modules/e-xam-card/api/qr.php?size=4&data=" . urlen
                 }
             }
 
-            $predikat_page1 = "Kurang";
-            if ($total_nilai_page1 >= 90) $predikat_page1 = "Sangat Baik";
-            elseif ($total_nilai_page1 >= 75) $predikat_page1 = "Baik";
-            elseif ($total_nilai_page1 >= 60) $predikat_page1 = "Cukup";
+            $info_db_p1 = getDeskripsiInfo($db, $ptk_jenis, $total_nilai_page1);
+            if ($info_db_p1 && !empty($info_db_p1['predikat'])) {
+                $predikat_page1 = $info_db_p1['predikat'];
+            } else {
+                $predikat_page1 = "Kurang";
+                if ($total_nilai_page1 >= 90) $predikat_page1 = "Sangat Baik";
+                elseif ($total_nilai_page1 >= 75) $predikat_page1 = "Baik";
+                elseif ($total_nilai_page1 >= 60) $predikat_page1 = "Cukup";
+            }
             
             echo "<tr><td colspan='4' class='text-right'>JUMLAH</td><td class='text-center'>".number_format($total_nilai_page1, 2)."</td></tr>";
             echo "<tr><td colspan='4' class='text-right'>PREDIKAT</td><td class='text-center'>{$predikat_page1}</td></tr>";
@@ -682,8 +725,8 @@ $qr_url = $full_base_url . "/modules/e-xam-card/api/qr.php?size=4&data=" . urlen
         </table>
 
         <div class="desc-box">
-            DESKRIPSI<br>
-            <?php echo getDeskripsiPenilaian($db, $ptk_jenis, $total_nilai_page1); ?>
+            <div style="font-weight: bold; margin-bottom: 4px;">PREDIKAT : <?php echo strtoupper(htmlspecialchars($predikat_page1)); ?></div>
+            <div><?php echo htmlspecialchars(getDeskripsiPenilaian($db, $ptk_jenis, $total_nilai_page1, $predikat_page1)); ?></div>
         </div>
 
         <div class="signature-area clearfix">
@@ -834,8 +877,8 @@ $qr_url = $full_base_url . "/modules/e-xam-card/api/qr.php?size=4&data=" . urlen
 
         <!-- Deskripsi -->
         <div class="desc-box">
-            DESKRIPSI<br>
-            <?php echo getDeskripsiPenilaian($db, $ptk_jenis, $total_nilai_akhir); ?>
+            <div style="font-weight: bold; margin-bottom: 4px;">PREDIKAT : <?php echo strtoupper(htmlspecialchars($predikat)); ?></div>
+            <div><?php echo htmlspecialchars(getDeskripsiPenilaian($db, $ptk_jenis, $total_nilai_akhir, $predikat)); ?></div>
         </div>
 
         <!-- Signature -->

@@ -164,6 +164,7 @@ $active_academic_year = get_active_academic_year();
     <!-- Chart Library -->
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <!-- Curriculum SPA JS -->
+    <script src="<?php echo BASE_URL; ?>assets/js/pagination.js?v=<?php echo time(); ?>"></script>
     <script src="assets/js/curriculum.js?v=<?php echo time(); ?>"></script>
 </body>
 </html>

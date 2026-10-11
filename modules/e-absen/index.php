@@ -130,6 +130,7 @@ $config = [
     <script>
         window.ABSEN_CONFIG = <?php echo json_encode($config); ?>;
     </script>
+    <script src="<?php echo BASE_URL; ?>assets/js/pagination.js?v=<?php echo time(); ?>"></script>
     <script src="assets/js/absen.js?v=<?php echo time(); ?>"></script>
 </body>
 </html>

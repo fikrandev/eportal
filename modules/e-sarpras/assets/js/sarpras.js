@@ -2132,6 +2132,9 @@ const Sarpras = {
                         <td style="text-align:center; color:var(--warning)"><strong>${s.jumlah}</strong></td>
                         <td>
                             <div class="sp-actions">
+                                <button class="sp-btn-icon" style="color:#2563eb; background:rgba(37,99,235,0.08); border-radius:6px;" title="Catat Penggunaan / Distribusi" onclick="Sarpras.formPenggunaanAhp(${s.id})">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
+                                </button>
                                 <button class="sp-btn-icon" title="Detail" onclick="Sarpras.navigate('sarpras-detail', {id: ${s.id}})">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                                 </button>
@@ -2168,6 +2171,136 @@ const Sarpras = {
                 paginationHtml += '</div>';
                 $('#groupTable').append(paginationHtml);
             }
+        });
+    },
+
+    /**
+     * FORM: CATAT PENGGUNAAN / DISTRIBUSI AHP & BHP
+     * Mencegah penggunaan melebihi stok (jangan mines) dengan notifikasi jelas.
+     */
+    formPenggunaanAhp(id) {
+        const loader = EModal.loading('Memuat data stok barang...');
+        $.when(
+            this.api(`sarpras.php?action=get&id=${id}`),
+            this.api('ruang.php?action=all')
+        ).done((resItem, resRuang) => {
+            EModal.close(loader);
+            const item = resItem[0]?.data;
+            const rooms = resRuang[0]?.data || [];
+            if (!item) {
+                EModal.toast({ type: 'error', title: 'Error', message: 'Data barang tidak ditemukan.' });
+                return;
+            }
+
+            const stokGudang = parseInt(item.jumlah || 0);
+            if (stokGudang <= 0) {
+                EModal.toast({ 
+                    type: 'warning', 
+                    title: 'Stok Gudang Habis', 
+                    message: `Stok "${item.nama}" di gudang sudah 0 (habis). Tidak dapat melakukan penggunaan lagi.` 
+                });
+                return;
+            }
+
+            const roomOpts = rooms.map(r => `<option value="${r.id}">${this.escapeHtml(r.tanah_nama)} - ${this.escapeHtml(r.bangunan_nama)} - ${this.escapeHtml(r.nama)}</option>`).join('');
+
+            EModal.form({
+                title: 'Catat Penggunaan / Distribusi AHP & BHP',
+                size: 'md',
+                form: `
+                    <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:10px; padding:12px 16px; margin-bottom:16px;">
+                        <div style="font-weight:700; color:#1e3a8a; font-size:1rem;">${this.escapeHtml(item.nama)}</div>
+                        <div style="font-size:0.8rem; color:#3b82f6; margin-top:2px;">Kode: <strong>${this.escapeHtml(item.kode_inventaris)}</strong> | Kategori: ${this.escapeHtml(item.kategori_nama || '-')}</div>
+                        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:10px; padding-top:8px; border-top:1px dashed #bfdbfe;">
+                            <span style="font-size:0.85rem; color:#1e3a8a; font-weight:600;">Sisa Stok Gudang Tersedia:</span>
+                            <span style="font-size:1.1rem; font-weight:800; color:#2563eb; background:#fff; padding:2px 12px; border-radius:20px; border:1px solid #93c5fd;">${stokGudang} Unit</span>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Tujuan Distribusi / Penggunaan <span style="color:var(--danger)">*</span></label>
+                        <select class="form-select" id="f_useRuangId">
+                            <option value="">-- Habis Pakai Langsung (Tanpa Ruangan) --</option>
+                            ${roomOpts}
+                        </select>
+                        <small style="color:var(--text-muted); display:block; margin-top:3px;">Pilih ruangan jika didistribusikan ke kelas/ruangan, atau pilih 'Habis Pakai Langsung' jika barang langsung dikonsumsi.</small>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Jumlah Digunakan <span style="color:var(--danger)">*</span> <small style="color:var(--primary); font-weight:600;">(Maksimal: ${stokGudang})</small></label>
+                        <input type="number" class="form-input" id="f_useJumlah" value="1" min="1" max="${stokGudang}" style="font-size:1.1rem; font-weight:700;">
+                        <div id="useStockAlert" style="display:none; color:#dc2626; background:#fee2e2; border:1px solid #fecaca; border-radius:6px; padding:6px 10px; font-size:0.8rem; font-weight:600; margin-top:6px;">
+                            ⚠️ Penggunaan melebihi stok yang tersedia! Stok tidak boleh minus.
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Keperluan / Catatan Penggunaan</label>
+                        <input type="text" class="form-input" id="f_useKeterangan" placeholder="Cth: Pembagian spidol kelas, Kertas ujian semester, dll">
+                    </div>
+                `,
+                onOpen: () => {
+                    const checkLiveStock = () => {
+                        const val = parseInt($('#f_useJumlah').val() || 0);
+                        if (val > stokGudang || val <= 0) {
+                            $('#useStockAlert').show();
+                            if (val > stokGudang) {
+                                $('#useStockAlert').text(`⚠️ Jumlah (${val}) melebihi stok gudang (${stokGudang})! Stok tidak boleh minus.`);
+                            } else {
+                                $('#useStockAlert').text('⚠️ Jumlah penggunaan minimal 1!');
+                            }
+                        } else {
+                            $('#useStockAlert').hide();
+                        }
+                    };
+                    $('#f_useJumlah').on('input change keyup', checkLiveStock);
+                },
+                onConfirm: () => {
+                    const jml = parseInt($('#f_useJumlah').val() || 0);
+                    if (jml <= 0) {
+                        EModal.toast({ type: 'error', title: 'Input Tidak Valid', message: 'Jumlah penggunaan minimal 1.' });
+                        return false;
+                    }
+                    if (jml > stokGudang) {
+                        EModal.toast({ 
+                            type: 'error', 
+                            title: 'Stok Tidak Mencukupi', 
+                            message: `Penggunaan (${jml}) melebihi stok gudang (${stokGudang})! Stok tidak boleh minus.` 
+                        });
+                        return false;
+                    }
+
+                    const postData = {
+                        sarpras_id: id,
+                        ruang_id: $('#f_useRuangId').val() || '',
+                        jumlah: jml,
+                        keterangan: ($('#f_useKeterangan').val() || '').trim()
+                    };
+
+                    const savingLoader = EModal.loading('Menyimpan penggunaan barang...');
+                    this.api('sarpras.php?action=distribusi-ahp', { method: 'POST', data: postData }).done(res => {
+                        EModal.close(savingLoader);
+                        EModal.closeAll();
+                        EModal.toast({ 
+                            type: 'success', 
+                            title: 'Berhasil', 
+                            message: res.message || 'Penggunaan barang berhasil dicatat.' 
+                        });
+                        this._loadAssetGroupData('ahp-bhp', 1, $('#assetLiveSearch').val() || '');
+                    }).fail(xhr => {
+                        EModal.close(savingLoader);
+                        EModal.toast({ 
+                            type: 'error', 
+                            title: 'Gagal Mencatat', 
+                            message: xhr.responseJSON?.message || 'Terjadi kesalahan saat mencatat penggunaan barang.' 
+                        });
+                    });
+                    return false;
+                }
+            });
+        }).fail(xhr => {
+            EModal.close(loader);
+            EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal memuat data barang.' });
         });
     },
 
@@ -3186,13 +3319,25 @@ const Sarpras = {
                             $('#customSelectBtn').removeClass('active');
                         });
 
-                        // Live sync: quantity to condition baik
+                        // Live sync: quantity to condition baik & check stock if sourceId exists
                         $('#f_sJml').on('input change', function() {
                             const jml = parseInt($(this).val() || 0);
                             const rr = parseInt($('#f_sRR').val() || 0);
                             const rb = parseInt($('#f_sRB').val() || 0);
                             if (rr === 0 && rb === 0 && jml > 0) {
                                 $('#f_sBaik').val(jml);
+                            }
+
+                            const sourceId = $('#f_sSourceId').val();
+                            const available = parseInt($('#f_sAvailable').val() || 0);
+                            if (sourceId && available > 0 && jml > available) {
+                                if ($('#sJmlStockWarning').length === 0) {
+                                    $('#f_sJml').after(`<div id="sJmlStockWarning" style="color:#dc2626; font-size:0.8rem; font-weight:600; margin-top:4px;">⚠️ Jumlah (${jml}) melebihi sisa stok gudang (${available})! Stok tidak boleh minus.</div>`);
+                                } else {
+                                    $('#sJmlStockWarning').text(`⚠️ Jumlah (${jml}) melebihi sisa stok gudang (${available})! Stok tidak boleh minus.`).show();
+                                }
+                            } else {
+                                $('#sJmlStockWarning').hide();
                             }
                         });
                         
@@ -3299,7 +3444,11 @@ const Sarpras = {
                         }
 
                         if (sourceId && jml > available) {
-                            EModal.toast({type:'error', title:'Error', message:`Jumlah (${jml}) melebihi stok gudang (${available})`});
+                            EModal.toast({
+                                type: 'error', 
+                                title: 'Stok Tidak Mencukupi', 
+                                message: `Jumlah penggunaan (${jml}) melebihi stok gudang yang tersedia (${available})! Stok tidak boleh minus.`
+                            });
                             return false;
                         }
 
@@ -4700,24 +4849,30 @@ const Sarpras = {
         `;
         $('#barcodeContainer').append(overlayHtml);
 
-        // Put initial skeleton cards into #barcodeGrid
-        const skeletonCards = Array(8).fill(0).map(() => `
-            <div class="sp-barcode-item sp-barcode-skeleton">
-                <div class="skeleton" style="width:80px; height:80px; border-radius:8px; margin: 0 auto 10px;"></div>
-                <div class="skeleton" style="width:120px; height:14px; border-radius:4px; margin: 0 auto 6px;"></div>
-                <div class="skeleton" style="width:100px; height:10px; border-radius:4px; margin: 0 auto 4px;"></div>
-                <div class="skeleton" style="width:70px; height:8px; border-radius:4px; margin: 0 auto;"></div>
+        // Put initial skeleton cards into #barcodeContainer
+        const skeletonCards = `
+            <div class="sp-barcode-grid" id="barcodeGridSkeleton">
+                ${Array(8).fill(0).map(() => `
+                    <div class="sp-barcode-item sp-barcode-skeleton">
+                        <div class="skeleton" style="width:80px; height:80px; border-radius:8px; margin: 0 auto 10px;"></div>
+                        <div class="skeleton" style="width:120px; height:14px; border-radius:4px; margin: 0 auto 6px;"></div>
+                        <div class="skeleton" style="width:100px; height:10px; border-radius:4px; margin: 0 auto 4px;"></div>
+                        <div class="skeleton" style="width:70px; height:8px; border-radius:4px; margin: 0 auto;"></div>
+                    </div>
+                `).join('')}
             </div>
-        `).join('');
-        $('#barcodeGrid').html(skeletonCards);
+        `;
+        $('#barcodeContainer').find('.sp-barcode-room-section, .sp-barcode-grid, .sp-empty').remove();
+        $('#barcodeContainer').append(skeletonCards);
 
         this.api(`sarpras.php?action=barcode-data&ruang_id=${rid}`).done(res => {
             if (this._bcLoadToken !== currentToken) return;
 
             if (!res || !res.data || !res.data.length) {
                 $('#bcOverlay').fadeOut(200, function() { $(this).remove(); });
-                $('#barcodeGrid').html(`
-                    <div class="sp-empty" style="grid-column:1/-1; width:100%; padding:48px 20px; text-align:center;">
+                $('#barcodeContainer').find('.sp-barcode-room-section, .sp-barcode-grid, .sp-empty').remove();
+                $('#barcodeContainer').append(`
+                    <div class="sp-empty" style="width:100%; padding:48px 20px; text-align:center;">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:48px;height:48px;margin:0 auto 12px;opacity:0.35;display:block;"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 7h10M7 12h10M7 17h10"/></svg>
                         <strong style="color:#1e293b; font-size:1rem;">Tidak Ada Data Barang</strong>
                         <p style="color:#64748b; font-size:0.85rem; margin-top:4px;">Tidak ada sarpras yang terdaftar pada ruangan yang dipilih.</p>
@@ -4732,29 +4887,72 @@ const Sarpras = {
             const items = res.data;
             const total = items.length;
 
+            // Group items per room
+            const groups = {};
+            items.forEach(s => {
+                const key = s.ruang_id || '0';
+                if (!groups[key]) {
+                    groups[key] = {
+                        ruang_id: s.ruang_id,
+                        ruang_nama: s.ruang_nama || 'Gudang Utama',
+                        kode_ruang: s.kode_ruang || '-',
+                        bangunan_nama: s.bangunan_nama || '',
+                        tanah_nama: s.tanah_nama || '',
+                        items: []
+                    };
+                }
+                groups[key].items.push(s);
+            });
+            const groupKeys = Object.keys(groups);
+
             $('#bcOverlayTitle').text('Membuat QR Code...');
-            $('#bcOverlaySub').text(`Menyiapkan 0 dari ${total} QR Code...`);
+            $('#bcOverlaySub').text(`Menyiapkan 0 dari ${total} QR Code (${groupKeys.length} Ruangan)...`);
             $('#bcLoadingText').text(`Membuat ${total} QR Code...`);
 
-            // Render barcode items structure
-            const html = items.map(s => `
-                <div class="sp-barcode-item">
-                    <div class="sp-bc-wrap" data-code="${this.escapeHtml(s.kode_inventaris)}"></div>
-                    <div class="sp-barcode-label">${this.escapeHtml(s.kode_inventaris)}</div>
-                    <div class="sp-barcode-sub" title="${this.escapeHtml(s.nama)}">${this.escapeHtml(s.nama)}</div>
-                    <div class="sp-barcode-sub" style="font-size:0.5rem; opacity:0.6">${this.escapeHtml(s.ruang_nama)}</div>
-                </div>
-            `).join('');
-            $('#barcodeGrid').html(html);
+            // Render barcode items structured per room
+            let sectionsHtml = '';
+            groupKeys.forEach(key => {
+                const g = groups[key];
+                const locSub = [g.bangunan_nama, g.tanah_nama].filter(Boolean).join(' • ');
+                sectionsHtml += `
+                    <div class="sp-barcode-room-section" data-ruang-id="${g.ruang_id || ''}">
+                        <div class="sp-barcode-room-header">
+                            <div class="sp-bc-room-info">
+                                <div class="sp-bc-room-title">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px;height:18px;vertical-align:text-bottom;margin-right:6px;"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg>
+                                    <strong>${this.escapeHtml(g.ruang_nama)}</strong>
+                                    ${g.kode_ruang && g.kode_ruang !== '-' ? `<span class="sp-bc-room-code">${this.escapeHtml(g.kode_ruang)}</span>` : ''}
+                                </div>
+                                ${locSub ? `<div class="sp-bc-room-sub">${this.escapeHtml(locSub)}</div>` : ''}
+                            </div>
+                            <div class="sp-bc-room-count">${g.items.length} Label</div>
+                        </div>
+                        <div class="sp-barcode-grid">
+                            ${g.items.map(s => `
+                                <div class="sp-barcode-item">
+                                    <div class="sp-bc-wrap" data-id="${s.id}" data-code="${this.escapeHtml(s.kode_inventaris)}"></div>
+                                    <div class="sp-barcode-label">${this.escapeHtml(s.kode_inventaris)}</div>
+                                    <div class="sp-barcode-sub" title="${this.escapeHtml(s.nama)}">${this.escapeHtml(s.nama)}</div>
+                                    <div class="sp-barcode-sub" style="font-size:0.5rem; opacity:0.6">${this.escapeHtml(s.ruang_nama || 'Gudang')}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            });
 
-            // Generate QR codes with completion verification
-            const wraps = $('#barcodeGrid .sp-bc-wrap').toArray();
+            $('#barcodeContainer').find('.sp-barcode-room-section, .sp-barcode-grid, .sp-empty').remove();
+            $('#barcodeContainer').append(sectionsHtml);
+
+            // Generate QR codes with completion verification (using sarpras_id so room is never mixed up!)
+            const wraps = $('#barcodeContainer .sp-bc-wrap').toArray();
             let completed = 0;
 
             const generateQr = (el) => {
                 return new Promise(resolve => {
+                    const id = $(el).data('id');
                     const code = $(el).data('code');
-                    const url = `${window.location.origin}${this.state.baseUrl}modules/e-sarpras/scan.php?kode=${encodeURIComponent(code)}`;
+                    const url = `${window.location.origin}${this.state.baseUrl}modules/e-sarpras/scan.php?sarpras_id=${id}&kode=${encodeURIComponent(code)}`;
                     try {
                         new QRCode(el, {
                             text: url,
@@ -4802,7 +5000,7 @@ const Sarpras = {
                     setTimeout(() => {
                         if (this._bcLoadToken !== currentToken) return;
                         $('#bcOverlay').fadeOut(280, function() { $(this).remove(); });
-                        $('#bcCountBadge').text(`${total} Label Siap Cetak`).fadeIn();
+                        $('#bcCountBadge').text(`${total} Label (${groupKeys.length} Ruangan)`).fadeIn();
                         $('#btnPrintBarcode').prop('disabled', false);
                         $('#bc_rSel').prop('disabled', false);
                         $('#bcLoadingStatus').hide();
@@ -4832,8 +5030,9 @@ const Sarpras = {
         }).fail(xhr => {
             if (this._bcLoadToken !== currentToken) return;
             $('#bcOverlay').fadeOut(200, function() { $(this).remove(); });
-            $('#barcodeGrid').html(`
-                <div class="sp-empty" style="grid-column:1/-1; width:100%; padding:48px 20px; text-align:center; color:var(--danger, #dc2626);">
+            $('#barcodeContainer').find('.sp-barcode-room-section, .sp-barcode-grid, .sp-empty').remove();
+            $('#barcodeContainer').append(`
+                <div class="sp-empty" style="width:100%; padding:48px 20px; text-align:center; color:var(--danger, #dc2626);">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:48px;height:48px;margin:0 auto 12px;opacity:0.6;display:block;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                     <strong>Gagal Memuat Data Barcode</strong>
                     <p style="font-size:0.85rem; margin-top:4px; color:#64748b;">${this.escapeHtml(xhr.responseJSON?.message || 'Terjadi kesalahan saat memuat data. Silakan coba lagi.')}</p>

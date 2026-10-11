@@ -1628,11 +1628,14 @@ const Perf = {
                             </select>
                         </div>
                     </div>
-                    <div class="pf-toolbar" style="display:flex; gap:10px; align-items:center;">
-                        <div id="siswaBulkActions" class="hidden pf-fade-in" style="display:flex; gap:10px; align-items:center">
+                    <div class="pf-toolbar" style="display:flex; flex-wrap:wrap; gap:8px; align-items:center;">
+                        <div id="siswaBulkActions" class="hidden pf-fade-in" style="display:flex; gap:8px; align-items:center">
                             <span class="pf-badge pf-badge-blue" id="siswaSelCount">0 terpilih</span>
                             <button class="btn btn-danger btn-sm" onclick="Perf.bulkDeleteSiswa()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> Hapus Terpilih</button>
                         </div>
+                        <button class="btn btn-primary btn-sm" onclick="Perf.syncAllSiswa()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg> Sinkronkan Siswa dari Portal</button>
+                        <button class="btn btn-outline btn-sm" onclick="Perf.importPortalSiswa()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg> Import per Kelas</button>
+                        <button class="btn btn-outline btn-sm" onclick="Perf.importSiswa()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Import Excel</button>
                         <button class="btn btn-accent btn-sm" onclick="Perf.modalPengaturanPenilaianSiswa()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg> Pengaturan Penilaian</button>
                     </div>
                 </div>
@@ -1674,7 +1677,14 @@ const Perf = {
     loadSiswa() {
         this.api('siswa.php?action=list&periode_id=' + this.state.selectedPeriodeId).done(res => {
             if (!res.data || Object.keys(res.data).length === 0) {
-                $('#siswaTable').html('<div class="pf-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg><h3>Belum ada siswa</h3></div>');
+                $('#siswaTable').html(`
+                    <div class="pf-empty">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/></svg>
+                        <h3>Belum ada siswa di E-Performance</h3>
+                        <p style="color:var(--text-muted); margin-bottom:14px;">Data siswa belum disinkronkan dari E-Portal.</p>
+                        <button class="btn btn-primary btn-sm" onclick="Perf.syncAllSiswa()"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0 1 18.8-4.3M22 12.5a10 10 0 0 1-18.8 4.2"/></svg> Sinkronkan Siswa dari Portal Sekarang</button>
+                    </div>
+                `);
                 return;
             }
             
@@ -4012,53 +4022,84 @@ const Perf = {
         });
     },
 
+    syncAllSiswa() {
+        EModal.confirm({
+            title: 'Sinkronisasi Data Siswa dari E-Portal',
+            type: 'primary',
+            message: 'Aplikasi akan menyinkronkan seluruh siswa aktif dari tahun ajaran berjalan. Siswa baru akan didaftarkan, siswa yang naik kelas/berubah nama akan diperbarui, dan siswa non-aktif akan disesuaikan. Lanjutkan?',
+            onConfirm: () => {
+                const loader = EModal.loading('Menyinkronkan seluruh data siswa dari E-Portal...');
+                this.api('siswa.php?action=sync_all_portal_students', { method: 'POST' }).done(res => {
+                    EModal.close(loader);
+                    EModal.closeAll();
+                    EModal.toast({ type: 'success', title: 'Sinkronisasi Berhasil', message: res.message });
+                    this.loadSiswa();
+                }).fail(xhr => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menyinkronkan data siswa.' });
+                });
+            }
+        });
+    },
+
     importPortalSiswa() {
         const loader = EModal.loading('Menghubungkan ke E-Portal...');
         this.api('siswa.php?action=get_portal_students').done(res => {
-            console.log('Portal Data Received:', res);
             EModal.close(loader);
             if (!res.success) return;
 
-            const students = res.data.students;
-            const classes = res.data.classes;
-            const activeYear = res.data.active_year;
+            const students = res.data.students || [];
+            const classes = res.data.classes || [];
+            const activeYear = res.data.active_year || '-';
 
             EModal.form({
                 title: 'Import Siswa dari E-Portal',
                 size: 'lg',
                 form: `
-                    <div style="margin-bottom:15px; background:var(--bg-light); padding:12px; border-radius:10px; font-size:0.9rem; display:flex; justify-content:space-between; align-items:center">
-                        <span>Tahun Ajaran Aktif: <strong>${activeYear}</strong></span>
-                        <div style="display:flex; gap:8px">
-                            <button class="btn btn-outline btn-sm" onclick="$('.import-check, .class-check').prop('checked', true)">Pilih Semua</button>
-                            <button class="btn btn-outline btn-sm" onclick="$('.import-check, .class-check').prop('checked', false)">Batal Semua</button>
+                    <div style="margin-bottom:15px; background:var(--bg-light); padding:12px; border-radius:10px; font-size:0.9rem; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                        <span>Tahun Ajaran Aktif: <strong>${activeYear}</strong> (${students.length} Siswa)</span>
+                        <div style="display:flex; gap:8px;">
+                            <button type="button" class="btn btn-outline btn-sm" onclick="$('.import-check, .class-check').prop('checked', true)">Pilih Semua</button>
+                            <button type="button" class="btn btn-outline btn-sm" onclick="$('.import-check, .class-check').prop('checked', false)">Batal Semua</button>
                         </div>
                     </div>
                     
-                    <div class="pf-nav-label" style="margin-bottom:10px; color:var(--primary)">1. Pilih Berdasarkan Kelas</div>
-                    <div style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:20px; background:#f8fafc; padding:15px; border-radius:10px; border:1px solid #e2e8f0">
+                    <div class="pf-nav-label" style="margin-bottom:8px; color:var(--primary); font-weight:600;">1. Pilih Berdasarkan Kelas</div>
+                    <div style="display:flex; flex-wrap:wrap; gap:10px; margin-bottom:16px; background:#f8fafc; padding:12px; border-radius:10px; border:1px solid #e2e8f0; max-height:130px; overflow-y:auto;">
                         ${classes.map(k => `
-                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; background:white; padding:6px 12px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.85rem">
+                            <label style="display:flex; align-items:center; gap:6px; cursor:pointer; background:white; padding:5px 10px; border-radius:6px; border:1px solid #cbd5e1; font-size:0.85rem">
                                 <input type="checkbox" class="class-check" data-class="${k}"> <strong>${k}</strong>
                             </label>
                         `).join('')}
                     </div>
 
-                    <div class="pf-nav-label" style="margin-bottom:10px; color:var(--primary)">2. Pilih Siswa Secara Individual</div>
+                    <div class="pf-nav-label" style="margin-bottom:8px; color:var(--primary); font-weight:600;">2. Pilih Siswa Secara Individual</div>
                     <div style="margin-bottom:10px">
-                        <input type="text" id="siswaSearch" class="form-input" placeholder="Cari nama siswa..." style="width:100%">
+                        <input type="text" id="siswaSearch" class="form-input" placeholder="Cari nama atau NIS siswa..." style="width:100%">
                     </div>
                     <div style="max-height:350px; overflow-y:auto; border:1px solid #e2e8f0; border-radius:10px">
                         <table class="pf-table" id="importSiswaTable">
-                            <thead><tr><th width="40"></th><th>Nama Siswa</th><th>Kelas</th></tr></thead>
+                            <thead><tr><th width="40"></th><th>NIS</th><th>Nama Siswa</th><th>Kelas Portal</th><th>Status di Perf</th></tr></thead>
                             <tbody>
-                                ${students.map(s => `
+                                ${students.map(s => {
+                                    let statusBadge = '<span class="pf-badge pf-badge-gray">Belum Diimport</span>';
+                                    if (s.perf_id) {
+                                        if (s.perf_kelas && s.perf_kelas !== s.kelas) {
+                                            statusBadge = `<span class="pf-badge pf-badge-yellow" title="Kelas saat ini di Perf: ${s.perf_kelas}">Update (${s.perf_kelas} &rarr; ${s.kelas})</span>`;
+                                        } else {
+                                            statusBadge = '<span class="pf-badge pf-badge-green">Terdaftar</span>';
+                                        }
+                                    }
+                                    return `
                                     <tr class="import-row" data-kelas="${s.kelas}">
                                         <td><input type="checkbox" class="import-check" value="${s.id}" data-kelas="${s.kelas}"></td>
-                                        <td class="s-nama">${s.nama}</td>
-                                        <td><span class="pf-badge pf-badge-gray">${s.kelas}</span></td>
+                                        <td><code>${s.nis || '-'}</code></td>
+                                        <td class="s-nama"><strong>${s.nama}</strong></td>
+                                        <td><span class="pf-badge pf-badge-blue">${s.kelas}</span></td>
+                                        <td>${statusBadge}</td>
                                     </tr>
-                                `).join('')}
+                                    `;
+                                }).join('')}
                             </tbody>
                         </table>
                     </div>
@@ -4069,7 +4110,8 @@ const Perf = {
                         const val = $(this).val().toLowerCase();
                         $('.import-row').each(function() {
                             const name = $(this).find('.s-nama').text().toLowerCase();
-                            $(this).toggle(name.includes(val));
+                            const nis = $(this).find('code').text().toLowerCase();
+                            $(this).toggle(name.includes(val) || nis.includes(val));
                         });
                     });
 
@@ -4080,13 +4122,12 @@ const Perf = {
                         $(`.import-check[data-kelas="${kelas}"]`).prop('checked', isChecked);
                     });
 
-                    // Individual Checkbox Logic (uncheck class if one student is unchecked)
+                    // Individual Checkbox Logic
                     $('.import-check').on('change', function() {
                         const kelas = $(this).data('kelas');
                         if (!$(this).is(':checked')) {
                             $(`.class-check[data-class="${kelas}"]`).prop('checked', false);
                         } else {
-                            // If all students in class are checked, check the class box
                             const total = $(`.import-check[data-kelas="${kelas}"]`).length;
                             const checked = $(`.import-check[data-kelas="${kelas}"]:checked`).length;
                             if (total === checked) {
@@ -4102,14 +4143,14 @@ const Perf = {
                         return false;
                     }
 
-                    const l = EModal.loading('Sedang mengimport...');
+                    const l = EModal.loading('Sedang mengimport & memperbarui data siswa...');
                     this.api('siswa.php?action=import_portal_students', {method:'POST', data:{ids:selected}}).done(res => {
                         EModal.close(l); EModal.closeAll();
-                        EModal.toast({type:'success', message:res.message});
-                        this.reloadCurrentPage();
+                        EModal.toast({type:'success', title:'Selesai', message:res.message});
+                        this.loadSiswa();
                     }).fail(xhr => {
                         EModal.close(l);
-                        EModal.toast({type:'error', message: xhr.responseJSON?.message || 'Gagal import data.'});
+                        EModal.toast({type:'error', title:'Gagal', message: xhr.responseJSON?.message || 'Gagal import data.'});
                     });
                     return false;
                 }
@@ -4828,7 +4869,8 @@ const Perf = {
 
     loadDeskripsi() {
         this.api('deskripsi.php?action=list').done(res => {
-            if (!res.data || !res.data.length) {
+            this._deskripsiList = res.data || [];
+            if (!this._deskripsiList.length) {
                 $('#deskripsiTableContainer').html('<div class="pf-empty">Belum ada data deskripsi.</div>');
                 return;
             }
@@ -4838,23 +4880,39 @@ const Perf = {
                         <tr>
                             <th width="5%">No</th>
                             <th width="20%">Tupoksi</th>
-                            <th width="15%">Min Nilai</th>
-                            <th width="15%">Max Nilai</th>
-                            <th width="35%">Deskripsi</th>
+                            <th width="15%">Predikat</th>
+                            <th width="12%">Min Nilai</th>
+                            <th width="12%">Max Nilai</th>
+                            <th width="26%">Deskripsi</th>
                             <th width="10%">Aksi</th>
                         </tr>
                     </thead>
                     <tbody>
             `;
-            res.data.forEach((d, i) => {
+            this._deskripsiList.forEach((d, i) => {
+                let predBadge = '<span class="pf-badge pf-badge-gray">-</span>';
+                if (d.predikat) {
+                    let pLower = d.predikat.toLowerCase();
+                    let badgeColor = 'pf-badge-gray';
+                    if (pLower.includes('sangat baik') || pLower.includes('istimewa')) badgeColor = 'pf-badge-green';
+                    else if (pLower.includes('baik')) badgeColor = 'pf-badge-blue';
+                    else if (pLower.includes('cukup')) badgeColor = 'pf-badge-yellow';
+                    else if (pLower.includes('kurang')) badgeColor = 'pf-badge-red';
+                    predBadge = `<span class="pf-badge ${badgeColor}">${d.predikat}</span>`;
+                }
+
                 html += `
                     <tr>
                         <td>${i+1}</td>
-                        <td>${d.tupoksi}</td>
+                        <td><b>${d.tupoksi}</b></td>
+                        <td>${predBadge}</td>
                         <td>${d.min_nilai}</td>
                         <td>${d.max_nilai}</td>
                         <td>${d.deskripsi}</td>
-                        <td>
+                        <td style="white-space:nowrap;">
+                            <button class="pf-btn-icon" onclick="Perf.editDeskripsiModal(${d.id})" title="Edit" style="margin-right:4px;">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            </button>
                             <button class="pf-btn-icon danger" onclick="Perf.deleteDeskripsi(${d.id})" title="Hapus">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                             </button>
@@ -4880,6 +4938,17 @@ const Perf = {
                     <label>Tupoksi <span class="pf-required">*</span></label>
                     <select class="form-input" id="fDeskripsiTupoksi">${tupoksiOptions}</select>
                 </div>
+                <div class="form-group">
+                    <label>Predikat <span class="pf-required">*</span></label>
+                    <select class="form-input" id="fDeskripsiPredikat">
+                        <option value="">Pilih Predikat</option>
+                        <option value="Sangat Baik">Sangat Baik</option>
+                        <option value="Baik">Baik</option>
+                        <option value="Cukup">Cukup</option>
+                        <option value="Kurang">Kurang</option>
+                        <option value="Sangat Kurang">Sangat Kurang</option>
+                    </select>
+                </div>
                 <div style="display:flex; gap:16px;">
                     <div class="form-group" style="flex:1;">
                         <label>Min Nilai (0-100) <span class="pf-required">*</span></label>
@@ -4899,13 +4968,28 @@ const Perf = {
                 title: 'Tambah Deskripsi Penilaian',
                 form: html,
                 confirmText: 'Simpan',
+                onOpen: () => {
+                    $('#fDeskripsiPredikat').on('change', function() {
+                        const val = $(this).val();
+                        const $min = $('#fDeskripsiMin');
+                        const $max = $('#fDeskripsiMax');
+                        if (!$min.val() && !$max.val()) {
+                            if (val === 'Sangat Baik') { $min.val('90'); $max.val('100'); }
+                            else if (val === 'Baik') { $min.val('75'); $max.val('89.99'); }
+                            else if (val === 'Cukup') { $min.val('60'); $max.val('74.99'); }
+                            else if (val === 'Kurang') { $min.val('40'); $max.val('59.99'); }
+                            else if (val === 'Sangat Kurang') { $min.val('0'); $max.val('39.99'); }
+                        }
+                    });
+                },
                 onConfirm: () => {
                     const t = $('#fDeskripsiTupoksi').val();
+                    const p = $('#fDeskripsiPredikat').val();
                     const min = $('#fDeskripsiMin').val();
                     const max = $('#fDeskripsiMax').val();
                     const teks = $('#fDeskripsiTeks').val();
                     
-                    if (!t || min === '' || max === '' || !teks) {
+                    if (!t || !p || min === '' || max === '' || !teks) {
                         EModal.toast({type: 'warning', message: 'Semua kolom wajib diisi'});
                         return false;
                     }
@@ -4915,6 +4999,7 @@ const Perf = {
                         contentType: 'application/x-www-form-urlencoded',
                         data: {
                             tupoksi: t,
+                            predikat: p,
                             min_nilai: min,
                             max_nilai: max,
                             deskripsi: teks
@@ -4922,6 +5007,89 @@ const Perf = {
                     }).done(r => {
                         if (r.success) {
                             EModal.toast({type: 'success', message: 'Berhasil disimpan'});
+                            EModal.closeAll();
+                            this.loadDeskripsi();
+                        } else {
+                            EModal.alert('Gagal', r.message);
+                        }
+                    });
+                    return false;
+                }
+            });
+        });
+    },
+
+    editDeskripsiModal(id) {
+        const item = (this._deskripsiList || []).find(x => x.id == id);
+        this.api('instrumen.php?action=list_tupoksi').done(res => {
+            let tupoksiOptions = '<option value="">Pilih Tupoksi</option>';
+            if (res.data) {
+                res.data.forEach(t => {
+                    const sel = (item && item.tupoksi === t.nama) ? 'selected' : '';
+                    tupoksiOptions += `<option value="${t.nama}" ${sel}>${t.nama}</option>`;
+                });
+            }
+            const predOptions = ['Sangat Baik', 'Baik', 'Cukup', 'Kurang', 'Sangat Kurang'];
+            let predHtml = '<option value="">Pilih Predikat</option>';
+            predOptions.forEach(p => {
+                const sel = (item && item.predikat === p) ? 'selected' : '';
+                predHtml += `<option value="${p}" ${sel}>${p}</option>`;
+            });
+
+            const html = `
+                <div class="form-group">
+                    <label>Tupoksi <span class="pf-required">*</span></label>
+                    <select class="form-input" id="fEditDeskripsiTupoksi">${tupoksiOptions}</select>
+                </div>
+                <div class="form-group">
+                    <label>Predikat <span class="pf-required">*</span></label>
+                    <select class="form-input" id="fEditDeskripsiPredikat">${predHtml}</select>
+                </div>
+                <div style="display:flex; gap:16px;">
+                    <div class="form-group" style="flex:1;">
+                        <label>Min Nilai (0-100) <span class="pf-required">*</span></label>
+                        <input type="text" inputmode="decimal" class="form-input" id="fEditDeskripsiMin" value="${item ? item.min_nilai : ''}">
+                    </div>
+                    <div class="form-group" style="flex:1;">
+                        <label>Max Nilai (0-100) <span class="pf-required">*</span></label>
+                        <input type="text" inputmode="decimal" class="form-input" id="fEditDeskripsiMax" value="${item ? item.max_nilai : ''}">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Deskripsi <span class="pf-required">*</span></label>
+                    <textarea class="form-input" id="fEditDeskripsiTeks" rows="4">${item ? item.deskripsi : ''}</textarea>
+                </div>
+            `;
+            EModal.form({
+                title: 'Edit Deskripsi Penilaian',
+                form: html,
+                confirmText: 'Perbarui',
+                onConfirm: () => {
+                    const t = $('#fEditDeskripsiTupoksi').val();
+                    const p = $('#fEditDeskripsiPredikat').val();
+                    const min = $('#fEditDeskripsiMin').val();
+                    const max = $('#fEditDeskripsiMax').val();
+                    const teks = $('#fEditDeskripsiTeks').val();
+                    
+                    if (!t || !p || min === '' || max === '' || !teks) {
+                        EModal.toast({type: 'warning', message: 'Semua kolom wajib diisi'});
+                        return false;
+                    }
+                    
+                    this.api('deskripsi.php?action=update', {
+                        method: 'POST',
+                        contentType: 'application/x-www-form-urlencoded',
+                        data: {
+                            id: id,
+                            tupoksi: t,
+                            predikat: p,
+                            min_nilai: min,
+                            max_nilai: max,
+                            deskripsi: teks
+                        }
+                    }).done(r => {
+                        if (r.success) {
+                            EModal.toast({type: 'success', message: 'Berhasil diperbarui'});
                             EModal.closeAll();
                             this.loadDeskripsi();
                         } else {

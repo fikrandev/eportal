@@ -16,6 +16,7 @@ switch ($action) {
     case 'import':           importSiswa(); break;
     case 'get_portal_students': getPortalStudents(); break;
     case 'import_portal_students': importPortalStudents(); break;
+    case 'sync_all_portal_students': syncAllPortalStudents(); break;
     case 'generate_sampling': generateSampling(); break;
     case 'sampling_list':    samplingList(); break;
     case 'get_guru_mapping': getGuruMapping(); break;
@@ -248,24 +249,28 @@ function getPortalStudents() {
     perf_require_admin();
     try {
         $active = get_active_academic_year();
-        if (!$active) {
-            json_response(200, true, 'Portal Students.', [
-                'students' => [],
-                'classes' => [],
-                'active_year' => 'Tidak Ada Tahun Pelajaran Aktif'
-            ]);
-            return;
+        $ayId = (int)($active['id'] ?? 0);
+        
+        $sql = "
+            SELECT s.id, s.nis, s.nama, s.kelas, 
+                   ps.id as perf_id, ps.kelas as perf_kelas, ps.status as perf_status
+            FROM students s 
+            LEFT JOIN perf_siswa ps ON s.nis = ps.username
+            WHERE s.status = 1 AND (s.status_siswa = 'Aktif' OR s.status_siswa IS NULL OR s.status_siswa = '')
+        ";
+        $params = [];
+        if ($ayId > 0) {
+            $sql .= " AND s.academic_year_id = ?";
+            $params[] = $ayId;
         }
-        
-        $ayId = $active['id'];
-        
-        // Fetch ALL students for the active year (using academic_year_id & active status)
-        $stmt = db()->prepare("SELECT id, nama, kelas FROM students WHERE academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY kelas ASC, nama ASC");
-        $stmt->execute([$ayId]);
-        $students = $stmt->fetchAll();
+        $sql .= " ORDER BY s.kelas ASC, s.nama ASC";
+
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
+        $students = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         // Get unique classes for checkboxes
-        $classes = array_unique(array_column($students, 'kelas'));
+        $classes = array_values(array_filter(array_unique(array_column($students, 'kelas'))));
         sort($classes);
 
         json_response(200, true, 'Portal Students.', [
@@ -278,8 +283,6 @@ function getPortalStudents() {
     }
 }
 
-
-
 function importPortalStudents() {
     perf_require_admin();
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed.');
@@ -289,51 +292,251 @@ function importPortalStudents() {
     if (empty($ids)) json_response(400, false, 'Tidak ada siswa yang dipilih.');
 
     try {
-        // Fetch student details from portal (including NIS for username)
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
-        $stmt = db()->prepare("SELECT nis, nama, kelas, tanggal_lahir FROM students WHERE id IN ($placeholders)");
+        $stmt = db()->prepare("SELECT id, nis, nama, kelas, tanggal_lahir FROM students WHERE id IN ($placeholders)");
         $stmt->execute($ids);
-        $students = $stmt->fetchAll();
+        $students = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $inserted = 0;
-        $skipped = 0;
+        $updated = 0;
         
         db()->beginTransaction();
         foreach ($students as $s) {
-            // Check if already exists in perf_siswa (by nis)
-            $check = db()->prepare("SELECT id FROM perf_siswa WHERE username = ?");
-            $check->execute([$s['nis']]);
-            if ($check->fetch()) {
-                $skipped++;
-                continue;
+            $nis = trim($s['nis'] ?? '');
+            if (empty($nis)) continue;
+
+            $nama = trim($s['nama']);
+            $kelas = trim($s['kelas']);
+            $rawPw = !empty($s['tanggal_lahir']) ? date('dmY', strtotime($s['tanggal_lahir'])) : $nis;
+
+            // Cek apakah sudah ada di perf_siswa (berdasarkan NIS)
+            $check = db()->prepare("SELECT id, perf_user_id, nama_siswa, kelas FROM perf_siswa WHERE username = ?");
+            $check->execute([$nis]);
+            $existing = $check->fetch(PDO::FETCH_ASSOC);
+
+            if ($existing) {
+                $sid = (int)$existing['id'];
+                $uid = (int)($existing['perf_user_id'] ?? 0);
+
+                // Update data di perf_siswa
+                $stmtUp = db()->prepare("UPDATE perf_siswa SET nama_siswa = ?, kelas = ?, password_plain = ?, status = 1 WHERE id = ?");
+                $stmtUp->execute([$nama, $kelas, $rawPw, $sid]);
+
+                // Pastikan akun perf_users ada dan nama sinkron
+                if ($uid > 0) {
+                    db()->prepare("UPDATE perf_users SET nama_lengkap = ?, status = 1 WHERE id = ?")->execute([$nama, $uid]);
+                } else {
+                    $stmtCheckU = db()->prepare("SELECT id FROM perf_users WHERE username = ?");
+                    $stmtCheckU->execute([$nis]);
+                    $foundUser = $stmtCheckU->fetch(PDO::FETCH_ASSOC);
+                    if ($foundUser) {
+                        $uid = (int)$foundUser['id'];
+                        db()->prepare("UPDATE perf_users SET nama_lengkap = ?, status = 1 WHERE id = ?")->execute([$nama, $uid]);
+                    } else {
+                        $hashedPw = password_hash($rawPw, PASSWORD_DEFAULT);
+                        $stmtInsU = db()->prepare("INSERT INTO perf_users (username, password, nama_lengkap, role, status) VALUES (?, ?, ?, 'siswa', 1)");
+                        $stmtInsU->execute([$nis, $hashedPw, $nama]);
+                        $uid = (int)db()->lastInsertId();
+                    }
+                    db()->prepare("UPDATE perf_siswa SET perf_user_id = ? WHERE id = ?")->execute([$uid, $sid]);
+                }
+                $updated++;
+            } else {
+                // Siswa baru
+                $stmtIns = db()->prepare("INSERT INTO perf_siswa (nama_siswa, kelas, username, password_plain, status) VALUES (?, ?, ?, ?, 1)");
+                $stmtIns->execute([$nama, $kelas, $nis, $rawPw]);
+                $sid = (int)db()->lastInsertId();
+
+                $stmtCheckU = db()->prepare("SELECT id FROM perf_users WHERE username = ?");
+                $stmtCheckU->execute([$nis]);
+                $foundUser = $stmtCheckU->fetch(PDO::FETCH_ASSOC);
+                if ($foundUser) {
+                    $uid = (int)$foundUser['id'];
+                    db()->prepare("UPDATE perf_users SET nama_lengkap = ?, status = 1 WHERE id = ?")->execute([$nama, $uid]);
+                } else {
+                    $hashedPw = password_hash($rawPw, PASSWORD_DEFAULT);
+                    $stmtInsU = db()->prepare("INSERT INTO perf_users (username, password, nama_lengkap, role, status) VALUES (?, ?, ?, 'siswa', 1)");
+                    $stmtInsU->execute([$nis, $hashedPw, $nama]);
+                    $uid = (int)db()->lastInsertId();
+                }
+
+                db()->prepare("UPDATE perf_siswa SET perf_user_id = ? WHERE id = ?")->execute([$uid, $sid]);
+                $inserted++;
             }
-
-            // Insert into perf_siswa
-            $rawPw = !empty($s['tanggal_lahir']) ? date('dmY', strtotime($s['tanggal_lahir'])) : $s['nis'];
-            $stmtIns = db()->prepare("INSERT INTO perf_siswa (nama_siswa, kelas, username, password_plain) VALUES (?, ?, ?, ?)");
-            $stmtIns->execute([$s['nama'], $s['kelas'], $s['nis'], $rawPw]);
-            $sid = db()->lastInsertId();
-
-            // Auto-create perf_users entry (perf_users doesn't have perf_siswa_id, instead perf_siswa has perf_user_id)
-            $rawPw = !empty($s['tanggal_lahir']) ? date('dmY', strtotime($s['tanggal_lahir'])) : $s['nis'];
-            $hashedPw = password_hash($rawPw, PASSWORD_DEFAULT);
-            $stmtUser = db()->prepare("INSERT INTO perf_users (username, password, nama_lengkap, role) VALUES (?, ?, ?, 'siswa')");
-            $stmtUser->execute([$s['nis'], $hashedPw, $s['nama']]);
-            $uid = db()->lastInsertId();
-
-            // Link perf_siswa to perf_users
-            db()->prepare("UPDATE perf_siswa SET perf_user_id = ? WHERE id = ?")->execute([$uid, $sid]);
-
-            $inserted++;
-
         }
         db()->commit();
         
-        json_response(200, true, "$inserted siswa berhasil diimport. $skipped data dilewati karena sudah ada.");
-    } catch (PDOException $e) {
+        $msg = "";
+        if ($inserted > 0 && $updated > 0) {
+            $msg = "$inserted siswa baru ditambahkan, $updated data siswa diperbarui.";
+        } elseif ($inserted > 0) {
+            $msg = "$inserted siswa berhasil diimport.";
+        } elseif ($updated > 0) {
+            $msg = "$updated data siswa berhasil diperbarui.";
+        } else {
+            $msg = "Data siswa yang dipilih sudah mutakhir.";
+        }
 
-        db()->rollBack();
+        json_response(200, true, $msg);
+    } catch (PDOException $e) {
+        if (db()->inTransaction()) db()->rollBack();
         json_response(500, false, 'Error: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Sinkronisasi otomatis SEMUA siswa aktif dari E-Portal tahun ajaran aktif
+ */
+function syncAllPortalStudents() {
+    perf_require_admin();
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed.');
+
+    try {
+        $active = get_active_academic_year();
+        $ayId = (int)($active['id'] ?? 0);
+        if ($ayId <= 0) {
+            json_response(400, false, 'Tidak ada Tahun Pelajaran aktif yang ditemukan.');
+        }
+
+        // Ambil semua siswa aktif di tahun ajaran aktif dari tabel students
+        $stmt = db()->prepare("
+            SELECT id, nis, nama, kelas, tanggal_lahir, status_siswa 
+            FROM students 
+            WHERE academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '')
+            ORDER BY kelas ASC, nama ASC
+        ");
+        $stmt->execute([$ayId]);
+        $portalStudents = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        if (empty($portalStudents)) {
+            json_response(400, false, 'Tidak ada data siswa aktif pada tahun ajaran ini.');
+        }
+
+        // Ambil data perf_siswa yang ada untuk lookup cepat (indexed by username / nis)
+        $stmtExisting = db()->query("SELECT id, username, nama_siswa, kelas, perf_user_id, status FROM perf_siswa");
+        $existingPerf = [];
+        while ($row = $stmtExisting->fetch(PDO::FETCH_ASSOC)) {
+            if (!empty($row['username'])) {
+                $existingPerf[$row['username']] = $row;
+            }
+        }
+
+        // Ambil semua perf_users untuk lookup cepat (indexed by username)
+        $stmtPerfUsers = db()->query("SELECT id, username, nama_lengkap FROM perf_users WHERE role = 'siswa'");
+        $existingUsers = [];
+        while ($row = $stmtPerfUsers->fetch(PDO::FETCH_ASSOC)) {
+            if (!empty($row['username'])) {
+                $existingUsers[$row['username']] = $row;
+            }
+        }
+
+        $inserted = 0;
+        $updated = 0;
+        $activeNisList = [];
+
+        db()->beginTransaction();
+
+        $stmtUpdatePerf = db()->prepare("
+            UPDATE perf_siswa 
+            SET nama_siswa = ?, kelas = ?, password_plain = ?, status = 1, perf_user_id = ? 
+            WHERE id = ?
+        ");
+        $stmtInsertPerf = db()->prepare("
+            INSERT INTO perf_siswa (nama_siswa, kelas, username, password_plain, status) 
+            VALUES (?, ?, ?, ?, 1)
+        ");
+        $stmtUpdateUser = db()->prepare("
+            UPDATE perf_users 
+            SET nama_lengkap = ?, status = 1 
+            WHERE id = ?
+        ");
+        $stmtInsertUser = db()->prepare("
+            INSERT INTO perf_users (username, password, nama_lengkap, role, status) 
+            VALUES (?, ?, ?, 'siswa', 1)
+        ");
+        $stmtLinkUser = db()->prepare("UPDATE perf_siswa SET perf_user_id = ? WHERE id = ?");
+
+        foreach ($portalStudents as $s) {
+            $nis = trim($s['nis'] ?? '');
+            if (empty($nis)) continue;
+            $activeNisList[$nis] = true;
+
+            $nama = trim($s['nama']);
+            $kelas = trim($s['kelas']);
+            $rawPw = !empty($s['tanggal_lahir']) ? date('dmY', strtotime($s['tanggal_lahir'])) : $nis;
+
+            if (isset($existingPerf[$nis])) {
+                // Siswa sudah ada di perf_siswa
+                $perf = $existingPerf[$nis];
+                $perfId = (int)$perf['id'];
+                $userId = !empty($perf['perf_user_id']) ? (int)$perf['perf_user_id'] : (isset($existingUsers[$nis]) ? (int)$existingUsers[$nis]['id'] : 0);
+
+                if ($userId <= 0) {
+                    $hashedPw = password_hash($rawPw, PASSWORD_DEFAULT);
+                    $stmtInsertUser->execute([$nis, $hashedPw, $nama]);
+                    $userId = (int)db()->lastInsertId();
+                    $existingUsers[$nis] = ['id' => $userId, 'username' => $nis, 'nama_lengkap' => $nama];
+                } else {
+                    $stmtUpdateUser->execute([$nama, $userId]);
+                }
+
+                $needUpdate = ($perf['nama_siswa'] !== $nama || $perf['kelas'] !== $kelas || (int)$perf['status'] !== 1 || (int)$perf['perf_user_id'] !== $userId);
+
+                if ($needUpdate) {
+                    $stmtUpdatePerf->execute([$nama, $kelas, $rawPw, $userId, $perfId]);
+                    $updated++;
+                }
+            } else {
+                // Siswa baru
+                $stmtInsertPerf->execute([$nama, $kelas, $nis, $rawPw]);
+                $perfId = (int)db()->lastInsertId();
+
+                $userId = isset($existingUsers[$nis]) ? (int)$existingUsers[$nis]['id'] : 0;
+                if ($userId <= 0) {
+                    $hashedPw = password_hash($rawPw, PASSWORD_DEFAULT);
+                    $stmtInsertUser->execute([$nis, $hashedPw, $nama]);
+                    $userId = (int)db()->lastInsertId();
+                    $existingUsers[$nis] = ['id' => $userId, 'username' => $nis, 'nama_lengkap' => $nama];
+                } else {
+                    $stmtUpdateUser->execute([$nama, $userId]);
+                }
+
+                $stmtLinkUser->execute([$userId, $perfId]);
+                $inserted++;
+            }
+        }
+
+        // Deaktivasi siswa di perf_siswa yang sudah tidak aktif di portal (misal alumni)
+        $deactivated = 0;
+        foreach ($existingPerf as $nis => $perf) {
+            if (!isset($activeNisList[$nis]) && (int)$perf['status'] === 1) {
+                db()->prepare("UPDATE perf_siswa SET status = 0 WHERE id = ?")->execute([$perf['id']]);
+                if (!empty($perf['perf_user_id'])) {
+                    db()->prepare("UPDATE perf_users SET status = 0 WHERE id = ?")->execute([$perf['perf_user_id']]);
+                }
+                $deactivated++;
+            }
+        }
+
+        db()->commit();
+
+        $msg = "Sinkronisasi berhasil! ";
+        $parts = [];
+        if ($inserted > 0) $parts[] = "$inserted siswa baru ditambahkan";
+        if ($updated > 0) $parts[] = "$updated data siswa diperbarui (kelas/nama)";
+        if ($deactivated > 0) $parts[] = "$deactivated siswa non-aktif disesuaikan";
+        if (empty($parts)) $parts[] = "Semua data siswa sudah mutakhir";
+        $msg .= implode(', ', $parts) . '.';
+
+        json_response(200, true, $msg, [
+            'inserted' => $inserted,
+            'updated' => $updated,
+            'deactivated' => $deactivated,
+            'total_aktif' => count($portalStudents)
+        ]);
+    } catch (Exception $e) {
+        if (db()->inTransaction()) db()->rollBack();
+        json_response(500, false, 'Gagal melakukan sinkronisasi: ' . $e->getMessage());
     }
 }
 
@@ -544,6 +747,9 @@ function savePenugasan() {
                 
                 if ($existing) {
                     $perfSiswaIds[] = $existing['id'];
+                    // Update data agar kelas dan nama selalu sinkron dengan data portal
+                    db()->prepare("UPDATE perf_siswa SET nama_siswa = ?, kelas = ?, status = 1 WHERE id = ?")
+                        ->execute([$s['nama'], $s['kelas'], $existing['id']]);
                 } else {
                     $rawPw = !empty($s['tanggal_lahir']) ? date('dmY', strtotime($s['tanggal_lahir'])) : $s['nis'];
                     $stmtInsS = db()->prepare("INSERT INTO perf_siswa (nama_siswa, kelas, username, password_plain) VALUES (?, ?, ?, ?)");
@@ -631,6 +837,9 @@ function copyPenugasan() {
                 
                 if ($existing) {
                     $perfSiswaIds[] = $existing['id'];
+                    // Update data agar kelas dan nama selalu sinkron dengan data portal
+                    db()->prepare("UPDATE perf_siswa SET nama_siswa = ?, kelas = ?, status = 1 WHERE id = ?")
+                        ->execute([$s['nama'], $s['kelas'], $existing['id']]);
                 } else {
                     $rawPw = !empty($s['tanggal_lahir']) ? date('dmY', strtotime($s['tanggal_lahir'])) : $s['nis'];
                     $stmtInsS = db()->prepare("INSERT INTO perf_siswa (nama_siswa, kelas, username, password_plain) VALUES (?, ?, ?, ?)");

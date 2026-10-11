@@ -1,0 +1,161 @@
+/* =============================================
+   E-PORTAL GLOBAL TABLE PAGINATION STYLES
+   ============================================= */
+.table-pagination-wrapper {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 16px;
+    margin-bottom: 16px;
+    padding: 12px 18px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 0.85rem;
+    color: #475569;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.04), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+    transition: all 0.2s ease;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.table-pagination-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    color: #475569;
+}
+
+.table-page-size-select {
+    padding: 6px 30px 6px 12px;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 8px;
+    background-color: #fff;
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: 600;
+    color: #1e293b;
+    cursor: pointer;
+    outline: none;
+    transition: all 0.2s;
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    background-size: 14px;
+}
+
+.table-page-size-select:focus {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+}
+
+.table-pagination-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.table-page-info {
+    font-weight: 600;
+    color: #1e293b;
+    font-size: 0.85rem;
+}
+
+.table-page-numbers {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.table-page-number-btn {
+    min-width: 32px;
+    height: 32px;
+    padding: 0 8px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fff;
+    color: #334155;
+    font-family: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    outline: none;
+}
+
+.table-page-number-btn:hover:not(.active):not(:disabled) {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #0f172a;
+}
+
+.table-page-number-btn.active {
+    background: #2563eb;
+    color: #ffffff;
+    border-color: #2563eb;
+    box-shadow: 0 2px 4px rgba(37, 99, 235, 0.25);
+    cursor: default;
+}
+
+.table-page-ellipsis {
+    padding: 0 4px;
+    color: #94a3b8;
+    font-weight: bold;
+    font-size: 0.85rem;
+}
+
+.table-page-btn {
+    padding: 6px 14px;
+    border: 1.5px solid #cbd5e1;
+    border-radius: 8px;
+    background: #fff;
+    color: #334155;
+    font-family: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    outline: none;
+    display: inline-flex;
+    align-items: center;
+}
+
+.table-page-btn:hover:not(:disabled) {
+    background: #f1f5f9;
+    border-color: #94a3b8;
+    color: #0f172a;
+}
+
+.table-page-btn:active:not(:disabled) {
+    transform: scale(0.97);
+}
+
+.table-page-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+    background: #f8fafc;
+    border-color: #e2e8f0;
+    color: #94a3b8;
+}
+
+@media (max-width: 768px) {
+    .table-pagination-wrapper {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        padding: 12px 14px;
+    }
+    .table-pagination-left,
+    .table-pagination-right {
+        margin-left: 0;
+        justify-content: space-between;
+        width: 100%;
+    }
+}

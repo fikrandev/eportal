@@ -204,6 +204,7 @@ $active_academic_year = get_active_academic_year();
     <!-- Vendor Scripts -->
     <script src="<?php echo BASE_URL; ?>assets/vendor/jquery-3.7.1.min.js"></script>
     <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=<?php echo time(); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/pagination.js?v=<?php echo time(); ?>"></script>
     <script src="assets/js/performance.js?v=<?php echo time(); ?>"></script>
     <script>
         window.addEventListener('load', function() {

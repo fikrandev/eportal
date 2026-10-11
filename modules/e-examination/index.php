@@ -201,6 +201,7 @@ $school_icon = get_setting('icon_sekolah', '');
     <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=<?php echo time(); ?>"></script>
     
     <!-- Module Script -->
+    <script src="<?php echo BASE_URL; ?>assets/js/pagination.js?v=<?php echo time(); ?>"></script>
     <script src="assets/js/examination.js?v=<?php echo time(); ?>"></script>
 </body>
 </html>

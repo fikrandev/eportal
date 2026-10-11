@@ -6,24 +6,30 @@
 require_once __DIR__ . '/../../api/config.php';
 
 $kode = isset($_GET['kode']) ? sanitize($_GET['kode']) : '';
-$sarpras_id = isset($_GET['sarpras_id']) ? (int)$_GET['sarpras_id'] : 0;
+$sarpras_id = isset($_GET['sarpras_id']) ? (int)$_GET['sarpras_id'] : (isset($_GET['id']) ? (int)$_GET['id'] : 0);
+$ruang_id = isset($_GET['ruang_id']) ? (int)$_GET['ruang_id'] : (isset($_GET['rid']) ? (int)$_GET['rid'] : 0);
 $item = null;
 $school_name = get_setting('nama_sekolah', 'E-Portal');
 $school_icon = get_setting('icon_sekolah', '');
 
 if ($sarpras_id > 0 || ($kode && $kode !== 'PRINT')) {
     try {
-        $sql = "SELECT s.*, k.nama as kategori_nama, k.kode as kategori_kode, r.nama as ruang_nama, r.kode_ruang, b.nama as bangunan_nama, t.nama as tanah_nama
+        $sql = "SELECT s.*, k.nama as kategori_nama, k.kode as kategori_kode, 
+                COALESCE(r.nama, 'Gudang Utama') as ruang_nama, r.kode_ruang, 
+                COALESCE(b.nama, '-') as bangunan_nama, COALESCE(t.nama, '-') as tanah_nama
             FROM sarpras s 
             JOIN kategori_sarpras k ON s.kategori_id=k.id 
-            JOIN ruang r ON s.ruang_id=r.id 
-            JOIN bangunan b ON r.bangunan_id=b.id 
-            JOIN tanah t ON b.tanah_id=t.id ";
+            LEFT JOIN ruang r ON s.ruang_id=r.id 
+            LEFT JOIN bangunan b ON r.bangunan_id=b.id 
+            LEFT JOIN tanah t ON b.tanah_id=t.id ";
         if ($sarpras_id > 0) {
-            $stmt = db()->prepare($sql . " WHERE s.id=?");
+            $stmt = db()->prepare($sql . " WHERE s.id=? AND s.is_hapus=0");
             $stmt->execute([$sarpras_id]);
+        } elseif ($ruang_id > 0) {
+            $stmt = db()->prepare($sql . " WHERE s.kode_inventaris=? AND s.ruang_id=? AND s.is_hapus=0 LIMIT 1");
+            $stmt->execute([$kode, $ruang_id]);
         } else {
-            $stmt = db()->prepare($sql . " WHERE s.kode_inventaris=?");
+            $stmt = db()->prepare($sql . " WHERE s.kode_inventaris=? AND s.is_hapus=0 LIMIT 1");
             $stmt->execute([$kode]);
         }
         $item = $stmt->fetch();
@@ -109,9 +115,11 @@ if ($sarpras_id > 0 || ($kode && $kode !== 'PRINT')) {
             <div class="scan-info">
                 <div class="scan-row"><span class="scan-label">Kategori</span><span class="scan-value"><?php echo htmlspecialchars($item['kategori_nama']); ?></span></div>
                 <div class="scan-row"><span class="scan-label">Merk</span><span class="scan-value"><?php echo htmlspecialchars($item['merk'] ?: '-'); ?></span></div>
-                <div class="scan-row"><span class="scan-label">Jumlah</span><span class="scan-value"><?php echo $item['jumlah']; ?> Unit</span></div>
-                <div class="scan-row"><span class="scan-label">Tahun Perolehan</span><span class="scan-value"><?php echo $item['tahun_perolehan']; ?></span></div>
-                <div class="scan-row"><span class="scan-label">Asal Anggaran</span><span class="scan-value"><?php echo htmlspecialchars($item['asal_perolehan']); ?></span></div>
+                <?php 
+                $tahun_perolehan = !empty($item['tanggal_perolehan']) ? date('Y', strtotime($item['tanggal_perolehan'])) : ($item['tahun_perolehan'] ?? '-'); 
+                ?>
+                <div class="scan-row"><span class="scan-label">Tahun Perolehan</span><span class="scan-value"><?php echo htmlspecialchars((string)$tahun_perolehan); ?></span></div>
+                <div class="scan-row"><span class="scan-label">Asal Anggaran</span><span class="scan-value"><?php echo htmlspecialchars($item['asal_perolehan'] ?? '-'); ?></span></div>
                 <div class="scan-row"><span class="scan-label">Lokasi</span><span class="scan-value"><?php echo htmlspecialchars($item['ruang_nama']); ?><br><small style="color:#6B7280;font-weight:400"><?php echo htmlspecialchars($item['bangunan_nama'].' — '.$item['tanah_nama']); ?></small></span></div>
                 <?php if ($item['spesifikasi']): ?>
                 <div class="scan-row"><span class="scan-label">Spesifikasi</span><span class="scan-value"><?php echo htmlspecialchars($item['spesifikasi']); ?></span></div>

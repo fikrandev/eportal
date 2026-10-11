@@ -1057,6 +1057,7 @@ ul, ol {
     justify-content: space-between;
     align-items: center;
     margin-top: 16px;
+    margin-bottom: 16px;
     padding: 12px 18px;
     background: var(--bg-white, #ffffff);
     border: 1px solid #e2e8f0;
@@ -1103,7 +1104,7 @@ ul, ol {
 .table-pagination-right {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
     margin-left: auto;
 }
 
@@ -1112,18 +1113,66 @@ ul, ol {
     color: #334155;
 }
 
+.table-page-numbers {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.table-page-number-btn {
+    min-width: 32px;
+    height: 32px;
+    padding: 0 8px;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 8px;
+    background: #fff;
+    color: #334155;
+    font-family: inherit;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    outline: none;
+}
+
+.table-page-number-btn:hover:not(.active):not(:disabled) {
+    background: #f1f5f9;
+    border-color: #cbd5e1;
+    color: #0f172a;
+}
+
+.table-page-number-btn.active {
+    background: var(--primary, #1565C0);
+    color: #ffffff;
+    border-color: var(--primary, #1565C0);
+    box-shadow: 0 2px 4px rgba(21, 101, 192, 0.25);
+    cursor: default;
+}
+
+.table-page-ellipsis {
+    padding: 0 4px;
+    color: #94a3b8;
+    font-weight: bold;
+    font-size: 0.85rem;
+}
+
 .table-page-btn {
-    padding: 8px 16px;
+    padding: 6px 14px;
     border: 1.5px solid #cbd5e1;
     border-radius: 8px;
     background: #fff;
     color: #334155;
     font-family: inherit;
-    font-size: inherit;
+    font-size: 0.82rem;
     font-weight: 600;
     cursor: pointer;
     transition: all 0.2s;
     outline: none;
+    display: inline-flex;
+    align-items: center;
 }
 
 .table-page-btn:hover:not(:disabled) {
@@ -1142,6 +1191,21 @@ ul, ol {
     background: #f8fafc;
     border-color: #e2e8f0;
     color: #94a3b8;
+}
+
+@media (max-width: 768px) {
+    .table-pagination-wrapper {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 12px;
+        padding: 12px 14px;
+    }
+    .table-pagination-left,
+    .table-pagination-right {
+        margin-left: 0;
+        justify-content: space-between;
+        width: 100%;
+    }
 }
 
 /* Student Attendance Pills in Jurnal Manual modal */

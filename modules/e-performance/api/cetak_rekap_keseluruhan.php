@@ -12,11 +12,47 @@ if (!$periode_id) {
     die("Periode ID diperlukan.");
 }
 
-function getDeskripsiPenilaian($db, $tupoksi, $nilai) {
-    $stmt = $db->prepare("SELECT deskripsi FROM perf_deskripsi WHERE tupoksi = ? AND ? >= min_nilai AND ? <= max_nilai LIMIT 1");
+function getDeskripsiInfo($db, $tupoksi, $nilai) {
+    // Check direct scale
+    $stmt = $db->prepare("SELECT predikat, deskripsi FROM perf_deskripsi WHERE tupoksi = ? AND ? >= min_nilai AND ? <= max_nilai LIMIT 1");
     $stmt->execute([$tupoksi, $nilai, $nilai]);
     $res = $stmt->fetch(PDO::FETCH_ASSOC);
-    return $res ? $res['deskripsi'] : '-';
+    if ($res) return $res;
+
+    // Check converted scale 1-5 -> 100 if applicable
+    if ($nilai > 0 && $nilai <= 5.0) {
+        $nilai100 = ($nilai / 5.0) * 100;
+        $stmt->execute([$tupoksi, $nilai100, $nilai100]);
+        $res = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($res) return $res;
+    }
+
+    return null;
+}
+
+function getDefaultDeskripsiText($tupoksi, $predikat) {
+    $sebutan = (strpos(strtolower($tupoksi), 'guru') !== false) ? 'Guru' : 'Pegawai';
+    $pLower = strtolower($predikat);
+    if (strpos($pLower, 'sangat baik') !== false || strpos($pLower, 'sb') !== false || strpos($pLower, 'istimewa') !== false) {
+        return "{$sebutan} telah menunjukkan standar kompetensi yang sangat luar biasa dalam mengajar dan memberikan pelayanan pendidikan secara optimal.";
+    } elseif (strpos($pLower, 'baik') !== false || $pLower === 'b') {
+        return "{$sebutan} telah memenuhi standar kompetensi dengan baik dalam mengajar dan memberikan pelayanan pendidikan secara optimal.";
+    } elseif (strpos($pLower, 'cukup') !== false || $pLower === 'c') {
+        return "{$sebutan} telah memenuhi standar kompetensi dasar dalam mengajar, namun masih memerlukan peningkatan pada beberapa aspek tertentu.";
+    } else {
+        return "{$sebutan} perlu banyak bimbingan untuk mencapai standar kompetensi dasar dalam pelayanan pendidikan.";
+    }
+}
+
+function getDeskripsiPenilaian($db, $tupoksi, $nilai, $fallbackPredikat = '') {
+    $info = getDeskripsiInfo($db, $tupoksi, $nilai);
+    if ($info && !empty($info['deskripsi'])) {
+        return $info['deskripsi'];
+    }
+    if ($fallbackPredikat) {
+        return getDefaultDeskripsiText($tupoksi, $fallbackPredikat);
+    }
+    return '-';
 }
 
 
@@ -303,18 +339,25 @@ foreach ($all_ptks as $ptk) {
     $ptk_scores[] = $angket_score;
     $total_score_ptk += $angket_nilai_weighted;
     
-    $predikat = "Kurang";
-    if ($total_score_ptk >= 90) $predikat = "Sangat Baik";
-    elseif ($total_score_ptk >= 75) $predikat = "Baik";
-    elseif ($total_score_ptk >= 60) $predikat = "Cukup";
+    // Cek apakah ada predikat khusus di master perf_deskripsi
+    $info_db = getDeskripsiInfo($db, $ptk_jenis, $total_score_ptk);
+    if ($info_db && !empty($info_db['predikat'])) {
+        $predikat = $info_db['predikat'];
+    } else {
+        $predikat = "Kurang";
+        if ($total_score_ptk >= 90) $predikat = "Sangat Baik";
+        elseif ($total_score_ptk >= 75) $predikat = "Baik";
+        elseif ($total_score_ptk >= 60) $predikat = "Cukup";
+    }
     
-    // In screenshot it uses 'B' for Baik? The logic earlier in cetak_lampiran.php had "Baik", "Sangat Baik" etc.
-    // Let's use the initials as in screenshot (B, SB, C, K) or full text?
-    // Screenshot: "B". We'll map it to initials if needed, or just display full text if it's "Baik" = "B"
+    // Inisial Predikat jika cocok SB/B/C/K, atau gunakan predikat langsung
     $pred_initial = "K";
-    if ($predikat == "Sangat Baik") $pred_initial = "SB";
-    elseif ($predikat == "Baik") $pred_initial = "B";
-    elseif ($predikat == "Cukup") $pred_initial = "C";
+    $p_check = strtolower($predikat);
+    if (strpos($p_check, 'sangat baik') !== false || strpos($p_check, 'istimewa') !== false) $pred_initial = "SB";
+    elseif (strpos($p_check, 'baik') !== false) $pred_initial = "B";
+    elseif (strpos($p_check, 'cukup') !== false) $pred_initial = "C";
+    elseif (strpos($p_check, 'sangat kurang') !== false) $pred_initial = "SK";
+    else $pred_initial = $predikat;
     
     $results[] = [
         'nama' => $ptk['nama'],
@@ -490,7 +533,7 @@ $qr_url = $full_base_url . "/modules/e-xam-card/api/qr.php?size=4&data=" . urlen
                     <?php endforeach; ?>
                     <td class="text-center"><?php echo fmod((float)$r['tot'], 1) !== 0.0 ? number_format($r['tot'], 2) : number_format($r['tot'], 0); ?></td>
                     <td class="text-center"><?php echo $r['predikat']; ?></td>
-                    <td><?php echo getDeskripsiPenilaian($db, $r['jenis_ptk'], $r['tot']); ?></td>
+                    <td><?php echo getDeskripsiPenilaian($db, $r['jenis_ptk'], $r['tot'], $r['predikat']); ?></td>
                 </tr>
                 <?php endforeach; ?>
             </tbody>

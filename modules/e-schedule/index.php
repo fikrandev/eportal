@@ -159,6 +159,7 @@ $active_academic_year = get_active_academic_year();
     <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=2.0.0"></script>
 
     <!-- Schedule SPA -->
+    <script src="<?php echo BASE_URL; ?>assets/js/pagination.js?v=<?php echo time(); ?>"></script>
     <script src="<?php echo BASE_URL; ?>modules/e-schedule/assets/js/schedule.js?v=<?php echo time(); ?>"></script>
     <script>
         // Fallback: Force remove loader if JS initialization fails or takes too long

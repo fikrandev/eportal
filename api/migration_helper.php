@@ -6,7 +6,7 @@
 require_once __DIR__ . '/config.php';
 
 function run_auto_migrations() {
-    $target_version = 18;
+    $target_version = 21;
     
     // 1. Get current version (default to 0 if not set or if table settings doesn't exist yet)
     $current_version = 0;
@@ -874,6 +874,59 @@ function run_auto_migrations() {
                     }
                     $stmtInsert->execute([$tingkat, $rawKelasTrimmed, 'Sinkronisasi Otomatis dari Data Siswa']);
                 }
+            }
+        } catch (Exception $e) {}
+    }
+
+    // Version 19 migrations (Ensure perf tables match utf8mb4_unicode_ci collation & perf_siswa username index)
+    if ($current_version < 19) {
+        $perfTables = ['perf_siswa', 'perf_users', 'perf_ptk', 'perf_siswa_guru', 'perf_sampling', 'perf_roles', 'perf_penilaian', 'perf_progress', 'perf_sessions', 'perf_aturan_sejawat', 'perf_periode', 'perf_instrumen', 'perf_deskripsi'];
+        foreach ($perfTables as $t) {
+            try {
+                $pdo->exec("ALTER TABLE `$t` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+            } catch (Exception $e) {}
+        }
+        try {
+            $pdo->exec("ALTER TABLE `perf_siswa` ADD INDEX IF NOT EXISTS `idx_perf_siswa_username` (`username`)");
+        } catch (Exception $e) {}
+    }
+
+    // Version 20 migrations (Ensure perf_deskripsi table exists and has predikat column)
+    if ($current_version < 20) {
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `perf_deskripsi` (
+                `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+                `tupoksi` VARCHAR(100) NOT NULL,
+                `predikat` VARCHAR(50) DEFAULT NULL,
+                `min_nilai` DECIMAL(5,2) NOT NULL,
+                `max_nilai` DECIMAL(5,2) NOT NULL,
+                `deskripsi` TEXT NOT NULL,
+                PRIMARY KEY (`id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+            $cols = $pdo->query("SHOW COLUMNS FROM `perf_deskripsi` LIKE 'predikat'")->fetchAll();
+            if (empty($cols)) {
+                $pdo->exec("ALTER TABLE `perf_deskripsi` ADD COLUMN `predikat` VARCHAR(50) DEFAULT NULL AFTER `tupoksi`");
+            }
+        } catch (Exception $e) {}
+    }
+
+    // Version 21 migrations (Guaranteed check for perf_deskripsi table and predikat column)
+    if ($current_version < 21) {
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `perf_deskripsi` (
+                `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+                `tupoksi` VARCHAR(100) NOT NULL,
+                `predikat` VARCHAR(50) DEFAULT NULL,
+                `min_nilai` DECIMAL(5,2) NOT NULL,
+                `max_nilai` DECIMAL(5,2) NOT NULL,
+                `deskripsi` TEXT NOT NULL,
+                PRIMARY KEY (`id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+
+            $cols = $pdo->query("SHOW COLUMNS FROM `perf_deskripsi` LIKE 'predikat'")->fetchAll();
+            if (empty($cols)) {
+                $pdo->exec("ALTER TABLE `perf_deskripsi` ADD COLUMN `predikat` VARCHAR(50) DEFAULT NULL AFTER `tupoksi`");
             }
         } catch (Exception $e) {}
     }

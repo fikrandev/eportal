@@ -78,6 +78,7 @@ run_auto_migrations();
     <!-- Scripts -->
     <script src="assets/vendor/jquery-3.7.1.min.js"></script>
     <script src="assets/js/modal.js?v=<?php echo time(); ?>"></script>
+    <script src="assets/js/pagination.js?v=<?php echo time(); ?>"></script>
     <script src="assets/js/app.js?v=<?php echo time(); ?>"></script>
     <script src="assets/js/auth.js?v=<?php echo time(); ?>"></script>
     <script src="assets/js/dashboard.js?v=<?php echo time(); ?>"></script>
