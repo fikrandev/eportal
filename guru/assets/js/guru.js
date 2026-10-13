@@ -38,6 +38,7 @@
         const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
         return days[d.getDay()] + ', ' + d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
     }
+    const formatTanggalStr = formatTanggal;
 
     function getInitials(name) {
         if (!name) return '?';
@@ -1067,6 +1068,196 @@
             }
         },
 
+        _webcamStream: null,
+        _webcamFacingMode: 'user',
+        _capturedPhotos: [],
+
+        stopWebcam() {
+            if (this._webcamStream) {
+                try {
+                    this._webcamStream.getTracks().forEach(t => t.stop());
+                } catch(e) {}
+                this._webcamStream = null;
+            }
+            const video = document.getElementById('webcamVideo');
+            if (video) video.srcObject = null;
+        },
+
+        async startWebcamStream(facing = 'user') {
+            this.stopWebcam();
+            this._webcamFacingMode = facing;
+            const video = document.getElementById('webcamVideo');
+            const statusLabel = document.getElementById('webcamModeLabel');
+            if (!video) return;
+
+            if (statusLabel) {
+                statusLabel.textContent = facing === 'user' ? '📷 Kamera Depan' : '🔄 Kamera Belakang';
+            }
+
+            try {
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error('Kamera web tidak didukung pada browser ini atau koneksi tidak aman.');
+                }
+
+                let stream = null;
+                const constraints = {
+                    audio: false,
+                    video: {
+                        facingMode: facing === 'environment' ? { ideal: 'environment' } : 'user',
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
+                };
+
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia(constraints);
+                } catch(err1) {
+                    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+                }
+
+                this._webcamStream = stream;
+                video.srcObject = stream;
+                await video.play();
+
+                const captureBtn = document.getElementById('btnCaptureWebcam');
+                if (captureBtn) captureBtn.disabled = this._capturedPhotos.length >= 3;
+            } catch(e) {
+                Toast.show(e.message || 'Gagal mengakses kamera web. Pastikan izin kamera telah diizinkan.', 'error');
+            }
+        },
+
+        toggleWebcamFacing() {
+            const nextMode = this._webcamFacingMode === 'user' ? 'environment' : 'user';
+            this.startWebcamStream(nextMode);
+        },
+
+        captureWebcamSnapshot() {
+            if (this._capturedPhotos.length >= 3) {
+                Toast.show('Maksimal 3 foto tercapai. Hapus salah satu foto untuk mengambil foto baru.', 'warning');
+                return;
+            }
+
+            const video = document.getElementById('webcamVideo');
+            if (!video || !video.videoWidth) {
+                Toast.show('Kamera belum aktif atau belum siap.', 'warning');
+                return;
+            }
+
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            // Auto-convert and compress to <= 500 KB
+            let quality = 0.85;
+            let dataUrl = canvas.toDataURL('image/jpeg', quality);
+
+            while (dataUrl.length * 0.75 > 500 * 1024 && quality > 0.15) {
+                quality -= 0.12;
+                dataUrl = canvas.toDataURL('image/jpeg', quality);
+            }
+
+            if (dataUrl.length * 0.75 > 500 * 1024) {
+                const sCanvas = document.createElement('canvas');
+                sCanvas.width = Math.round(canvas.width * 0.75);
+                sCanvas.height = Math.round(canvas.height * 0.75);
+                const sCtx = sCanvas.getContext('2d');
+                sCtx.drawImage(canvas, 0, 0, sCanvas.width, sCanvas.height);
+                dataUrl = sCanvas.toDataURL('image/jpeg', 0.75);
+            }
+
+            const sizeKB = Math.round((dataUrl.length * 0.75) / 1024);
+            this._capturedPhotos.push({
+                dataUrl: dataUrl,
+                sizeKB: sizeKB
+            });
+
+            this.renderWebcamGallery();
+            Toast.show(`Foto berhasil diambil (${sizeKB} KB).`, 'success');
+        },
+
+        removeWebcamPhoto(index) {
+            this._capturedPhotos.splice(index, 1);
+            this.renderWebcamGallery();
+        },
+
+        renderWebcamGallery() {
+            const gallery = document.getElementById('webcamGalleryStrip');
+            const counter = document.getElementById('webcamPhotoCounter');
+            const captureBtn = document.getElementById('btnCaptureWebcam');
+
+            if (counter) {
+                counter.textContent = `${this._capturedPhotos.length}/3 Foto`;
+            }
+
+            if (captureBtn) {
+                captureBtn.disabled = this._capturedPhotos.length >= 3;
+            }
+
+            if (!gallery) return;
+
+            if (this._capturedPhotos.length === 0) {
+                gallery.innerHTML = '<div style="font-size:0.75rem; color:#94a3b8; font-style:italic; padding:4px 0;">Belum ada foto yang diambil (Maks 3 foto).</div>';
+                return;
+            }
+
+            let html = '<div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:8px;">';
+            this._capturedPhotos.forEach((photo, idx) => {
+                const pUrl = photo.dataUrl || photo;
+                const sizeLabel = photo.sizeKB ? `${photo.sizeKB} KB` : 'Foto';
+                const cleanSrc = pUrl.startsWith('http') || pUrl.startsWith('data:') ? pUrl : ('../' + pUrl.replace(/^\/+/, ''));
+                html += `
+                    <div style="position:relative; width:82px; height:82px; border-radius:10px; overflow:hidden; border:1.5px solid #e2e8f0; box-shadow:0 2px 6px rgba(0,0,0,0.08); background:#0f172a;">
+                        <img src="${cleanSrc}" style="width:100%; height:100%; object-fit:cover; cursor:pointer;" onclick="GuruApp.showImageLightbox(this.src)" alt="Foto ${idx+1}">
+                        <div style="position:absolute; bottom:2px; left:2px; right:2px; background:rgba(0,0,0,0.65); color:white; font-size:0.65rem; border-radius:4px; padding:1px 3px; text-align:center;">
+                            ${sizeLabel}
+                        </div>
+                        <button type="button" onclick="Pages.removeWebcamPhoto(${idx})" style="position:absolute; top:2px; right:2px; width:22px; height:22px; border-radius:50%; background:#ef4444; color:white; border:none; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:13px; font-weight:bold; line-height:1; box-shadow:0 1px 3px rgba(0,0,0,0.3);">&times;</button>
+                    </div>
+                `;
+            });
+            html += '</div>';
+            gallery.innerHTML = html;
+        },
+
+        initWebcamSection(existingPhotos = []) {
+            this._capturedPhotos = [];
+            if (Array.isArray(existingPhotos)) {
+                existingPhotos.slice(0, 3).forEach(p => {
+                    this._capturedPhotos.push({
+                        dataUrl: p,
+                        sizeKB: 0
+                    });
+                });
+            }
+
+            this.renderWebcamGallery();
+            setTimeout(() => {
+                this.startWebcamStream('user');
+            }, 80);
+        },
+
+        showImageLightbox(src) {
+            if (!src) return;
+            const existing = document.getElementById('guruImageLightbox');
+            if (existing) existing.remove();
+
+            const modal = document.createElement('div');
+            modal.id = 'guruImageLightbox';
+            modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.88); z-index:999999; display:flex; align-items:center; justify-content:center; padding:16px; backdrop-filter:blur(4px);';
+            modal.innerHTML = `
+                <div style="position:relative; max-width:92%; max-height:92%; text-align:center;">
+                    <button type="button" style="position:absolute; top:-38px; right:0; background:rgba(255,255,255,0.25); border:none; color:white; width:34px; height:34px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:bold;">✕</button>
+                    <img src="${src}" style="max-width:100%; max-height:82vh; border-radius:12px; box-shadow:0 12px 35px rgba(0,0,0,0.5); object-fit:contain; display:block; margin:0 auto;" alt="Foto">
+                </div>
+            `;
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal || e.target.tagName === 'BUTTON') modal.remove();
+            });
+            document.body.appendChild(modal);
+        },
+
         // --- KEGIATAN / WALI KELAS MODAL FORM ---
         async openKegiatanModal(jenis = 'non_kbm', existingId = null) {
             let existing = null;
@@ -1102,7 +1293,7 @@
             overlay.className = 'guru-modal-overlay';
             overlay.id = 'kegiatanModal';
             overlay.innerHTML = `
-                <div class="guru-modal">
+                <div class="guru-modal" style="max-width:540px;">
                     <div class="guru-modal-header">
                         <h3>${title}</h3>
                         <button class="guru-modal-close" onclick="GuruApp.closeModal('kegiatanModal')">
@@ -1129,8 +1320,50 @@
 
                         <div class="form-group mt-2">
                             <label class="form-label">Catatan Kegiatan</label>
-                            <textarea class="form-textarea" id="kegiatanCatatanText" placeholder="${placeholder}" style="min-height:120px;">${escapeHtml(existing?.catatan || '')}</textarea>
+                            <textarea class="form-textarea" id="kegiatanCatatanText" placeholder="${placeholder}" style="min-height:110px;">${escapeHtml(existing?.catatan || '')}</textarea>
                         </div>
+
+                        ${isGuruWali ? `
+                            <!-- Webcam Section for Guru Wali -->
+                            <div class="form-group mt-3" style="border-top:1.5px dashed #e2e8f0; padding-top:14px;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                    <label class="form-label" style="margin:0; font-weight:700; color:var(--text-primary); display:flex; align-items:center; gap:6px;">
+                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#16a34a" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                                        Foto Dokumentasi (Kamera Web Langsung)
+                                    </label>
+                                    <span id="webcamPhotoCounter" style="font-size:0.75rem; font-weight:700; color:#16a34a; background:#dcfce7; padding:2px 8px; border-radius:12px;">0/3 Foto</span>
+                                </div>
+                                
+                                <div style="background:#f8fafc; border:1.5px solid #e2e8f0; border-radius:14px; padding:12px;">
+                                    <!-- Live video stream viewport -->
+                                    <div id="webcamVideoWrap" style="position:relative; width:100%; border-radius:10px; overflow:hidden; background:#0f172a; margin-bottom:10px;">
+                                        <video id="webcamVideo" autoplay playsinline muted style="width:100%; height:200px; object-fit:cover; display:block;"></video>
+                                        <div style="position:absolute; top:8px; left:8px; background:rgba(0,0,0,0.65); color:white; font-size:0.7rem; font-weight:600; padding:2px 8px; border-radius:10px; backdrop-filter:blur(2px);" id="webcamModeLabel">
+                                            📷 Kamera Depan
+                                        </div>
+                                        <div style="position:absolute; bottom:8px; left:8px; right:8px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                                            <button type="button" class="btn btn-sm" onclick="Pages.toggleWebcamFacing()" style="background:rgba(255,255,255,0.9); color:#1e293b; font-weight:600; font-size:0.75rem; padding:5px 10px; border:none; border-radius:8px; display:flex; align-items:center; gap:5px; backdrop-filter:blur(4px); box-shadow:0 1px 4px rgba(0,0,0,0.2);">
+                                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+                                                Ganti Kamera (Depan/Belakang)
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-primary" id="btnCaptureWebcam" onclick="Pages.captureWebcamSnapshot()" style="font-size:0.75rem; padding:5px 12px; font-weight:700; background:#16a34a; border-color:#16a34a; display:flex; align-items:center; gap:5px; box-shadow:0 2px 6px rgba(22,163,74,0.4);">
+                                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+                                                Ambil Foto
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div style="font-size:0.72rem; color:#64748b; line-height:1.4; margin-bottom:8px;">
+                                        💡 <em>Input foto diambil dari <strong>kamera web</strong> (bisa ganti kamera depan/belakang, maksimal 3 foto). Setiap foto otomatis dikonversi &amp; dikompresi menjadi &le; 500 KB.</em>
+                                    </div>
+
+                                    <!-- Captured photos gallery -->
+                                    <div id="webcamGalleryStrip">
+                                        <div style="font-size:0.75rem; color:#94a3b8; font-style:italic;">Belum ada foto yang diambil (Maks 3 foto).</div>
+                                    </div>
+                                </div>
+                            </div>
+                        ` : ''}
                     </div>
                     <div class="guru-modal-footer">
                         <button class="btn btn-ghost" onclick="GuruApp.closeModal('kegiatanModal')">Batal</button>
@@ -1145,6 +1378,21 @@
             overlay.addEventListener('click', (e) => {
                 if (e.target === overlay) GuruApp.closeModal('kegiatanModal');
             });
+
+            if (isGuruWali) {
+                let existingPhotos = [];
+                if (existing?.foto_kegiatan) {
+                    try {
+                        const parsed = JSON.parse(existing.foto_kegiatan);
+                        existingPhotos = Array.isArray(parsed) ? parsed : [existing.foto_kegiatan];
+                    } catch(e) {
+                        existingPhotos = [existing.foto_kegiatan];
+                    }
+                }
+                setTimeout(() => {
+                    Pages.initWebcamSection(existingPhotos);
+                }, 60);
+            }
         },
 
         async saveKegiatanJurnal(jenis = 'non_kbm', existingId = 0) {
@@ -1167,12 +1415,17 @@
             };
             if (existingId > 0) payload.id = existingId;
 
+            if (jenis === 'guru_wali' || Pages._capturedPhotos.length > 0) {
+                payload.foto_kegiatan = Pages._capturedPhotos.map(p => p.dataUrl || p);
+            }
+
             try {
                 const action = existingId > 0 ? 'update' : 'create';
                 const res = await API.post(`api/jurnal.php?action=${action}`, payload);
 
                 if (res.success) {
                     Toast.show(res.message || 'Jurnal kegiatan berhasil disimpan!', 'success');
+                    Pages.stopWebcam();
                     GuruApp.closeModal('kegiatanModal');
                     if (Router.currentPage === 'home') Pages.renderHome();
                     else if (Router.currentPage === 'jurnal') Pages.renderJurnal();
@@ -1187,6 +1440,195 @@
             } finally {
                 if (btn) btn.classList.remove('loading');
             }
+        },
+
+        // --- WEBCAM CAPTURE FOR JURNAL GURU WALI ---
+        _capturedPhotos: [],
+        _webcamStream: null,
+        _webcamFacingMode: 'user',
+
+        stopWebcam() {
+            if (this._webcamStream) {
+                try {
+                    this._webcamStream.getTracks().forEach(t => t.stop());
+                } catch(e) {}
+                this._webcamStream = null;
+            }
+            const videoEl = $('#webcamVideo');
+            if (videoEl) {
+                videoEl.srcObject = null;
+            }
+        },
+
+        async startWebcamStream() {
+            this.stopWebcam();
+            const videoEl = $('#webcamVideo');
+            if (!videoEl) return;
+
+            const facing = this._webcamFacingMode === 'environment' ? { ideal: 'environment' } : 'user';
+            const constraints = {
+                video: {
+                    facingMode: facing,
+                    width: { ideal: 1280 },
+                    height: { ideal: 720 }
+                },
+                audio: false
+            };
+
+            let stream = null;
+            try {
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
+            } catch (err) {
+                try {
+                    stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                } catch(fallbackErr) {
+                    console.error('Webcam error:', fallbackErr);
+                    Toast.show('Tidak dapat mengakses kamera: ' + (fallbackErr.message || 'Izin kamera ditolak'), 'error');
+                    return;
+                }
+            }
+
+            this._webcamStream = stream;
+            videoEl.srcObject = stream;
+            videoEl.play().catch(e => console.log('Video play error:', e));
+
+            const label = $('#webcamModeLabel');
+            if (label) {
+                label.textContent = this._webcamFacingMode === 'environment' ? '📷 Kamera Belakang' : '📷 Kamera Depan';
+            }
+        },
+
+        toggleWebcamFacing() {
+            this._webcamFacingMode = (this._webcamFacingMode === 'user') ? 'environment' : 'user';
+            this.startWebcamStream();
+        },
+
+        captureWebcamSnapshot() {
+            if (this._capturedPhotos.length >= 3) {
+                Toast.show('Maksimal 3 foto dokumentasi kegiatan.', 'warning');
+                return;
+            }
+
+            const videoEl = $('#webcamVideo');
+            if (!videoEl || !videoEl.videoWidth || videoEl.videoWidth === 0) {
+                Toast.show('Kamera sedang dimuat, silakan tunggu sebentar...', 'warning');
+                return;
+            }
+
+            const canvas = document.createElement('canvas');
+            let width = videoEl.videoWidth;
+            let height = videoEl.videoHeight;
+
+            // Downscale maximum dimension to 1280px for optimal speed & quality
+            const maxDim = 1280;
+            if (width > maxDim || height > maxDim) {
+                if (width > height) {
+                    height = Math.round((height * maxDim) / width);
+                    width = maxDim;
+                } else {
+                    width = Math.round((width * maxDim) / height);
+                    height = maxDim;
+                }
+            }
+
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(videoEl, 0, 0, width, height);
+
+            // Compress to <= 500 KB JPEG
+            let quality = 0.85;
+            let dataUrl = canvas.toDataURL('image/jpeg', quality);
+            let sizeKB = Math.round((dataUrl.length * 0.75) / 1024);
+
+            while (sizeKB > 500 && quality > 0.2) {
+                quality -= 0.1;
+                dataUrl = canvas.toDataURL('image/jpeg', quality);
+                sizeKB = Math.round((dataUrl.length * 0.75) / 1024);
+            }
+
+            this._capturedPhotos.push({
+                dataUrl: dataUrl,
+                sizeKB: sizeKB,
+                isNew: true
+            });
+
+            this.renderWebcamGallery();
+            Toast.show(`Foto berhasil diambil (${sizeKB} KB)`, 'success');
+        },
+
+        removeWebcamPhoto(idx) {
+            this._capturedPhotos.splice(idx, 1);
+            this.renderWebcamGallery();
+        },
+
+        renderWebcamGallery() {
+            const counter = $('#webcamPhotoCounter');
+            if (counter) {
+                counter.textContent = `${this._capturedPhotos.length}/3 Foto`;
+                counter.style.background = this._capturedPhotos.length >= 3 ? '#fee2e2' : '#dcfce7';
+                counter.style.color = this._capturedPhotos.length >= 3 ? '#b91c1c' : '#16a34a';
+            }
+
+            const captureBtn = $('#btnCaptureWebcam');
+            if (captureBtn) {
+                captureBtn.disabled = this._capturedPhotos.length >= 3;
+                if (this._capturedPhotos.length >= 3) {
+                    captureBtn.style.opacity = '0.5';
+                    captureBtn.style.cursor = 'not-allowed';
+                } else {
+                    captureBtn.style.opacity = '1';
+                    captureBtn.style.cursor = 'pointer';
+                }
+            }
+
+            const container = $('#webcamGalleryStrip');
+            if (!container) return;
+
+            if (this._capturedPhotos.length === 0) {
+                container.innerHTML = '<div style="font-size:0.75rem; color:#94a3b8; font-style:italic;">Belum ada foto yang diambil (Maks 3 foto).</div>';
+                return;
+            }
+
+            container.innerHTML = `
+                <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                    ${this._capturedPhotos.map((p, idx) => {
+                        const src = typeof p === 'string' ? (p.startsWith('http') || p.startsWith('data:') ? p : ('../' + p.replace(/^\/+/, ''))) : p.dataUrl;
+                        const sizeLabel = p.sizeKB ? `${p.sizeKB} KB` : '';
+                        return `
+                            <div style="position:relative; width:80px; height:80px; border-radius:8px; overflow:hidden; border:1.5px solid #cbd5e1; background:#0f172a; box-shadow:0 1px 4px rgba(0,0,0,0.1);">
+                                <img src="${src}" style="width:100%; height:100%; object-fit:cover; cursor:pointer;" onclick="GuruApp.showImageLightbox('${src}')" alt="Foto">
+                                ${sizeLabel ? `<span style="position:absolute; bottom:2px; left:2px; background:rgba(0,0,0,0.7); color:#fff; font-size:9px; padding:1px 4px; border-radius:4px; font-weight:600;">${sizeLabel}</span>` : ''}
+                                <button type="button" onclick="Pages.removeWebcamPhoto(${idx})" style="position:absolute; top:2px; right:2px; background:#ef4444; color:white; border:none; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:12px; font-weight:bold; line-height:1; box-shadow:0 1px 3px rgba(0,0,0,0.3);">×</button>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+        },
+
+        initWebcamSection(existingPhotos = []) {
+            this._capturedPhotos = Array.isArray(existingPhotos) ? existingPhotos.map(p => (typeof p === 'string' ? { dataUrl: p } : p)) : [];
+            this._webcamFacingMode = 'user';
+            this.renderWebcamGallery();
+            this.startWebcamStream();
+        },
+
+        showImageLightbox(src) {
+            const old = document.getElementById('imageLightboxModal');
+            if (old) old.remove();
+
+            const modal = document.createElement('div');
+            modal.id = 'imageLightboxModal';
+            modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;cursor:zoom-out;animation:fadeIn 0.2s ease;';
+            modal.innerHTML = `
+                <div style="position:relative;max-width:92vw;max-height:92vh;display:flex;align-items:center;justify-content:center;" onclick="event.stopPropagation()">
+                    <img src="${src}" style="max-width:100%;max-height:88vh;object-fit:contain;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,0.5);" alt="Preview">
+                    <button type="button" onclick="document.getElementById('imageLightboxModal').remove()" style="position:absolute;top:-14px;right:-14px;background:#ef4444;color:white;border:none;border-radius:50%;width:32px;height:32px;font-size:16px;font-weight:bold;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.4);">✕</button>
+                </div>
+            `;
+            modal.addEventListener('click', () => modal.remove());
+            document.body.appendChild(modal);
         },
 
         async loadJurnalSchedule() {
@@ -1750,12 +2192,14 @@
                             <div style="padding:12px 14px;background:var(--bg-light);border-radius:var(--radius-md);font-size:0.875rem;line-height:1.6;white-space:pre-wrap;">${escapeHtml(j.catatan || '-')}</div>
                         </div>
                     `;
-                } else if (j.jenis_jurnal === 'wali_kelas') {
-                    modalTitle = 'Detail Jurnal Guru Wali';
+                } else if (j.jenis_jurnal === 'wali_kelas' || j.jenis_jurnal === 'guru_wali') {
+                    const isGw = j.jenis_jurnal === 'guru_wali';
+                    modalTitle = isGw ? 'Detail Jurnal Guru Wali' : 'Detail Jurnal Wali Kelas';
+                    const labelTitle = isGw ? 'Jurnal Guru Wali' : 'Jurnal Wali Kelas';
                     headerMetaHtml = `
                         <div class="form-info-row">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                            <span><strong>${formatTanggal(j.tanggal)}</strong> — Jurnal Guru Wali</span>
+                            <span><strong>${formatTanggal(j.tanggal)}</strong> — ${labelTitle}</span>
                         </div>
                         ${j.nama_kelas ? `
                             <div class="form-info-row">
@@ -1766,7 +2210,7 @@
                     `;
                     bodyContentHtml = `
                         <div class="form-group mt-2">
-                            <label class="form-label">Catatan Kegiatan Guru Wali</label>
+                            <label class="form-label">Catatan Kegiatan ${labelTitle}</label>
                             <div style="padding:12px 14px;background:var(--bg-light);border-radius:var(--radius-md);font-size:0.875rem;line-height:1.6;white-space:pre-wrap;">${escapeHtml(j.catatan || '-')}</div>
                         </div>
                     `;
@@ -1809,6 +2253,35 @@
                                 <div style="padding:10px 14px;background:var(--danger-light);border-radius:var(--radius-md);font-size:0.875rem;line-height:1.6;color:var(--danger);">${escapeHtml(j.siswa_tidak_hadir)}</div>
                             </div>
                         ` : ''}
+                    `;
+                }
+
+                // Render photo gallery if available
+                let fotos = [];
+                if (j.foto_kegiatan) {
+                    try {
+                        const p = JSON.parse(j.foto_kegiatan);
+                        fotos = Array.isArray(p) ? p : [j.foto_kegiatan];
+                    } catch(e) {
+                        fotos = [j.foto_kegiatan];
+                    }
+                }
+
+                if (fotos.length > 0) {
+                    bodyContentHtml += `
+                        <div class="form-group mt-3">
+                            <label class="form-label" style="font-weight:700;">Foto Dokumentasi Kegiatan (${fotos.length}/3)</label>
+                            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:6px;">
+                                ${fotos.map(f => {
+                                    const cleanSrc = f.startsWith('http') || f.startsWith('data:') ? f : ('../' + f.replace(/^\/+/, ''));
+                                    return `
+                                        <div style="position:relative; width:95px; height:95px; border-radius:10px; overflow:hidden; border:1.5px solid #e2e8f0; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.08); background:#0f172a;" onclick="GuruApp.showImageLightbox('${cleanSrc}')">
+                                            <img src="${cleanSrc}" style="width:100%; height:100%; object-fit:cover; display:block;" alt="Foto Kegiatan">
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
                     `;
                 }
 
@@ -2398,8 +2871,33 @@
 
             let html = '';
             data.forEach(item => {
+                let fotoHtml = '';
+                if (item.foto_kegiatan) {
+                    let fotos = [];
+                    try {
+                        const parsed = typeof item.foto_kegiatan === 'string' ? JSON.parse(item.foto_kegiatan) : item.foto_kegiatan;
+                        fotos = Array.isArray(parsed) ? parsed : [item.foto_kegiatan];
+                    } catch(e) {
+                        fotos = [item.foto_kegiatan];
+                    }
+                    if (Array.isArray(fotos) && fotos.length > 0) {
+                        fotoHtml = `
+                            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">
+                                ${fotos.map(f => {
+                                    const cleanSrc = f.startsWith('http') || f.startsWith('data:') ? f : ('../' + f.replace(/^\/+/, ''));
+                                    return `
+                                        <img src="${cleanSrc}" alt="Foto Jurnal"
+                                             style="width:52px; height:52px; object-fit:cover; border-radius:6px; border:1px solid #cbd5e1; cursor:pointer;"
+                                             onclick="event.stopPropagation(); GuruApp.showImageLightbox('${cleanSrc}')">
+                                    `;
+                                }).join('')}
+                            </div>
+                        `;
+                    }
+                }
+
                 html += `
-                    <div class="jurnal-item-card" onclick="location.hash='#/jurnal-detail/${item.id}'">
+                    <div class="jurnal-item-card" onclick="GuruApp.viewJurnal(${item.id})">
                         <div class="jurnal-item-header">
                             <div>
                                 <div class="jurnal-item-mapel">Jurnal Guru Wali</div>
@@ -2408,8 +2906,9 @@
                             <span class="badge badge-success">Guru Wali</span>
                         </div>
                         <div class="jurnal-item-body">
-                            <div class="jurnal-item-materi" style="margin-bottom:8px;">${escapeHtml(item.kegiatan || '-')}</div>
-                            ${item.catatan ? `<div class="jurnal-item-catatan" style="font-size:0.8rem; background:#f8fafc; padding:8px; border-radius:6px; border-left:3px solid #2563eb; color:#475569;">${escapeHtml(item.catatan)}</div>` : ''}
+                            <div class="jurnal-item-materi" style="margin-bottom:8px;">${escapeHtml(item.kegiatan || item.catatan || '-')}</div>
+                            ${item.catatan && item.kegiatan ? `<div class="jurnal-item-catatan" style="font-size:0.8rem; background:#f8fafc; padding:8px; border-radius:6px; border-left:3px solid #2563eb; color:#475569;">${escapeHtml(item.catatan)}</div>` : ''}
+                            ${fotoHtml}
                         </div>
                     </div>
                 `;
@@ -3535,11 +4034,30 @@
         },
 
         closeModal(id) {
+            if (id === 'kegiatanModal') {
+                Pages.stopWebcam();
+            }
             const modal = document.getElementById(id);
             if (modal) {
                 modal.style.animation = 'fadeOut 0.2s ease forwards';
                 setTimeout(() => modal.remove(), 200);
             }
+        },
+
+        showImageLightbox(src) {
+            Pages.showImageLightbox(src);
+        },
+
+        toggleWebcamFacing() {
+            Pages.toggleWebcamFacing();
+        },
+
+        captureWebcamSnapshot() {
+            Pages.captureWebcamSnapshot();
+        },
+
+        removeWebcamPhoto(idx) {
+            Pages.removeWebcamPhoto(idx);
         },
 
         async saveJurnal(id, kelas_id, mapel_id, jam_ke, tanggal) {

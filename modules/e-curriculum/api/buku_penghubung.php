@@ -83,7 +83,45 @@ function ensure_buku_tables() {
             KEY idx_kelas (kelas_id),
             KEY idx_tanggal (tanggal)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+        try {
+            db()->exec("ALTER TABLE acad_buku_penghubung ADD COLUMN foto text DEFAULT NULL AFTER catatan");
+        } catch (Exception $ex) {}
     } catch (Exception $e) {}
+}
+
+function helper_save_base64_photo($base64Data, $subfolder = 'bk') {
+    if (empty($base64Data)) return null;
+
+    if (strpos($base64Data, 'uploads/') === 0 || strpos($base64Data, 'http://') === 0 || strpos($base64Data, 'https://') === 0) {
+        return $base64Data;
+    }
+
+    if (!preg_match('/^data:image\/(\w+);base64,/', $base64Data, $typeMatch)) {
+        return null;
+    }
+
+    $ext = strtolower($typeMatch[1]);
+    if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) {
+        $ext = 'jpg';
+    }
+    if ($ext === 'jpeg') $ext = 'jpg';
+
+    $base64Body = substr($base64Data, strpos($base64Data, ',') + 1);
+    $binary = base64_decode($base64Body);
+    if ($binary === false || strlen($binary) === 0) return null;
+
+    $uploadRoot = realpath(__DIR__ . '/../../../uploads') ?: (__DIR__ . '/../../../uploads');
+    $targetDir = $uploadRoot . '/' . trim($subfolder, '/');
+    if (!is_dir($targetDir)) {
+        @mkdir($targetDir, 0777, true);
+    }
+
+    $filename = $subfolder . '_' . date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+    $filePath = $targetDir . '/' . $filename;
+    file_put_contents($filePath, $binary);
+
+    return 'uploads/' . trim($subfolder, '/') . '/' . $filename;
 }
 
 function get_buku_input() {
@@ -194,12 +232,15 @@ function createBuku($user) {
         }
     }
 
+    $foto_raw = isset($input['foto']) ? trim($input['foto']) : '';
+    $foto_path = helper_save_base64_photo($foto_raw, 'bk');
+
     try {
         $stmt = db()->prepare("
-            INSERT INTO acad_buku_penghubung (student_id, kelas_id, academic_year_id, jenis, tanggal, catatan, dicatat_oleh)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO acad_buku_penghubung (student_id, kelas_id, academic_year_id, jenis, tanggal, catatan, foto, dicatat_oleh)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ");
-        $stmt->execute([$student_id, $kelas_id, $year_id, $jenis, $tanggal, $catatan, $user['user_id']]);
+        $stmt->execute([$student_id, $kelas_id, $year_id, $jenis, $tanggal, $catatan, $foto_path, $user['user_id']]);
         json_response(201, true, 'Catatan buku penghubung berhasil ditambahkan.');
     } catch (PDOException $e) {
         json_response(500, false, 'Gagal menyimpan catatan: ' . $e->getMessage());
@@ -213,14 +254,26 @@ function updateBuku($user) {
     $id = isset($input['id']) ? (int)$input['id'] : 0;
     $catatan = isset($input['catatan']) ? trim($input['catatan']) : '';
     $jenis = isset($input['jenis']) ? trim($input['jenis']) : '';
+    $foto_raw = isset($input['foto']) ? trim($input['foto']) : null;
 
     if ($id <= 0) json_response(400, false, 'ID tidak valid.');
     if (empty($catatan)) json_response(400, false, 'Catatan tidak boleh kosong.');
     if (empty($jenis)) $jenis = 'Konsultasi';
 
     try {
-        $stmt = db()->prepare("UPDATE acad_buku_penghubung SET catatan = ?, jenis = ? WHERE id = ?");
-        $stmt->execute([$catatan, $jenis, $id]);
+        if ($foto_raw !== null) {
+            if ($foto_raw === '' || $foto_raw === 'delete') {
+                $stmt = db()->prepare("UPDATE acad_buku_penghubung SET catatan = ?, jenis = ?, foto = NULL WHERE id = ?");
+                $stmt->execute([$catatan, $jenis, $id]);
+            } else {
+                $foto_path = helper_save_base64_photo($foto_raw, 'bk');
+                $stmt = db()->prepare("UPDATE acad_buku_penghubung SET catatan = ?, jenis = ?, foto = ? WHERE id = ?");
+                $stmt->execute([$catatan, $jenis, $foto_path, $id]);
+            }
+        } else {
+            $stmt = db()->prepare("UPDATE acad_buku_penghubung SET catatan = ?, jenis = ? WHERE id = ?");
+            $stmt->execute([$catatan, $jenis, $id]);
+        }
         json_response(200, true, 'Catatan berhasil diperbarui.');
     } catch (PDOException $e) {
         json_response(500, false, 'Server error: ' . $e->getMessage());
@@ -303,6 +356,16 @@ function deleteBuku($user) {
     if ($id <= 0) json_response(400, false, 'ID tidak valid.');
 
     try {
+        $stmtFoto = db()->prepare("SELECT foto FROM acad_buku_penghubung WHERE id = ?");
+        $stmtFoto->execute([$id]);
+        $oldFoto = $stmtFoto->fetchColumn();
+        if ($oldFoto && !empty($oldFoto)) {
+            $fullPath = realpath(__DIR__ . '/../../../' . $oldFoto);
+            if ($fullPath && file_exists($fullPath)) {
+                @unlink($fullPath);
+            }
+        }
+
         $stmt = db()->prepare("DELETE FROM acad_buku_penghubung WHERE id = ?");
         $stmt->execute([$id]);
         json_response(200, true, 'Catatan berhasil dihapus.');

@@ -59,11 +59,13 @@ CREATE TABLE IF NOT EXISTS `acad_jurnal` (
   `kelas_id` INT UNSIGNED NOT NULL COMMENT 'References acad_kelas.id',
   `mapel_id` INT UNSIGNED NOT NULL COMMENT 'References acad_mapel.id',
   `academic_year_id` INT(11) UNSIGNED NOT NULL,
+  `jenis_jurnal` VARCHAR(30) NOT NULL DEFAULT 'kbm',
   `tanggal` DATE NOT NULL,
-  `jam_ke` VARCHAR(20) NOT NULL COMMENT 'Misal: 1, 2, 3-4, dst',
+  `jam_ke` VARCHAR(20) DEFAULT NULL COMMENT 'Misal: 1, 2, 3-4, dst',
   `tujuan_pembelajaran` TEXT COMMENT 'TP - Tujuan Pembelajaran singkat',
   `indikator_tp` TEXT COMMENT 'IPTP - Indikator Pencapaian TP',
   `catatan` TEXT COMMENT 'Catatan Pembelajaran',
+  `foto_kegiatan` TEXT COMMENT 'JSON array foto dokumentasi kegiatan',
   `siswa_tidak_hadir` TEXT COMMENT 'JSON array nama/id siswa yg tidak hadir',
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -129,9 +131,10 @@ CREATE TABLE IF NOT EXISTS `acad_buku_penghubung` (
   `student_id` INT(11) UNSIGNED NOT NULL COMMENT 'References students.id',
   `kelas_id` INT UNSIGNED NOT NULL,
   `academic_year_id` INT(11) UNSIGNED NOT NULL,
-  `jenis` ENUM('Keterlambatan','Pelanggaran','Prestasi','Screening','Konsultasi') NOT NULL,
+  `jenis` VARCHAR(100) NOT NULL DEFAULT 'Konsultasi',
   `tanggal` DATE NOT NULL,
   `catatan` TEXT NOT NULL,
+  `foto` TEXT DEFAULT NULL,
   `dicatat_oleh` INT(11) UNSIGNED DEFAULT NULL COMMENT 'user_id guru',
   `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -139,6 +142,30 @@ CREATE TABLE IF NOT EXISTS `acad_buku_penghubung` (
   KEY `idx_buku_student` (`student_id`),
   KEY `idx_buku_kelas` (`kelas_id`),
   KEY `idx_buku_tanggal` (`tanggal`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 8b. Table: acad_buku_types
+CREATE TABLE IF NOT EXISTS `acad_buku_types` (
+  `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `nama_jenis` VARCHAR(100) NOT NULL,
+  `deskripsi` VARCHAR(255) DEFAULT NULL,
+  `warna_badge` VARCHAR(50) NOT NULL DEFAULT 'badge-info',
+  `urutan` INT(11) NOT NULL DEFAULT 0,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_nama_jenis` (`nama_jenis`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 8c. Table: acad_hari_libur
+CREATE TABLE IF NOT EXISTS `acad_hari_libur` (
+  `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+  `academic_year_id` INT(11) UNSIGNED NOT NULL,
+  `tanggal` DATE NOT NULL,
+  `keterangan` VARCHAR(255) NOT NULL,
+  `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_year_tanggal` (`academic_year_id`, `tanggal`),
+  KEY `idx_tanggal` (`tanggal`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- 9. Table: acad_jurnal_pipinan (School Leader Journal - Jurnal Pimpinan)

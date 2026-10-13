@@ -8,6 +8,14 @@ require_once __DIR__ . '/auth_helper.php';
 $user = acad_auth();
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
+// Ensure foto_kegiatan column exists
+try {
+    $cols = db()->query("SHOW COLUMNS FROM acad_jurnal LIKE 'foto_kegiatan'")->fetchAll();
+    if (empty($cols)) {
+        db()->exec("ALTER TABLE acad_jurnal ADD COLUMN foto_kegiatan text DEFAULT NULL AFTER catatan");
+    }
+} catch (Exception $ex) {}
+
 switch ($action) {
     case 'list':
         listJurnal($user);
@@ -41,6 +49,63 @@ switch ($action) {
         break;
     default:
         json_response(400, false, 'Action tidak valid.');
+}
+
+try {
+    db()->exec("ALTER TABLE acad_jurnal ADD COLUMN foto_kegiatan text DEFAULT NULL AFTER catatan");
+} catch (Exception $ex) {}
+
+function helper_save_jurnal_photos($photosInput, $maxPhotos = 3) {
+    if (empty($photosInput)) return null;
+
+    if (is_string($photosInput)) {
+        $decoded = json_decode($photosInput, true);
+        if (is_array($decoded)) {
+            $photosInput = $decoded;
+        } else {
+            $photosInput = [$photosInput];
+        }
+    }
+
+    if (!is_array($photosInput)) return null;
+
+    $uploadRoot = realpath(__DIR__ . '/../../../uploads') ?: (__DIR__ . '/../../../uploads');
+    $targetDir = $uploadRoot . '/jurnal';
+    if (!is_dir($targetDir)) {
+        @mkdir($targetDir, 0777, true);
+    }
+
+    $savedPaths = [];
+    $count = 0;
+
+    foreach ($photosInput as $photo) {
+        if ($count >= $maxPhotos) break;
+        if (empty($photo) || !is_string($photo)) continue;
+
+        if (strpos($photo, 'uploads/') === 0 || strpos($photo, 'http://') === 0 || strpos($photo, 'https://') === 0) {
+            $savedPaths[] = $photo;
+            $count++;
+            continue;
+        }
+
+        if (preg_match('/^data:image\/(\w+);base64,/', $photo, $typeMatch)) {
+            $ext = strtolower($typeMatch[1]);
+            if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) $ext = 'jpg';
+            if ($ext === 'jpeg') $ext = 'jpg';
+
+            $base64Body = substr($photo, strpos($photo, ',') + 1);
+            $binary = base64_decode($base64Body);
+            if ($binary !== false && strlen($binary) > 0) {
+                $filename = 'jurnal_' . date('Ymd_His') . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+                $filePath = $targetDir . '/' . $filename;
+                file_put_contents($filePath, $binary);
+                $savedPaths[] = 'uploads/jurnal/' . $filename;
+                $count++;
+            }
+        }
+    }
+
+    return !empty($savedPaths) ? json_encode($savedPaths) : null;
 }
 
 /**
@@ -187,12 +252,14 @@ function createJurnal($user) {
 
         db()->beginTransaction();
 
+        $foto_kegiatan = helper_save_jurnal_photos($input['foto_kegiatan'] ?? null);
+
         $stmt = db()->prepare("
-            INSERT INTO acad_jurnal (guru_id, kelas_id, mapel_id, academic_year_id, jenis_jurnal, tanggal, jam_ke, tujuan_pembelajaran, indikator_tp, catatan, siswa_tidak_hadir)
-            VALUES (?, ?, ?, ?, 'kbm', ?, ?, ?, ?, ?, ?)
+            INSERT INTO acad_jurnal (guru_id, kelas_id, mapel_id, academic_year_id, jenis_jurnal, tanggal, jam_ke, tujuan_pembelajaran, indikator_tp, catatan, foto_kegiatan, siswa_tidak_hadir)
+            VALUES (?, ?, ?, ?, 'kbm', ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmt->execute([
-            $guru_id, $kelas_id, $mapel_id, $year_id, $tanggal, $jam_ke, $tp, $iptp, $catatan, 
+            $guru_id, $kelas_id, $mapel_id, $year_id, $tanggal, $jam_ke, $tp, $iptp, $catatan, $foto_kegiatan,
             is_array($siswa_tidak_hadir) ? json_encode($siswa_tidak_hadir) : $siswa_tidak_hadir
         ]);
 
@@ -284,11 +351,21 @@ function updateJurnal($user) {
         $stmtJ->execute([$id]);
         $orig = $stmtJ->fetch();
 
-        $stmt = db()->prepare("
-            UPDATE acad_jurnal SET tujuan_pembelajaran = ?, indikator_tp = ?, catatan = ?, siswa_tidak_hadir = ? WHERE id = ?
-        ");
-        $stmt->execute([$tp, $iptp, $catatan,
-            is_array($siswa_tidak_hadir) ? json_encode($siswa_tidak_hadir) : $siswa_tidak_hadir, $id]);
+        $hasFotoInput = array_key_exists('foto_kegiatan', $input);
+        if ($hasFotoInput) {
+            $foto_kegiatan = helper_save_jurnal_photos($input['foto_kegiatan'] ?? null);
+            $stmt = db()->prepare("
+                UPDATE acad_jurnal SET tujuan_pembelajaran = ?, indikator_tp = ?, catatan = ?, foto_kegiatan = ?, siswa_tidak_hadir = ? WHERE id = ?
+            ");
+            $stmt->execute([$tp, $iptp, $catatan, $foto_kegiatan,
+                is_array($siswa_tidak_hadir) ? json_encode($siswa_tidak_hadir) : $siswa_tidak_hadir, $id]);
+        } else {
+            $stmt = db()->prepare("
+                UPDATE acad_jurnal SET tujuan_pembelajaran = ?, indikator_tp = ?, catatan = ?, siswa_tidak_hadir = ? WHERE id = ?
+            ");
+            $stmt->execute([$tp, $iptp, $catatan,
+                is_array($siswa_tidak_hadir) ? json_encode($siswa_tidak_hadir) : $siswa_tidak_hadir, $id]);
+        }
 
         if ($orig && is_array($absensi) && count($absensi) > 0) {
             $kelas_id = $orig['kelas_id'];
@@ -340,6 +417,19 @@ function deleteJurnal($user) {
     if ($id <= 0) json_response(400, false, 'ID tidak valid.');
 
     try {
+        $stmtFoto = db()->prepare("SELECT foto_kegiatan FROM acad_jurnal WHERE id = ?");
+        $stmtFoto->execute([$id]);
+        $fotoKegiatan = $stmtFoto->fetchColumn();
+        if (!empty($fotoKegiatan)) {
+            $photos = json_decode($fotoKegiatan, true);
+            if (is_array($photos)) {
+                foreach ($photos as $p) {
+                    $fPath = realpath(__DIR__ . '/../../../' . $p);
+                    if ($fPath && file_exists($fPath)) @unlink($fPath);
+                }
+            }
+        }
+
         $stmt = db()->prepare("DELETE FROM acad_jurnal WHERE id = ?");
         $stmt->execute([$id]);
         json_response(200, true, 'Jurnal berhasil dihapus.');

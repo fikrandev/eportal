@@ -303,7 +303,7 @@ const EModal = {
                     <form id="${modalId}-form" onsubmit="return false;">${opt.form}</form>
                 </div>
                 <div class="emodal-footer">
-                    <button class="btn btn-ghost" onclick="EModal.handleCancel(this)">${opt.cancelText}</button>
+                    ${opt.cancelText ? `<button class="btn btn-ghost" onclick="EModal.handleCancel(this)">${opt.cancelText}</button>` : ''}
                     <button class="btn btn-primary emodal-save-btn" onclick="EModal.handleFormConfirm(this)">${opt.confirmText}</button>
                 </div>
             </div>

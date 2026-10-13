@@ -4536,6 +4536,90 @@ const Curriculum = {
         });
     },
 
+    compressImage(fileOrData, maxKB = 500, maxDimension = 1600) {
+        return new Promise((resolve, reject) => {
+            const processImage = (img) => {
+                let width = img.naturalWidth || img.width;
+                let height = img.naturalHeight || img.height;
+
+                if (width > maxDimension || height > maxDimension) {
+                    if (width > height) {
+                        height = Math.round((height * maxDimension) / width);
+                        width = maxDimension;
+                    } else {
+                        width = Math.round((width * maxDimension) / height);
+                        height = maxDimension;
+                    }
+                }
+
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                let quality = 0.85;
+                let dataUrl = canvas.toDataURL('image/jpeg', quality);
+
+                while (dataUrl.length * 0.75 > maxKB * 1024 && quality > 0.15) {
+                    quality -= 0.12;
+                    dataUrl = canvas.toDataURL('image/jpeg', quality);
+                }
+
+                if (dataUrl.length * 0.75 > maxKB * 1024) {
+                    const stepCanvas = document.createElement('canvas');
+                    stepCanvas.width = Math.round(width * 0.75);
+                    stepCanvas.height = Math.round(height * 0.75);
+                    const stepCtx = stepCanvas.getContext('2d');
+                    stepCtx.drawImage(canvas, 0, 0, stepCanvas.width, stepCanvas.height);
+                    dataUrl = stepCanvas.toDataURL('image/jpeg', 0.75);
+                }
+
+                const finalKB = Math.round((dataUrl.length * 0.75) / 1024);
+                resolve({ dataUrl, sizeKB: finalKB });
+            };
+
+            if (typeof fileOrData === 'string') {
+                const img = new Image();
+                img.onload = () => processImage(img);
+                img.onerror = reject;
+                img.src = fileOrData;
+            } else if (fileOrData instanceof Blob || fileOrData instanceof File) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => processImage(img);
+                    img.onerror = reject;
+                    img.src = e.target.result;
+                };
+                reader.onerror = reject;
+                reader.readAsDataURL(fileOrData);
+            } else {
+                reject(new Error('Invalid image source'));
+            }
+        });
+    },
+
+    previewImageModal(url) {
+        if (!url) return;
+        const cleanUrl = url.startsWith('http') || url.startsWith('data:') ? url : (url.startsWith('/') ? url : '/' + url);
+        EModal.show({
+            title: 'Pratinjau Foto Lampiran',
+            size: 'md',
+            content: `
+                <div style="text-align:center; padding:10px;">
+                    <img src="${cleanUrl}" style="max-width:100%; max-height:75vh; border-radius:12px; box-shadow:0 10px 25px rgba(0,0,0,0.15); display:block; margin:0 auto;" alt="Foto">
+                    <div style="margin-top:14px;">
+                        <a href="${cleanUrl}" target="_blank" download class="btn-acad btn-acad-sm btn-acad-primary" style="display:inline-flex; align-items:center; gap:6px;">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="14" height="14"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Unduh Foto
+                        </a>
+                    </div>
+                </div>
+            `
+        });
+    },
+
     loadBukuTable() {
         const kelas = $('#bukuKelas').val() || '';
         const jenis = $('#bukuJenis').val() || '';
@@ -4552,6 +4636,7 @@ const Curriculum = {
             const rows = data.map((b, idx) => {
                 const safeCatatan = this.escapeHtml(b.catatan).replace(/'/g, "\\'");
                 const safeJenis = this.escapeHtml(b.jenis).replace(/'/g, "\\'");
+                const safeFoto = (b.foto || '').replace(/'/g, "\\'");
                 const badgeClass = b.warna_badge || 'badge-info';
                 return `
                 <tr class="fade-in" style="animation-delay:${idx*0.03}s">
@@ -4561,11 +4646,19 @@ const Curriculum = {
                     <td><span class="badge ${badgeClass}">${this.escapeHtml(b.jenis)}</span></td>
                     <td style="max-width:280px;">
                         <div style="white-space:pre-wrap;">${this.escapeHtml(b.catatan)}</div>
+                        ${b.foto ? `
+                            <div style="margin-top:6px;">
+                                <button type="button" class="btn-acad btn-acad-xs btn-acad-outline" onclick="Curriculum.previewImageModal('${safeFoto}')" style="display:inline-flex; align-items:center; gap:5px; font-size:0.75rem; padding:2px 8px;">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13" height="13"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                    Lihat Foto
+                                </button>
+                            </div>
+                        ` : ''}
                         ${b.dicatat_nama ? `<div class="text-muted" style="font-size:0.72rem; margin-top:4px;">✍️ Dicatat: <strong>${this.escapeHtml(b.dicatat_nama)}</strong></div>` : ''}
                     </td>
                     <td>
                         <div style="display:flex; gap:6px;">
-                            <button class="btn-icon" title="Edit" onclick="Curriculum.editBuku(${b.id}, '${safeCatatan}', '${safeJenis}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                            <button class="btn-icon" title="Edit" onclick="Curriculum.editBuku(${b.id}, '${safeCatatan}', '${safeJenis}', '${safeFoto}')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
                             <button class="btn-icon danger" title="Hapus" onclick="Curriculum.deleteBuku(${b.id})"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
                         </div>
                     </td>
@@ -4741,8 +4834,31 @@ const Curriculum = {
                     <label class="form-label-acad">Catatan <span class="text-danger">*</span></label>
                     <textarea class="form-input-acad" id="fBukuCatatan" rows="3" placeholder="Tuliskan catatan kejadian, pelanggaran, prestasi, atau bimbingan..."></textarea>
                 </div>
+                <div class="form-group-acad mb-3">
+                    <label class="form-label-acad">Foto / Bukti Lampiran (Opsional)</label>
+                    <input type="file" id="fBukuFotoInput" accept="image/*" style="display:none;">
+                    <input type="hidden" id="fBukuFoto" value="">
+                    
+                    <div id="fBukuFotoDropzone" style="border: 2px dashed #cbd5e1; border-radius: 12px; padding: 14px; text-align: center; background: #f8fafc; cursor: pointer; transition: all 0.2s ease;">
+                        <div id="fBukuFotoPlaceholder">
+                            <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#64748b" stroke-width="1.8" style="margin-bottom: 4px;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                            <div style="font-size: 0.85rem; font-weight: 600; color: #334155;">Pilih atau Tarik Foto ke Sini</div>
+                            <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 2px;">Format JPG, PNG, WEBP (Otomatis dikonversi &le; 500 KB)</div>
+                        </div>
+                        <div id="fBukuFotoCompressing" style="display:none; color:#2563eb; font-size:0.85rem; font-weight:600; padding:10px;">
+                            <span class="acad-spinner-sm" style="display:inline-block; vertical-align:middle; margin-right:6px;"></span> Mengompresi gambar ke &le; 500 KB...
+                        </div>
+                        <div id="fBukuFotoPreviewWrap" style="display:none; text-align:center;">
+                            <img id="fBukuFotoImg" src="" style="max-height: 140px; max-width: 100%; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); object-fit: contain;">
+                            <div style="margin-top: 8px; display:flex; justify-content:center; align-items:center; gap:8px;">
+                                <span id="fBukuFotoSizeBadge" class="badge badge-info" style="font-size:0.75rem;"></span>
+                                <button type="button" class="btn-acad btn-acad-xs btn-acad-danger" id="fBukuFotoRemoveBtn">Hapus Foto</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
                 <div style="font-size:12px;color:var(--text-muted,#94a3b8);background:#f8fafc;padding:10px;border-radius:6px;border:1px solid #e2e8f0">
-                    <strong>ℹ️ Info:</strong> Catatan ini akan otomatis muncul pada menu Catatan / Buku Penghubung di <strong>Portal Siswa</strong> yang bersangkutan.
+                    <strong>ℹ️ Info:</strong> Catatan dan foto bukti ini akan otomatis masuk ke <strong>Portal Siswa</strong> yang bersangkutan.
                 </div>
             `,
             confirmText: 'Simpan Catatan',
@@ -4862,6 +4978,60 @@ const Curriculum = {
                     $('#csSiswaBtn').removeClass('active');
                 });
 
+                // Dropzone photo events
+                const handlePhotoFile = (file) => {
+                    $('#fBukuFotoPlaceholder').hide();
+                    $('#fBukuFotoPreviewWrap').hide();
+                    $('#fBukuFotoCompressing').show();
+                    this.compressImage(file, 500).then(res => {
+                        $('#fBukuFotoCompressing').hide();
+                        $('#fBukuFotoImg').attr('src', res.dataUrl);
+                        $('#fBukuFotoSizeBadge').text(`Ukuran: ${res.sizeKB} KB (Maks 500 KB)`);
+                        $('#fBukuFotoPreviewWrap').show();
+                        $('#fBukuFoto').val(res.dataUrl);
+                    }).catch(err => {
+                        $('#fBukuFotoCompressing').hide();
+                        $('#fBukuFotoPlaceholder').show();
+                        EModal.toast({ type: 'error', title: 'Gagal', message: 'Gagal memproses gambar.' });
+                    });
+                };
+
+                $('#fBukuFotoDropzone').on('click', function(e) {
+                    if ($(e.target).closest('#fBukuFotoRemoveBtn').length) return;
+                    $('#fBukuFotoInput').click();
+                });
+
+                $('#fBukuFotoDropzone').on('dragover', function(e) {
+                    e.preventDefault();
+                    $(this).css('border-color', '#2563eb').css('background', '#eff6ff');
+                }).on('dragleave drop', function(e) {
+                    e.preventDefault();
+                    $(this).css('border-color', '#cbd5e1').css('background', '#f8fafc');
+                });
+
+                $('#fBukuFotoDropzone').on('drop', function(e) {
+                    e.preventDefault();
+                    const files = e.originalEvent?.dataTransfer?.files;
+                    if (files && files.length && files[0].type.startsWith('image/')) {
+                        handlePhotoFile(files[0]);
+                    }
+                });
+
+                $('#fBukuFotoInput').on('change', function(e) {
+                    const files = e.target.files;
+                    if (files && files.length) {
+                        handlePhotoFile(files[0]);
+                    }
+                });
+
+                $('#fBukuFotoRemoveBtn').on('click', function(e) {
+                    e.stopPropagation();
+                    $('#fBukuFotoInput').val('');
+                    $('#fBukuFoto').val('');
+                    $('#fBukuFotoPreviewWrap').hide();
+                    $('#fBukuFotoPlaceholder').show();
+                });
+
                 // Global outside-click listener
                 $(document).off('click.acadCsModal').on('click.acadCsModal', function(e) {
                     if (!$(e.target).closest('#csKelasContainer').length) {
@@ -4880,6 +5050,7 @@ const Curriculum = {
                 const catatan = ($('#fBukuCatatan').val() || '').trim();
                 const tgl = $('#fBukuTgl').val() || today;
                 const jenis = $('#fBukuJenis').val() || 'Konsultasi';
+                const foto = $('#fBukuFoto').val() || '';
 
                 if (!kelas) {
                     EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Silakan cari & pilih Kelas terlebih dahulu.' });
@@ -4901,7 +5072,8 @@ const Curriculum = {
                         kelas_id: +kelas,
                         jenis: jenis,
                         tanggal: tgl,
-                        catatan: catatan
+                        catatan: catatan,
+                        foto: foto
                     }
                 }).done(res => {
                     EModal.closeAll();
@@ -4915,7 +5087,7 @@ const Curriculum = {
         });
     },
 
-    editBuku(id, catatan, currentJenis) {
+    editBuku(id, catatan, currentJenis, currentFoto = '') {
         this.api('buku_penghubung.php?action=list_types').done(resT => {
             const typesList = resT.data || [];
             let typesOpts = '';
@@ -4931,23 +5103,100 @@ const Curriculum = {
                 `;
             }
 
+            const hasExistingFoto = !!currentFoto;
+            const existingFotoUrl = currentFoto.startsWith('http') || currentFoto.startsWith('/') ? currentFoto : '/' + currentFoto;
+
             EModal.form({
                 title: 'Edit Catatan Buku Penghubung', size: 'md',
                 form: `
                     <div class="form-group-acad mb-3"><label class="form-label-acad">Jenis Catatan</label><select class="form-select-acad" id="fBukuEditJenis">${typesOpts}</select></div>
                     <div class="form-group-acad mb-3"><label class="form-label-acad">Isi Catatan</label><textarea class="form-input-acad" id="fBukuEditCatatan" rows="4">${catatan}</textarea></div>
+                    
+                    <div class="form-group-acad mb-3">
+                        <label class="form-label-acad">Foto / Bukti Lampiran</label>
+                        <input type="file" id="fBukuEditFotoInput" accept="image/*" style="display:none;">
+                        <input type="hidden" id="fBukuEditFotoAction" value="keep">
+                        <input type="hidden" id="fBukuEditFotoData" value="">
+                        
+                        <div id="fBukuEditFotoDropzone" style="border: 2px dashed #cbd5e1; border-radius: 12px; padding: 14px; text-align: center; background: #f8fafc; cursor: pointer; transition: all 0.2s ease;">
+                            <div id="fBukuEditFotoPlaceholder" style="${hasExistingFoto ? 'display:none;' : ''}">
+                                <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="#64748b" stroke-width="1.8" style="margin-bottom: 4px;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                                <div style="font-size: 0.85rem; font-weight: 600; color: #334155;">Pilih atau Tarik Foto Baru</div>
+                                <div style="font-size: 0.72rem; color: #94a3b8; margin-top: 2px;">Format JPG, PNG, WEBP (Otomatis &le; 500 KB)</div>
+                            </div>
+                            <div id="fBukuEditFotoCompressing" style="display:none; color:#2563eb; font-size:0.85rem; font-weight:600; padding:10px;">
+                                <span class="acad-spinner-sm" style="display:inline-block; vertical-align:middle; margin-right:6px;"></span> Mengompresi gambar ke &le; 500 KB...
+                            </div>
+                            <div id="fBukuEditFotoPreviewWrap" style="${hasExistingFoto ? '' : 'display:none;'} text-align:center;">
+                                <img id="fBukuEditFotoImg" src="${hasExistingFoto ? existingFotoUrl : ''}" style="max-height: 140px; max-width: 100%; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); object-fit: contain;">
+                                <div style="margin-top: 8px; display:flex; justify-content:center; align-items:center; gap:8px;">
+                                    <span id="fBukuEditFotoSizeBadge" class="badge badge-info" style="font-size:0.75rem;">${hasExistingFoto ? 'Foto Saat Ini' : ''}</span>
+                                    <button type="button" class="btn-acad btn-acad-xs btn-acad-danger" id="fBukuEditFotoRemoveBtn">Hapus Foto</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 `,
                 confirmText: 'Simpan Perubahan',
+                onOpen: () => {
+                    const handleEditPhotoFile = (file) => {
+                        $('#fBukuEditFotoPlaceholder').hide();
+                        $('#fBukuEditFotoPreviewWrap').hide();
+                        $('#fBukuEditFotoCompressing').show();
+                        this.compressImage(file, 500).then(res => {
+                            $('#fBukuEditFotoCompressing').hide();
+                            $('#fBukuEditFotoImg').attr('src', res.dataUrl);
+                            $('#fBukuEditFotoSizeBadge').text(`Ukuran: ${res.sizeKB} KB (Maks 500 KB)`);
+                            $('#fBukuEditFotoPreviewWrap').show();
+                            $('#fBukuEditFotoAction').val('change');
+                            $('#fBukuEditFotoData').val(res.dataUrl);
+                        }).catch(() => {
+                            $('#fBukuEditFotoCompressing').hide();
+                            $('#fBukuEditFotoPlaceholder').show();
+                            EModal.toast({ type: 'error', title: 'Gagal', message: 'Gagal memproses gambar.' });
+                        });
+                    };
+
+                    $('#fBukuEditFotoDropzone').on('click', function(e) {
+                        if ($(e.target).closest('#fBukuEditFotoRemoveBtn').length) return;
+                        $('#fBukuEditFotoInput').click();
+                    });
+
+                    $('#fBukuEditFotoInput').on('change', function(e) {
+                        const files = e.target.files;
+                        if (files && files.length) handleEditPhotoFile(files[0]);
+                    });
+
+                    $('#fBukuEditFotoRemoveBtn').on('click', function(e) {
+                        e.stopPropagation();
+                        $('#fBukuEditFotoInput').val('');
+                        $('#fBukuEditFotoAction').val('delete');
+                        $('#fBukuEditFotoData').val('');
+                        $('#fBukuEditFotoPreviewWrap').hide();
+                        $('#fBukuEditFotoPlaceholder').show();
+                    });
+                },
                 onConfirm: () => {
                     const updatedCatatan = ($('#fBukuEditCatatan').val() || '').trim();
                     const updatedJenis = $('#fBukuEditJenis').val();
+                    const fotoAction = $('#fBukuEditFotoAction').val();
+                    const fotoData = $('#fBukuEditFotoData').val();
+
                     if (!updatedCatatan) {
                         EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Catatan tidak boleh kosong.' });
                         return false;
                     }
+
+                    const postData = { id, jenis: updatedJenis, catatan: updatedCatatan };
+                    if (fotoAction === 'change') {
+                        postData.foto = fotoData;
+                    } else if (fotoAction === 'delete') {
+                        postData.foto = 'delete';
+                    }
+
                     this.api('buku_penghubung.php?action=update', {
                         method: 'POST',
-                        data: { id, jenis: updatedJenis, catatan: updatedCatatan }
+                        data: postData
                     }).done(res => {
                         EModal.closeAll();
                         EModal.toast({ type: 'success', title: 'Berhasil', message: res.message || 'Catatan berhasil diperbarui.' });
@@ -7212,19 +7461,24 @@ const Curriculum = {
                     <h3>Manajemen Jadwal & Generator</h3>
                 </div>
                 <div class="sch-card-body">
-                    <div style="display:flex;gap:12px;background:var(--bg-color);padding:24px;border-radius:12px;margin-bottom:24px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+                    <div style="display:flex;gap:12px;background:var(--bg-color);padding:20px;border-radius:12px;margin-bottom:24px;align-items:center;justify-content:space-between;flex-wrap:wrap">
                         <div>
-                            <h4 style="margin:0 0 8px">Engine Algoritma Heuristik</h4>
-                            <p style="margin:0;font-size:0.85rem;color:var(--text-muted)">Menghasilkan jadwal berdasarkan distribusi dan mematuhi constraints ketersediaan dan aturan blok mapel.</p>
+                            <h4 style="margin:0 0 6px">Engine Algoritma & Pengatur Jadwal</h4>
+                            <p style="margin:0;font-size:0.85rem;color:var(--text-muted)">Padatkan slot kosong, hilangkan jam bolong di tengah hari, dan bebas drag & drop jadwal dengan deteksi bentrok otomatis.</p>
                         </div>
-                        <button class="btn btn-primary" onclick="Curriculum.generateJadwal()" style="padding:12px 24px;font-size:1.1rem">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg> Generate Jadwal
-                        </button>
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                            <button class="btn-acad btn-acad-warning" onclick="Curriculum.autoFillGaps()" style="padding:10px 18px;font-size:0.95rem;display:flex;align-items:center;gap:8px;font-weight:700;" title="Otomatis isi slot jam yang masih kosong dan padatkan jadwal">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Padatkan & Isi Jam Kosong
+                            </button>
+                            <button class="btn-acad btn-acad-primary" onclick="Curriculum.generateJadwal()" style="padding:10px 20px;font-size:0.95rem;display:flex;align-items:center;gap:8px;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg> Generate Ulang
+                            </button>
+                        </div>
                     </div>
 
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
                         <select id="jdwFilter" class="form-select" style="max-width:300px"><option value="">Semua Kelas</option></select>
-                        <button class="btn btn-outline" id="btnCetakJadwal" onclick="Curriculum.printJadwal()">Cetak PDF</button>
+                        <button class="btn-acad btn-acad-outline" id="btnCetakJadwal" onclick="Curriculum.printJadwal()">Cetak PDF</button>
                     </div>
                     <div id="jdwViewer"><div class="sch-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><h3>Memuat jadwal...</h3></div></div>
                 </div>
@@ -7236,6 +7490,34 @@ const Curriculum = {
         });
         $('#jdwFilter').on('change', (e) => this.viewJadwal($(e.target).val()));
         this.viewJadwal('');
+    },
+
+    autoFillGaps() {
+        const loader = EModal.loading('Memeriksa slot jam kosong dan memadatkan jadwal...');
+        this.api('sch_jadwal.php?action=auto_fill_gaps', { method: 'POST' }).done(res => {
+            EModal.close(loader);
+            if (res.data?.has_clashes) {
+                EModal.toast({
+                    type: 'warning',
+                    title: 'Jadwal Dipadatkan!',
+                    message: res.message
+                });
+            } else {
+                EModal.toast({
+                    type: 'success',
+                    title: 'Sukses!',
+                    message: res.message
+                });
+            }
+            this.viewJadwal($('#jdwFilter').val());
+        }).fail(err => {
+            EModal.close(loader);
+            EModal.toast({
+                type: 'error',
+                title: 'Gagal',
+                message: err.responseJSON?.message || 'Gagal memproses pengisian jam kosong.'
+            });
+        });
     },
 
     generateJadwal() {
@@ -8821,50 +9103,59 @@ const Curriculum = {
             title: '🏖️ Pengaturan Hari Libur (Non-Efektif)',
             size: 'lg',
             confirmText: 'Tutup',
-            cancelText: 'Selesai',
+            cancelText: '',
             form: `
                 <style>
+                    .holiday-modal-container {
+                        display: grid;
+                        grid-template-columns: 360px 1fr;
+                        gap: 18px;
+                        align-items: start;
+                    }
+                    @media (max-width: 820px) {
+                        .holiday-modal-container {
+                            grid-template-columns: 1fr;
+                        }
+                    }
                     .holiday-cal-wrap {
                         background: #FFFFFF;
                         border: 1px solid #E2E8F0;
                         border-radius: 12px;
-                        padding: 16px;
-                        margin-bottom: 16px;
-                        box-shadow: 0 2px 8px rgba(0,0,0,0.03);
+                        padding: 14px;
+                        box-shadow: 0 1px 4px rgba(0,0,0,0.03);
                     }
                     .holiday-cal-header {
                         display: flex;
                         justify-content: space-between;
                         align-items: center;
-                        margin-bottom: 12px;
+                        margin-bottom: 10px;
                         flex-wrap: wrap;
-                        gap: 8px;
+                        gap: 6px;
                     }
                     .holiday-cal-grid-head {
                         display: grid;
                         grid-template-columns: repeat(7, 1fr);
                         text-align: center;
                         font-weight: 700;
-                        font-size: 0.8rem;
+                        font-size: 0.75rem;
                         color: #64748B;
-                        padding-bottom: 8px;
+                        padding-bottom: 6px;
                         margin-bottom: 6px;
                         border-bottom: 1px solid #F1F5F9;
                     }
                     .holiday-cal-grid-days {
                         display: grid;
                         grid-template-columns: repeat(7, 1fr);
-                        gap: 6px;
+                        gap: 5px;
                     }
                     .holiday-day-cell {
-                        aspect-ratio: 1;
-                        min-height: 44px;
+                        height: 42px;
                         display: flex;
                         flex-direction: column;
                         align-items: center;
                         justify-content: center;
-                        border-radius: 10px;
-                        font-size: 0.95rem;
+                        border-radius: 8px;
+                        font-size: 0.88rem;
                         font-weight: 600;
                         color: #334155;
                         background: #F8FAFC;
@@ -8873,6 +9164,7 @@ const Curriculum = {
                         transition: all 0.15s ease-in-out;
                         position: relative;
                         user-select: none;
+                        padding: 2px 0;
                     }
                     .holiday-day-cell:hover:not(.other-month) {
                         background: #F3E8FF;
@@ -8893,10 +9185,10 @@ const Curriculum = {
                     .holiday-day-cell.is-today::before {
                         content: '';
                         position: absolute;
-                        top: 4px;
-                        left: 4px;
-                        width: 6px;
-                        height: 6px;
+                        top: 3px;
+                        left: 3px;
+                        width: 5px;
+                        height: 5px;
                         background: #3B82F6;
                         border-radius: 50%;
                     }
@@ -8907,10 +9199,10 @@ const Curriculum = {
                     }
                     .holiday-day-cell .holiday-indicator {
                         display: block;
-                        font-size: 0.65rem;
+                        font-size: 0.6rem;
                         font-weight: 700;
                         line-height: 1;
-                        margin-top: 2px;
+                        margin-top: 1px;
                     }
                     .holiday-day-cell.is-saved-holiday .holiday-indicator {
                         color: #DC2626;
@@ -8919,7 +9211,7 @@ const Curriculum = {
                         background: #7C3AED !important;
                         border-color: #6D28D9 !important;
                         color: #FFFFFF !important;
-                        box-shadow: 0 4px 10px rgba(124, 58, 237, 0.35);
+                        box-shadow: 0 2px 6px rgba(124, 58, 237, 0.3);
                         transform: scale(1.02);
                     }
                     .holiday-day-cell.is-selected .holiday-indicator {
@@ -8928,13 +9220,13 @@ const Curriculum = {
                     .holiday-chip {
                         display: inline-flex;
                         align-items: center;
-                        gap: 6px;
+                        gap: 5px;
                         background: #EDE9FE;
                         color: #6D28D9;
                         border: 1px solid #DDD6FE;
                         border-radius: 20px;
-                        padding: 4px 10px;
-                        font-size: 0.8rem;
+                        padding: 3px 8px;
+                        font-size: 0.75rem;
                         font-weight: 600;
                         transition: all 0.15s ease;
                     }
@@ -8945,7 +9237,7 @@ const Curriculum = {
                         cursor: pointer;
                         color: #6D28D9;
                         font-weight: 700;
-                        font-size: 0.85rem;
+                        font-size: 0.8rem;
                         line-height: 1;
                         display: flex;
                         align-items: center;
@@ -8956,9 +9248,9 @@ const Curriculum = {
                     .btn-tag-shortcut {
                         background: #F1F5F9;
                         border: 1px solid #CBD5E1;
-                        border-radius: 14px;
-                        padding: 4px 10px;
-                        font-size: 0.75rem;
+                        border-radius: 12px;
+                        padding: 3px 8px;
+                        font-size: 0.72rem;
                         color: #475569;
                         cursor: pointer;
                         transition: all 0.15s;
@@ -8970,104 +9262,112 @@ const Curriculum = {
                     }
                 </style>
 
-                <!-- Panduan Singkat -->
-                <div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:10px; padding:10px 14px; margin-bottom:14px; font-size:0.85rem; color:#1E40AF; display:flex; align-items:center; gap:8px;">
-                    <span style="font-size:1.1rem;">💡</span>
-                    <span><strong>Pilih Tanggal 1 per 1:</strong> Klik langsung pada tanggal di kalender untuk memilih hari libur (bisa memilih beberapa tanggal sekaligus). Klik kembali tanggal untuk membatalkannya.</span>
-                </div>
-
-                <!-- Calendar Card -->
-                <div class="holiday-cal-wrap">
-                    <div class="holiday-cal-header">
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            <button type="button" class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.navHolidayCal(-1)" style="padding:6px 12px; font-weight:700;">◀</button>
-                            <h4 id="lblHolidayCalMonth" style="margin:0; font-size:1.1rem; font-weight:700; color:#1E293B; min-width:160px; text-align:center;">Maret 2026</h4>
-                            <button type="button" class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.navHolidayCal(1)" style="padding:6px 12px; font-weight:700;">▶</button>
-                            <button type="button" class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.jumpHolidayCalToday()" style="padding:4px 10px; font-size:0.75rem;">Hari Ini</button>
-                        </div>
-                        <div style="display:flex; align-items:center; gap:8px; font-size:0.75rem; color:#64748B;">
-                            <span style="display:inline-flex; align-items:center; gap:4px;">
-                                <span style="width:12px; height:12px; border-radius:3px; background:#7C3AED; display:inline-block;"></span> Dipilih
-                            </span>
-                            <span style="display:inline-flex; align-items:center; gap:4px;">
-                                <span style="width:12px; height:12px; border-radius:3px; background:#FEE2E2; border:1px solid #FCA5A5; display:inline-block;"></span> Sudah Libur
-                            </span>
-                        </div>
-                    </div>
-
-                    <div class="holiday-cal-grid-head">
-                        <div style="color:#EF4444;">Min</div>
-                        <div>Sen</div>
-                        <div>Sel</div>
-                        <div>Rab</div>
-                        <div>Kam</div>
-                        <div>Jum</div>
-                        <div style="color:#D97706;">Sab</div>
-                    </div>
-
-                    <div id="gridHolidayDays" class="holiday-cal-grid-days">
-                        <!-- Rendered by _renderHolidayCalendarGrid -->
-                    </div>
-                </div>
-
-                <!-- Selected Dates & Form Box -->
-                <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; padding:14px; margin-bottom:16px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                        <div style="font-weight:600; font-size:0.875rem; color:#1E293B; display:flex; align-items:center; gap:6px;">
-                            <span>📌 Tanggal Dipilih:</span>
-                            <span id="badgeSelectedCount" style="background:#7C3AED; color:white; border-radius:12px; padding:2px 8px; font-size:0.75rem; font-weight:700;">0 tanggal</span>
-                        </div>
-                        <button type="button" class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.clearSelectedHolidayDates()" id="btnClearSelectedDates" style="display:none; padding:2px 8px; font-size:0.75rem; color:#EF4444; border-color:#FCA5A5;">
-                            Reset Pilihan
-                        </button>
-                    </div>
-
-                    <div id="containerSelectedChips" style="display:flex; flex-wrap:wrap; gap:6px; min-height:36px; align-items:center; margin-bottom:12px;">
-                        <span style="font-size:0.8rem; color:#94A3B8; font-style:italic;">💡 Klik tanggal satu per satu pada kalender di atas untuk menandai hari libur.</span>
-                    </div>
-
-                    <div style="padding-top:12px; border-top:1px dashed #CBD5E1;">
-                        <div class="form-group" style="margin-bottom:8px;">
-                            <label style="font-weight:600; font-size:0.875rem; color:#334155;">Keterangan Hari Libur <span style="color:#EF4444;">*</span></label>
-                            <input type="text" id="fKetLibur" class="form-input" placeholder="Misal: Libur Nasional / Cuti Bersama / Libur Idul Fitri" style="width:100%; font-size:0.9rem;">
+                <div class="holiday-modal-container">
+                    <!-- KOLOM KIRI: KALENDER -->
+                    <div>
+                        <!-- Panduan Singkat -->
+                        <div style="background:#EFF6FF; border:1px solid #BFDBFE; border-radius:10px; padding:8px 12px; margin-bottom:12px; font-size:0.8rem; color:#1E40AF; display:flex; align-items:center; gap:8px;">
+                            <span style="font-size:1.1rem; line-height:1;">💡</span>
+                            <span><strong>Pilih Tanggal:</strong> Klik tanggal di kalender (bisa banyak sekaligus). Klik lagi untuk membatalkan.</span>
                         </div>
 
-                        <div style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:12px; align-items:center;">
-                            <span style="font-size:0.75rem; color:#64748B;">Pilihan Cepat:</span>
-                            <button type="button" class="btn-tag-shortcut" onclick="Curriculum.setKetLiburQuick('Libur Nasional')">Libur Nasional</button>
-                            <button type="button" class="btn-tag-shortcut" onclick="Curriculum.setKetLiburQuick('Cuti Bersama')">Cuti Bersama</button>
-                            <button type="button" class="btn-tag-shortcut" onclick="Curriculum.setKetLiburQuick('Libur Semester')">Libur Semester</button>
-                            <button type="button" class="btn-tag-shortcut" onclick="Curriculum.setKetLiburQuick('Awal Ramadhan')">Awal Ramadhan</button>
-                            <button type="button" class="btn-tag-shortcut" onclick="Curriculum.setKetLiburQuick('Hari Raya Idul Fitri')">Idul Fitri</button>
-                            <button type="button" class="btn-tag-shortcut" onclick="Curriculum.setKetLiburQuick('Kegiatan Sekolah')">Kegiatan Sekolah</button>
+                        <!-- Calendar Card -->
+                        <div class="holiday-cal-wrap">
+                            <div class="holiday-cal-header">
+                                <div style="display:flex; align-items:center; gap:6px;">
+                                    <button type="button" class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.navHolidayCal(-1)" style="padding:4px 8px; font-weight:700;">◀</button>
+                                    <h4 id="lblHolidayCalMonth" style="margin:0; font-size:1rem; font-weight:700; color:#1E293B; min-width:130px; text-align:center;">Maret 2026</h4>
+                                    <button type="button" class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.navHolidayCal(1)" style="padding:4px 8px; font-weight:700;">▶</button>
+                                    <button type="button" class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.jumpHolidayCalToday()" style="padding:3px 8px; font-size:0.72rem;">Hari Ini</button>
+                                </div>
+                                <div style="display:flex; align-items:center; gap:8px; font-size:0.72rem; color:#64748B;">
+                                    <span style="display:inline-flex; align-items:center; gap:4px;">
+                                        <span style="width:10px; height:10px; border-radius:3px; background:#7C3AED; display:inline-block;"></span> Dipilih
+                                    </span>
+                                    <span style="display:inline-flex; align-items:center; gap:4px;">
+                                        <span style="width:10px; height:10px; border-radius:3px; background:#FEE2E2; border:1px solid #FCA5A5; display:inline-block;"></span> Sudah Libur
+                                    </span>
+                                </div>
+                            </div>
+
+                            <div class="holiday-cal-grid-head">
+                                <div style="color:#EF4444;">Min</div>
+                                <div>Sen</div>
+                                <div>Sel</div>
+                                <div>Rab</div>
+                                <div>Kam</div>
+                                <div>Jum</div>
+                                <div style="color:#D97706;">Sab</div>
+                            </div>
+
+                            <div id="gridHolidayDays" class="holiday-cal-grid-days">
+                                <!-- Rendered by _renderHolidayCalendarGrid -->
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- KOLOM KANAN: FORM & DAFTAR HARI LIBUR -->
+                    <div>
+                        <!-- Selected Dates & Form Box -->
+                        <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; padding:12px; margin-bottom:14px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                <div style="font-weight:600; font-size:0.85rem; color:#1E293B; display:flex; align-items:center; gap:6px;">
+                                    <span>📌 Tanggal Dipilih:</span>
+                                    <span id="badgeSelectedCount" style="background:#7C3AED; color:white; border-radius:12px; padding:1px 7px; font-size:0.72rem; font-weight:700;">0 tanggal</span>
+                                </div>
+                                <button type="button" class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.clearSelectedHolidayDates()" id="btnClearSelectedDates" style="display:none; padding:2px 8px; font-size:0.72rem; color:#EF4444; border-color:#FCA5A5;">
+                                    Reset Pilihan
+                                </button>
+                            </div>
+
+                            <div id="containerSelectedChips" style="display:flex; flex-wrap:wrap; gap:5px; min-height:28px; align-items:center; margin-bottom:10px; max-height:80px; overflow-y:auto;">
+                                <span style="font-size:0.75rem; color:#94A3B8; font-style:italic;">💡 Klik tanggal pada kalender untuk menandai hari libur.</span>
+                            </div>
+
+                            <div style="padding-top:10px; border-top:1px dashed #CBD5E1;">
+                                <div class="form-group" style="margin-bottom:8px;">
+                                    <label style="font-weight:600; font-size:0.8rem; color:#334155;">Keterangan Hari Libur <span style="color:#EF4444;">*</span></label>
+                                    <input type="text" id="fKetLibur" class="form-input" placeholder="Misal: Libur Nasional / Cuti Bersama" style="width:100%; font-size:0.85rem; padding:7px 10px;">
+                                </div>
+
+                                <div style="display:flex; flex-wrap:wrap; gap:4px; margin-bottom:10px; align-items:center;">
+                                    <span style="font-size:0.72rem; color:#64748B;">Pilihan Cepat:</span>
+                                    <button type="button" class="btn-tag-shortcut" onclick="Curriculum.setKetLiburQuick('Libur Nasional')">Libur Nasional</button>
+                                    <button type="button" class="btn-tag-shortcut" onclick="Curriculum.setKetLiburQuick('Cuti Bersama')">Cuti Bersama</button>
+                                    <button type="button" class="btn-tag-shortcut" onclick="Curriculum.setKetLiburQuick('Libur Semester')">Libur Semester</button>
+                                    <button type="button" class="btn-tag-shortcut" onclick="Curriculum.setKetLiburQuick('Awal Ramadhan')">Awal Ramadhan</button>
+                                    <button type="button" class="btn-tag-shortcut" onclick="Curriculum.setKetLiburQuick('Hari Raya Idul Fitri')">Idul Fitri</button>
+                                    <button type="button" class="btn-tag-shortcut" onclick="Curriculum.setKetLiburQuick('Kegiatan Sekolah')">Kegiatan Sekolah</button>
+                                </div>
+
+                                <button type="button" class="btn-acad btn-acad-primary" id="btnSimpanLibur" onclick="Curriculum.saveHariLibur()" style="width:100%; padding:8px 12px; font-weight:600; font-size:0.88rem;">
+                                    ➕ Simpan Hari Libur Terpilih
+                                </button>
+                            </div>
                         </div>
 
-                        <button type="button" class="btn-acad btn-acad-primary" id="btnSimpanLibur" onclick="Curriculum.saveHariLibur()" style="width:100%; padding:10px; font-weight:600; font-size:0.95rem;">
-                            ➕ Simpan Hari Libur Terpilih
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Table of Saved Holidays -->
-                <div style="margin-top:16px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-                        <h4 style="margin:0; font-size:0.95rem; font-weight:700; color:#1E293B;">📋 Daftar Hari Libur Terdaftar</h4>
-                        <span id="totalHariLiburCount" style="font-size:0.8rem; color:#64748B; background:#F1F5F9; padding:2px 8px; border-radius:10px;">0 hari</span>
-                    </div>
-                    <div class="table-responsive" style="max-height:260px; overflow-y:auto; border:1px solid #E2E8F0; border-radius:10px;">
-                        <table class="acad-table" id="tableHariLibur" style="margin-bottom:0;">
-                            <thead>
-                                <tr>
-                                    <th width="40" class="text-center">No</th>
-                                    <th>Hari & Tanggal</th>
-                                    <th>Keterangan</th>
-                                    <th width="70" class="text-center">Aksi</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr><td colspan="4" class="text-center" style="padding:20px;">Memuat data...</td></tr>
-                            </tbody>
-                        </table>
+                        <!-- Table of Saved Holidays -->
+                        <div>
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+                                <h4 style="margin:0; font-size:0.88rem; font-weight:700; color:#1E293B;">📋 Daftar Hari Libur Terdaftar</h4>
+                                <span id="totalHariLiburCount" style="font-size:0.75rem; color:#64748B; background:#F1F5F9; padding:2px 7px; border-radius:10px;">0 hari</span>
+                            </div>
+                            <div class="table-responsive" style="max-height:220px; overflow-y:auto; border:1px solid #E2E8F0; border-radius:8px;">
+                                <table class="acad-table" id="tableHariLibur" style="margin-bottom:0; font-size:0.82rem;">
+                                    <thead>
+                                        <tr>
+                                            <th width="35" class="text-center">No</th>
+                                            <th>Hari & Tanggal</th>
+                                            <th>Keterangan</th>
+                                            <th width="50" class="text-center">Aksi</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <tr><td colspan="4" class="text-center" style="padding:16px;">Memuat data...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 </div>
             `,

@@ -345,10 +345,25 @@ const App = {
             } else {
                 html += '<div style="display:flex; flex-direction:column; gap:12px;">';
                 data.forEach(k => {
+                    const fotos = Array.isArray(k.fotos) ? k.fotos : [];
+                    let fotosHtml = '';
+                    if (fotos.length > 0) {
+                        fotosHtml = `
+                            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;">
+                                ${fotos.map(p => {
+                                    const pUrl = p.startsWith('http') || p.startsWith('data:') ? p : ('../' + p.replace(/^\/+/, ''));
+                                    return `
+                                        <img src="${pUrl}" alt="Foto Kegiatan" style="width: 76px; height: 76px; border-radius: 8px; object-fit: cover; border: 1px solid #e2e8f0; cursor: pointer; box-shadow: 0 1px 4px rgba(0,0,0,0.06);" onclick="App.showImageLightbox(this.src)" onerror="this.style.display='none'">
+                                    `;
+                                }).join('')}
+                            </div>
+                        `;
+                    }
                     html += `
                         <div class="card" style="padding: 14px;">
                             <div style="font-weight: 700; color: var(--primary); font-size: 0.9rem; margin-bottom: 6px;">📅 ${k.tanggal_indo || k.tanggal}</div>
                             <div style="font-size: 0.9rem; color: var(--text-primary); line-height: 1.5; white-space: pre-wrap;">${k.catatan}</div>
+                            ${fotosHtml}
                         </div>
                     `;
                 });
@@ -734,6 +749,10 @@ const App = {
 
             let bkHTML = list.length ? list.map(b => {
                 const badgeCls = badgeClassMap[b.warna_badge] || 'badge-info';
+                let fotoUrl = '';
+                if (b.foto) {
+                    fotoUrl = b.foto.startsWith('http') || b.foto.startsWith('data:') ? b.foto : ('../' + b.foto.replace(/^\/+/, ''));
+                }
                 return `
                     <div class="card" style="margin-bottom: 14px; position: relative;">
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; gap: 8px;">
@@ -743,6 +762,14 @@ const App = {
                             <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: 500;">📅 ${b.tanggal_indo || b.tanggal}</div>
                         </div>
                         <div style="font-size: 0.92rem; color: var(--text-primary); line-height: 1.6; margin-bottom: 10px; white-space: pre-wrap; background: #f8fafc; padding: 10px 14px; border-radius: 12px; border: 1px solid #f1f5f9;">${b.catatan}</div>
+                        ${fotoUrl ? `
+                            <div style="margin-bottom: 12px;">
+                                <div style="font-size: 0.75rem; font-weight: 600; color: var(--text-secondary); margin-bottom: 6px;">📷 Lampiran Foto Bukti:</div>
+                                <div style="position: relative; display: inline-block; max-width: 100%;">
+                                    <img src="${fotoUrl}" alt="Lampiran Foto" style="max-height: 220px; max-width: 100%; border-radius: 10px; border: 1px solid #e2e8f0; object-fit: cover; cursor: pointer; display: block; box-shadow: 0 2px 6px rgba(0,0,0,0.06);" onclick="App.showImageLightbox(this.src)" onerror="this.parentElement.style.display='none'">
+                                </div>
+                            </div>
+                        ` : ''}
                         ${b.dicatat_nama ? `
                             <div style="font-size: 0.78rem; color: var(--text-muted); display: flex; align-items: center; gap: 6px;">
                                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
@@ -771,6 +798,26 @@ const App = {
                 </div>
             `;
         }
+    },
+
+    showImageLightbox(src) {
+        if (!src) return;
+        const existing = document.getElementById('imageLightboxModal');
+        if (existing) existing.remove();
+
+        const modal = document.createElement('div');
+        modal.id = 'imageLightboxModal';
+        modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); z-index:99999; display:flex; align-items:center; justify-content:center; padding:16px; backdrop-filter:blur(4px);';
+        modal.innerHTML = `
+            <div style="position:relative; max-width:92%; max-height:92%; text-align:center;">
+                <button type="button" style="position:absolute; top:-36px; right:0; background:rgba(255,255,255,0.25); border:none; color:white; width:32px; height:32px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:bold;">✕</button>
+                <img src="${src}" style="max-width:100%; max-height:80vh; border-radius:12px; box-shadow:0 10px 30px rgba(0,0,0,0.5); object-fit:contain; display:block; margin:0 auto;" alt="Pratinjau Foto">
+            </div>
+        `;
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal || e.target.tagName === 'BUTTON') modal.remove();
+        });
+        document.body.appendChild(modal);
     },
 
     showIzinModal() {

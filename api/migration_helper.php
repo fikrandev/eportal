@@ -6,7 +6,7 @@
 require_once __DIR__ . '/config.php';
 
 function run_auto_migrations() {
-    $target_version = 21;
+    $target_version = 22;
     
     // 1. Get current version (default to 0 if not set or if table settings doesn't exist yet)
     $current_version = 0;
@@ -928,6 +928,126 @@ function run_auto_migrations() {
             if (empty($cols)) {
                 $pdo->exec("ALTER TABLE `perf_deskripsi` ADD COLUMN `predikat` VARCHAR(50) DEFAULT NULL AFTER `tupoksi`");
             }
+        } catch (Exception $e) {}
+    }
+
+    // Version 22 migrations (E-Curriculum & Guru App: Foto Catatan BK, Jurnal Foto Kegiatan, Hari Libur & Buku Types)
+    if ($current_version < 22) {
+        // 1. Table acad_buku_types
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `acad_buku_types` (
+                `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+                `nama_jenis` VARCHAR(100) NOT NULL,
+                `deskripsi` VARCHAR(255) DEFAULT NULL,
+                `warna_badge` VARCHAR(50) NOT NULL DEFAULT 'badge-info',
+                `urutan` INT(11) NOT NULL DEFAULT 0,
+                `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uk_nama_jenis` (`nama_jenis`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+
+            $checkBukuTypes = $pdo->query("SELECT COUNT(*) FROM `acad_buku_types`")->fetchColumn();
+            if ((int)$checkBukuTypes === 0) {
+                $defaultBukuTypes = [
+                    ['Keterlambatan', 'Catatan siswa terlambat masuk sekolah', 'badge-warning', 1],
+                    ['Pelanggaran', 'Catatan pelanggaran tata tertib sekolah', 'badge-danger', 2],
+                    ['Prestasi', 'Penghargaan / prestasi akademik & non-akademik', 'badge-success', 3],
+                    ['Screening', 'Catatan screening kesehatan / perilaku siswa', 'badge-info', 4],
+                    ['Konsultasi', 'Bimbingan dan konseling siswa', 'badge-primary', 5]
+                ];
+                $stmtBT = $pdo->prepare("INSERT IGNORE INTO `acad_buku_types` (`nama_jenis`, `deskripsi`, `warna_badge`, `urutan`) VALUES (?,?,?,?)");
+                foreach ($defaultBukuTypes as $dbt) {
+                    $stmtBT->execute($dbt);
+                }
+            }
+        } catch (Exception $e) {}
+
+        // 2. Table acad_buku_penghubung & column foto
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `acad_buku_penghubung` (
+                `id` INT(10) UNSIGNED NOT NULL AUTO_INCREMENT,
+                `student_id` INT(11) UNSIGNED NOT NULL,
+                `kelas_id` INT(10) UNSIGNED NOT NULL,
+                `academic_year_id` INT(11) UNSIGNED NOT NULL,
+                `jenis` VARCHAR(100) NOT NULL DEFAULT 'Konsultasi',
+                `tanggal` DATE NOT NULL,
+                `catatan` TEXT NOT NULL,
+                `foto` TEXT DEFAULT NULL,
+                `dicatat_oleh` INT(11) UNSIGNED DEFAULT NULL,
+                `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                KEY `idx_student` (`student_id`),
+                KEY `idx_kelas` (`kelas_id`),
+                KEY `idx_tanggal` (`tanggal`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+
+            $cols = $pdo->query("SHOW COLUMNS FROM `acad_buku_penghubung` LIKE 'foto'")->fetchAll();
+            if (empty($cols)) {
+                $pdo->exec("ALTER TABLE `acad_buku_penghubung` ADD COLUMN `foto` TEXT DEFAULT NULL AFTER `catatan`");
+            }
+
+            $pdo->exec("ALTER TABLE `acad_buku_penghubung` MODIFY COLUMN `jenis` VARCHAR(100) NOT NULL DEFAULT 'Konsultasi'");
+        } catch (Exception $e) {}
+
+        // 3. Table acad_jurnal column foto_kegiatan
+        try {
+            $checkJurnal = $pdo->query("SHOW TABLES LIKE 'acad_jurnal'")->fetch();
+            if ($checkJurnal) {
+                $colsJurnal = $pdo->query("SHOW COLUMNS FROM `acad_jurnal` LIKE 'foto_kegiatan'")->fetchAll();
+                if (empty($colsJurnal)) {
+                    $pdo->exec("ALTER TABLE `acad_jurnal` ADD COLUMN `foto_kegiatan` TEXT DEFAULT NULL AFTER `catatan`");
+                }
+            }
+        } catch (Exception $e) {}
+
+        // 4. Table acad_hari_libur
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `acad_hari_libur` (
+                `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+                `academic_year_id` INT(11) UNSIGNED NOT NULL,
+                `tanggal` DATE NOT NULL,
+                `keterangan` VARCHAR(255) NOT NULL,
+                `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uk_year_tanggal` (`academic_year_id`, `tanggal`),
+                KEY `idx_tanggal` (`tanggal`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+        } catch (Exception $e) {}
+
+        // 5. Table acad_documents & acad_document_types
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `acad_document_types` (
+                `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+                `name` VARCHAR(100) NOT NULL,
+                `code` VARCHAR(50) NOT NULL,
+                `description` VARCHAR(255) DEFAULT NULL,
+                `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+                `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uk_code` (`code`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `acad_documents` (
+                `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+                `user_id` INT(11) UNSIGNED NOT NULL,
+                `type_id` INT(11) UNSIGNED NOT NULL,
+                `title` VARCHAR(255) NOT NULL,
+                `file_path` VARCHAR(255) NOT NULL,
+                `file_name` VARCHAR(255) NOT NULL,
+                `file_size` INT(11) UNSIGNED NOT NULL DEFAULT 0,
+                `file_ext` VARCHAR(10) NOT NULL,
+                `status` ENUM('Pending', 'Verified', 'Rejected') NOT NULL DEFAULT 'Pending',
+                `feedback` TEXT DEFAULT NULL,
+                `verified_by` INT(11) UNSIGNED DEFAULT NULL,
+                `verified_at` DATETIME DEFAULT NULL,
+                `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                KEY `idx_doc_user` (`user_id`),
+                KEY `idx_doc_type` (`type_id`),
+                KEY `idx_doc_status` (`status`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
         } catch (Exception $e) {}
     }
 

@@ -318,6 +318,7 @@ function acad_run_migrations() {
             jenis varchar(100) NOT NULL DEFAULT 'Konsultasi',
             tanggal date NOT NULL,
             catatan text NOT NULL,
+            foto text DEFAULT NULL,
             dicatat_oleh int(11) unsigned DEFAULT NULL,
             created_at timestamp NOT NULL DEFAULT current_timestamp(),
             updated_at timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
@@ -326,6 +327,13 @@ function acad_run_migrations() {
             KEY idx_kelas (kelas_id),
             KEY idx_tanggal (tanggal)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
+
+        try {
+            $colsBk = db()->query("SHOW COLUMNS FROM acad_buku_penghubung LIKE 'foto'")->fetchAll();
+            if (empty($colsBk)) {
+                db()->exec("ALTER TABLE acad_buku_penghubung ADD COLUMN foto text DEFAULT NULL AFTER catatan");
+            }
+        } catch (Exception $e) {}
 
         try {
             db()->exec("ALTER TABLE acad_buku_penghubung MODIFY COLUMN jenis varchar(100) NOT NULL DEFAULT 'Konsultasi'");

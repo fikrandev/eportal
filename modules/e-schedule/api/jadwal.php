@@ -58,11 +58,12 @@ switch ($action) {
         break;
 
     case 'move_slot':
-        $source_id = (int)($_POST['source_id'] ?? $_GET['source_id'] ?? 0);
-        $target_jam_id = (int)($_POST['target_jam_id'] ?? $_GET['target_jam_id'] ?? 0);
-        $target_kelas_id = (int)($_POST['target_kelas_id'] ?? $_GET['target_kelas_id'] ?? 0);
+        $input = get_input();
+        $source_id = (int)($input['source_id'] ?? $_POST['source_id'] ?? $_GET['source_id'] ?? 0);
+        $target_jam_id = (int)($input['target_jam_id'] ?? $_POST['target_jam_id'] ?? $_GET['target_jam_id'] ?? 0);
+        $target_kelas_id = (int)($input['target_kelas_id'] ?? $_POST['target_kelas_id'] ?? $_GET['target_kelas_id'] ?? 0);
 
-        if (!$source_id || !$target_jam_id || !$target_kelas_id) {
+        if (!$source_id || !$target_jam_id) {
             json_response(400, false, 'Data pemindahan jadwal tidak lengkap.');
         }
 
@@ -77,6 +78,9 @@ switch ($action) {
                 db()->rollBack();
                 json_response(404, false, 'Jadwal sumber tidak ditemukan.');
             }
+
+            // Pelajaran selalu terikat pada kelasnya sendiri agar distribusi kurikulum terjaga
+            $target_kelas_id = (int)$source['kelas_id'];
 
             $stmtJam = db()->prepare("SELECT * FROM sch_jam_belajar WHERE id = ?");
             $stmtJam->execute([$target_jam_id]);
@@ -95,22 +99,20 @@ switch ($action) {
             db()->exec("SET FOREIGN_KEY_CHECKS = 0;");
 
             if ($targetSlot) {
-                // SWAP KEDUA JADWAL
+                // SWAP KEDUA JADWAL DENGAN MENUKAR DISTRIBUSI (Aman dari duplicate key uk_kelas_jam)
                 $targetId = (int)$targetSlot['id'];
-                $oldSourceJam = (int)$source['jam_belajar_id'];
-                $oldSourceKelas = (int)$source['kelas_id'];
+                $sourceDistId = (int)$source['distribusi_id'];
+                $targetDistId = (int)$targetSlot['distribusi_id'];
 
-                $stmt1 = db()->prepare("UPDATE sch_jadwal SET jam_belajar_id = ?, kelas_id = ? WHERE id = ?");
-                $stmt1->execute([$target_jam_id, $target_kelas_id, $source_id]);
-
-                $stmt2 = db()->prepare("UPDATE sch_jadwal SET jam_belajar_id = ?, kelas_id = ? WHERE id = ?");
-                $stmt2->execute([$oldSourceJam, $oldSourceKelas, $targetId]);
+                $stmtSwap = db()->prepare("UPDATE sch_jadwal SET distribusi_id = ? WHERE id = ?");
+                $stmtSwap->execute([$targetDistId, $source_id]);
+                $stmtSwap->execute([$sourceDistId, $targetId]);
 
                 $msg = 'Jadwal berhasil ditukar posisinya.';
             } else {
                 // MOVE KE SLOT KOSONG
-                $stmt = db()->prepare("UPDATE sch_jadwal SET jam_belajar_id = ?, kelas_id = ? WHERE id = ?");
-                $stmt->execute([$target_jam_id, $target_kelas_id, $source_id]);
+                $stmt = db()->prepare("UPDATE sch_jadwal SET jam_belajar_id = ? WHERE id = ?");
+                $stmt->execute([$target_jam_id, $source_id]);
                 $msg = 'Jadwal berhasil dipindahkan ke slot baru.';
             }
 
@@ -147,6 +149,265 @@ switch ($action) {
             }
             db()->exec("SET FOREIGN_KEY_CHECKS = 1;");
             json_response(500, false, 'Gagal memindahkan jadwal: ' . $e->getMessage());
+        }
+        break;
+
+    case 'auto_fill_gaps':
+        set_time_limit(120);
+        try {
+            db()->beginTransaction();
+
+            $jamRows = db()->query("
+                SELECT * FROM sch_jam_belajar 
+                WHERE tipe = 'Pembelajaran'
+                ORDER BY CASE hari WHEN 'Senin' THEN 1 WHEN 'Selasa' THEN 2 WHEN 'Rabu' THEN 3 WHEN 'Kamis' THEN 4 WHEN 'Jumat' THEN 5 WHEN 'Sabtu' THEN 6 ELSE 7 END, jam_ke ASC
+            ")->fetchAll(PDO::FETCH_ASSOC);
+
+            $kelasRows = db()->query("SELECT id, nama_kelas FROM sch_kelas ORDER BY rombel, nama_kelas")->fetchAll(PDO::FETCH_ASSOC);
+            $distribusiRows = db()->query("
+                SELECT d.*, m.nama_mapel, g.nama_guru 
+                FROM sch_distribusi d 
+                JOIN sch_mapel m ON d.mapel_id = m.id 
+                JOIN sch_guru g ON d.guru_id = g.id
+                ORDER BY d.jp DESC
+            ")->fetchAll(PDO::FETCH_ASSOC);
+
+            $kesediaanRows = db()->query("SELECT guru_id, jam_belajar_id FROM sch_kesediaan")->fetchAll(PDO::FETCH_ASSOC);
+            $kesediaanMap = [];
+            foreach ($kesediaanRows as $kr) {
+                $kesediaanMap[$kr['guru_id']][$kr['jam_belajar_id']] = true;
+            }
+
+            $existingJadwal = db()->query("
+                SELECT j.id, j.kelas_id, j.jam_belajar_id, j.distribusi_id, d.guru_id
+                FROM sch_jadwal j
+                JOIN sch_distribusi d ON j.distribusi_id = d.id
+            ")->fetchAll(PDO::FETCH_ASSOC);
+
+            $schedule = [];
+            $guruBusy = [];
+            $placedCountByDist = [];
+
+            foreach ($existingJadwal as $ej) {
+                $kId = (int)$ej['kelas_id'];
+                $jId = (int)$ej['jam_belajar_id'];
+                $gId = (int)$ej['guru_id'];
+                $dId = (int)$ej['distribusi_id'];
+                $jdwId = (int)$ej['id'];
+
+                $schedule[$kId][$jId] = [
+                    'id' => $jdwId,
+                    'distribusi_id' => $dId,
+                    'guru_id' => $gId
+                ];
+                $guruBusy[$gId][$jId] = true;
+                $placedCountByDist[$dId] = ($placedCountByDist[$dId] ?? 0) + 1;
+            }
+
+            $jamByHari = [];
+            $hariOrder = [];
+            foreach ($jamRows as $j) {
+                $jamByHari[$j['hari']][] = $j;
+                if (!in_array($j['hari'], $hariOrder)) {
+                    $hariOrder[] = $j['hari'];
+                }
+            }
+
+            $filledCount = 0;
+            $shiftedCount = 0;
+
+            // FASE 1: ISI SISA JP YANG BELUM MASUK KE DALAM SLOT KOSONG
+            $stmtInsert = db()->prepare("INSERT INTO sch_jadwal (kelas_id, jam_belajar_id, distribusi_id) VALUES (?, ?, ?)");
+
+            foreach ($distribusiRows as $dist) {
+                $dId = (int)$dist['id'];
+                $kId = (int)$dist['kelas_id'];
+                $gId = (int)$dist['guru_id'];
+                $targetJp = (int)$dist['jp'];
+                $curJp = $placedCountByDist[$dId] ?? 0;
+                $needed = $targetJp - $curJp;
+
+                if ($needed <= 0) continue;
+
+                for ($req = 0; $req < $needed; $req++) {
+                    $slotFound = null;
+
+                    // Pass 1: Cari slot kosong yang guru bersedia dan guru TIDAK bentrok
+                    foreach ($hariOrder as $hari) {
+                        if ($slotFound) break;
+                        $hJams = $jamByHari[$hari] ?? [];
+                        foreach ($hJams as $slot) {
+                            $slotId = (int)$slot['id'];
+                            if (isset($schedule[$kId][$slotId])) continue;
+
+                            if (!empty($kesediaanMap[$gId]) && !isset($kesediaanMap[$gId][$slotId])) {
+                                continue;
+                            }
+                            if (isset($guruBusy[$gId][$slotId])) {
+                                continue;
+                            }
+
+                            $slotFound = $slotId;
+                            break;
+                        }
+                    }
+
+                    // Pass 2: Jika belum ketemu, cari slot kosong yang guru tidak bentrok
+                    if (!$slotFound) {
+                        foreach ($hariOrder as $hari) {
+                            if ($slotFound) break;
+                            $hJams = $jamByHari[$hari] ?? [];
+                            foreach ($hJams as $slot) {
+                                $slotId = (int)$slot['id'];
+                                if (isset($schedule[$kId][$slotId])) continue;
+
+                                if (isset($guruBusy[$gId][$slotId])) {
+                                    continue;
+                                }
+
+                                $slotFound = $slotId;
+                                break;
+                            }
+                        }
+                    }
+
+                    // Pass 3: Coba SWAP rantai dengan slot terisi di kelas yang sama
+                    if (!$slotFound) {
+                        foreach ($hariOrder as $hari) {
+                            if ($slotFound) break;
+                            $hJams = $jamByHari[$hari] ?? [];
+                            foreach ($hJams as $slot) {
+                                $emptySlotId = (int)$slot['id'];
+                                if (isset($schedule[$kId][$emptySlotId])) continue;
+
+                                if (!empty($schedule[$kId])) {
+                                    foreach ($schedule[$kId] as $occupiedSlotId => $occInfo) {
+                                        $otherGId = (int)$occInfo['guru_id'];
+                                        if (!isset($guruBusy[$otherGId][$emptySlotId])) {
+                                            if (!isset($guruBusy[$gId][$occupiedSlotId])) {
+                                                $stmtUpdateOcc = db()->prepare("UPDATE sch_jadwal SET jam_belajar_id = ? WHERE id = ?");
+                                                $stmtUpdateOcc->execute([$emptySlotId, $occInfo['id']]);
+
+                                                unset($schedule[$kId][$occupiedSlotId]);
+                                                unset($guruBusy[$otherGId][$occupiedSlotId]);
+                                                $schedule[$kId][$emptySlotId] = $occInfo;
+                                                $guruBusy[$otherGId][$emptySlotId] = true;
+
+                                                $slotFound = $occupiedSlotId;
+                                                $shiftedCount++;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                                if ($slotFound) break;
+                            }
+                        }
+                    }
+
+                    // Pass 4: Fallback ke slot kosong manapun yang tersisa
+                    if (!$slotFound) {
+                        foreach ($hariOrder as $hari) {
+                            if ($slotFound) break;
+                            $hJams = $jamByHari[$hari] ?? [];
+                            foreach ($hJams as $slot) {
+                                $slotId = (int)$slot['id'];
+                                if (!isset($schedule[$kId][$slotId])) {
+                                    $slotFound = $slotId;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if ($slotFound) {
+                        $stmtInsert->execute([$kId, $slotFound, $dId]);
+                        $newJdwId = (int)db()->lastInsertId();
+                        $schedule[$kId][$slotFound] = [
+                            'id' => $newJdwId,
+                            'distribusi_id' => $dId,
+                            'guru_id' => $gId
+                        ];
+                        $guruBusy[$gId][$slotFound] = true;
+                        $placedCountByDist[$dId] = ($placedCountByDist[$dId] ?? 0) + 1;
+                        $filledCount++;
+                    }
+                }
+            }
+
+            // FASE 2: COMPACTION SWEEP (Geser maju jam yang bolong agar tidak ada jam kosong di tengah hari)
+            $stmtUpdateSlot = db()->prepare("UPDATE sch_jadwal SET jam_belajar_id = ? WHERE id = ?");
+
+            for ($sweep = 0; $sweep < 6; $sweep++) {
+                $anyShifted = false;
+                foreach ($kelasRows as $kr) {
+                    $kId = (int)$kr['id'];
+                    foreach ($hariOrder as $hari) {
+                        $hJams = $jamByHari[$hari] ?? [];
+                        $nJ = count($hJams);
+                        if ($nJ < 2) continue;
+
+                        for ($targetIdx = 0; $targetIdx < $nJ; $targetIdx++) {
+                            $targetSlotId = (int)$hJams[$targetIdx]['id'];
+                            if (isset($schedule[$kId][$targetSlotId])) continue;
+
+                            for ($sourceIdx = $targetIdx + 1; $sourceIdx < $nJ; $sourceIdx++) {
+                                $sourceSlotId = (int)$hJams[$sourceIdx]['id'];
+                                if (!isset($schedule[$kId][$sourceSlotId])) continue;
+
+                                $srcItem = $schedule[$kId][$sourceSlotId];
+                                $srcGId = (int)$srcItem['guru_id'];
+
+                                if (!isset($guruBusy[$srcGId][$targetSlotId])) {
+                                    $stmtUpdateSlot->execute([$targetSlotId, $srcItem['id']]);
+
+                                    unset($schedule[$kId][$sourceSlotId]);
+                                    unset($guruBusy[$srcGId][$sourceSlotId]);
+
+                                    $schedule[$kId][$targetSlotId] = $srcItem;
+                                    $guruBusy[$srcGId][$targetSlotId] = true;
+
+                                    $shiftedCount++;
+                                    $anyShifted = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                if (!$anyShifted) break;
+            }
+
+            db()->commit();
+
+            // Cek tabrakan / bentrok terkini
+            $clashes = db()->query("
+                SELECT j1.id as id1, j2.id as id2, d1.guru_id, g.nama_guru, k1.nama_kelas as kelas1, k2.nama_kelas as kelas2, jb.hari, jb.jam_ke
+                FROM sch_jadwal j1
+                JOIN sch_jadwal j2 ON j1.jam_belajar_id = j2.jam_belajar_id AND j1.id < j2.id
+                JOIN sch_distribusi d1 ON j1.distribusi_id = d1.id
+                JOIN sch_distribusi d2 ON j2.distribusi_id = d2.id AND d1.guru_id = d2.guru_id
+                JOIN sch_guru g ON d1.guru_id = g.id
+                JOIN sch_kelas k1 ON j1.kelas_id = k1.id
+                JOIN sch_kelas k2 ON j2.kelas_id = k2.id
+                JOIN sch_jam_belajar jb ON j1.jam_belajar_id = jb.id
+            ")->fetchAll(PDO::FETCH_ASSOC);
+
+            $msg = "Proses selesai! {$filledCount} slot jam kosong berhasil diisi, dan {$shiftedCount} jam berhasil dipadatkan.";
+            if (count($clashes) > 0) {
+                $msg .= " Catatan: Terdapat " . count($clashes) . " jadwal bentrok guru yang ditandai merah.";
+            }
+
+            json_response(200, true, $msg, [
+                'filled_slots' => $filledCount,
+                'shifted_slots' => $shiftedCount,
+                'total_clashes' => count($clashes),
+                'has_clashes' => count($clashes) > 0
+            ]);
+
+        } catch (Exception $e) {
+            if (db()->inTransaction()) db()->rollBack();
+            json_response(500, false, 'Gagal memadatkan jadwal: ' . $e->getMessage());
         }
         break;
 

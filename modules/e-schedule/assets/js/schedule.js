@@ -1212,14 +1212,19 @@ const Schedule = {
                     <h3>Manajemen Jadwal & Generator</h3>
                 </div>
                 <div class="sch-card-body">
-                    <div style="display:flex;gap:12px;background:var(--bg-color);padding:24px;border-radius:12px;margin-bottom:24px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+                    <div style="display:flex;gap:12px;background:var(--bg-color);padding:20px;border-radius:12px;margin-bottom:24px;align-items:center;justify-content:space-between;flex-wrap:wrap">
                         <div>
-                            <h4 style="margin:0 0 8px">Engine Algoritma Heuristik</h4>
-                            <p style="margin:0;font-size:0.85rem;color:var(--text-muted)">Menghasilkan jadwal berdasarkan distribusi dan mematuhi constraints ketersediaan dan aturan blok mapel.</p>
+                            <h4 style="margin:0 0 6px">Engine Algoritma & Pengatur Jadwal</h4>
+                            <p style="margin:0;font-size:0.85rem;color:var(--text-muted)">Padatkan slot kosong, hilangkan jam bolong di tengah hari, dan bebas drag & drop jadwal dengan deteksi bentrok otomatis.</p>
                         </div>
-                        <button class="btn btn-primary" onclick="Schedule.generateJadwal()" style="padding:12px 24px;font-size:1.1rem">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg> Generate Jadwal
-                        </button>
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                            <button class="btn btn-warning" onclick="Schedule.autoFillGaps()" style="padding:10px 18px;font-size:0.95rem;display:flex;align-items:center;gap:8px;font-weight:700;" title="Otomatis isi slot jam yang masih kosong dan padatkan jadwal">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Padatkan & Isi Jam Kosong
+                            </button>
+                            <button class="btn btn-primary" onclick="Schedule.generateJadwal()" style="padding:10px 20px;font-size:0.95rem;display:flex;align-items:center;gap:8px;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg> Generate Ulang
+                            </button>
+                        </div>
                     </div>
 
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
@@ -1236,6 +1241,34 @@ const Schedule = {
         });
         $('#jdwFilter').on('change', (e) => this.viewJadwal($(e.target).val()));
         this.viewJadwal('');
+    },
+
+    autoFillGaps() {
+        const loader = EModal.loading('Memeriksa slot jam kosong dan memadatkan jadwal...');
+        this.api('jadwal.php?action=auto_fill_gaps', { method: 'POST' }).done(res => {
+            EModal.close(loader);
+            if (res.data?.has_clashes) {
+                EModal.toast({
+                    type: 'warning',
+                    title: 'Jadwal Dipadatkan!',
+                    message: res.message
+                });
+            } else {
+                EModal.toast({
+                    type: 'success',
+                    title: 'Sukses!',
+                    message: res.message
+                });
+            }
+            this.viewJadwal($('#jdwFilter').val());
+        }).fail(err => {
+            EModal.close(loader);
+            EModal.toast({
+                type: 'error',
+                title: 'Gagal',
+                message: err.responseJSON?.message || 'Gagal memproses pengisian jam kosong.'
+            });
+        });
     },
 
     generateJadwal() {

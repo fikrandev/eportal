@@ -19,12 +19,18 @@ try {
         json_response(200, true, 'Guru wali tidak ditemukan', []);
     }
     
-    $stmt2 = db()->prepare("SELECT id, tanggal, catatan FROM acad_jurnal WHERE jenis_jurnal = 'guru_wali' AND guru_id = ? ORDER BY tanggal DESC");
+    $stmt2 = db()->prepare("SELECT id, tanggal, catatan, foto_kegiatan FROM acad_jurnal WHERE jenis_jurnal = 'guru_wali' AND guru_id = ? ORDER BY tanggal DESC");
     $stmt2->execute([$guruId]);
     $konsultasi = $stmt2->fetchAll(PDO::FETCH_ASSOC);
     
     foreach ($konsultasi as &$k) {
         $k['tanggal_indo'] = format_tanggal($k['tanggal']);
+        if (!empty($k['foto_kegiatan'])) {
+            $parsed = json_decode($k['foto_kegiatan'], true);
+            $k['fotos'] = is_array($parsed) ? $parsed : [$k['foto_kegiatan']];
+        } else {
+            $k['fotos'] = [];
+        }
     }
     
     json_response(200, true, 'Konsultasi dimuat', $konsultasi);
