@@ -5,8 +5,9 @@
  */
 require_once __DIR__ . '/config.php';
 
+if (!function_exists('run_auto_migrations')) {
 function run_auto_migrations() {
-    $target_version = 22;
+    $target_version = 23;
     
     // 1. Get current version (default to 0 if not set or if table settings doesn't exist yet)
     $current_version = 0;
@@ -1051,10 +1052,25 @@ function run_auto_migrations() {
         } catch (Exception $e) {}
     }
 
+    // Version 23 migrations (Jurnal Guru Wali: link individual student perwalian to journal)
+    if ($current_version < 23) {
+        try {
+            $checkJurnal = $pdo->query("SHOW TABLES LIKE 'acad_jurnal'")->fetch();
+            if ($checkJurnal) {
+                $colsJurnal = $pdo->query("SHOW COLUMNS FROM `acad_jurnal` LIKE 'student_id'")->fetchAll();
+                if (empty($colsJurnal)) {
+                    $pdo->exec("ALTER TABLE `acad_jurnal` ADD COLUMN `student_id` INT(11) UNSIGNED DEFAULT NULL AFTER `guru_id`");
+                    $pdo->exec("ALTER TABLE `acad_jurnal` ADD INDEX `idx_jurnal_student` (`student_id`)");
+                }
+            }
+        } catch (Exception $e) {}
+    }
+
     // Update DB migration version to target_version
     try {
         upsert_setting('db_migration_version', (string)$target_version, 'number', 'Versi Migrasi Database E-Portal');
     } catch (Exception $e) {
         // Safe fallback
     }
+}
 }

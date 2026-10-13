@@ -336,12 +336,12 @@ const App = {
         konsultasi(data) {
             let html = '<div class="page-enter">';
             html += '<div style="margin-bottom: 18px;">';
-            html += '<h2 style="margin: 0 0 2px; font-size: 1.35rem;">Riwayat Konsultasi</h2>';
-            html += '<p style="margin: 0; font-size: 0.8rem; color: var(--text-muted);">Jurnal harian Guru Wali</p>';
+            html += '<h2 style="margin: 0 0 2px; font-size: 1.35rem;">Riwayat Konsultasi & Bimbingan</h2>';
+            html += '<p style="margin: 0; font-size: 0.8rem; color: var(--text-muted);">Catatan pembinaan dan bimbingan dari Guru Wali</p>';
             html += '</div>';
 
             if (data.length === 0) {
-                html += '<div class="card" style="text-align: center; padding: 40px 20px; color: var(--text-muted);">Belum ada riwayat konsultasi</div>';
+                html += '<div class="card" style="text-align: center; padding: 40px 20px; color: var(--text-muted);">Belum ada riwayat bimbingan atau konsultasi dari Guru Wali</div>';
             } else {
                 html += '<div style="display:flex; flex-direction:column; gap:12px;">';
                 data.forEach(k => {
@@ -359,9 +359,17 @@ const App = {
                             </div>
                         `;
                     }
+                    const badgeHtml = k.is_personal
+                        ? '<span class="badge" style="background:#dcfce7; color:#15803d; font-size:0.7rem; font-weight:700; padding:2px 8px; border-radius:12px;">🎯 Personal</span>'
+                        : '<span class="badge" style="background:#e0f2fe; color:#0369a1; font-size:0.7rem; font-weight:700; padding:2px 8px; border-radius:12px;">👥 Umum</span>';
+
                     html += `
                         <div class="card" style="padding: 14px;">
-                            <div style="font-weight: 700; color: var(--primary); font-size: 0.9rem; margin-bottom: 6px;">📅 ${k.tanggal_indo || k.tanggal}</div>
+                            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px;">
+                                <div style="font-weight: 700; color: var(--primary); font-size: 0.88rem;">📅 ${k.tanggal_indo || k.tanggal}</div>
+                                ${badgeHtml}
+                            </div>
+                            ${k.guru_nama ? `<div style="font-size:0.75rem; color:var(--text-muted); margin-bottom:8px;">Oleh: <strong>${k.guru_nama}</strong> (Guru Wali)</div>` : ''}
                             <div style="font-size: 0.9rem; color: var(--text-primary); line-height: 1.5; white-space: pre-wrap;">${k.catatan}</div>
                             ${fotosHtml}
                         </div>

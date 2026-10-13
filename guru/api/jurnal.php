@@ -32,11 +32,16 @@ if (!$user) json_response(401, false, 'Sesi tidak valid.');
 
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
-// Ensure foto_kegiatan column exists
+// Ensure foto_kegiatan and student_id columns exist
 try {
     $cols = db()->query("SHOW COLUMNS FROM acad_jurnal LIKE 'foto_kegiatan'")->fetchAll();
     if (empty($cols)) {
         db()->exec("ALTER TABLE acad_jurnal ADD COLUMN foto_kegiatan text DEFAULT NULL AFTER catatan");
+    }
+    $colsSid = db()->query("SHOW COLUMNS FROM acad_jurnal LIKE 'student_id'")->fetchAll();
+    if (empty($colsSid)) {
+        db()->exec("ALTER TABLE acad_jurnal ADD COLUMN student_id INT(11) UNSIGNED DEFAULT NULL AFTER guru_id");
+        db()->exec("ALTER TABLE acad_jurnal ADD INDEX idx_jurnal_student (student_id)");
     }
 } catch (Exception $ex) {}
 
@@ -79,6 +84,9 @@ switch ($action) {
         break;
     case 'dashboard_stats':
         getDashboardStats($user);
+        break;
+    case 'guru_wali_students':
+        getGuruWaliStudents($user);
         break;
     case 'guru_wali_rekap':
         rekapAbsensiGuruWali($user);
@@ -178,10 +186,11 @@ function listJurnal($user) {
         }
 
         $stmt = db()->prepare("
-            SELECT j.*, k.nama_kelas, m.nama_mapel
+            SELECT j.*, k.nama_kelas, m.nama_mapel, s.nama as student_nama, s.nis as student_nis, s.kelas as student_kelas
             FROM acad_jurnal j
             LEFT JOIN sch_kelas k ON j.kelas_id = k.id
             LEFT JOIN sch_mapel m ON j.mapel_id = m.id
+            LEFT JOIN students s ON j.student_id = s.id
             WHERE $where
             ORDER BY j.tanggal DESC, j.jam_ke ASC, j.created_at DESC
         ");
@@ -203,10 +212,11 @@ function getJurnal($user) {
 
     try {
         $stmt = db()->prepare("
-            SELECT j.*, k.nama_kelas, m.nama_mapel
+            SELECT j.*, k.nama_kelas, m.nama_mapel, s.nama as student_nama, s.nis as student_nis, s.kelas as student_kelas
             FROM acad_jurnal j
             LEFT JOIN sch_kelas k ON j.kelas_id = k.id
             LEFT JOIN sch_mapel m ON j.mapel_id = m.id
+            LEFT JOIN students s ON j.student_id = s.id
             WHERE j.id = ? AND j.guru_id = ?
         ");
         $stmt->execute([$id, $user['user_id']]);
@@ -326,13 +336,14 @@ function createJurnal($user) {
         }
         
         $foto_kegiatan = helper_save_jurnal_photos($input['foto_kegiatan'] ?? null);
+        $student_id = !empty($input['student_id']) ? (int)$input['student_id'] : null;
 
         try {
             $stmt = db()->prepare("
-                INSERT INTO acad_jurnal (guru_id, academic_year_id, jenis_jurnal, tanggal, catatan, foto_kegiatan)
-                VALUES (?, ?, 'guru_wali', ?, ?, ?)
+                INSERT INTO acad_jurnal (guru_id, student_id, academic_year_id, jenis_jurnal, tanggal, catatan, foto_kegiatan)
+                VALUES (?, ?, ?, 'guru_wali', ?, ?, ?)
             ");
-            $stmt->execute([$user['user_id'], $year_id, $tanggal, $catatan, $foto_kegiatan]);
+            $stmt->execute([$user['user_id'], $student_id, $year_id, $tanggal, $catatan, $foto_kegiatan]);
             $jurnal_id = db()->lastInsertId();
 
             json_response(201, true, 'Jurnal kegiatan guru wali berhasil disimpan.', ['id' => $jurnal_id]);
@@ -503,14 +514,25 @@ function updateJurnal($user) {
 
         $hasFotoInput = array_key_exists('foto_kegiatan', $input);
         try {
+            $updateFields = ["catatan = ?"];
+            $params = [$catatan];
+
+            if ($existingJurnal['jenis_jurnal'] === 'guru_wali' && array_key_exists('student_id', $input)) {
+                $student_id = !empty($input['student_id']) ? (int)$input['student_id'] : null;
+                $updateFields[] = "student_id = ?";
+                $params[] = $student_id;
+            }
+
             if ($hasFotoInput) {
                 $foto_kegiatan = helper_save_jurnal_photos($input['foto_kegiatan'] ?? null);
-                $stmt = db()->prepare("UPDATE acad_jurnal SET catatan = ?, foto_kegiatan = ? WHERE id = ? AND guru_id = ?");
-                $stmt->execute([$catatan, $foto_kegiatan, $id, $user['user_id']]);
-            } else {
-                $stmt = db()->prepare("UPDATE acad_jurnal SET catatan = ? WHERE id = ? AND guru_id = ?");
-                $stmt->execute([$catatan, $id, $user['user_id']]);
+                $updateFields[] = "foto_kegiatan = ?";
+                $params[] = $foto_kegiatan;
             }
+
+            $params[] = $id;
+            $params[] = $user['user_id'];
+            $stmt = db()->prepare("UPDATE acad_jurnal SET " . implode(', ', $updateFields) . " WHERE id = ? AND guru_id = ?");
+            $stmt->execute($params);
             json_response(200, true, 'Jurnal kegiatan berhasil diperbarui.');
         } catch (PDOException $e) {
             json_response(500, false, 'Server error: ' . $e->getMessage());
@@ -1193,13 +1215,40 @@ function createIzin($user) {
 }
 
 /**
+ * Fetch list of students under this teacher as Guru Wali
+ */
+function getGuruWaliStudents($user) {
+    try {
+        $namaLengkap = $user['nama_lengkap'] ?? $user['username'];
+        $baseName = trim(preg_replace('/,.*$/', '', $namaLengkap));
+        $baseName = trim(preg_replace('/^(Drs\.|Dra\.|Ir\.|H\.|Hj\.)\s*/i', '', $baseName));
+
+        $stmt = db()->prepare("
+            SELECT id, nis, nama, kelas, foto_path, guru_wali
+            FROM students
+            WHERE (guru_wali = ? OR guru_wali LIKE ?) AND status = 1
+            ORDER BY nama ASC
+        ");
+        $stmt->execute([$namaLengkap, '%' . $baseName . '%']);
+        $students = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        json_response(200, true, 'Data anak perwalian berhasil dimuat.', $students);
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
+/**
  * Fetch attendance stats percentage for guru wali students
  */
 function rekapAbsensiGuruWali($user) {
     try {
         $namaLengkap = $user['nama_lengkap'] ?? $user['username'];
-        $stmtS = db()->prepare("SELECT id, nis, nama, kelas FROM students WHERE guru_wali = ? AND status = 1 ORDER BY nama");
-        $stmtS->execute([$namaLengkap]);
+        $baseName = trim(preg_replace('/,.*$/', '', $namaLengkap));
+        $baseName = trim(preg_replace('/^(Drs\.|Dra\.|Ir\.|H\.|Hj\.)\s*/i', '', $baseName));
+
+        $stmtS = db()->prepare("SELECT id, nis, nama, kelas FROM students WHERE (guru_wali = ? OR guru_wali LIKE ?) AND status = 1 ORDER BY nama");
+        $stmtS->execute([$namaLengkap, '%' . $baseName . '%']);
         $students = $stmtS->fetchAll(PDO::FETCH_ASSOC);
 
         if (empty($students)) {
@@ -1270,9 +1319,11 @@ function dailyAbsenGuruWali($user) {
     try {
         $tanggal = isset($_GET['tanggal']) ? $_GET['tanggal'] : date('Y-m-d');
         $namaLengkap = $user['nama_lengkap'] ?? $user['username'];
+        $baseName = trim(preg_replace('/,.*$/', '', $namaLengkap));
+        $baseName = trim(preg_replace('/^(Drs\.|Dra\.|Ir\.|H\.|Hj\.)\s*/i', '', $baseName));
         
-        $stmtS = db()->prepare("SELECT id, nis, nama, kelas FROM students WHERE guru_wali = ? AND status = 1 ORDER BY nama");
-        $stmtS->execute([$namaLengkap]);
+        $stmtS = db()->prepare("SELECT id, nis, nama, kelas FROM students WHERE (guru_wali = ? OR guru_wali LIKE ?) AND status = 1 ORDER BY nama");
+        $stmtS->execute([$namaLengkap, '%' . $baseName . '%']);
         $students = $stmtS->fetchAll(PDO::FETCH_ASSOC);
         
         if (empty($students)) {
@@ -1323,3 +1374,4 @@ function dailyAbsenGuruWali($user) {
         json_response(500, false, 'Server error: ' . $e->getMessage());
     }
 }
+

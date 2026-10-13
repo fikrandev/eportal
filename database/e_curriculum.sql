@@ -56,8 +56,9 @@ CREATE TABLE IF NOT EXISTS `acad_mengajar` (
 CREATE TABLE IF NOT EXISTS `acad_jurnal` (
   `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,
   `guru_id` INT(11) UNSIGNED NOT NULL COMMENT 'References users.id',
-  `kelas_id` INT UNSIGNED NOT NULL COMMENT 'References acad_kelas.id',
-  `mapel_id` INT UNSIGNED NOT NULL COMMENT 'References acad_mapel.id',
+  `student_id` INT(11) UNSIGNED DEFAULT NULL COMMENT 'References students.id (for guru wali)',
+  `kelas_id` INT UNSIGNED DEFAULT NULL COMMENT 'References acad_kelas.id',
+  `mapel_id` INT UNSIGNED DEFAULT NULL COMMENT 'References acad_mapel.id',
   `academic_year_id` INT(11) UNSIGNED NOT NULL,
   `jenis_jurnal` VARCHAR(30) NOT NULL DEFAULT 'kbm',
   `tanggal` DATE NOT NULL,

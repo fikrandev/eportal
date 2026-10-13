@@ -1068,196 +1068,6 @@
             }
         },
 
-        _webcamStream: null,
-        _webcamFacingMode: 'user',
-        _capturedPhotos: [],
-
-        stopWebcam() {
-            if (this._webcamStream) {
-                try {
-                    this._webcamStream.getTracks().forEach(t => t.stop());
-                } catch(e) {}
-                this._webcamStream = null;
-            }
-            const video = document.getElementById('webcamVideo');
-            if (video) video.srcObject = null;
-        },
-
-        async startWebcamStream(facing = 'user') {
-            this.stopWebcam();
-            this._webcamFacingMode = facing;
-            const video = document.getElementById('webcamVideo');
-            const statusLabel = document.getElementById('webcamModeLabel');
-            if (!video) return;
-
-            if (statusLabel) {
-                statusLabel.textContent = facing === 'user' ? '📷 Kamera Depan' : '🔄 Kamera Belakang';
-            }
-
-            try {
-                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                    throw new Error('Kamera web tidak didukung pada browser ini atau koneksi tidak aman.');
-                }
-
-                let stream = null;
-                const constraints = {
-                    audio: false,
-                    video: {
-                        facingMode: facing === 'environment' ? { ideal: 'environment' } : 'user',
-                        width: { ideal: 1280 },
-                        height: { ideal: 720 }
-                    }
-                };
-
-                try {
-                    stream = await navigator.mediaDevices.getUserMedia(constraints);
-                } catch(err1) {
-                    stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
-                }
-
-                this._webcamStream = stream;
-                video.srcObject = stream;
-                await video.play();
-
-                const captureBtn = document.getElementById('btnCaptureWebcam');
-                if (captureBtn) captureBtn.disabled = this._capturedPhotos.length >= 3;
-            } catch(e) {
-                Toast.show(e.message || 'Gagal mengakses kamera web. Pastikan izin kamera telah diizinkan.', 'error');
-            }
-        },
-
-        toggleWebcamFacing() {
-            const nextMode = this._webcamFacingMode === 'user' ? 'environment' : 'user';
-            this.startWebcamStream(nextMode);
-        },
-
-        captureWebcamSnapshot() {
-            if (this._capturedPhotos.length >= 3) {
-                Toast.show('Maksimal 3 foto tercapai. Hapus salah satu foto untuk mengambil foto baru.', 'warning');
-                return;
-            }
-
-            const video = document.getElementById('webcamVideo');
-            if (!video || !video.videoWidth) {
-                Toast.show('Kamera belum aktif atau belum siap.', 'warning');
-                return;
-            }
-
-            const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-            // Auto-convert and compress to <= 500 KB
-            let quality = 0.85;
-            let dataUrl = canvas.toDataURL('image/jpeg', quality);
-
-            while (dataUrl.length * 0.75 > 500 * 1024 && quality > 0.15) {
-                quality -= 0.12;
-                dataUrl = canvas.toDataURL('image/jpeg', quality);
-            }
-
-            if (dataUrl.length * 0.75 > 500 * 1024) {
-                const sCanvas = document.createElement('canvas');
-                sCanvas.width = Math.round(canvas.width * 0.75);
-                sCanvas.height = Math.round(canvas.height * 0.75);
-                const sCtx = sCanvas.getContext('2d');
-                sCtx.drawImage(canvas, 0, 0, sCanvas.width, sCanvas.height);
-                dataUrl = sCanvas.toDataURL('image/jpeg', 0.75);
-            }
-
-            const sizeKB = Math.round((dataUrl.length * 0.75) / 1024);
-            this._capturedPhotos.push({
-                dataUrl: dataUrl,
-                sizeKB: sizeKB
-            });
-
-            this.renderWebcamGallery();
-            Toast.show(`Foto berhasil diambil (${sizeKB} KB).`, 'success');
-        },
-
-        removeWebcamPhoto(index) {
-            this._capturedPhotos.splice(index, 1);
-            this.renderWebcamGallery();
-        },
-
-        renderWebcamGallery() {
-            const gallery = document.getElementById('webcamGalleryStrip');
-            const counter = document.getElementById('webcamPhotoCounter');
-            const captureBtn = document.getElementById('btnCaptureWebcam');
-
-            if (counter) {
-                counter.textContent = `${this._capturedPhotos.length}/3 Foto`;
-            }
-
-            if (captureBtn) {
-                captureBtn.disabled = this._capturedPhotos.length >= 3;
-            }
-
-            if (!gallery) return;
-
-            if (this._capturedPhotos.length === 0) {
-                gallery.innerHTML = '<div style="font-size:0.75rem; color:#94a3b8; font-style:italic; padding:4px 0;">Belum ada foto yang diambil (Maks 3 foto).</div>';
-                return;
-            }
-
-            let html = '<div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:8px;">';
-            this._capturedPhotos.forEach((photo, idx) => {
-                const pUrl = photo.dataUrl || photo;
-                const sizeLabel = photo.sizeKB ? `${photo.sizeKB} KB` : 'Foto';
-                const cleanSrc = pUrl.startsWith('http') || pUrl.startsWith('data:') ? pUrl : ('../' + pUrl.replace(/^\/+/, ''));
-                html += `
-                    <div style="position:relative; width:82px; height:82px; border-radius:10px; overflow:hidden; border:1.5px solid #e2e8f0; box-shadow:0 2px 6px rgba(0,0,0,0.08); background:#0f172a;">
-                        <img src="${cleanSrc}" style="width:100%; height:100%; object-fit:cover; cursor:pointer;" onclick="GuruApp.showImageLightbox(this.src)" alt="Foto ${idx+1}">
-                        <div style="position:absolute; bottom:2px; left:2px; right:2px; background:rgba(0,0,0,0.65); color:white; font-size:0.65rem; border-radius:4px; padding:1px 3px; text-align:center;">
-                            ${sizeLabel}
-                        </div>
-                        <button type="button" onclick="Pages.removeWebcamPhoto(${idx})" style="position:absolute; top:2px; right:2px; width:22px; height:22px; border-radius:50%; background:#ef4444; color:white; border:none; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:13px; font-weight:bold; line-height:1; box-shadow:0 1px 3px rgba(0,0,0,0.3);">&times;</button>
-                    </div>
-                `;
-            });
-            html += '</div>';
-            gallery.innerHTML = html;
-        },
-
-        initWebcamSection(existingPhotos = []) {
-            this._capturedPhotos = [];
-            if (Array.isArray(existingPhotos)) {
-                existingPhotos.slice(0, 3).forEach(p => {
-                    this._capturedPhotos.push({
-                        dataUrl: p,
-                        sizeKB: 0
-                    });
-                });
-            }
-
-            this.renderWebcamGallery();
-            setTimeout(() => {
-                this.startWebcamStream('user');
-            }, 80);
-        },
-
-        showImageLightbox(src) {
-            if (!src) return;
-            const existing = document.getElementById('guruImageLightbox');
-            if (existing) existing.remove();
-
-            const modal = document.createElement('div');
-            modal.id = 'guruImageLightbox';
-            modal.style.cssText = 'position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.88); z-index:999999; display:flex; align-items:center; justify-content:center; padding:16px; backdrop-filter:blur(4px);';
-            modal.innerHTML = `
-                <div style="position:relative; max-width:92%; max-height:92%; text-align:center;">
-                    <button type="button" style="position:absolute; top:-38px; right:0; background:rgba(255,255,255,0.25); border:none; color:white; width:34px; height:34px; border-radius:50%; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:bold;">✕</button>
-                    <img src="${src}" style="max-width:100%; max-height:82vh; border-radius:12px; box-shadow:0 12px 35px rgba(0,0,0,0.5); object-fit:contain; display:block; margin:0 auto;" alt="Foto">
-                </div>
-            `;
-            modal.addEventListener('click', (e) => {
-                if (e.target === modal || e.target.tagName === 'BUTTON') modal.remove();
-            });
-            document.body.appendChild(modal);
-        },
-
         // --- KEGIATAN / WALI KELAS MODAL FORM ---
         async openKegiatanModal(jenis = 'non_kbm', existingId = null) {
             let existing = null;
@@ -1289,6 +1099,16 @@
                 title = 'Edit Jurnal Kegiatan';
             }
 
+            let anakWaliList = [];
+            if (isGuruWali) {
+                try {
+                    const resS = await API.get('api/jurnal.php?action=guru_wali_students');
+                    if (resS && resS.success && Array.isArray(resS.data)) {
+                        anakWaliList = resS.data;
+                    }
+                } catch(e) {}
+            }
+
             const overlay = document.createElement('div');
             overlay.className = 'guru-modal-overlay';
             overlay.id = 'kegiatanModal';
@@ -1318,6 +1138,32 @@
                             </div>
                         ` : ''}
 
+                        ${isGuruWali ? `
+                            <div class="form-group mb-3">
+                                <label class="form-label" style="font-weight:700; color:var(--text-primary); display:flex; justify-content:space-between; align-items:center;">
+                                    <span>🎯 Pilih Siswa Bimbingan / Perwalian</span>
+                                    <span style="font-size:0.75rem; color:#16a34a; font-weight:700;">${anakWaliList.length} Siswa Terdaftar</span>
+                                </label>
+                                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px;">
+                                    <div style="position:relative; margin-bottom:8px;">
+                                        <input type="text" id="kegiatanStudentSearch" class="form-control" placeholder="🔍 Ketik untuk cari nama / NIS / kelas siswa..." style="padding-left:10px; font-size:0.85rem;" autocomplete="off">
+                                    </div>
+                                    <select class="form-control" id="kegiatanStudentId" style="font-size:0.88rem; font-weight:500;">
+                                        <option value="">-- Semua Siswa Perwalian (Bimbingan Umum) --</option>
+                                        ${anakWaliList.map(s => {
+                                            const isSelected = existing && existing.student_id == s.id ? 'selected' : '';
+                                            return `<option value="${s.id}" data-search="${escapeHtml((s.nama + ' ' + s.nis + ' ' + s.kelas).toLowerCase())}" ${isSelected}>
+                                                ${escapeHtml(s.nama)} — Kelas ${escapeHtml(s.kelas)} (NIS: ${escapeHtml(s.nis)})
+                                            </option>`;
+                                        }).join('')}
+                                    </select>
+                                    <div style="font-size:0.75rem; color:#64748b; margin-top:6px; line-height:1.4;">
+                                        💡 <em>Catatan dan foto ini akan otomatis tampil di <strong>Portal Siswa</strong> pada akun siswa yang dipilih.</em>
+                                    </div>
+                                </div>
+                            </div>
+                        ` : ''}
+
                         <div class="form-group mt-2">
                             <label class="form-label">Catatan Kegiatan</label>
                             <textarea class="form-textarea" id="kegiatanCatatanText" placeholder="${placeholder}" style="min-height:110px;">${escapeHtml(existing?.catatan || '')}</textarea>
@@ -1342,11 +1188,11 @@
                                             📷 Kamera Depan
                                         </div>
                                         <div style="position:absolute; bottom:8px; left:8px; right:8px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
-                                            <button type="button" class="btn btn-sm" onclick="Pages.toggleWebcamFacing()" style="background:rgba(255,255,255,0.9); color:#1e293b; font-weight:600; font-size:0.75rem; padding:5px 10px; border:none; border-radius:8px; display:flex; align-items:center; gap:5px; backdrop-filter:blur(4px); box-shadow:0 1px 4px rgba(0,0,0,0.2);">
+                                            <button type="button" class="btn btn-sm" onclick="GuruApp.toggleWebcamFacing()" style="background:rgba(255,255,255,0.9); color:#1e293b; font-weight:600; font-size:0.75rem; padding:5px 10px; border:none; border-radius:8px; display:flex; align-items:center; gap:5px; backdrop-filter:blur(4px); box-shadow:0 1px 4px rgba(0,0,0,0.2);">
                                                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
                                                 Ganti Kamera (Depan/Belakang)
                                             </button>
-                                            <button type="button" class="btn btn-sm btn-primary" id="btnCaptureWebcam" onclick="Pages.captureWebcamSnapshot()" style="font-size:0.75rem; padding:5px 12px; font-weight:700; background:#16a34a; border-color:#16a34a; display:flex; align-items:center; gap:5px; box-shadow:0 2px 6px rgba(22,163,74,0.4);">
+                                            <button type="button" class="btn btn-sm btn-primary" id="btnCaptureWebcam" onclick="GuruApp.captureWebcamSnapshot()" style="font-size:0.75rem; padding:5px 12px; font-weight:700; background:#16a34a; border-color:#16a34a; display:flex; align-items:center; gap:5px; box-shadow:0 2px 6px rgba(22,163,74,0.4);">
                                                 <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
                                                 Ambil Foto
                                             </button>
@@ -1380,6 +1226,21 @@
             });
 
             if (isGuruWali) {
+                // Realtime search filtering for students
+                const searchInput = $('#kegiatanStudentSearch');
+                const studentSelect = $('#kegiatanStudentId');
+                if (searchInput && studentSelect) {
+                    searchInput.addEventListener('input', (e) => {
+                        const q = e.target.value.toLowerCase().trim();
+                        const options = studentSelect.querySelectorAll('option');
+                        options.forEach((opt, idx) => {
+                            if (idx === 0) return;
+                            const text = (opt.getAttribute('data-search') || opt.textContent).toLowerCase();
+                            opt.style.display = text.includes(q) ? '' : 'none';
+                        });
+                    });
+                }
+
                 let existingPhotos = [];
                 if (existing?.foto_kegiatan) {
                     try {
@@ -1415,6 +1276,15 @@
             };
             if (existingId > 0) payload.id = existingId;
 
+            if (jenis === 'guru_wali') {
+                const studentSel = $('#kegiatanStudentId');
+                if (studentSel && studentSel.value) {
+                    payload.student_id = parseInt(studentSel.value, 10);
+                } else {
+                    payload.student_id = null;
+                }
+            }
+
             if (jenis === 'guru_wali' || Pages._capturedPhotos.length > 0) {
                 payload.foto_kegiatan = Pages._capturedPhotos.map(p => p.dataUrl || p);
             }
@@ -1447,10 +1317,12 @@
         _webcamStream: null,
         _webcamFacingMode: 'user',
 
-        stopWebcam() {
+        async stopWebcam() {
             if (this._webcamStream) {
                 try {
-                    this._webcamStream.getTracks().forEach(t => t.stop());
+                    this._webcamStream.getTracks().forEach(t => {
+                        try { t.stop(); } catch(e) {}
+                    });
                 } catch(e) {}
                 this._webcamStream = null;
             }
@@ -1460,47 +1332,66 @@
             }
         },
 
-        async startWebcamStream() {
-            this.stopWebcam();
+        async startWebcamStream(facing = null) {
+            if (facing) {
+                this._webcamFacingMode = facing;
+            }
+            const mode = this._webcamFacingMode || 'user';
+
+            await this.stopWebcam();
+            // Short hardware release pause
+            await new Promise(r => setTimeout(r, 120));
+
             const videoEl = $('#webcamVideo');
             if (!videoEl) return;
 
-            const facing = this._webcamFacingMode === 'environment' ? { ideal: 'environment' } : 'user';
-            const constraints = {
-                video: {
-                    facingMode: facing,
-                    width: { ideal: 1280 },
-                    height: { ideal: 720 }
-                },
-                audio: false
-            };
-
-            let stream = null;
-            try {
-                stream = await navigator.mediaDevices.getUserMedia(constraints);
-            } catch (err) {
-                try {
-                    stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                } catch(fallbackErr) {
-                    console.error('Webcam error:', fallbackErr);
-                    Toast.show('Tidak dapat mengakses kamera: ' + (fallbackErr.message || 'Izin kamera ditolak'), 'error');
-                    return;
-                }
-            }
-
-            this._webcamStream = stream;
-            videoEl.srcObject = stream;
-            videoEl.play().catch(e => console.log('Video play error:', e));
-
             const label = $('#webcamModeLabel');
             if (label) {
-                label.textContent = this._webcamFacingMode === 'environment' ? '📷 Kamera Belakang' : '📷 Kamera Depan';
+                label.textContent = (mode === 'environment') ? '🔄 Kamera Belakang' : '📷 Kamera Depan';
+            }
+
+            try {
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error('Kamera web tidak didukung pada browser ini atau browser belum memberi izin.');
+                }
+
+                let stream = null;
+                const attempts = [
+                    { audio: false, video: { facingMode: { exact: mode }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+                    { audio: false, video: { facingMode: { ideal: mode }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+                    { audio: false, video: { facingMode: mode } },
+                    { audio: false, video: true }
+                ];
+
+                for (const c of attempts) {
+                    try {
+                        stream = await navigator.mediaDevices.getUserMedia(c);
+                        if (stream) break;
+                    } catch(err) {}
+                }
+
+                if (!stream) {
+                    throw new Error('Tidak dapat mengaktifkan kamera web.');
+                }
+
+                this._webcamStream = stream;
+                videoEl.srcObject = stream;
+                try {
+                    await videoEl.play();
+                } catch(e) {}
+
+                const captureBtn = $('#btnCaptureWebcam');
+                if (captureBtn) {
+                    captureBtn.disabled = this._capturedPhotos.length >= 3;
+                }
+            } catch(e) {
+                Toast.show(e.message || 'Gagal mengakses kamera web. Pastikan izin kamera telah diizinkan.', 'error');
             }
         },
 
         toggleWebcamFacing() {
             this._webcamFacingMode = (this._webcamFacingMode === 'user') ? 'environment' : 'user';
-            this.startWebcamStream();
+            this.startWebcamStream(this._webcamFacingMode);
         },
 
         captureWebcamSnapshot() {
@@ -1510,39 +1401,51 @@
             }
 
             const videoEl = $('#webcamVideo');
-            if (!videoEl || !videoEl.videoWidth || videoEl.videoWidth === 0) {
+            if (!videoEl) {
+                Toast.show('Elemen kamera tidak ditemukan.', 'warning');
+                return;
+            }
+
+            const width = videoEl.videoWidth || videoEl.clientWidth || 640;
+            const height = videoEl.videoHeight || videoEl.clientHeight || 480;
+            if (!width || !height) {
                 Toast.show('Kamera sedang dimuat, silakan tunggu sebentar...', 'warning');
                 return;
             }
 
             const canvas = document.createElement('canvas');
-            let width = videoEl.videoWidth;
-            let height = videoEl.videoHeight;
+            let w = width;
+            let h = height;
 
             // Downscale maximum dimension to 1280px for optimal speed & quality
             const maxDim = 1280;
-            if (width > maxDim || height > maxDim) {
-                if (width > height) {
-                    height = Math.round((height * maxDim) / width);
-                    width = maxDim;
+            if (w > maxDim || h > maxDim) {
+                if (w > h) {
+                    h = Math.round((h * maxDim) / w);
+                    w = maxDim;
                 } else {
-                    width = Math.round((width * maxDim) / height);
-                    height = maxDim;
+                    w = Math.round((w * maxDim) / h);
+                    h = maxDim;
                 }
             }
 
-            canvas.width = width;
-            canvas.height = height;
+            canvas.width = w;
+            canvas.height = h;
             const ctx = canvas.getContext('2d');
-            ctx.drawImage(videoEl, 0, 0, width, height);
+            try {
+                ctx.drawImage(videoEl, 0, 0, w, h);
+            } catch(drawErr) {
+                Toast.show('Gagal mengambil gambar dari kamera.', 'error');
+                return;
+            }
 
             // Compress to <= 500 KB JPEG
             let quality = 0.85;
             let dataUrl = canvas.toDataURL('image/jpeg', quality);
             let sizeKB = Math.round((dataUrl.length * 0.75) / 1024);
 
-            while (sizeKB > 500 && quality > 0.2) {
-                quality -= 0.1;
+            while (sizeKB > 500 && quality > 0.15) {
+                quality -= 0.12;
                 dataUrl = canvas.toDataURL('image/jpeg', quality);
                 sizeKB = Math.round((dataUrl.length * 0.75) / 1024);
             }
@@ -1599,7 +1502,7 @@
                             <div style="position:relative; width:80px; height:80px; border-radius:8px; overflow:hidden; border:1.5px solid #cbd5e1; background:#0f172a; box-shadow:0 1px 4px rgba(0,0,0,0.1);">
                                 <img src="${src}" style="width:100%; height:100%; object-fit:cover; cursor:pointer;" onclick="GuruApp.showImageLightbox('${src}')" alt="Foto">
                                 ${sizeLabel ? `<span style="position:absolute; bottom:2px; left:2px; background:rgba(0,0,0,0.7); color:#fff; font-size:9px; padding:1px 4px; border-radius:4px; font-weight:600;">${sizeLabel}</span>` : ''}
-                                <button type="button" onclick="Pages.removeWebcamPhoto(${idx})" style="position:absolute; top:2px; right:2px; background:#ef4444; color:white; border:none; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:12px; font-weight:bold; line-height:1; box-shadow:0 1px 3px rgba(0,0,0,0.3);">×</button>
+                                <button type="button" onclick="GuruApp.removeWebcamPhoto(${idx})" style="position:absolute; top:2px; right:2px; background:#ef4444; color:white; border:none; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:12px; font-weight:bold; line-height:1; box-shadow:0 1px 3px rgba(0,0,0,0.3);">×</button>
                             </div>
                         `;
                     }).join('')}
@@ -1611,7 +1514,9 @@
             this._capturedPhotos = Array.isArray(existingPhotos) ? existingPhotos.map(p => (typeof p === 'string' ? { dataUrl: p } : p)) : [];
             this._webcamFacingMode = 'user';
             this.renderWebcamGallery();
-            this.startWebcamStream();
+            setTimeout(() => {
+                this.startWebcamStream('user');
+            }, 80);
         },
 
         showImageLightbox(src) {
@@ -2052,6 +1957,15 @@
                                         <div class="jurnal-item-mapel">Jurnal Guru Wali</div>
                                         <span class="badge badge-success" style="font-size:0.7rem;">Guru Wali</span>
                                     </div>
+                                    ${j.student_nama ? `
+                                        <div style="margin:3px 0 6px; font-size:0.75rem; color:var(--primary); font-weight:600;">
+                                            🎯 Siswa: <span style="background:#eff6ff; padding:2px 6px; border-radius:4px; border:1px solid #bfdbfe;">${escapeHtml(j.student_nama)} (${escapeHtml(j.student_kelas || '')})</span>
+                                        </div>
+                                    ` : `
+                                        <div style="margin:3px 0 6px; font-size:0.75rem; color:#64748b;">
+                                            👥 Siswa: <span style="background:#f1f5f9; padding:2px 6px; border-radius:4px;">Bimbingan Umum</span>
+                                        </div>
+                                    `}
                                     ${j.catatan ? `<div class="jurnal-item-tp" style="margin-top:6px; font-size:0.8rem; color:var(--text-primary); line-height:1.4;">${escapeHtml(j.catatan)}</div>` : ''}
                                     <div class="jurnal-item-footer" style="margin-top:10px;">
                                         <div class="jurnal-item-date">${formatTanggal(j.tanggal)}</div>
@@ -2205,6 +2119,12 @@
                             <div class="form-info-row">
                                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                                 <span>Kelas: <strong>${escapeHtml(j.nama_kelas)}</strong></span>
+                            </div>
+                        ` : ''}
+                        ${isGw ? `
+                            <div class="form-info-row">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                                <span>Siswa Bimbingan: <strong>${j.student_nama ? `${escapeHtml(j.student_nama)} (Kelas ${escapeHtml(j.student_kelas || '')} - NIS: ${escapeHtml(j.student_nis || '')})` : 'Bimbingan Umum (Semua Siswa Perwalian)'}</strong></span>
                             </div>
                         ` : ''}
                     `;
@@ -2840,8 +2760,8 @@
             const list = $('#gwJurnalList');
             if (!list) return;
 
-            const from = $('#gwDateFrom').val();
-            const to = $('#gwDateTo').val();
+            const from = $('#gwDateFrom')?.value || '';
+            const to = $('#gwDateTo')?.value || '';
 
             list.innerHTML = '<div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div>';
 
@@ -2905,6 +2825,19 @@
                             </div>
                             <span class="badge badge-success">Guru Wali</span>
                         </div>
+                        ${item.student_nama ? `
+                            <div style="margin: 4px 0 8px; font-size: 0.8rem; display: flex; align-items: center; gap: 6px; color: var(--primary); font-weight: 600;">
+                                <span>🎯 Siswa:</span>
+                                <span style="background: #eff6ff; padding: 2px 8px; border-radius: 6px; border: 1px solid #bfdbfe;">
+                                    ${escapeHtml(item.student_nama)} (${escapeHtml(item.student_kelas || '')})
+                                </span>
+                            </div>
+                        ` : `
+                            <div style="margin: 4px 0 8px; font-size: 0.8rem; display: flex; align-items: center; gap: 6px; color: #64748b;">
+                                <span>👥 Siswa:</span>
+                                <span style="background: #f1f5f9; padding: 2px 8px; border-radius: 6px;">Bimbingan Umum (Semua Anak Wali)</span>
+                            </div>
+                        `}
                         <div class="jurnal-item-body">
                             <div class="jurnal-item-materi" style="margin-bottom:8px;">${escapeHtml(item.kegiatan || item.catatan || '-')}</div>
                             ${item.catatan && item.kegiatan ? `<div class="jurnal-item-catatan" style="font-size:0.8rem; background:#f8fafc; padding:8px; border-radius:6px; border-left:3px solid #2563eb; color:#475569;">${escapeHtml(item.catatan)}</div>` : ''}
@@ -2990,7 +2923,7 @@
         },
 
         async printDailyGuruWaliAbsen() {
-            const tanggal = $('#printGwAbsenTanggal').val();
+            const tanggal = $('#printGwAbsenTanggal')?.value || '';
             if (!tanggal) return Toast.show('Pilih tanggal dulu.', 'warning');
 
             const loader = Toast.loading('Menyiapkan dokumen...');
@@ -3102,7 +3035,7 @@
                 const res = await API.get(`api/jurnal.php?action=get&id=${id}`);
                 if (res.success) {
                     const j = res.data;
-                    if (j.jenis_jurnal === 'non_kbm' || j.jenis_jurnal === 'wali_kelas') {
+                    if (j.jenis_jurnal === 'non_kbm' || j.jenis_jurnal === 'wali_kelas' || j.jenis_jurnal === 'guru_wali' || j.jenis_jurnal === 'waka') {
                         this.openKegiatanModal(j.jenis_jurnal, j.id);
                     } else {
                         this.openJurnalForm({
@@ -4007,6 +3940,7 @@
     // =============================================
     // GLOBAL EXPOSED FUNCTIONS
     // =============================================
+    window.Pages = Pages;
     window.GuruApp = {
         switchDay(hari) {
             Pages.renderDaySchedule(hari);
