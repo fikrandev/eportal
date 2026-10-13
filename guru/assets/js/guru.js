@@ -1100,6 +1100,7 @@
             }
 
             let anakWaliList = [];
+            let initialStudent = null;
             if (isGuruWali) {
                 try {
                     const resS = await API.get('api/jurnal.php?action=guru_wali_students');
@@ -1107,6 +1108,10 @@
                         anakWaliList = resS.data;
                     }
                 } catch(e) {}
+
+                if (existing && existing.student_id) {
+                    initialStudent = anakWaliList.find(s => s.id == existing.student_id) || null;
+                }
             }
 
             const overlay = document.createElement('div');
@@ -1139,27 +1144,115 @@
                         ` : ''}
 
                         ${isGuruWali ? `
-                            <div class="form-group mb-3">
-                                <label class="form-label" style="font-weight:700; color:var(--text-primary); display:flex; justify-content:space-between; align-items:center;">
-                                    <span>🎯 Pilih Siswa Bimbingan / Perwalian</span>
-                                    <span style="font-size:0.75rem; color:#16a34a; font-weight:700;">${anakWaliList.length} Siswa Terdaftar</span>
-                                </label>
-                                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px;">
-                                    <div style="position:relative; margin-bottom:8px;">
-                                        <input type="text" id="kegiatanStudentSearch" class="form-control" placeholder="🔍 Ketik untuk cari nama / NIS / kelas siswa..." style="padding-left:10px; font-size:0.85rem;" autocomplete="off">
+                            <!-- Android Material 3 Searchable Select -->
+                            <div class="m3-select-wrapper" id="m3StudentSelectWrapper">
+                                <div class="m3-select-label-row">
+                                    <label class="m3-select-label">
+                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2">
+                                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                                            <circle cx="9" cy="7" r="4"></circle>
+                                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                                            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                                        </svg>
+                                        Siswa Bimbingan Perwalian
+                                    </label>
+                                    <span class="m3-select-badge">${anakWaliList.length} Anak Wali</span>
+                                </div>
+
+                                <input type="hidden" id="kegiatanStudentId" value="${initialStudent ? initialStudent.id : ''}">
+
+                                <div class="m3-select-trigger" id="m3SelectTrigger" tabindex="0" role="combobox" aria-haspopup="listbox" aria-expanded="false">
+                                    <div class="m3-select-content">
+                                        <div class="m3-avatar ${initialStudent ? '' : 'group'}" id="m3TriggerAvatar">
+                                            ${initialStudent ? (initialStudent.nama ? initialStudent.nama.charAt(0).toUpperCase() : 'S') : '👥'}
+                                        </div>
+                                        <div class="m3-select-text">
+                                            <span class="m3-select-hint">Sasaran Bimbingan</span>
+                                            <span class="m3-select-title" id="m3TriggerTitle">
+                                                ${initialStudent ? escapeHtml(initialStudent.nama) : 'Semua Siswa Perwalian'}
+                                            </span>
+                                            <div class="m3-select-subtitle" id="m3TriggerSubtitle">
+                                                ${initialStudent ? `
+                                                    <span class="m3-chip-sm">Kelas ${escapeHtml(initialStudent.kelas)}</span>
+                                                    <span>NIS: ${escapeHtml(initialStudent.nis)}</span>
+                                                ` : `
+                                                    <span>Bimbingan Umum (${anakWaliList.length} Siswa)</span>
+                                                `}
+                                            </div>
+                                        </div>
                                     </div>
-                                    <select class="form-control" id="kegiatanStudentId" style="font-size:0.88rem; font-weight:500;">
-                                        <option value="">-- Semua Siswa Perwalian (Bimbingan Umum) --</option>
+                                    <div class="m3-select-chevron">
+                                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5">
+                                            <polyline points="6 9 12 15 18 9"></polyline>
+                                        </svg>
+                                    </div>
+                                </div>
+
+                                <div class="m3-dropdown-menu" id="m3DropdownMenu" role="listbox">
+                                    <div class="m3-search-bar">
+                                        <span class="m3-search-icon">
+                                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2">
+                                                <circle cx="11" cy="11" r="8"></circle>
+                                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                            </svg>
+                                        </span>
+                                        <input type="text" id="m3StudentSearchInput" class="m3-search-input" placeholder="Cari nama, kelas, atau NIS..." autocomplete="off">
+                                        <button type="button" class="m3-search-clear" id="m3SearchClearBtn" title="Hapus">×</button>
+                                    </div>
+
+                                    <div class="m3-options-list" id="m3StudentOptionsList">
+                                        <div class="m3-option-item ${!initialStudent ? 'selected' : ''}" data-id="" data-nama="Semua Siswa Perwalian" data-kelas="" data-nis="" data-search="semua bimbingan umum perwalian">
+                                            <div class="m3-option-item-left">
+                                                <div class="m3-option-avatar" style="background:#dcfce7; color:#15803d;">👥</div>
+                                                <div class="m3-option-details">
+                                                    <div class="m3-option-name">Semua Siswa Perwalian</div>
+                                                    <div class="m3-option-meta">Bimbingan Umum (Semua Anak Wali)</div>
+                                                </div>
+                                            </div>
+                                            <div class="m3-check-icon">
+                                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#16a34a" stroke-width="3">
+                                                    <polyline points="20 6 9 17 4 12"></polyline>
+                                                </svg>
+                                            </div>
+                                        </div>
+
                                         ${anakWaliList.map(s => {
-                                            const isSelected = existing && existing.student_id == s.id ? 'selected' : '';
-                                            return `<option value="${s.id}" data-search="${escapeHtml((s.nama + ' ' + s.nis + ' ' + s.kelas).toLowerCase())}" ${isSelected}>
-                                                ${escapeHtml(s.nama)} — Kelas ${escapeHtml(s.kelas)} (NIS: ${escapeHtml(s.nis)})
-                                            </option>`;
+                                            const isSelected = initialStudent && initialStudent.id == s.id;
+                                            const initial = s.nama ? s.nama.charAt(0).toUpperCase() : 'S';
+                                            return `
+                                                <div class="m3-option-item ${isSelected ? 'selected' : ''}" data-id="${s.id}" data-nama="${escapeHtml(s.nama)}" data-kelas="${escapeHtml(s.kelas)}" data-nis="${escapeHtml(s.nis)}" data-search="${escapeHtml((s.nama + ' ' + s.kelas + ' ' + s.nis).toLowerCase())}">
+                                                    <div class="m3-option-item-left">
+                                                        <div class="m3-option-avatar">${initial}</div>
+                                                        <div class="m3-option-details">
+                                                            <div class="m3-option-name">${escapeHtml(s.nama)}</div>
+                                                            <div class="m3-option-meta">
+                                                                <span class="m3-chip-sm">Kelas ${escapeHtml(s.kelas)}</span>
+                                                                <span>NIS: ${escapeHtml(s.nis)}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="m3-check-icon">
+                                                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#16a34a" stroke-width="3">
+                                                            <polyline points="20 6 9 17 4 12"></polyline>
+                                                        </svg>
+                                                    </div>
+                                                </div>
+                                            `;
                                         }).join('')}
-                                    </select>
-                                    <div style="font-size:0.75rem; color:#64748b; margin-top:6px; line-height:1.4;">
-                                        💡 <em>Catatan dan foto ini akan otomatis tampil di <strong>Portal Siswa</strong> pada akun siswa yang dipilih.</em>
                                     </div>
+
+                                    <div class="m3-empty-results" id="m3EmptyResults" style="display:none;">
+                                        Tidak ada siswa yang sesuai pencarian
+                                    </div>
+                                </div>
+
+                                <div class="m3-select-helper">
+                                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#16a34a" stroke-width="2.5" style="margin-top:2px; flex-shrink:0;">
+                                        <circle cx="12" cy="12" r="10"></circle>
+                                        <line x1="12" y1="16" x2="12" y2="12"></line>
+                                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                                    </svg>
+                                    <span>Catatan dan foto otomatis tampil di <strong>Portal Siswa</strong> perwalian yang dipilih.</span>
                                 </div>
                             </div>
                         ` : ''}
@@ -1226,18 +1319,107 @@
             });
 
             if (isGuruWali) {
-                // Realtime search filtering for students
-                const searchInput = $('#kegiatanStudentSearch');
-                const studentSelect = $('#kegiatanStudentId');
-                if (searchInput && studentSelect) {
-                    searchInput.addEventListener('input', (e) => {
-                        const q = e.target.value.toLowerCase().trim();
-                        const options = studentSelect.querySelectorAll('option');
-                        options.forEach((opt, idx) => {
-                            if (idx === 0) return;
-                            const text = (opt.getAttribute('data-search') || opt.textContent).toLowerCase();
-                            opt.style.display = text.includes(q) ? '' : 'none';
+                // Interactive Material 3 Select Bindings
+                const wrapper = $('#m3StudentSelectWrapper');
+                const trigger = $('#m3SelectTrigger');
+                const searchInput = $('#m3StudentSearchInput');
+                const clearBtn = $('#m3SearchClearBtn');
+                const hiddenInput = $('#kegiatanStudentId');
+                const avatarEl = $('#m3TriggerAvatar');
+                const titleEl = $('#m3TriggerTitle');
+                const subtitleEl = $('#m3TriggerSubtitle');
+                const optionsList = $('#m3StudentOptionsList');
+                const emptyEl = $('#m3EmptyResults');
+
+                if (wrapper && trigger) {
+                    trigger.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const isOpen = wrapper.classList.toggle('open');
+                        trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+                        if (isOpen && searchInput) {
+                            setTimeout(() => searchInput.focus(), 80);
+                        }
+                    });
+
+                    // Search input live-filtering
+                    if (searchInput && optionsList) {
+                        searchInput.addEventListener('input', (e) => {
+                            const q = e.target.value.toLowerCase().trim();
+                            if (clearBtn) {
+                                clearBtn.classList.toggle('visible', q.length > 0);
+                            }
+                            let matchCount = 0;
+                            const items = optionsList.querySelectorAll('.m3-option-item');
+                            items.forEach(item => {
+                                const searchStr = (item.getAttribute('data-search') || '').toLowerCase();
+                                const isMatch = searchStr.includes(q);
+                                item.style.display = isMatch ? 'flex' : 'none';
+                                if (isMatch) matchCount++;
+                            });
+                            if (emptyEl) {
+                                emptyEl.style.display = matchCount === 0 ? 'block' : 'none';
+                            }
                         });
+                    }
+
+                    // Clear search button
+                    if (clearBtn && searchInput) {
+                        clearBtn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            searchInput.value = '';
+                            searchInput.dispatchEvent(new Event('input'));
+                            searchInput.focus();
+                        });
+                    }
+
+                    // Selecting an option
+                    if (optionsList) {
+                        optionsList.addEventListener('click', (e) => {
+                            const item = e.target.closest('.m3-option-item');
+                            if (!item) return;
+                            e.stopPropagation();
+
+                            const id = item.getAttribute('data-id') || '';
+                            const nama = item.getAttribute('data-nama') || '';
+                            const kelas = item.getAttribute('data-kelas') || '';
+                            const nis = item.getAttribute('data-nis') || '';
+
+                            if (hiddenInput) hiddenInput.value = id;
+
+                            optionsList.querySelectorAll('.m3-option-item').forEach(el => el.classList.remove('selected'));
+                            item.classList.add('selected');
+
+                            if (id) {
+                                if (avatarEl) {
+                                    avatarEl.className = 'm3-avatar';
+                                    avatarEl.textContent = nama ? nama.charAt(0).toUpperCase() : 'S';
+                                }
+                                if (titleEl) titleEl.textContent = nama;
+                                if (subtitleEl) {
+                                    subtitleEl.innerHTML = `<span class="m3-chip-sm">Kelas ${escapeHtml(kelas)}</span> <span>NIS: ${escapeHtml(nis)}</span>`;
+                                }
+                            } else {
+                                if (avatarEl) {
+                                    avatarEl.className = 'm3-avatar group';
+                                    avatarEl.textContent = '👥';
+                                }
+                                if (titleEl) titleEl.textContent = 'Semua Siswa Perwalian';
+                                if (subtitleEl) {
+                                    subtitleEl.innerHTML = `<span>Bimbingan Umum (${anakWaliList.length} Siswa)</span>`;
+                                }
+                            }
+
+                            wrapper.classList.remove('open');
+                            trigger.setAttribute('aria-expanded', 'false');
+                        });
+                    }
+
+                    // Close dropdown when clicking outside
+                    overlay.addEventListener('click', (e) => {
+                        if (!wrapper.contains(e.target)) {
+                            wrapper.classList.remove('open');
+                            trigger.setAttribute('aria-expanded', 'false');
+                        }
                     });
                 }
 
