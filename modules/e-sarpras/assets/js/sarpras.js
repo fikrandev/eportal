@@ -2064,6 +2064,9 @@ const Sarpras = {
                         <td style="text-align:center; color:var(--warning)"><strong>${s.jumlah}</strong></td>
                         <td>
                             <div class="sp-actions">
+                                <button class="sp-btn-icon" style="color:#059669; background:rgba(5,150,105,0.08); border-radius:6px;" title="Beli Lagi / Tambah Unit Gudang" onclick="Sarpras.formRestock(${s.id})">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                </button>
                                 <button class="sp-btn-icon" title="Detail" onclick="Sarpras.navigate('sarpras-detail', {id: ${s.id}})">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                                 </button>
@@ -2098,6 +2101,9 @@ const Sarpras = {
                         <td style="text-align:center; color:var(--warning)"><strong>${s.jumlah}</strong></td>
                         <td>
                             <div class="sp-actions">
+                                <button class="sp-btn-icon" style="color:#059669; background:rgba(5,150,105,0.08); border-radius:6px;" title="Beli Lagi / Tambah Eksemplar Buku" onclick="Sarpras.formRestock(${s.id})">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                </button>
                                 <button class="sp-btn-icon" title="Detail" onclick="Sarpras.navigate('sarpras-detail', {id: ${s.id}})">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                                 </button>
@@ -2132,6 +2138,9 @@ const Sarpras = {
                         <td style="text-align:center; color:var(--warning)"><strong>${s.jumlah}</strong></td>
                         <td>
                             <div class="sp-actions">
+                                <button class="sp-btn-icon" style="color:#059669; background:rgba(5,150,105,0.08); border-radius:6px;" title="Beli Lagi / Tambah Stok Gudang" onclick="Sarpras.formRestock(${s.id})">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                                </button>
                                 <button class="sp-btn-icon" style="color:#2563eb; background:rgba(37,99,235,0.08); border-radius:6px;" title="Catat Penggunaan / Distribusi" onclick="Sarpras.formPenggunaanAhp(${s.id})">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" y1="8" x2="19" y2="14"/><line x1="22" y1="11" x2="16" y2="11"/></svg>
                                 </button>
@@ -2293,6 +2302,126 @@ const Sarpras = {
                             type: 'error', 
                             title: 'Gagal Mencatat', 
                             message: xhr.responseJSON?.message || 'Terjadi kesalahan saat mencatat penggunaan barang.' 
+                        });
+                    });
+                    return false;
+                }
+            });
+        }).fail(xhr => {
+            EModal.close(loader);
+            EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal memuat data barang.' });
+        });
+    },
+
+    /**
+     * FORM: BELI LAGI / TAMBAH STOK GUDANG (RESTOCK)
+     * Menambahkan pembelian baru dari barang yang sudah ada ke gudang (stok gudang bertambah),
+     * mempertahankan kode inventaris yang sama sehingga Total, Distribusi, dan Sisa Gudang terkonsolidasi.
+     */
+    formRestock(id) {
+        const loader = EModal.loading('Memuat data barang...');
+        this.api(`sarpras.php?action=get&id=${id}`).done(res => {
+            EModal.close(loader);
+            const item = res.data;
+            if (!item) {
+                EModal.toast({ type: 'error', title: 'Error', message: 'Data barang tidak ditemukan.' });
+                return;
+            }
+
+            const stokGudang = parseInt(item.jumlah || 0);
+
+            EModal.form({
+                title: 'Beli Lagi / Tambah Stok Gudang',
+                size: 'md',
+                form: `
+                    <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:12px; padding:14px 16px; margin-bottom:18px;">
+                        <div style="font-weight:700; color:#166534; font-size:1.05rem;">${this.escapeHtml(item.nama)}</div>
+                        <div style="font-size:0.8rem; color:#15803d; margin-top:3px;">
+                            Kode: <strong style="font-family:monospace;">${this.escapeHtml(item.kode_inventaris)}</strong> | Kategori: ${this.escapeHtml(item.kategori_nama || '-')}
+                        </div>
+                        <div style="display:flex; align-items:center; justify-content:space-between; margin-top:10px; padding-top:8px; border-top:1px dashed #bbf7d0;">
+                            <span style="font-size:0.85rem; color:#166534; font-weight:600;">Sisa Stok di Gudang Saat Ini:</span>
+                            <span style="font-size:1.15rem; font-weight:800; color:#15803d; background:#fff; padding:2px 14px; border-radius:20px; border:1px solid #86efac;">${stokGudang} Unit</span>
+                        </div>
+                    </div>
+
+                    <div class="sp-form-row">
+                        <div class="form-group">
+                            <label>Jumlah Beli Baru (Unit) <span style="color:var(--danger)">*</span></label>
+                            <input type="number" class="form-input" id="f_rsJml" value="1" min="1" style="font-size:1.1rem; font-weight:700;">
+                        </div>
+                        <div class="form-group">
+                            <label>Harga Satuan Beli (Rp)</label>
+                            <input type="text" class="form-input sp-rupiah-input" id="f_rsHarga" value="${this.formatNumber(item.harga_perolehan || 0)}">
+                        </div>
+                    </div>
+
+                    <div class="sp-form-row">
+                        <div class="form-group">
+                            <label>Tanggal Perolehan / Pembelian</label>
+                            <input type="date" class="form-input" id="f_rsTgl" value="${new Date().toISOString().split('T')[0]}">
+                        </div>
+                        <div class="form-group">
+                            <label>Status Kondisi Baik</label>
+                            <input type="number" class="form-input" id="f_rsBaik" value="1" min="0">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Catatan / Keterangan Pembelian</label>
+                        <input type="text" class="form-input" id="f_rsKet" placeholder="Cth: Pengadaan baru, Pembelian tambahan BOS, dll">
+                    </div>
+                `,
+                onOpen: () => {
+                    $('#f_rsJml').on('input change keyup', function() {
+                        const val = parseInt($(this).val() || 0);
+                        if (val > 0) {
+                            $('#f_rsBaik').val(val);
+                        }
+                    });
+                },
+                onConfirm: () => {
+                    const jml = parseInt($('#f_rsJml').val() || 0);
+                    if (jml <= 0) {
+                        EModal.toast({ type: 'error', title: 'Input Tidak Valid', message: 'Jumlah pembelian baru minimal 1.' });
+                        return false;
+                    }
+
+                    const cleanedHarga = ($('#f_rsHarga').val() || '0').replace(/\./g, '');
+                    const postData = {
+                        source_id: item.id,
+                        ruang_id: '',
+                        kategori_id: item.kategori_id,
+                        nama: item.nama,
+                        kode_inventaris: item.kode_inventaris,
+                        merk: item.merk || '',
+                        spesifikasi: item.spesifikasi || '',
+                        jumlah: jml,
+                        kondisi_baik: parseInt($('#f_rsBaik').val() || jml),
+                        kondisi_rusak_ringan: 0,
+                        kondisi_rusak_berat: 0,
+                        tanggal_perolehan: $('#f_rsTgl').val() || new Date().toISOString().split('T')[0],
+                        harga_perolehan: cleanedHarga,
+                        keterangan: ($('#f_rsKet').val() || '').trim(),
+                        grup_pintasan: item.grup_pintasan || ''
+                    };
+
+                    const savingLoader = EModal.loading('Menambahkan stok barang ke gudang...');
+                    this.api('sarpras.php?action=create', { method: 'POST', data: postData }).done(res => {
+                        EModal.close(savingLoader);
+                        EModal.closeAll();
+                        EModal.toast({ 
+                            type: 'success', 
+                            title: 'Berhasil Beli / Tambah Stok', 
+                            message: res.message || `Stok "${item.nama}" berhasil ditambahkan ke gudang.` 
+                        });
+                        this.loadRouteFromHash();
+                    }).fail(xhr => {
+                        EModal.close(savingLoader);
+                        EModal.toast({ 
+                            type: 'error', 
+                            title: 'Gagal Menambah Stok', 
+                            message: xhr.responseJSON?.message || 'Terjadi kesalahan saat menambah stok.' 
                         });
                     });
                     return false;
@@ -3271,7 +3400,18 @@ const Sarpras = {
                             if (d.available !== undefined) {
                                 $('#f_sAvailable').val(d.available);
                                 $('#csStockValue').text(d.available);
-                                $('#csStockLabel').css('display', 'flex').show();
+                                const currentTgtRuang = ruangId || $('#f_sRuangIdSelect').val() || $('#f_sRuangId').val() || '';
+                                if (!currentTgtRuang) {
+                                    $('#csStockLabel').html(`
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                                        <span>Stok Gudang Saat Ini: <strong>${d.available}</strong> unit. Pembelian baru ini akan <strong>menambah</strong> stok gudang.</span>
+                                    `).css({'display': 'flex', 'background': '#eff6ff', 'color': '#1d4ed8', 'border-color': '#bfdbfe'}).show();
+                                } else {
+                                    $('#csStockLabel').html(`
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                                        <span>Stok Gudang Tersedia: <strong id="csStockValue">${d.available}</strong> unit</span>
+                                    `).css({'display': 'flex', 'background': '#eff6ff', 'color': '#1d4ed8', 'border-color': '#bfdbfe'}).show();
+                                }
                             } else {
                                 $('#csStockLabel').hide();
                             }
@@ -3330,7 +3470,8 @@ const Sarpras = {
 
                             const sourceId = $('#f_sSourceId').val();
                             const available = parseInt($('#f_sAvailable').val() || 0);
-                            if (sourceId && available > 0 && jml > available) {
+                            const currentTgtRuang = ruangId || $('#f_sRuangIdSelect').val() || $('#f_sRuangId').val() || '';
+                            if (sourceId && currentTgtRuang && jml > available) {
                                 if ($('#sJmlStockWarning').length === 0) {
                                     $('#f_sJml').after(`<div id="sJmlStockWarning" style="color:#dc2626; font-size:0.8rem; font-weight:600; margin-top:4px;">⚠️ Jumlah (${jml}) melebihi sisa stok gudang (${available})! Stok tidak boleh minus.</div>`);
                                 } else {
@@ -3443,7 +3584,7 @@ const Sarpras = {
                             return false;
                         }
 
-                        if (sourceId && jml > available) {
+                        if (sourceId && targetRuangId && jml > available) {
                             EModal.toast({
                                 type: 'error', 
                                 title: 'Stok Tidak Mencukupi', 

@@ -3,6 +3,7 @@
  * Public student portal API for E-Graduation.
  */
 require_once __DIR__ . '/../../../api/config.php';
+require_once __DIR__ . '/auth_helper.php';
 
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
@@ -37,11 +38,12 @@ function studentLogin()
 
     try {
         $yearId = activeYearIdForStudent();
+        $grade12Sql = grad_grade12_sql_condition('s');
         $stmt = db()->prepare("
             SELECT a.*, s.nis, s.nisn, s.nama, s.kelas, s.tanggal_lahir, s.foto_path
             FROM grad_student_accounts a
             JOIN students s ON s.id = a.student_id
-            WHERE a.academic_year_id = ? AND a.username = ? AND a.status = 1
+            WHERE a.academic_year_id = ? AND a.username = ? AND a.status = 1 AND {$grade12Sql}
         ");
         $stmt->execute([$yearId, $username]);
         $account = $stmt->fetch();

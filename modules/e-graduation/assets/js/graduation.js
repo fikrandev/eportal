@@ -893,7 +893,7 @@ const Graduation = {
                 <div class="grad-letter-summary-item"><span>Akun Aktif</span><strong>${this.formatNumber(meta.total_accounts)}</strong></div>
                 <div class="grad-letter-summary-item"><span>Portal Siswa</span><strong style="font-size:.8rem">${this.escapeHtml(meta.student_portal_url || '-')}</strong></div>
             </div>
-            <div class="grad-muted" style="margin:8px 0 14px">Import mengambil data siswa dari Admin Portal, lalu sinkron ke login E-Graduation berdasarkan kelas yang dicentang.</div>
+            <div class="grad-muted" style="margin:8px 0 14px">Import mengambil data siswa kelas 12 dari Admin Portal, lalu sinkron ke login E-Graduation berdasarkan kelas yang dicentang.</div>
             <div class="grad-account-actions">
                 <button class="btn btn-primary" onclick="Graduation.generateStudentAccounts()">Import Akun dari Admin Portal</button>
                 <a class="btn btn-outline" href="${this.escapeAttr(meta.student_portal_url || '#')}" target="_blank">Buka Portal Siswa</a>
@@ -940,7 +940,7 @@ const Graduation = {
     generateStudentAccounts() {
         const classes = this.state.accountMeta?.classes || [];
         if (!classes.length) {
-            EModal.toast({ type: 'warning', title: 'Data kelas kosong', message: 'Belum ada kelas siswa pada tahun ajaran aktif.' });
+            EModal.toast({ type: 'warning', title: 'Data kelas kosong', message: 'Belum ada data siswa kelas 12 pada tahun ajaran aktif.' });
             return;
         }
 
@@ -955,22 +955,22 @@ const Graduation = {
         `).join('');
 
         EModal.form({
-            title: 'Import Akun dari Admin Portal',
+            title: 'Import Akun Kelas 12 dari Admin Portal',
             size: 'md',
             form: `
                 <div class="form-group" id="${pickerId}">
-                    <label class="form-label">Pilih kelas yang akan diimport</label>
+                    <label class="form-label">Pilih kelas 12 yang akan diimport</label>
                     <div class="grad-account-class-tools">
                         <label class="grad-check-toggle">
                             <input type="checkbox" id="${toggleId}">
-                            <span>Pilih Semua Kelas</span>
+                            <span>Pilih Semua Kelas 12</span>
                         </label>
                         <span class="grad-muted" id="${countId}"></span>
                     </div>
                     <div class="grad-account-class-grid">
                         ${checkboxes}
                     </div>
-                    <div class="grad-muted" style="margin-top:8px">Akun sumber: Admin Portal (username siswa = NIS).</div>
+                    <div class="grad-muted" style="margin-top:8px">Khusus siswa kelas 12 (tingkat akhir). Akun sumber: Admin Portal (username siswa = NIS).</div>
                 </div>
             `,
             confirmText: 'Import Akun',

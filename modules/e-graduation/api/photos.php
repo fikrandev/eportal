@@ -39,10 +39,12 @@ function listPhotos()
         json_response(400, false, 'Tahun ajaran aktif belum diatur.');
     }
 
+    $grade12Sql = grad_grade12_sql_condition('s');
     $stmt = db()->prepare("
         SELECT s.id, s.nis, s.nisn, s.nama, s.kelas, s.foto_path
         FROM students s
         INNER JOIN grad_student_accounts a ON a.student_id = s.id AND a.academic_year_id = ? AND a.status = 1
+        WHERE {$grade12Sql}
         ORDER BY s.kelas ASC, s.nama ASC
     ");
     $stmt->execute([$yearId]);
@@ -219,11 +221,12 @@ function processPhotoFile($originalName, $tmpPath)
     $active = get_active_academic_year();
     $yearId = (int) ($active['id'] ?? 0);
 
+    $grade12Sql = grad_grade12_sql_condition('s');
     $stmt = db()->prepare("
         SELECT s.id, s.nis, s.nama, s.foto_path
         FROM students s
         INNER JOIN grad_student_accounts a ON a.student_id = s.id AND a.academic_year_id = ? AND a.status = 1
-        WHERE s.nis = ?
+        WHERE s.nis = ? AND {$grade12Sql}
         LIMIT 1
     ");
     $stmt->execute([$yearId, $nis]);

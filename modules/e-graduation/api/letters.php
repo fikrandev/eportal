@@ -98,6 +98,7 @@ function listStudentLetters()
 {
     try {
         $academicYearId = grad_active_year_id();
+        $grade12Sql = grad_grade12_sql_condition('s');
         $stmt = db()->prepare("
             SELECT
                 s.id as student_id,
@@ -118,7 +119,7 @@ function listStudentLetters()
             FROM grad_student_accounts a
             JOIN students s ON s.id = a.student_id
             LEFT JOIN grad_student_letters l ON l.student_id = s.id AND l.academic_year_id = s.academic_year_id
-            WHERE a.academic_year_id = ? AND a.status = 1
+            WHERE a.academic_year_id = ? AND a.status = 1 AND {$grade12Sql}
             ORDER BY s.kelas ASC, s.no_urut ASC, s.nama ASC
         ");
         $stmt->execute([$academicYearId]);
@@ -213,11 +214,12 @@ function saveAndGenerate()
         $stmt = db()->prepare("DELETE FROM grad_student_letters WHERE academic_year_id = ?");
         $stmt->execute([$academicYearId]);
 
+        $grade12Sql = grad_grade12_sql_condition('s');
         $stmt = db()->prepare("
             SELECT s.id
             FROM grad_student_accounts a
             JOIN students s ON s.id = a.student_id
-            WHERE a.academic_year_id = ? AND a.status = 1
+            WHERE a.academic_year_id = ? AND a.status = 1 AND {$grade12Sql}
             ORDER BY s.kelas ASC, s.no_urut ASC, s.nama ASC
             LIMIT {$total}
         ");
@@ -352,14 +354,26 @@ function getSetting($academicYearId)
 
 function countActiveStudents($academicYearId)
 {
-    $stmt = db()->prepare("SELECT COUNT(*) FROM grad_student_accounts WHERE academic_year_id = ? AND status = 1");
+    $grade12Sql = grad_grade12_sql_condition('s');
+    $stmt = db()->prepare("
+        SELECT COUNT(a.id) 
+        FROM grad_student_accounts a
+        JOIN students s ON s.id = a.student_id
+        WHERE a.academic_year_id = ? AND a.status = 1 AND {$grade12Sql}
+    ");
     $stmt->execute([$academicYearId]);
     return (int) $stmt->fetchColumn();
 }
 
 function countGeneratedLetters($academicYearId)
 {
-    $stmt = db()->prepare("SELECT COUNT(*) FROM grad_student_letters WHERE academic_year_id = ?");
+    $grade12Sql = grad_grade12_sql_condition('s');
+    $stmt = db()->prepare("
+        SELECT COUNT(l.id) 
+        FROM grad_student_letters l
+        JOIN students s ON s.id = l.student_id
+        WHERE l.academic_year_id = ? AND {$grade12Sql}
+    ");
     $stmt->execute([$academicYearId]);
     return (int) $stmt->fetchColumn();
 }

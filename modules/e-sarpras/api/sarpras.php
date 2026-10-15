@@ -35,6 +35,71 @@ function templateBuku() {
     exit;
 }
 
+function consolidateDuplicateSarpras($grup = null) {
+    try {
+        $whereGrup = $grup ? "AND s1.grup_pintasan = " . db()->quote($grup) : "";
+        
+        $sql = "
+            SELECT LOWER(TRIM(s1.nama)) as norm_name, s1.kategori_id, COUNT(*) as cnt, MIN(s1.id) as primary_id
+            FROM sarpras s1
+            WHERE s1.ruang_id IS NULL AND s1.is_hapus = 0 $whereGrup
+            GROUP BY LOWER(TRIM(s1.nama)), s1.kategori_id
+            HAVING cnt > 1
+        ";
+        $dupGroups = db()->query($sql)->fetchAll(PDO::FETCH_ASSOC);
+        
+        foreach ($dupGroups as $grp) {
+            $normName = $grp['norm_name'];
+            $katId = (int)$grp['kategori_id'];
+            
+            $stmt = db()->prepare("SELECT * FROM sarpras WHERE LOWER(TRIM(nama)) = ? AND kategori_id = ? AND ruang_id IS NULL AND is_hapus = 0 ORDER BY id ASC");
+            $stmt->execute([$normName, $katId]);
+            $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            if (count($items) <= 1) continue;
+            
+            $primary = $items[0];
+            $primaryCode = $primary['kode_inventaris'];
+            
+            $totJml = 0;
+            $totBaik = 0;
+            $totRR = 0;
+            $totRB = 0;
+            $secondaryIds = [];
+            $secondaryCodes = [];
+            
+            foreach ($items as $it) {
+                $totJml += max(0, (int)$it['jumlah']);
+                $totBaik += max(0, (int)$it['kondisi_baik']);
+                $totRR += max(0, (int)$it['kondisi_rusak_ringan']);
+                $totRB += max(0, (int)$it['kondisi_rusak_berat']);
+                if ($it['id'] != $primary['id']) {
+                    $secondaryIds[] = (int)$it['id'];
+                    if ($it['kode_inventaris'] && $it['kode_inventaris'] !== $primaryCode) {
+                        $secondaryCodes[] = $it['kode_inventaris'];
+                    }
+                }
+            }
+            
+            $updPrimary = db()->prepare("UPDATE sarpras SET jumlah = ?, kondisi_baik = ?, kondisi_rusak_ringan = ?, kondisi_rusak_berat = ? WHERE id = ?");
+            $updPrimary->execute([$totJml, $totBaik, $totRR, $totRB, $primary['id']]);
+            
+            if (!empty($secondaryCodes)) {
+                $codePlaceholders = implode(',', array_fill(0, count($secondaryCodes), '?'));
+                $updRooms = db()->prepare("UPDATE sarpras SET kode_inventaris = ? WHERE kode_inventaris IN ($codePlaceholders) AND ruang_id IS NOT NULL");
+                $updRooms->execute(array_merge([$primaryCode], $secondaryCodes));
+            }
+            
+            if (!empty($secondaryIds)) {
+                $idPlaceholders = implode(',', array_fill(0, count($secondaryIds), '?'));
+                $delSecondary = db()->prepare("UPDATE sarpras SET is_hapus = 1 WHERE id IN ($idPlaceholders)");
+                $delSecondary->execute($secondaryIds);
+            }
+        }
+    } catch (Exception $e) {
+        // Silently continue if error in consolidation
+    }
+}
+
 function syncWarehouseRecords($grup) {
     if (!$grup) return;
     db()->exec("
@@ -77,8 +142,12 @@ function listSarpras() {
     $grup = $_GET['grup'] ?? '';
     $excludeGrup = $_GET['exclude_grup'] ?? '';
 
-    if ($grup && $ruangId === 0) {
-        syncWarehouseRecords($grup);
+    $isWarehouseView = ((isset($_GET['ruang_id']) && (int)$_GET['ruang_id'] === 0) || ($grup && $ruangId === 0));
+    if ($isWarehouseView) {
+        consolidateDuplicateSarpras($grup ?: null);
+        if ($grup) {
+            syncWarehouseRecords($grup);
+        }
     }
     
     $where = "WHERE s.is_hapus = 0";
@@ -125,7 +194,7 @@ function listSarpras() {
     $offset = ($page - 1) * $perPage;
     
     // Custom query for warehouse view to include Terpakai/Sisa calculations
-    if ($grup && $ruangId == 0) {
+    if ($isWarehouseView) {
         $stmt = db()->prepare("SELECT s.*, k.nama as kategori_nama, k.kode as kategori_kode, 
             (SELECT SUM(jumlah) FROM sarpras WHERE kode_inventaris = s.kode_inventaris AND is_hapus=0) as total_batch,
             (SELECT SUM(jumlah) FROM sarpras WHERE kode_inventaris = s.kode_inventaris AND ruang_id IS NOT NULL AND is_hapus=0) as terpakai_batch,
@@ -335,7 +404,7 @@ function createSarpras() {
         }
     }
 
-    // REGULAR CREATE LOGIC
+    // RESOLVE KATEGORI & NAMA FIRST
     $kategori_id = (int)($d['kategori_id'] ?? 0);
     $jenis_sarana = sanitize($d['jenis_sarana'] ?? null);
     
@@ -361,7 +430,80 @@ function createSarpras() {
         if ($firstKat) $kategori_id = (int)$firstKat;
     }
     
-    $nama = sanitize($d['nama'] ?? '');
+    $nama = sanitize($d['nama'] ?? ($d['judul_buku'] ?? ''));
+
+    // GUDANG RESTOCK / PURCHASING EXISTING ITEM LOGIC
+    // When target is warehouse (ruang_id is null or 0), check if item already exists in warehouse
+    if (empty($ruang_id)) {
+        $existingWarehouse = null;
+        if ($source_id > 0) {
+            $stmt = db()->prepare("SELECT * FROM sarpras WHERE id = ? AND ruang_id IS NULL AND is_hapus = 0");
+            $stmt->execute([$source_id]);
+            $existingWarehouse = $stmt->fetch();
+        }
+        
+        $reqKode = trim((string)($d['kode_inventaris'] ?? ''));
+        if (!$existingWarehouse && !empty($reqKode) && !in_array(strtolower($reqKode), ['otomatis', 'pilih katalog dlu', '-'])) {
+            $stmt = db()->prepare("SELECT * FROM sarpras WHERE kode_inventaris = ? AND ruang_id IS NULL AND is_hapus = 0 ORDER BY id ASC LIMIT 1");
+            $stmt->execute([$reqKode]);
+            $existingWarehouse = $stmt->fetch();
+        }
+        
+        if (!$existingWarehouse && !empty($nama)) {
+            if ($kategori_id > 0) {
+                $stmt = db()->prepare("SELECT * FROM sarpras WHERE LOWER(TRIM(nama)) = LOWER(TRIM(?)) AND kategori_id = ? AND ruang_id IS NULL AND is_hapus = 0 ORDER BY id ASC LIMIT 1");
+                $stmt->execute([$nama, $kategori_id]);
+                $existingWarehouse = $stmt->fetch();
+            }
+            if (!$existingWarehouse) {
+                $stmt = db()->prepare("SELECT * FROM sarpras WHERE LOWER(TRIM(nama)) = LOWER(TRIM(?)) AND ruang_id IS NULL AND is_hapus = 0 ORDER BY id ASC LIMIT 1");
+                $stmt->execute([$nama]);
+                $existingWarehouse = $stmt->fetch();
+            }
+        }
+
+        if ($existingWarehouse) {
+            $newWarehouseStock = max(0, (int)$existingWarehouse['jumlah']) + $jumlah;
+            $newBaik = max(0, (int)$existingWarehouse['kondisi_baik']) + $baik;
+            $newRR = max(0, (int)$existingWarehouse['kondisi_rusak_ringan']) + $rr;
+            $newRB = max(0, (int)$existingWarehouse['kondisi_rusak_berat']) + $rb;
+            
+            $newHarga = floatval($d['harga_perolehan'] ?? 0);
+            $newTgl = trim((string)($d['tanggal_perolehan'] ?? ''));
+            $newMerk = sanitize($d['merk'] ?? '');
+            $newSpek = sanitize($d['spesifikasi'] ?? '');
+            
+            $upd = db()->prepare("UPDATE sarpras SET 
+                jumlah = ?,
+                kondisi_baik = ?,
+                kondisi_rusak_ringan = ?,
+                kondisi_rusak_berat = ?,
+                harga_perolehan = CASE WHEN ? > 0 THEN ? ELSE harga_perolehan END,
+                tanggal_perolehan = CASE WHEN ? != '' THEN ? ELSE tanggal_perolehan END,
+                merk = CASE WHEN ? != '' AND (merk IS NULL OR merk = '' OR merk = '-') THEN ? ELSE merk END,
+                spesifikasi = CASE WHEN ? != '' AND (spesifikasi IS NULL OR spesifikasi = '') THEN ? ELSE spesifikasi END
+                WHERE id = ?");
+            $upd->execute([
+                $newWarehouseStock, $newBaik, $newRR, $newRB,
+                $newHarga, $newHarga,
+                $newTgl, $newTgl,
+                $newMerk, $newMerk,
+                $newSpek, $newSpek,
+                $existingWarehouse['id']
+            ]);
+            
+            processFotoUpload($existingWarehouse['id']);
+            
+            json_response(200, true, "Stok '{$existingWarehouse['nama']}' di gudang berhasil ditambahkan sebanyak {$jumlah} unit (Total Gudang: {$newWarehouseStock} unit).", [
+                'id' => (int)$existingWarehouse['id'],
+                'kode_inventaris' => $existingWarehouse['kode_inventaris'],
+                'sisa_gudang' => $newWarehouseStock,
+                'is_restock' => true
+            ]);
+            return;
+        }
+    }
+
     $rawDate = trim((string)($d['tanggal_perolehan'] ?? ''));
     $tahun_perolehan = !empty($rawDate) ? sanitize($rawDate) : date('Y-m-d');
     $tahun_str = explode('-', $tahun_perolehan)[0];
@@ -371,6 +513,18 @@ function createSarpras() {
     }
     
     $kode = sanitize($d['kode_inventaris'] ?? '');
+    
+    // If adding directly into room without warehouse source, check if item name exists in warehouse to inherit kode
+    if (!empty($ruang_id) && (empty($kode) || $kode === 'Otomatis' || $kode === 'otomatis')) {
+        $findExisting = db()->prepare("SELECT kode_inventaris, kategori_id FROM sarpras WHERE LOWER(TRIM(nama)) = LOWER(TRIM(?)) AND is_hapus = 0 ORDER BY (ruang_id IS NULL) DESC, id ASC LIMIT 1");
+        $findExisting->execute([$nama]);
+        $fe = $findExisting->fetch();
+        if ($fe) {
+            $kode = $fe['kode_inventaris'];
+            if ($kategori_id <= 0) $kategori_id = (int)$fe['kategori_id'];
+        }
+    }
+    
     if (empty($kode) || $kode === 'Otomatis' || $kode === 'otomatis') {
         $kode = getNextKodeInventaris($kategori_id, $tahun_str);
     }

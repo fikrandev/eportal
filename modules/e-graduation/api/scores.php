@@ -31,8 +31,8 @@ function scoreMeta($user)
         $classes = classesForUser($user);
         $kelas = $classes[0]['kelas'] ?? '';
     }
-    if ($kelas === '') {
-        json_response(400, false, 'Belum ada kelas yang bisa diakses.');
+    if ($kelas === '' || !grad_is_grade12_class($kelas)) {
+        json_response(400, false, 'Belum ada kelas 12 yang bisa diakses.');
     }
     grad_require_class_access($user, $kelas);
 
@@ -59,8 +59,8 @@ function saveScores($user)
     $input = get_input();
     $kelas = sanitize($input['kelas'] ?? '');
     $scores = $input['scores'] ?? [];
-    if ($kelas === '') {
-        json_response(400, false, 'Kelas wajib dipilih.');
+    if ($kelas === '' || !grad_is_grade12_class($kelas)) {
+        json_response(400, false, 'Kelas 12 wajib dipilih.');
     }
     grad_require_class_access($user, $kelas);
 
@@ -117,8 +117,8 @@ function importScoresCsv($user)
         json_response(405, false, 'Method not allowed.');
     }
     $kelas = sanitize($_POST['kelas'] ?? '');
-    if ($kelas === '') {
-        json_response(400, false, 'Kelas wajib dipilih.');
+    if ($kelas === '' || !grad_is_grade12_class($kelas)) {
+        json_response(400, false, 'Kelas 12 wajib dipilih.');
     }
     grad_require_class_access($user, $kelas);
     if (!isset($_FILES['csv']) || $_FILES['csv']['error'] !== UPLOAD_ERR_OK) {
@@ -191,13 +191,15 @@ function importScoresCsv($user)
 function classesForUser($user)
 {
     $yearId = grad_active_year_id();
+    $grade12Sql = grad_grade12_sql_condition();
     $params = [$yearId];
-    $where = "academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') AND kelas <> ''";
+    $where = "academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') AND kelas <> '' AND {$grade12Sql}";
     if (empty($user['can_manage_graduation'])) {
-        if (empty($user['scoped_classes'])) return [];
-        $placeholders = implode(',', array_fill(0, count($user['scoped_classes']), '?'));
+        $scoped = array_values(array_filter($user['scoped_classes'] ?? [], 'grad_is_grade12_class'));
+        if (empty($scoped)) return [];
+        $placeholders = implode(',', array_fill(0, count($scoped), '?'));
         $where .= " AND kelas IN ($placeholders)";
-        $params = array_merge($params, $user['scoped_classes']);
+        $params = array_merge($params, $scoped);
     }
 
     $stmt = db()->prepare("SELECT kelas, COUNT(*) as total_siswa FROM students WHERE {$where} GROUP BY kelas ORDER BY kelas ASC");
@@ -207,7 +209,9 @@ function classesForUser($user)
 
 function studentsForClass($yearId, $kelas)
 {
-    $stmt = db()->prepare("SELECT id, nis, nisn, nama, kelas, rata_rata FROM students WHERE academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') AND kelas = ? ORDER BY no_urut ASC, nama ASC");
+    if (!grad_is_grade12_class($kelas)) return [];
+    $grade12Sql = grad_grade12_sql_condition();
+    $stmt = db()->prepare("SELECT id, nis, nisn, nama, kelas, rata_rata FROM students WHERE academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') AND kelas = ? AND {$grade12Sql} ORDER BY no_urut ASC, nama ASC");
     $stmt->execute([$yearId, $kelas]);
     return $stmt->fetchAll();
 }
@@ -228,11 +232,13 @@ function subjectsForClass($yearId, $kelas)
 
 function scoresForClass($yearId, $kelas)
 {
+    if (!grad_is_grade12_class($kelas)) return [];
+    $grade12Sql = grad_grade12_sql_condition('s');
     $stmt = db()->prepare("
         SELECT sc.student_id, sc.subject_id, sc.nilai_akhir
         FROM grad_student_scores sc
         JOIN students s ON s.id = sc.student_id
-        WHERE sc.academic_year_id = ? AND s.kelas = ?
+        WHERE sc.academic_year_id = ? AND s.kelas = ? AND {$grade12Sql}
     ");
     $stmt->execute([$yearId, $kelas]);
     $map = [];

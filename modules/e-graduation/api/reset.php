@@ -38,8 +38,9 @@ function resetInfo()
             'grad_letter_settings' => ['label' => 'Pengaturan Surat', 'where' => 'academic_year_id = ?'],
         ];
 
-        // Also count photos
-        $photoStmt = db()->prepare("SELECT COUNT(*) FROM students WHERE academic_year_id = ? AND foto_path <> '' AND foto_path IS NOT NULL");
+        // Also count photos (Grade 12 only)
+        $grade12Sql = grad_grade12_sql_condition();
+        $photoStmt = db()->prepare("SELECT COUNT(*) FROM students WHERE academic_year_id = ? AND foto_path <> '' AND foto_path IS NOT NULL AND {$grade12Sql}");
         $photoStmt->execute([$yearId]);
         $photoCount = (int) $photoStmt->fetchColumn();
 
@@ -165,7 +166,8 @@ function executeReset()
 
                 case 'photos':
                     $root = realpath(__DIR__ . '/../../../');
-                    $stmtFoto = db()->prepare("SELECT id, foto_path FROM students WHERE academic_year_id = ? AND foto_path <> '' AND foto_path IS NOT NULL");
+                    $grade12Sql = grad_grade12_sql_condition();
+                    $stmtFoto = db()->prepare("SELECT id, foto_path FROM students WHERE academic_year_id = ? AND foto_path <> '' AND foto_path IS NOT NULL AND {$grade12Sql}");
                     $stmtFoto->execute([$yearId]);
                     $photos = $stmtFoto->fetchAll();
                     foreach ($photos as $photo) {
@@ -174,7 +176,7 @@ function executeReset()
                             @unlink($fullPath);
                         }
                     }
-                    $stmtUpdate = db()->prepare("UPDATE students SET foto_path = '' WHERE academic_year_id = ? AND foto_path <> ''");
+                    $stmtUpdate = db()->prepare("UPDATE students SET foto_path = '' WHERE academic_year_id = ? AND foto_path <> '' AND {$grade12Sql}");
                     $stmtUpdate->execute([$yearId]);
                     $deleted = count($photos);
                     break;

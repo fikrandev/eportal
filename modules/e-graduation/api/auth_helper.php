@@ -85,6 +85,9 @@ function grad_active_year_id()
 
 function grad_can_access_class($user, $kelas)
 {
+    if (!grad_is_grade12_class($kelas)) {
+        return false;
+    }
     if (!empty($user['can_manage_graduation'])) {
         return true;
     }
@@ -96,4 +99,25 @@ function grad_require_class_access($user, $kelas)
     if (!grad_can_access_class($user, $kelas)) {
         json_response(403, false, 'Akses kelas ditolak.');
     }
+}
+
+/**
+ * Returns SQL condition for selecting only Grade 12 (kelas 12 / tingkat akhir).
+ */
+function grad_grade12_sql_condition($tableAlias = '')
+{
+    $col = ($tableAlias !== '' && $tableAlias !== null) ? "TRIM({$tableAlias}.kelas)" : "TRIM(kelas)";
+    return "({$col} LIKE '12.%' OR {$col} LIKE '12-%' OR {$col} LIKE '12 %' OR {$col} = '12' OR {$col} LIKE 'XII%' OR {$col} LIKE 'xii%' OR {$col} REGEXP '^(12|XII)([^0-9]|$)')";
+}
+
+/**
+ * Validates if a class name is Grade 12.
+ */
+function grad_is_grade12_class($kelas)
+{
+    $clean = trim((string) $kelas);
+    if ($clean === '') {
+        return false;
+    }
+    return (bool) preg_match('/^(12|XII)([^0-9]|$)/i', $clean);
 }
