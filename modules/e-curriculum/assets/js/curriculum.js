@@ -3296,26 +3296,57 @@ const Curriculum = {
     },
 
     exportAbsensiExcel() {
-        const data = this.state.rekapAbsensiData || [];
+        const kelas_id = $('#rekapAbsensiKelas').val() || 0;
+        const tgl_awal = $('#rekapTglAwal').val() || '';
+        const tgl_akhir = $('#rekapTglAkhir').val() || '';
+
         const meta = this.state.rekapAbsensiMeta || {};
-        const effectiveDates = meta.effective_dates || [];
-        if (!data || !data.length) {
-            EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Tidak ada data rekap untuk diekspor. Silakan klik "Tampilkan Rekap" terlebih dahulu.' });
+        const curData = this.state.rekapAbsensiData || [];
+        const matches = (meta.kelas_id == kelas_id && meta.tanggal_awal === tgl_awal && meta.tanggal_akhir === tgl_akhir && curData.length > 0);
+
+        if (matches) {
+            this._generateAndDownloadAbsensiExcel(curData, meta);
             return;
         }
 
+        // Auto-fetch data jika belum klik "Tampilkan Rekap" atau jika filter diganti
+        const loader = EModal.loading('Menyiapkan file Excel Rekap Kehadiran Siswa...');
+        this.api(`absensi.php?action=rekap&kelas_id=${kelas_id}&tanggal_awal=${tgl_awal}&tanggal_akhir=${tgl_akhir}`).done(res => {
+            EModal.close(loader);
+            const newMeta = res.data || {};
+            const newData = newMeta.rekap || [];
+            newMeta.kelas_id = kelas_id;
+            this.state.rekapAbsensiData = newData;
+            this.state.rekapAbsensiMeta = newMeta;
+
+            if (!newData.length) {
+                EModal.toast({ type: 'warning', title: 'Data Kosong', message: 'Tidak ada data siswa untuk diekspor pada filter yang dipilih.' });
+                return;
+            }
+            this._generateAndDownloadAbsensiExcel(newData, newMeta);
+        }).fail(() => {
+            EModal.close(loader);
+            const fallbackUrl = this.moduleUrl + `api/absensi.php?action=export_excel&kelas_id=${kelas_id}&tanggal_awal=${tgl_awal}&tanggal_akhir=${tgl_akhir}&token=${encodeURIComponent(this.state.token || '')}`;
+            window.location.href = fallbackUrl;
+        });
+    },
+
+    _generateAndDownloadAbsensiExcel(data, meta) {
+        const effectiveDates = meta.effective_dates || [];
         const kelasText = meta.kelas || $('#rekapAbsensiKelas option:selected').text() || 'Semua_Kelas';
         const waliKelas = meta.wali_kelas || '-';
         const bulanText = meta.bulan || '';
         const namaSekolah = meta.nama_sekolah || 'SMA WACHID HASYIM 1 SURABAYA';
         const cleanKelas = kelasText.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+        const filename = `Rekap_Kehadiran_Murid_${cleanKelas}_${meta.tanggal_awal || ''}_sd_${meta.tanggal_akhir || ''}.xlsx`;
+        const fallbackUrl = this.moduleUrl + `api/absensi.php?action=export_excel&kelas_id=${meta.kelas_id || 0}&tanggal_awal=${meta.tanggal_awal || ''}&tanggal_akhir=${meta.tanggal_akhir || ''}&token=${encodeURIComponent(this.state.token || '')}`;
 
         this.loadSheetJS(() => {
             try {
                 const valOrDash = (v) => (v && Number(v) > 0 ? Number(v) : '-');
 
-                // Header Top
-                const wsData = [
+                // --- SHEET 1: REKAP DETAIL (SESUAI GAMBAR 2) ---
+                const wsDataDetail = [
                     ['REKAPITULASI KEHADIRAN MURID'],
                     [namaSekolah.toUpperCase()],
                     [],
@@ -3325,23 +3356,20 @@ const Curriculum = {
                     []
                 ];
 
-                // Header Row 1 (Row index 7)
                 const hRow1 = ['NO', 'NIS', 'NISN', 'NAMA MURID', 'L/P'];
                 effectiveDates.forEach(ed => {
                     hRow1.push(String(ed.day), '', '');
                 });
                 hRow1.push('TOTAL', '', '', 'KEHADIRAN', '', '', '', '', '', '', '');
-                wsData.push(hRow1);
+                wsDataDetail.push(hRow1);
 
-                // Header Row 2 (Row index 8)
                 const hRow2 = ['', '', '', '', ''];
                 effectiveDates.forEach(() => {
                     hRow2.push('A', 'B', 'C');
                 });
                 hRow2.push('A', 'B', 'C', 'WH', 'H', 'T', 'S', 'I', 'A', 'TH', '%');
-                wsData.push(hRow2);
+                wsDataDetail.push(hRow2);
 
-                // Body rows
                 data.forEach((r, idx) => {
                     const row = [
                         idx + 1,
@@ -3369,47 +3397,40 @@ const Curriculum = {
                         Number(r.th ?? 0),
                         Number(r.persentase ?? 0)
                     );
-                    wsData.push(row);
+                    wsDataDetail.push(row);
                 });
 
-                // Legend footer
-                wsData.push([]);
-                wsData.push(['Keterangan Singkatan :']);
-                wsData.push(['1', 'WH', 'WAJIB HADIR', '', '>> Ketentuan Perhitungan']);
-                wsData.push(['2', 'H', 'HADIR', '', 'TOTAL (A,B,C) : Menghitung apakah absen datang, istirahat, dan pulang terisi (H, S, I, A, T)']);
-                wsData.push(['3', 'T', 'TERLAMBAT', '', 'WH : Semua hari efektif pada bulan tersebut (selama tidak ditentukan libur)']);
-                wsData.push(['4', 'S', 'SAKIT', '', 'H : Dihitung jika A dan C terisi T atau H']);
-                wsData.push(['5', 'I', 'IZIN', '', 'T : Dihitung jika A terisi T']);
-                wsData.push(['6', 'A', 'ALPHA', '', 'S : Dihitung jika A terisi S | I : Dihitung jika A terisi I | A : Dihitung jika A terisi A']);
-                wsData.push(['7', 'TOT', 'TOTAL', '', 'TH : Total Tidak Hadir (S + I + A) | % : (Hadir / Wajib Hadir) * 100%']);
+                wsDataDetail.push([]);
+                wsDataDetail.push(['Keterangan Singkatan :']);
+                wsDataDetail.push(['1', 'WH', 'WAJIB HADIR', '', '>> Ketentuan Perhitungan']);
+                wsDataDetail.push(['2', 'H', 'HADIR', '', 'TOTAL (A,B,C) : Menghitung apakah absen datang, istirahat, dan pulang terisi (H, S, I, A, T)']);
+                wsDataDetail.push(['3', 'T', 'TERLAMBAT', '', 'WH : Semua hari efektif pada bulan tersebut (selama tidak ditentukan libur)']);
+                wsDataDetail.push(['4', 'S', 'SAKIT', '', 'H : Dihitung jika A dan C terisi T atau H']);
+                wsDataDetail.push(['5', 'I', 'IZIN', '', 'T : Dihitung jika A terisi T']);
+                wsDataDetail.push(['6', 'A', 'ALPHA', '', 'S : Dihitung jika A terisi S | I : Dihitung jika A terisi I | A : Dihitung jika A terisi A']);
+                wsDataDetail.push(['7', 'TOT', 'TOTAL', '', 'TH : Total Tidak Hadir (S + I + A) | % : (Hadir / Wajib Hadir) * 100%']);
 
-                const ws = XLSX.utils.aoa_to_sheet(wsData);
-
-                // Build Merges
-                const merges = [
-                    { s: { r: 7, c: 0 }, e: { r: 8, c: 0 } }, // NO
-                    { s: { r: 7, c: 1 }, e: { r: 8, c: 1 } }, // NIS
-                    { s: { r: 7, c: 2 }, e: { r: 8, c: 2 } }, // NISN
-                    { s: { r: 7, c: 3 }, e: { r: 8, c: 3 } }, // NAMA MURID
-                    { s: { r: 7, c: 4 }, e: { r: 8, c: 4 } }  // L/P
-                ];
+                const wsDetail = XLSX.utils.aoa_to_sheet(wsDataDetail);
 
                 const numDates = effectiveDates.length;
+                const mergesDetail = [
+                    { s: { r: 7, c: 0 }, e: { r: 8, c: 0 } },
+                    { s: { r: 7, c: 1 }, e: { r: 8, c: 1 } },
+                    { s: { r: 7, c: 2 }, e: { r: 8, c: 2 } },
+                    { s: { r: 7, c: 3 }, e: { r: 8, c: 3 } },
+                    { s: { r: 7, c: 4 }, e: { r: 8, c: 4 } }
+                ];
                 for (let i = 0; i < numDates; i++) {
                     const cStart = 5 + (i * 3);
-                    merges.push({ s: { r: 7, c: cStart }, e: { r: 7, c: cStart + 2 } });
+                    mergesDetail.push({ s: { r: 7, c: cStart }, e: { r: 7, c: cStart + 2 } });
                 }
-
                 const cTot = 5 + (numDates * 3);
-                merges.push({ s: { r: 7, c: cTot }, e: { r: 7, c: cTot + 2 } }); // TOTAL
-
+                mergesDetail.push({ s: { r: 7, c: cTot }, e: { r: 7, c: cTot + 2 } });
                 const cKeh = cTot + 3;
-                merges.push({ s: { r: 7, c: cKeh }, e: { r: 7, c: cKeh + 7 } }); // KEHADIRAN
+                mergesDetail.push({ s: { r: 7, c: cKeh }, e: { r: 7, c: cKeh + 7 } });
+                wsDetail['!merges'] = mergesDetail;
 
-                ws['!merges'] = merges;
-
-                // Column widths
-                const cols = [
+                const colsDetail = [
                     { wch: 5 },  // NO
                     { wch: 10 }, // NIS
                     { wch: 14 }, // NISN
@@ -3417,20 +3438,95 @@ const Curriculum = {
                     { wch: 6 }   // L/P
                 ];
                 for (let i = 0; i < numDates; i++) {
-                    cols.push({ wch: 4 }, { wch: 4 }, { wch: 4 });
+                    colsDetail.push({ wch: 4 }, { wch: 4 }, { wch: 4 });
                 }
-                cols.push({ wch: 5 }, { wch: 5 }, { wch: 5 }); // TOTAL A, B, C
-                cols.push({ wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 6 }); // KEHADIRAN
-                ws['!cols'] = cols;
+                colsDetail.push({ wch: 5 }, { wch: 5 }, { wch: 5 }); // TOTAL
+                colsDetail.push({ wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 6 }); // KEHADIRAN
+                wsDetail['!cols'] = colsDetail;
+
+                // --- SHEET 2: REKAP RINGKASAN (SESUAI GAMBAR 1) ---
+                const wsDataRingkasan = [
+                    ['REKAPITULASI KEHADIRAN MURID'],
+                    [namaSekolah.toUpperCase()],
+                    [],
+                    ['Kelas', `: ${kelasText}`],
+                    ['Nama Wali Kelas', `: ${waliKelas}`],
+                    ['Bulan', `: ${bulanText}`],
+                    []
+                ];
+
+                wsDataRingkasan.push([
+                    'NO', 'NIS', 'NISN', 'NAMA MURID', 'L/P',
+                    'TOTAL', '', '',
+                    'KEHADIRAN', '', '', '', '', '', '', ''
+                ]);
+
+                wsDataRingkasan.push([
+                    '', '', '', '', '',
+                    'A', 'B', 'C',
+                    'WH', 'H', 'T', 'S', 'I', 'A', 'TH', '%'
+                ]);
+
+                data.forEach((r, idx) => {
+                    wsDataRingkasan.push([
+                        idx + 1,
+                        String(r.nis || ''),
+                        String(r.nisn || ''),
+                        r.nama || '',
+                        r.jenis_kelamin || 'L',
+                        Number(r.tot_a ?? 0),
+                        Number(r.tot_b ?? 0),
+                        Number(r.tot_c ?? 0),
+                        Number(r.wh ?? 0),
+                        Number(r.hadir ?? 0),
+                        valOrDash(r.terlambat),
+                        valOrDash(r.sakit),
+                        valOrDash(r.izin),
+                        valOrDash(r.alpha),
+                        Number(r.th ?? 0),
+                        Number(r.persentase ?? 0)
+                    ]);
+                });
+
+                wsDataRingkasan.push([]);
+                wsDataRingkasan.push(['Keterangan Singkatan :']);
+                wsDataRingkasan.push(['1', 'WH', 'WAJIB HADIR']);
+                wsDataRingkasan.push(['2', 'H', 'HADIR']);
+                wsDataRingkasan.push(['3', 'T', 'TERLAMBAT']);
+                wsDataRingkasan.push(['4', 'S', 'SAKIT']);
+                wsDataRingkasan.push(['5', 'I', 'IZIN']);
+                wsDataRingkasan.push(['6', 'A', 'ALPHA']);
+                wsDataRingkasan.push(['7', 'TOT', 'TOTAL']);
+
+                const wsRingkasan = XLSX.utils.aoa_to_sheet(wsDataRingkasan);
+                wsRingkasan['!merges'] = [
+                    { s: { r: 7, c: 0 }, e: { r: 8, c: 0 } },
+                    { s: { r: 7, c: 1 }, e: { r: 8, c: 1 } },
+                    { s: { r: 7, c: 2 }, e: { r: 8, c: 2 } },
+                    { s: { r: 7, c: 3 }, e: { r: 8, c: 3 } },
+                    { s: { r: 7, c: 4 }, e: { r: 8, c: 4 } },
+                    { s: { r: 7, c: 5 }, e: { r: 7, c: 7 } },
+                    { s: { r: 7, c: 8 }, e: { r: 7, c: 15 } }
+                ];
+                wsRingkasan['!cols'] = [
+                    { wch: 5 },  // NO
+                    { wch: 10 }, // NIS
+                    { wch: 14 }, // NISN
+                    { wch: 32 }, // NAMA MURID
+                    { wch: 6 },  // L/P
+                    { wch: 5 }, { wch: 5 }, { wch: 5 }, // TOTAL A, B, C
+                    { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 6 } // KEHADIRAN
+                ];
 
                 const wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, "Rekap Murid");
+                XLSX.utils.book_append_sheet(wb, wsDetail, "Rekap Detail");
+                XLSX.utils.book_append_sheet(wb, wsRingkasan, "Rekap Ringkasan");
 
-                XLSX.writeFile(wb, `Rekap_Kehadiran_Murid_${cleanKelas}_${meta.tanggal_awal || ''}_sd_${meta.tanggal_akhir || ''}.xlsx`);
-                EModal.toast({ type: 'success', title: 'Berhasil', message: 'File Excel rekap kehadiran murid berhasil diunduh.' });
+                this.downloadExcelWorkbook(wb, filename, fallbackUrl);
+                EModal.toast({ type: 'success', title: 'Berhasil', message: 'File Excel rekap kehadiran murid berhasil diunduh (Sheet Detail & Ringkasan).' });
             } catch (err) {
-                console.error('Export Excel error:', err);
-                EModal.toast({ type: 'error', title: 'Gagal', message: 'Gagal membuat file Excel: ' + err.message });
+                console.error('Export Excel error, redirecting to server...', err);
+                window.location.href = fallbackUrl;
             }
         });
     },
@@ -4214,25 +4310,54 @@ const Curriculum = {
     },
 
     exportAbsensiGuruExcel() {
-        const data = this.state.rekapAbsensiGuruData || [];
+        const tgl_awal = $('#rekapGuruTglAwal').val() || '';
+        const tgl_akhir = $('#rekapGuruTglAkhir').val() || '';
+
         const meta = this.state.rekapAbsensiGuruMeta || {};
-        const effectiveDates = meta.effective_dates || [];
-        if (!data || !data.length) {
-            EModal.toast({ type: 'warning', title: 'Kosong', message: 'Tidak ada data rekap untuk diekspor.' });
+        const curData = this.state.rekapAbsensiGuruData || [];
+        const matches = (meta.tanggal_awal === tgl_awal && meta.tanggal_akhir === tgl_akhir && curData.length > 0);
+
+        if (matches) {
+            this._generateAndDownloadAbsensiGuruExcel(curData, meta);
             return;
         }
 
+        // Auto-fetch data jika belum klik "Tampilkan Rekap" atau jika filter diganti
+        const loader = EModal.loading('Menyiapkan file Excel Rekap Kehadiran Guru...');
+        this.api(`absensi_guru.php?action=rekap&tanggal_awal=${tgl_awal}&tanggal_akhir=${tgl_akhir}`).done(res => {
+            EModal.close(loader);
+            const newMeta = res.data || {};
+            const newData = newMeta.rekap || [];
+            this.state.rekapAbsensiGuruData = newData;
+            this.state.rekapAbsensiGuruMeta = newMeta;
+
+            if (!newData.length) {
+                EModal.toast({ type: 'warning', title: 'Data Kosong', message: 'Tidak ada data guru untuk diekspor pada rentang tanggal ini.' });
+                return;
+            }
+            this._generateAndDownloadAbsensiGuruExcel(newData, newMeta);
+        }).fail(() => {
+            EModal.close(loader);
+            const fallbackUrl = this.moduleUrl + `api/absensi_guru.php?action=export_excel&tanggal_awal=${tgl_awal}&tanggal_akhir=${tgl_akhir}&token=${encodeURIComponent(this.state.token || '')}`;
+            window.location.href = fallbackUrl;
+        });
+    },
+
+    _generateAndDownloadAbsensiGuruExcel(data, meta) {
+        const effectiveDates = meta.effective_dates || [];
         const tgl_awal = meta.tanggal_awal || $('#rekapGuruTglAwal').val() || '';
         const tgl_akhir = meta.tanggal_akhir || $('#rekapGuruTglAkhir').val() || '';
         const bulanText = meta.bulan || '';
         const namaSekolah = meta.nama_sekolah || 'SMA WACHID HASYIM 1 SURABAYA';
+        const filename = `Rekap_Kehadiran_Guru_${tgl_awal}_sd_${tgl_akhir}.xlsx`;
+        const fallbackUrl = this.moduleUrl + `api/absensi_guru.php?action=export_excel&tanggal_awal=${tgl_awal}&tanggal_akhir=${tgl_akhir}&token=${encodeURIComponent(this.state.token || '')}`;
 
         this.loadSheetJS(() => {
             try {
                 const valOrDash = (v) => (v && Number(v) > 0 ? Number(v) : '-');
 
-                // Header Top
-                const wsData = [
+                // --- SHEET 1: REKAP DETAIL GURU ---
+                const wsDataDetail = [
                     ['REKAPITULASI KEHADIRAN GURU'],
                     [namaSekolah.toUpperCase()],
                     [],
@@ -4242,29 +4367,26 @@ const Curriculum = {
                     []
                 ];
 
-                // Header Row 1 (Row index 7)
-                const hRow1 = ['NO', 'KODE', 'NAMA GURU', 'L/P'];
+                const hRow1 = ['NO', 'KODE', 'NIK', 'NAMA GURU'];
                 effectiveDates.forEach(ed => {
                     hRow1.push(String(ed.day), '', '');
                 });
                 hRow1.push('TOTAL', '', '', 'KEHADIRAN', '', '', '', '', '', '', '');
-                wsData.push(hRow1);
+                wsDataDetail.push(hRow1);
 
-                // Header Row 2 (Row index 8)
                 const hRow2 = ['', '', '', ''];
                 effectiveDates.forEach(() => {
                     hRow2.push('A', 'B', 'C');
                 });
                 hRow2.push('A', 'B', 'C', 'WH', 'H', 'T', 'S', 'I', 'A', 'TH', '%');
-                wsData.push(hRow2);
+                wsDataDetail.push(hRow2);
 
-                // Body rows
                 data.forEach((t, idx) => {
                     const row = [
                         idx + 1,
                         t.kode_guru || '',
-                        t.nama || '',
-                        t.jenis_kelamin || '-'
+                        String(t.nik || ''),
+                        t.nama || ''
                     ];
 
                     effectiveDates.forEach(ed => {
@@ -4285,66 +4407,129 @@ const Curriculum = {
                         Number(t.th ?? 0),
                         Number(t.persentase ?? 0)
                     );
-                    wsData.push(row);
+                    wsDataDetail.push(row);
                 });
 
-                // Legend footer
-                wsData.push([]);
-                wsData.push(['Keterangan Singkatan :']);
-                wsData.push(['1', 'WH', 'WAJIB HADIR', '', '>> Ketentuan Perhitungan']);
-                wsData.push(['2', 'H', 'HADIR', '', 'TOTAL (A,B,C) : Menghitung apakah absen datang, istirahat, dan pulang terisi (H, S, I, A, T)']);
-                wsData.push(['3', 'T', 'TERLAMBAT', '', 'WH : Semua hari efektif pada bulan tersebut (selama tidak ditentukan libur)']);
-                wsData.push(['4', 'S', 'SAKIT', '', 'H : Dihitung jika A dan C terisi T atau H']);
-                wsData.push(['5', 'I', 'IZIN', '', 'T : Dihitung jika A terisi T']);
-                wsData.push(['6', 'A', 'ALPHA', '', 'S : Dihitung jika A terisi S | I : Dihitung jika A terisi I | A : Dihitung jika A terisi A']);
-                wsData.push(['7', 'TOT', 'TOTAL', '', 'TH : Total Tidak Hadir (S + I + A) | % : (Hadir / Wajib Hadir) * 100%']);
+                wsDataDetail.push([]);
+                wsDataDetail.push(['Keterangan Singkatan :']);
+                wsDataDetail.push(['1', 'WH', 'WAJIB HADIR', '', '>> Ketentuan Perhitungan']);
+                wsDataDetail.push(['2', 'H', 'HADIR', '', 'TOTAL (A,B,C) : Menghitung apakah absen datang, istirahat, dan pulang terisi (H, S, I, A, T)']);
+                wsDataDetail.push(['3', 'T', 'TERLAMBAT', '', 'WH : Semua hari efektif pada rentang tanggal (tidak termasuk libur)']);
+                wsDataDetail.push(['4', 'S', 'SAKIT', '', 'H : Dihitung jika A dan C terisi T atau H']);
+                wsDataDetail.push(['5', 'I', 'IZIN', '', 'T : Dihitung jika A terisi T']);
+                wsDataDetail.push(['6', 'A', 'ALPHA', '', 'S : Dihitung jika A terisi S | I : Dihitung jika A terisi I | A : Dihitung jika A terisi A']);
+                wsDataDetail.push(['7', 'TOT', 'TOTAL', '', 'TH : Total Tidak Hadir (S + I + A) | % : (Hadir / Wajib Hadir) * 100%']);
 
-                const ws = XLSX.utils.aoa_to_sheet(wsData);
-
-                // Build Merges
-                const merges = [
-                    { s: { r: 7, c: 0 }, e: { r: 8, c: 0 } }, // NO
-                    { s: { r: 7, c: 1 }, e: { r: 8, c: 1 } }, // KODE
-                    { s: { r: 7, c: 2 }, e: { r: 8, c: 2 } }, // NAMA GURU
-                    { s: { r: 7, c: 3 }, e: { r: 8, c: 3 } }  // L/P
-                ];
+                const wsDetail = XLSX.utils.aoa_to_sheet(wsDataDetail);
 
                 const numDates = effectiveDates.length;
-                for (let i = 0; i < numDates; i++) {
-                    const cStart = 4 + (i * 3);
-                    merges.push({ s: { r: 7, c: cStart }, e: { r: 7, c: cStart + 2 } });
-                }
-
-                const cTot = 4 + (numDates * 3);
-                merges.push({ s: { r: 7, c: cTot }, e: { r: 7, c: cTot + 2 } }); // TOTAL
-
-                const cKeh = cTot + 3;
-                merges.push({ s: { r: 7, c: cKeh }, e: { r: 7, c: cKeh + 7 } }); // KEHADIRAN
-
-                ws['!merges'] = merges;
-
-                // Column widths
-                const cols = [
-                    { wch: 5 },  // NO
-                    { wch: 10 }, // KODE
-                    { wch: 34 }, // NAMA GURU
-                    { wch: 6 }   // L/P
+                const mergesDetail = [
+                    { s: { r: 7, c: 0 }, e: { r: 8, c: 0 } },
+                    { s: { r: 7, c: 1 }, e: { r: 8, c: 1 } },
+                    { s: { r: 7, c: 2 }, e: { r: 8, c: 2 } },
+                    { s: { r: 7, c: 3 }, e: { r: 8, c: 3 } }
                 ];
                 for (let i = 0; i < numDates; i++) {
-                    cols.push({ wch: 4 }, { wch: 4 }, { wch: 4 });
+                    const cStart = 4 + (i * 3);
+                    mergesDetail.push({ s: { r: 7, c: cStart }, e: { r: 7, c: cStart + 2 } });
                 }
-                cols.push({ wch: 5 }, { wch: 5 }, { wch: 5 }); // TOTAL A, B, C
-                cols.push({ wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 6 }); // KEHADIRAN
-                ws['!cols'] = cols;
+                const cTot = 4 + (numDates * 3);
+                mergesDetail.push({ s: { r: 7, c: cTot }, e: { r: 7, c: cTot + 2 } });
+                const cKeh = cTot + 3;
+                mergesDetail.push({ s: { r: 7, c: cKeh }, e: { r: 7, c: cKeh + 7 } });
+                wsDetail['!merges'] = mergesDetail;
+
+                const colsDetail = [
+                    { wch: 5 },  // NO
+                    { wch: 10 }, // KODE
+                    { wch: 16 }, // NIK
+                    { wch: 34 }  // NAMA GURU
+                ];
+                for (let i = 0; i < numDates; i++) {
+                    colsDetail.push({ wch: 4 }, { wch: 4 }, { wch: 4 });
+                }
+                colsDetail.push({ wch: 5 }, { wch: 5 }, { wch: 5 }); // TOTAL
+                colsDetail.push({ wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 6 }); // KEHADIRAN
+                wsDetail['!cols'] = colsDetail;
+
+                // --- SHEET 2: REKAP RINGKASAN GURU ---
+                const wsDataRingkasan = [
+                    ['REKAPITULASI KEHADIRAN GURU'],
+                    [namaSekolah.toUpperCase()],
+                    [],
+                    ['Bulan', `: ${bulanText}`],
+                    []
+                ];
+
+                wsDataRingkasan.push([
+                    'NO', 'KODE', 'NIK', 'NAMA GURU',
+                    'TOTAL', '', '',
+                    'KEHADIRAN', '', '', '', '', '', '', ''
+                ]);
+
+                wsDataRingkasan.push([
+                    '', '', '', '',
+                    'A', 'B', 'C',
+                    'WH', 'H', 'T', 'S', 'I', 'A', 'TH', '%'
+                ]);
+
+                data.forEach((t, idx) => {
+                    wsDataRingkasan.push([
+                        idx + 1,
+                        t.kode_guru || '',
+                        String(t.nik || ''),
+                        t.nama || '',
+                        Number(t.tot_a ?? 0),
+                        Number(t.tot_b ?? 0),
+                        Number(t.tot_c ?? 0),
+                        Number(t.wh ?? 0),
+                        Number(t.hadir ?? 0),
+                        valOrDash(t.terlambat),
+                        valOrDash(t.sakit),
+                        valOrDash(t.izin),
+                        valOrDash(t.alpha),
+                        Number(t.th ?? 0),
+                        Number(t.persentase ?? 0)
+                    ]);
+                });
+
+                wsDataRingkasan.push([]);
+                wsDataRingkasan.push(['Keterangan Singkatan :']);
+                wsDataRingkasan.push(['1', 'WH', 'WAJIB HADIR']);
+                wsDataRingkasan.push(['2', 'H', 'HADIR']);
+                wsDataRingkasan.push(['3', 'T', 'TERLAMBAT']);
+                wsDataRingkasan.push(['4', 'S', 'SAKIT']);
+                wsDataRingkasan.push(['5', 'I', 'IZIN']);
+                wsDataRingkasan.push(['6', 'A', 'ALPHA']);
+                wsDataRingkasan.push(['7', 'TOT', 'TOTAL']);
+
+                const wsRingkasan = XLSX.utils.aoa_to_sheet(wsDataRingkasan);
+                wsRingkasan['!merges'] = [
+                    { s: { r: 5, c: 0 }, e: { r: 6, c: 0 } },
+                    { s: { r: 5, c: 1 }, e: { r: 6, c: 1 } },
+                    { s: { r: 5, c: 2 }, e: { r: 6, c: 2 } },
+                    { s: { r: 5, c: 3 }, e: { r: 6, c: 3 } },
+                    { s: { r: 5, c: 4 }, e: { r: 5, c: 6 } },
+                    { s: { r: 5, c: 7 }, e: { r: 5, c: 14 } }
+                ];
+                wsRingkasan['!cols'] = [
+                    { wch: 5 },  // NO
+                    { wch: 10 }, // KODE
+                    { wch: 16 }, // NIK
+                    { wch: 34 }, // NAMA GURU
+                    { wch: 5 }, { wch: 5 }, { wch: 5 }, // TOTAL A, B, C
+                    { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 6 } // KEHADIRAN
+                ];
 
                 const wb = XLSX.utils.book_new();
-                XLSX.utils.book_append_sheet(wb, ws, "Rekap Guru");
+                XLSX.utils.book_append_sheet(wb, wsDetail, "Rekap Detail");
+                XLSX.utils.book_append_sheet(wb, wsRingkasan, "Rekap Ringkasan");
 
-                XLSX.writeFile(wb, `Rekap_Kehadiran_Guru_${tgl_awal}_sd_${tgl_akhir}.xlsx`);
-                EModal.toast({ type: 'success', title: 'Berhasil', message: 'File Excel rekap kehadiran guru berhasil diunduh.' });
+                this.downloadExcelWorkbook(wb, filename, fallbackUrl);
+                EModal.toast({ type: 'success', title: 'Berhasil', message: 'File Excel rekap kehadiran guru berhasil diunduh (Sheet Detail & Ringkasan).' });
             } catch (err) {
-                console.error('Export PTK Excel error:', err);
-                EModal.toast({ type: 'error', title: 'Gagal', message: 'Gagal mengekspor data PTK: ' + err.message });
+                console.error('Export PTK Excel error, redirecting to server...', err);
+                window.location.href = fallbackUrl;
             }
         });
     },
@@ -9462,8 +9647,38 @@ title: 'Gagal Mengunci',
     },
 
     // ==============================================
+    // ==============================================
     // SHEETJS IMPORT/EXPORT WRAPPERS
     // ==============================================
+    downloadExcelWorkbook(wb, filename, fallbackUrl) {
+        try {
+            if (!window.XLSX) {
+                if (fallbackUrl) { window.location.href = fallbackUrl; return; }
+                throw new Error('Modul XLSX belum tersedia');
+            }
+            const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+            const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            setTimeout(() => {
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            }, 1500);
+        } catch (err) {
+            console.warn('Blob Excel download error, attempting fallback...', err);
+            if (fallbackUrl) {
+                window.location.href = fallbackUrl;
+            } else if (window.XLSX && typeof XLSX.writeFile === 'function') {
+                XLSX.writeFile(wb, filename);
+            }
+        }
+    },
+
     loadSheetJS(callback) {
         if (window.XLSX) { callback(); return; }
         const loader = EModal.loading('Memuat komponen Excel (SheetJS)...');

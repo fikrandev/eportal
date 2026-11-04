@@ -125,7 +125,8 @@ $config = [
     <!-- Scripts -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="<?php echo BASE_URL; ?>assets/vendor/xlsx.full.min.js?v=<?php echo time(); ?>"></script>
+    <script>if(!window.XLSX){document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"><\/script>');}</script>
     <script src="<?php echo BASE_URL; ?>assets/js/modal.js"></script>
     <script>
         window.ABSEN_CONFIG = <?php echo json_encode($config); ?>;

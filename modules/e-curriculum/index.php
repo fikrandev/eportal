@@ -160,7 +160,8 @@ $active_academic_year = get_active_academic_year();
     <!-- Vendor Scripts -->
     <script src="<?php echo BASE_URL; ?>assets/vendor/jquery-3.7.1.min.js"></script>
     <!-- SheetJS Excel Library -->
-    <script src="<?php echo BASE_URL; ?>assets/vendor/xlsx.full.min.js"></script>
+    <script src="<?php echo BASE_URL; ?>assets/vendor/xlsx.full.min.js?v=<?php echo time(); ?>"></script>
+    <script>if(!window.XLSX){document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"><\/script>');}</script>
     <!-- Modal System -->
     <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=<?php echo time(); ?>"></script>
     <!-- Chart Library -->

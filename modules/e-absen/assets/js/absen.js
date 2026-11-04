@@ -955,8 +955,24 @@ const Absen = {
         });
     },
 
+    loadSheetJS(callback) {
+        if (window.XLSX) { callback(); return; }
+        const loader = EModal.loading('Memuat komponen Excel...');
+        const localVendor = (this.baseUrl || '../../') + 'assets/vendor/xlsx.full.min.js';
+        $.getScript(localVendor)
+            .done(() => { EModal.close(loader); callback(); })
+            .fail(() => {
+                $.getScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js')
+                    .done(() => { EModal.close(loader); callback(); })
+                    .fail(() => {
+                        EModal.close(loader);
+                        EModal.toast({ type: 'error', message: 'Gagal memuat pustaka Excel.' });
+                    });
+            });
+    },
+
     exportExcel() {
-        const tgl = $('#rekapTanggal').val();
+        const tgl = $('#rekapTanggal').val() || new Date().toISOString().split('T')[0];
         const activeTab = $('#activeRekapTab').val() || 'guru';
         const tableId = activeTab === 'guru' ? 'rekapTableExportGuru' : 'rekapTableExportSiswa';
         
@@ -966,8 +982,29 @@ const Absen = {
             return;
         }
 
-        const wb = XLSX.utils.table_to_book(table, {sheet: "Rekap " + activeTab});
-        XLSX.writeFile(wb, `Rekap_Absen_${activeTab}_${tgl}.xlsx`);
+        this.loadSheetJS(() => {
+            try {
+                const wb = XLSX.utils.table_to_book(table, {sheet: "Rekap " + activeTab});
+                const filename = `Rekap_Absen_${activeTab}_${tgl}.xlsx`;
+                const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+                const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;charset=UTF-8' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                setTimeout(() => {
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                }, 1500);
+                EModal.toast({ type: 'success', title: 'Berhasil', message: 'File Excel rekap presensi berhasil diunduh.' });
+            } catch (err) {
+                console.error('Export excel error:', err);
+                XLSX.writeFile(wb, `Rekap_Absen_${activeTab}_${tgl}.xlsx`);
+            }
+        });
     },
 
     // ==================== HELPERS ====================
