@@ -21,6 +21,19 @@ const Exam = {
         return name ? name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2) : '?';
     },
 
+    formatImageUrl(raw) {
+        if (!raw) return '';
+        raw = String(raw).trim();
+        if (raw.startsWith('http://') || raw.startsWith('https://') || raw.startsWith('blob:') || raw.startsWith('data:')) {
+            return raw;
+        }
+        const clean = raw.replace(/^(\.\.\/|\.\/|\/)+/, '');
+        if (clean.startsWith('modules/e-examination/')) {
+            return this.state.baseUrl + clean;
+        }
+        return this.state.moduleUrl + clean;
+    },
+
     doLogout() {
         EModal.confirm({
             title: 'Logout',
@@ -641,7 +654,7 @@ const Exam = {
                     ${s.gambar ? `
                     <div style="padding-left:44px;margin-bottom:12px;">
                         <div style="display:inline-flex;flex-direction:column;gap:6px;align-items:flex-start;background:#f8fafc;padding:8px;border-radius:8px;border:1px solid #e2e8f0;">
-                            <img src="${this.state.moduleUrl + s.gambar}" style="max-width:300px;max-height:220px;object-fit:contain;border-radius:6px;border:1px solid #e2e8f0;background:#fff;" alt="gambar soal">
+                            <img src="${this.formatImageUrl(s.gambar)}" onerror="this.style.display='none'" style="max-width:300px;max-height:220px;object-fit:contain;border-radius:6px;border:1px solid #e2e8f0;background:#fff;" alt="gambar soal">
                             <button type="button" class="btn btn-sm" style="color:#dc2626;border:1px solid #fca5a5;background:#fef2f2;padding:3px 8px;font-size:11px;border-radius:6px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;" onclick="Exam.deleteSoalMedia(${bankId}, ${s.id}, 'gambar')">
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
                                 Hapus Gambar
@@ -798,7 +811,7 @@ const Exam = {
                         <label class="form-label">Gambar Lampiran Utama (opsional)</label>
                         ${existing && existing.gambar ? `
                             <div id="fSoalGambarExisting" style="display:flex;align-items:center;gap:12px;background:#f8fafc;padding:10px;border-radius:8px;border:1px solid #e2e8f0;margin-bottom:8px;">
-                                <img src="${this.state.moduleUrl + existing.gambar}" style="width:52px;height:52px;object-fit:cover;border-radius:6px;border:1px solid #cbd5e1;" alt="lampiran">
+                                <img src="${this.formatImageUrl(existing.gambar)}" onerror="this.style.display='none'" style="width:52px;height:52px;object-fit:cover;border-radius:6px;border:1px solid #cbd5e1;" alt="lampiran">
                                 <div style="flex:1;min-width:0;">
                                     <div style="font-size:12px;font-weight:600;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${existing.gambar.split('/').pop()}</div>
                                     <div id="fSoalGambarStatus" style="font-size:11px;color:#64748b;">Gambar saat ini terpasang</div>

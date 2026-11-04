@@ -18,6 +18,15 @@ function global_kop_surat_path() {
     return $legacy !== '' ? 'uploads/sarpras/kop/' . $legacy : '';
 }
 
+function global_kop_surat_url() {
+    $path = global_kop_surat_path();
+    if (!$path) return '';
+    $clean = ltrim(str_replace('\\', '/', $path), '/');
+    if (preg_match('/^https?:\/\//i', $path)) return $path;
+    if (defined('BASE_URL')) return BASE_URL . $clean;
+    return '../../../' . $clean;
+}
+
 function global_kepala_sekolah($default = '') {
     $value = trim((string) get_setting('kepala_sekolah', ''));
     if ($value !== '') return $value;
@@ -352,7 +361,7 @@ function handlePenyusutan($action) {
                 if (!$isExcel) echo '<button class="btn-print" onclick="window.print()">Cetak Laporan</button>';
                 
                 if ($kopSurat) {
-                    echo '<div class="kop-surat"><img src="../../../' . htmlspecialchars($kopSurat) . '"></div>';
+                    echo '<div class="kop-surat"><img src="' . htmlspecialchars(global_kop_surat_url()) . '" onerror="this.style.display=\'none\'"></div>';
                 }
                 
                 echo "<div class='header'><h1>" . htmlspecialchars($school_name) . "</h1><p>E-SARPRAS — SISTEM INFORMASI SARANA & PRASARANA</p></div>";
@@ -612,7 +621,7 @@ function handlePrintLaporan($type) {
         </style></head><body>";
         
         if ($kopSurat) {
-            echo "<div class='kop-line'><img class='kop-img' src='../../../" . htmlspecialchars($kopSurat) . "'></div>";
+            echo "<div class='kop-line'><img class='kop-img' src='" . htmlspecialchars(global_kop_surat_url()) . "' onerror=\"this.style.display='none'\"></div>";
         } else {
             echo "<div class='kop-line' style='text-align:center'><h2 style='margin:0'>{$school}</h2><p style='margin:5px 0'>Laporan Riwayat Perbaikan</p></div>";
         }
@@ -725,7 +734,7 @@ function handlePrintLaporan($type) {
         </style></head><body>";
         
         if ($kopSurat) {
-            echo "<div class='kop-wrapper'><img class='kop-img' src='../../../" . htmlspecialchars($kopSurat) . "'></div>";
+            echo "<div class='kop-wrapper'><img class='kop-img' src='" . htmlspecialchars(global_kop_surat_url()) . "' onerror=\"this.style.display='none'\"></div>";
             echo "<div class='kop-line'></div>";
         } else {
             echo "<div class='kop-line' style='text-align:center; padding-bottom:10px'><h2 style='margin:0 0 5px 0; font-size:16pt'>{$school}</h2></div>";
@@ -798,8 +807,7 @@ function handleLaporan($action) {
     
     $headerHtml = '';
     if ($kopSurat) {
-        // Use a relative path similar to Berita Acara for better compatibility if BASE_URL has issues in some environments
-        $headerHtml .= '<div class="kop-surat"><img src="../../../' . htmlspecialchars($kopSurat) . '"></div>';
+        $headerHtml .= '<div class="kop-surat"><img src="' . htmlspecialchars(global_kop_surat_url()) . '" onerror="this.style.display=\'none\'"></div>';
     }
 
     $headerHtml .= '
@@ -1402,13 +1410,9 @@ function handlePeminjaman($action) {
             $html .= "</head><body onload='window.print()'>";
             
             // Render KOP if exists
-            if ($kop) {
-                $kopPath = '../../../' . $kop;
-                if (file_exists(__DIR__ . '/../../../' . $kop)) {
-                    $html .= "<div class='sp-print-kop'><img src='{$kopPath}'></div>";
-                } else {
-                    $html .= "<div class='sp-print-kop' style='border-bottom:2px solid #000; padding: 10px 0;'>Header Sekolah</div>";
-                }
+            $kopUrl = global_kop_surat_url();
+            if ($kopUrl) {
+                $html .= "<div class='sp-print-kop'><img src='{$kopUrl}' onerror=\"this.style.display='none'\"></div>";
             } else {
                 $html .= "<div class='sp-print-kop' style='border-bottom:2px solid #000; padding: 10px 0;'>Header Sekolah</div>";
             }

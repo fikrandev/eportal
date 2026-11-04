@@ -82,8 +82,8 @@ function saveAccess()
         $allowedClasses = array_flip(array_map(function ($row) {
             return (string) ($row['kelas'] ?? '');
         }, accessClassesFromActiveStudents($yearId)));
-        if (!isset($allowedClasses[$kelas])) {
-            json_response(400, false, 'Kelas wali tidak valid. Pilih kelas dari Data Siswa E-Graduation yang aktif.');
+        if (!isset($allowedClasses[$kelas]) || !grad_is_grade12_class($kelas)) {
+            json_response(400, false, 'Kelas wali tidak valid. Pilih kelas 12 dari Data Siswa E-Graduation yang aktif.');
         }
 
         $stmt = db()->prepare("
@@ -125,11 +125,12 @@ function deleteAccess()
 
 function accessClassesFromActiveStudents($yearId)
 {
+    $grade12Sql = grad_grade12_sql_condition('s');
     $stmt = db()->prepare("
         SELECT s.kelas, COUNT(*) as total_siswa
         FROM grad_student_accounts a
         JOIN students s ON s.id = a.student_id AND s.academic_year_id = a.academic_year_id
-        WHERE a.academic_year_id = ? AND a.status = 1 AND s.kelas <> ''
+        WHERE a.academic_year_id = ? AND a.status = 1 AND s.kelas <> '' AND {$grade12Sql}
         GROUP BY s.kelas
         ORDER BY s.kelas ASC
     ");

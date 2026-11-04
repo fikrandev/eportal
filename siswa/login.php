@@ -28,7 +28,7 @@ $school_icon = get_setting('icon_sekolah', '');
     <div class="login-wrapper">
         <div class="login-card animate-fade-in">
             <?php if($school_icon): ?>
-                <img src="<?php echo BASE_URL . htmlspecialchars($school_icon); ?>" alt="Logo" class="login-logo">
+                <img src="<?php echo BASE_URL . ltrim(str_replace('\\', '/', htmlspecialchars($school_icon)), '/'); ?>" alt="Logo" class="login-logo" onerror="this.style.display='none'">
             <?php endif; ?>
             
             <h1 class="login-title">Portal Murid</h1>

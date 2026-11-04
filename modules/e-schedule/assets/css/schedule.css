@@ -369,6 +369,17 @@ body {
     transform: translateY(-2px);
     box-shadow: 0 6px 15px rgba(255, 143, 0, 0.35); 
 }
+.btn-warning { 
+    background: linear-gradient(135deg, #f59e0b, #d97706); 
+    color: white; 
+    box-shadow: 0 4px 10px rgba(217, 119, 6, 0.25);
+    border: none;
+}
+.btn-warning:hover { 
+    background: linear-gradient(135deg, #d97706, #b45309);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(217, 119, 6, 0.35); 
+}
 .btn-outline { 
     background: transparent; 
     border: 1px solid var(--bg-dark); 

@@ -529,7 +529,7 @@ const ExamApp = {
         }
         this.audioPlayCount = this.audioPlayCount || {};
         let mediaHtml = '';
-        if (s.gambar) mediaHtml += `<img src="../${s.gambar}" style="max-width:100%; border-radius:8px; margin-bottom:12px;">`;
+        if (s.gambar) mediaHtml += `<img src="${this.formatImageUrl(s.gambar)}" onerror="this.style.display='none'" style="max-width:100%; border-radius:8px; margin-bottom:12px;">`;
         if (s.audio) {
             const limit = typeof s.audio_play_limit !== 'undefined' ? parseInt(s.audio_play_limit, 10) : 0;
             const playedCount = this.audioPlayCount[s.id] || 0;
@@ -1103,6 +1103,24 @@ const ExamApp = {
     // ==========================================
     // AUDIO UTILITIES & CONTROLS
     // ==========================================
+    formatImageUrl(rawPath) {
+        if (!rawPath) return '';
+        rawPath = String(rawPath).trim();
+        if (rawPath.startsWith('http://') || rawPath.startsWith('https://') || rawPath.startsWith('blob:') || rawPath.startsWith('data:')) {
+            return rawPath;
+        }
+        if (rawPath.startsWith('/')) {
+            return rawPath;
+        }
+        while (rawPath.startsWith('../') || rawPath.startsWith('./')) {
+            rawPath = rawPath.replace(/^(\.\.\/|\.\/)/, '');
+        }
+        if (rawPath.startsWith('modules/e-examination/')) {
+            rawPath = rawPath.replace('modules/e-examination/', '');
+        }
+        return '../' + rawPath;
+    },
+
     formatAudioUrl(rawPath) {
         if (!rawPath) return '';
         rawPath = String(rawPath).trim();

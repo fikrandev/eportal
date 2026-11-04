@@ -467,6 +467,19 @@ body {
     background: #DC2626;
 }
 
+.btn-acad-warning {
+    background: linear-gradient(135deg, #F59E0B, #D97706);
+    color: white;
+    box-shadow: 0 2px 8px rgba(217, 119, 6, 0.25);
+    border: none;
+}
+
+.btn-acad-warning:hover {
+    background: linear-gradient(135deg, #D97706, #B45309);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(217, 119, 6, 0.35);
+}
+
 /* Forms */
 .form-group-acad {
     margin-bottom: 20px;

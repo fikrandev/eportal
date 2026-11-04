@@ -78,7 +78,7 @@ function h($value) {
         <section class="verify-card">
             <?php if ($valid && $row): ?>
                 <div class="verify-head">
-                    <?php if ($schoolIcon): ?><img src="<?php echo BASE_URL . h($schoolIcon); ?>" alt="Logo"><?php endif; ?>
+                    <?php if ($schoolIcon): ?><img src="<?php echo BASE_URL . ltrim(h($schoolIcon), '/'); ?>" alt="Logo" onerror="this.style.display='none'"><?php endif; ?>
                     <span class="title"><?php echo h($schoolName); ?></span>
                 </div>
                 <div class="doc-title">Dokumen Valid</div>
@@ -88,7 +88,7 @@ function h($value) {
                 <div class="verify-footer">E-Performance - dokumen valid</div>
             <?php else: ?>
                 <div class="verify-head">
-                    <?php if ($schoolIcon): ?><img src="<?php echo BASE_URL . h($schoolIcon); ?>" alt="Logo"><?php endif; ?>
+                    <?php if ($schoolIcon): ?><img src="<?php echo BASE_URL . ltrim(h($schoolIcon), '/'); ?>" alt="Logo" onerror="this.style.display='none'"><?php endif; ?>
                     <span class="title"><?php echo h($schoolName); ?></span>
                 </div>
                 <div class="empty">

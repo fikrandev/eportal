@@ -59,12 +59,17 @@ function accountCandidates()
     try {
         $yearId = grad_active_year_id();
         $params = [$yearId];
-        $where = "WHERE s.academic_year_id = ? AND s.nis <> ''";
+        $grade12Sql = grad_grade12_sql_condition('s');
+        $where = "WHERE s.academic_year_id = ? AND s.nis <> '' AND {$grade12Sql}";
 
         $kelas = sanitize($_GET['kelas'] ?? '');
         if ($kelas !== '') {
-            $where .= " AND s.kelas = ?";
-            $params[] = $kelas;
+            if (!grad_is_grade12_class($kelas)) {
+                $where .= " AND 1 = 0";
+            } else {
+                $where .= " AND s.kelas = ?";
+                $params[] = $kelas;
+            }
         }
 
         $search = sanitize($_GET['search'] ?? '');
@@ -166,19 +171,22 @@ function importAccountsFromPortal($requireClassFilter = false)
         }
 
         $selectedIdsFromClasses = [];
+        $grade12SqlSingle = grad_grade12_sql_condition();
         if ($selectedClasses && !$selectedStudentIds) {
             $classStudentsStmt = db()->prepare("
                 SELECT id
                 FROM students
                 WHERE academic_year_id = ?
+                  AND {$grade12SqlSingle}
                   AND kelas IN (" . implode(',', array_fill(0, count($selectedClasses), '?')) . ")
             ");
             $classStudentsStmt->execute(array_merge([$yearId], $selectedClasses));
             $selectedIdsFromClasses = array_map('intval', $classStudentsStmt->fetchAll(PDO::FETCH_COLUMN));
         }
 
+        $grade12Sql = grad_grade12_sql_condition('s');
         $params = [$yearId];
-        $where = 'WHERE s.academic_year_id = ? AND s.nis <> \'\'';
+        $where = "WHERE s.academic_year_id = ? AND s.nis <> '' AND {$grade12Sql}";
         if ($selectedStudentIds) {
             $where .= ' AND s.id IN (' . implode(',', array_fill(0, count($selectedStudentIds), '?')) . ')';
             $params = array_merge($params, $selectedStudentIds);
@@ -408,10 +416,11 @@ function renderAccountsPdf($pdf, $students, $school, $active, $scopeLabel)
 
 function studentsForAccounts($yearId, $scope, $kelas)
 {
+    $grade12Sql = grad_grade12_sql_condition('s');
     $params = [$yearId];
-    $where = 'WHERE s.academic_year_id = ?';
+    $where = "WHERE s.academic_year_id = ? AND {$grade12Sql}";
     if ($scope !== 'all') {
-        if ($kelas === '') return [];
+        if ($kelas === '' || !grad_is_grade12_class($kelas)) return [];
         $where .= ' AND s.kelas = ?';
         $params[] = $kelas;
     }
@@ -428,18 +437,20 @@ function studentsForAccounts($yearId, $scope, $kelas)
 
 function classesForYear($yearId)
 {
-    $stmt = db()->prepare("SELECT kelas, COUNT(*) as total_siswa FROM students WHERE academic_year_id = ? AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') AND kelas <> '' GROUP BY kelas ORDER BY kelas ASC");
+    $grade12Sql = grad_grade12_sql_condition();
+    $stmt = db()->prepare("SELECT kelas, COUNT(*) as total_siswa FROM students WHERE academic_year_id = ? AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') AND kelas <> '' AND {$grade12Sql} GROUP BY kelas ORDER BY kelas ASC");
     $stmt->execute([$yearId]);
     return $stmt->fetchAll();
 }
 
 function classesForActiveAccounts($yearId)
 {
+    $grade12Sql = grad_grade12_sql_condition('s');
     $stmt = db()->prepare("
         SELECT s.kelas, COUNT(*) as total_siswa
         FROM grad_student_accounts a
         JOIN students s ON s.id = a.student_id AND s.academic_year_id = a.academic_year_id
-        WHERE a.academic_year_id = ? AND a.status = 1 AND s.kelas <> ''
+        WHERE a.academic_year_id = ? AND a.status = 1 AND s.kelas <> '' AND {$grade12Sql}
         GROUP BY s.kelas
         ORDER BY s.kelas ASC
     ");
@@ -449,14 +460,26 @@ function classesForActiveAccounts($yearId)
 
 function countActiveAccountStudents($yearId)
 {
-    $stmt = db()->prepare("SELECT COUNT(*) FROM grad_student_accounts WHERE academic_year_id = ? AND status = 1");
+    $grade12Sql = grad_grade12_sql_condition('s');
+    $stmt = db()->prepare("
+        SELECT COUNT(a.id) 
+        FROM grad_student_accounts a
+        JOIN students s ON s.id = a.student_id AND s.academic_year_id = a.academic_year_id
+        WHERE a.academic_year_id = ? AND a.status = 1 AND {$grade12Sql}
+    ");
     $stmt->execute([$yearId]);
     return (int) $stmt->fetchColumn();
 }
 
 function countAccounts($yearId)
 {
-    $stmt = db()->prepare("SELECT COUNT(*) FROM grad_student_accounts WHERE academic_year_id = ? AND status = 1");
+    $grade12Sql = grad_grade12_sql_condition('s');
+    $stmt = db()->prepare("
+        SELECT COUNT(a.id) 
+        FROM grad_student_accounts a
+        JOIN students s ON s.id = a.student_id AND s.academic_year_id = a.academic_year_id
+        WHERE a.academic_year_id = ? AND a.status = 1 AND {$grade12Sql}
+    ");
     $stmt->execute([$yearId]);
     return (int) $stmt->fetchColumn();
 }
@@ -503,11 +526,13 @@ function normalizeAccountStudentIds($value, $yearId)
 
     if (!$ids) return [];
 
+    $grade12Sql = grad_grade12_sql_condition();
     $params = array_merge([$yearId], $ids);
     $stmt = db()->prepare("
         SELECT id
         FROM students
         WHERE academic_year_id = ?
+          AND {$grade12Sql}
           AND id IN (" . implode(',', array_fill(0, count($ids), '?')) . ")
     ");
     $stmt->execute($params);

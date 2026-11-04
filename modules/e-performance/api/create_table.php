@@ -5,6 +5,7 @@ $db = db();
 $sql = "CREATE TABLE IF NOT EXISTS `perf_deskripsi` (
   `id` int(11) NOT NULL AUTO_INCREMENT,
   `tupoksi` varchar(100) NOT NULL,
+  `predikat` varchar(50) DEFAULT NULL,
   `min_nilai` decimal(5,2) NOT NULL,
   `max_nilai` decimal(5,2) NOT NULL,
   `deskripsi` text NOT NULL,

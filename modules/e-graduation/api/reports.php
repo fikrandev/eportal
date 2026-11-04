@@ -36,11 +36,12 @@ function downloadStudentSkl()
         $studentAuth = grad_student_auth_for_reports();
         $yearId = (int) $studentAuth['academic_year_id'];
         $studentId = (int) $studentAuth['student_id'];
+        $grade12Sql = grad_grade12_sql_condition('s');
         $stmt = db()->prepare("
             SELECT s.*, l.letter_number, l.graduation_date, l.signing_date, l.headmaster_name, l.headmaster_niy, l.headmaster_position
             FROM students s
             LEFT JOIN grad_student_letters l ON l.student_id = s.id AND l.academic_year_id = s.academic_year_id
-            WHERE s.id = ? AND s.academic_year_id = ?
+            WHERE s.id = ? AND s.academic_year_id = ? AND {$grade12Sql}
         ");
         $stmt->execute([$studentId, $yearId]);
         $student = $stmt->fetch();
@@ -550,8 +551,9 @@ function downloadLeger($user)
 
 function resolveStudentsForScope($yearId, $scope, $user)
 {
+    $grade12Sql = grad_grade12_sql_condition('s');
     $params = [$yearId];
-    $where = 'WHERE a.academic_year_id = ? AND a.status = 1';
+    $where = "WHERE a.academic_year_id = ? AND a.status = 1 AND {$grade12Sql}";
 
     if ($scope === 'student') {
         $studentId = isset($_GET['student_id']) ? (int) $_GET['student_id'] : 0;
@@ -560,17 +562,18 @@ function resolveStudentsForScope($yearId, $scope, $user)
         $params[] = $studentId;
     } elseif ($scope === 'class') {
         $kelas = sanitize($_GET['kelas'] ?? '');
-        if ($kelas === '') return [];
+        if ($kelas === '' || !grad_is_grade12_class($kelas)) return [];
         grad_require_class_access($user, $kelas);
         $where .= ' AND s.kelas = ?';
         $params[] = $kelas;
     }
 
     if (empty($user['can_manage_graduation'])) {
-        if (empty($user['scoped_classes'])) return [];
-        $placeholders = implode(',', array_fill(0, count($user['scoped_classes']), '?'));
+        $scoped = array_values(array_filter($user['scoped_classes'] ?? [], 'grad_is_grade12_class'));
+        if (empty($scoped)) return [];
+        $placeholders = implode(',', array_fill(0, count($scoped), '?'));
         $where .= " AND s.kelas IN ($placeholders)";
-        $params = array_merge($params, $user['scoped_classes']);
+        $params = array_merge($params, $scoped);
     }
 
     $stmt = db()->prepare("
@@ -587,13 +590,15 @@ function resolveStudentsForScope($yearId, $scope, $user)
 
 function getClasses($yearId, $user = null)
 {
+    $grade12Sql = grad_grade12_sql_condition('s');
     $params = [$yearId];
-    $where = "a.academic_year_id = ? AND s.kelas <> '' AND a.status = 1";
+    $where = "a.academic_year_id = ? AND s.kelas <> '' AND a.status = 1 AND {$grade12Sql}";
     if ($user && empty($user['can_manage_graduation'])) {
-        if (empty($user['scoped_classes'])) return [];
-        $placeholders = implode(',', array_fill(0, count($user['scoped_classes']), '?'));
+        $scoped = array_values(array_filter($user['scoped_classes'] ?? [], 'grad_is_grade12_class'));
+        if (empty($scoped)) return [];
+        $placeholders = implode(',', array_fill(0, count($scoped), '?'));
         $where .= " AND s.kelas IN ($placeholders)";
-        $params = array_merge($params, $user['scoped_classes']);
+        $params = array_merge($params, $scoped);
     }
     $stmt = db()->prepare("
         SELECT s.kelas, COUNT(a.id) as total_siswa 
@@ -609,13 +614,15 @@ function getClasses($yearId, $user = null)
 
 function getStudents($yearId, $user = null)
 {
+    $grade12Sql = grad_grade12_sql_condition('s');
     $params = [$yearId];
-    $where = "a.academic_year_id = ? AND a.status = 1";
+    $where = "a.academic_year_id = ? AND a.status = 1 AND {$grade12Sql}";
     if ($user && empty($user['can_manage_graduation'])) {
-        if (empty($user['scoped_classes'])) return [];
-        $placeholders = implode(',', array_fill(0, count($user['scoped_classes']), '?'));
+        $scoped = array_values(array_filter($user['scoped_classes'] ?? [], 'grad_is_grade12_class'));
+        if (empty($scoped)) return [];
+        $placeholders = implode(',', array_fill(0, count($scoped), '?'));
         $where .= " AND s.kelas IN ($placeholders)";
-        $params = array_merge($params, $user['scoped_classes']);
+        $params = array_merge($params, $scoped);
     }
     $stmt = db()->prepare("
         SELECT s.id, s.nis, s.nisn, s.nama, s.kelas 
@@ -630,11 +637,13 @@ function getStudents($yearId, $user = null)
 
 function countStudentsByClass($yearId, $kelas)
 {
+    if (!grad_is_grade12_class($kelas)) return 0;
+    $grade12Sql = grad_grade12_sql_condition('s');
     $stmt = db()->prepare("
         SELECT COUNT(a.id) 
         FROM grad_student_accounts a
         JOIN students s ON s.id = a.student_id
-        WHERE a.academic_year_id = ? AND a.status = 1 AND s.kelas = ?
+        WHERE a.academic_year_id = ? AND a.status = 1 AND s.kelas = ? AND {$grade12Sql}
     ");
     $stmt->execute([$yearId, $kelas]);
     return (int) $stmt->fetchColumn();

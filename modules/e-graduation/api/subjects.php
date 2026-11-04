@@ -312,10 +312,11 @@ function listClasses()
 {
     try {
         $academicYearId = grad_active_year_id();
+        $grade12Sql = grad_grade12_sql_condition();
         $stmt = db()->prepare("
             SELECT kelas, COUNT(*) as total_siswa
             FROM students
-            WHERE academic_year_id = ? AND kelas <> ''
+            WHERE academic_year_id = ? AND kelas <> '' AND {$grade12Sql}
             GROUP BY kelas
             ORDER BY kelas ASC
         ");

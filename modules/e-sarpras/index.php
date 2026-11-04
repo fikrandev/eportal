@@ -154,6 +154,7 @@ $active_academic_year = get_active_academic_year();
     <!-- Modal System -->
     <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=<?php echo time(); ?>"></script>
     <!-- Sarpras SPA -->
+    <script src="<?php echo BASE_URL; ?>assets/js/pagination.js?v=<?php echo time(); ?>"></script>
     <script src="assets/js/sarpras.js?v=2.1_<?php echo time(); ?>"></script>
 </body>
 </html>

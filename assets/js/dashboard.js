@@ -12,9 +12,12 @@ const Dashboard = {
         const now = new Date();
         const greeting = this.getGreeting();
 
-        const schoolIcon = school.icon 
-            ? `<img src="${App.baseUrl}${school.icon}" alt="Logo" style="width: 100%; height: 100%; object-fit: contain; border-radius: 50%;">`
-            : `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width: 36px; height: 36px; color: var(--primary);"><path d="M2 20h20"/><path d="M5 20V8.5L12 4l7 4.5V20"/><path d="M9 20v-4h6v4"/></svg>`;
+        const cleanIcon = school.icon ? String(school.icon).replace(/^[\\\/]+/, '').replace(/\\/g, '/') : '';
+        const fallbackSvg = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width: 36px; height: 36px; color: var(--primary);"><path d="M2 20h20"/><path d="M5 20V8.5L12 4l7 4.5V20"/><path d="M9 20v-4h6v4"/></svg>`;
+
+        const schoolIcon = cleanIcon 
+            ? `<img src="${App.baseUrl}${cleanIcon}" alt="Logo" style="width: 100%; height: 100%; object-fit: contain; border-radius: 50%;" onerror="this.onerror=null;this.parentElement.innerHTML='${fallbackSvg}';">`
+            : fallbackSvg;
 
         container.innerHTML = `
         <div class="dashboard-wrapper">

@@ -1218,19 +1218,20 @@ const Schedule = {
                     </div>
                 </div>
                 <div class="sch-card-body">
-                    <div style="display:flex;gap:16px;background:var(--bg-color);padding:24px;border-radius:12px;margin-bottom:24px;align-items:center;justify-content:space-between;flex-wrap:wrap;border:1px solid var(--border-color);">
+                    <div style="display:flex;gap:12px;background:var(--bg-color);padding:20px;border-radius:12px;margin-bottom:24px;align-items:center;justify-content:space-between;flex-wrap:wrap;border:1px solid var(--border-color);">
                         <div style="max-width:650px;">
-                            <h4 style="margin:0 0 8px;display:flex;align-items:center;gap:8px;">
-                                <span>Engine Algoritma Heuristik & Multi-Start Solver</span>
-                            </h4>
-                            <p style="margin:0;font-size:0.85rem;color:var(--text-muted);line-height:1.5;">Menghasilkan jadwal otomatis bebas bentrok 100%, mematuhi ketersediaan guru, aturan blok mapel, dan meratakan jam harian. Jadwal yang telah resmi dapat dikunci agar tidak berubah.</p>
+                            <h4 style="margin:0 0 6px">Engine Algoritma & Pengatur Jadwal</h4>
+                            <p style="margin:0;font-size:0.85rem;color:var(--text-muted)">Padatkan slot kosong, hilangkan jam bolong di tengah hari, mematuhi kesediaan guru & blok JP. Jadwal yang telah resmi dapat dikunci agar tidak berubah.</p>
                         </div>
-                        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-                            <button id="btnLockJadwal" class="btn btn-outline" onclick="Schedule.toggleLockJadwal()" style="display:inline-flex;align-items:center;gap:8px;padding:12px 18px;font-size:0.95rem;font-weight:600;border-radius:8px;transition:all 0.2s;">
+                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                            <button id="btnLockJadwal" class="btn btn-outline" onclick="Schedule.toggleLockJadwal()" style="display:inline-flex;align-items:center;gap:8px;padding:10px 16px;font-size:0.95rem;font-weight:600;border-radius:8px;transition:all 0.2s;">
                                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Memuat...
                             </button>
-                            <button id="btnGenerateJadwal" class="btn btn-primary" onclick="Schedule.generateJadwal()" style="padding:12px 24px;font-size:1.05rem;font-weight:600;border-radius:8px;display:inline-flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(59,130,246,0.3);">
-                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg> Generate Jadwal
+                            <button class="btn btn-warning" onclick="Schedule.autoFillGaps()" style="padding:10px 18px;font-size:0.95rem;display:flex;align-items:center;gap:8px;font-weight:700;" title="Otomatis isi slot jam yang masih kosong dan padatkan jadwal">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Padatkan & Isi Jam Kosong
+                            </button>
+                            <button id="btnGenerateJadwal" class="btn btn-primary" onclick="Schedule.generateJadwal()" style="padding:10px 20px;font-size:0.95rem;display:flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(59,130,246,0.3);">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg> Generate Jadwal
                             </button>
                         </div>
                     </div>
@@ -1258,6 +1259,7 @@ const Schedule = {
         this.loadLockStatus();
         this.viewJadwal('');
     },
+
 
     loadLockStatus() {
         return this.api('jadwal.php?action=get_lock').done(res => {
@@ -1357,6 +1359,36 @@ const Schedule = {
                     });
                 });
             }
+
+            });
+    },
+
+    autoFillGaps() {
+        const loader = EModal.loading('Memeriksa slot jam kosong dan memadatkan jadwal...');
+        this.api('jadwal.php?action=auto_fill_gaps', { method: 'POST' }).done(res => {
+            EModal.close(loader);
+            if (res.data?.has_clashes) {
+                EModal.toast({
+                    type: 'warning',
+                    title: 'Jadwal Dipadatkan!',
+                    message: res.message
+                });
+            } else {
+                EModal.toast({
+                    type: 'success',
+                    title: 'Sukses!',
+                    message: res.message
+                });
+            }
+            this.viewJadwal($('#jdwFilter').val());
+        }).fail(err => {
+            EModal.close(loader);
+            EModal.toast({
+                type: 'error',
+                title: 'Gagal',
+                message: err.responseJSON?.message || 'Gagal memproses pengisian jam kosong.'
+            });
+
         });
     },
 

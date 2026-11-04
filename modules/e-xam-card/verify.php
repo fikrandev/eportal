@@ -108,7 +108,7 @@ if ($studentId > 0 && $examId > 0 && $sig !== '') {
         <section class="verify-card">
             <?php if ($valid && $data): ?>
                 <div class="verify-head">
-                    <?php if ($schoolIcon): ?><img src="<?php echo BASE_URL . xam_h($schoolIcon); ?>" alt="Logo"><?php endif; ?>
+                    <?php if ($schoolIcon): ?><img src="<?php echo BASE_URL . ltrim(xam_h($schoolIcon), '/'); ?>" alt="Logo" onerror="this.style.display='none'"><?php endif; ?>
                     <span class="title"><?php echo xam_h($schoolName); ?></span>
                 </div>
                 <div class="doc-title">Dokumen Sign</div>
@@ -131,7 +131,7 @@ if ($studentId > 0 && $examId > 0 && $sig !== '') {
                 <div class="verify-footer">E-Xam Card - dokumen valid</div>
             <?php else: ?>
                 <div class="verify-head">
-                    <?php if ($schoolIcon): ?><img src="<?php echo BASE_URL . xam_h($schoolIcon); ?>" alt="Logo"><?php endif; ?>
+                    <?php if ($schoolIcon): ?><img src="<?php echo BASE_URL . ltrim(xam_h($schoolIcon), '/'); ?>" alt="Logo" onerror="this.style.display='none'"><?php endif; ?>
                     <span class="title"><?php echo xam_h($schoolName); ?></span>
                 </div>
                 <div class="empty">

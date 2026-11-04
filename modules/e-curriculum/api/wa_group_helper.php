@@ -272,7 +272,7 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
     curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Content-Length: ' . strlen($postData)]);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 35);
     $response = curl_exec($ch);
     curl_close($ch);
 

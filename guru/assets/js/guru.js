@@ -38,6 +38,7 @@
         const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
         return days[d.getDay()] + ', ' + d.getDate() + ' ' + months[d.getMonth()] + ' ' + d.getFullYear();
     }
+    const formatTanggalStr = formatTanggal;
 
     function getInitials(name) {
         if (!name) return '?';
@@ -391,7 +392,7 @@
                             <div style="display:flex; align-items:center; gap:12px;">
                                 <div class="welcome-avatar" style="width:48px; height:48px; border-radius:50%; border:2px solid white; background:#fff; color:var(--primary); display:flex; align-items:center; justify-content:center; font-family:var(--font-heading); font-size:1.15rem; font-weight:800; overflow:hidden; flex-shrink:0;">
                                     ${Auth.user?.avatar 
-                                        ? `<img src="${BASE_URL}${Auth.user.avatar}" alt="Avatar" style="width:100%; height:100%; object-fit:cover;">` 
+                                        ? `<img src="${BASE_URL}${String(Auth.user.avatar).replace(/^[\\\/]+/, '').replace(/\\/g, '/')}" alt="Avatar" style="width:100%; height:100%; object-fit:cover;" onerror="this.parentElement.textContent='${getInitials(Auth.user?.nama_lengkap)}';">` 
                                         : getInitials(Auth.user?.nama_lengkap)
                                     }
                                 </div>
@@ -1098,11 +1099,26 @@
                 title = 'Edit Jurnal Kegiatan';
             }
 
+            let anakWaliList = [];
+            let initialStudent = null;
+            if (isGuruWali) {
+                try {
+                    const resS = await API.get('api/jurnal.php?action=guru_wali_students');
+                    if (resS && resS.success && Array.isArray(resS.data)) {
+                        anakWaliList = resS.data;
+                    }
+                } catch(e) {}
+
+                if (existing && existing.student_id) {
+                    initialStudent = anakWaliList.find(s => s.id == existing.student_id) || null;
+                }
+            }
+
             const overlay = document.createElement('div');
             overlay.className = 'guru-modal-overlay';
             overlay.id = 'kegiatanModal';
             overlay.innerHTML = `
-                <div class="guru-modal">
+                <div class="guru-modal" style="max-width:540px;">
                     <div class="guru-modal-header">
                         <h3>${title}</h3>
                         <button class="guru-modal-close" onclick="GuruApp.closeModal('kegiatanModal')">
@@ -1127,10 +1143,166 @@
                             </div>
                         ` : ''}
 
+                        ${isGuruWali ? `
+                            <!-- Android Material 3 Searchable Select -->
+                            <div class="m3-select-wrapper" id="m3StudentSelectWrapper">
+                                <div class="m3-select-label-row">
+                                    <label class="m3-select-label">
+                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2">
+                                            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                                            <circle cx="9" cy="7" r="4"></circle>
+                                            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                                            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                                        </svg>
+                                        Siswa Bimbingan Perwalian
+                                    </label>
+                                    <span class="m3-select-badge">${anakWaliList.length} Anak Wali</span>
+                                </div>
+
+                                <input type="hidden" id="kegiatanStudentId" value="${initialStudent ? initialStudent.id : ''}">
+
+                                <div class="m3-select-trigger" id="m3SelectTrigger" tabindex="0" role="combobox" aria-haspopup="listbox" aria-expanded="false">
+                                    <div class="m3-select-content">
+                                        <div class="m3-avatar ${initialStudent ? '' : 'group'}" id="m3TriggerAvatar">
+                                            ${initialStudent ? (initialStudent.nama ? initialStudent.nama.charAt(0).toUpperCase() : 'S') : '👥'}
+                                        </div>
+                                        <div class="m3-select-text">
+                                            <span class="m3-select-hint">Sasaran Bimbingan</span>
+                                            <span class="m3-select-title" id="m3TriggerTitle">
+                                                ${initialStudent ? escapeHtml(initialStudent.nama) : 'Semua Siswa Perwalian'}
+                                            </span>
+                                            <div class="m3-select-subtitle" id="m3TriggerSubtitle">
+                                                ${initialStudent ? `
+                                                    <span class="m3-chip-sm">Kelas ${escapeHtml(initialStudent.kelas)}</span>
+                                                    <span>NIS: ${escapeHtml(initialStudent.nis)}</span>
+                                                ` : `
+                                                    <span>Bimbingan Umum (${anakWaliList.length} Siswa)</span>
+                                                `}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="m3-select-chevron">
+                                        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.5">
+                                            <polyline points="6 9 12 15 18 9"></polyline>
+                                        </svg>
+                                    </div>
+                                </div>
+
+                                <div class="m3-dropdown-menu" id="m3DropdownMenu" role="listbox">
+                                    <div class="m3-search-bar">
+                                        <span class="m3-search-icon">
+                                            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2">
+                                                <circle cx="11" cy="11" r="8"></circle>
+                                                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                                            </svg>
+                                        </span>
+                                        <input type="text" id="m3StudentSearchInput" class="m3-search-input" placeholder="Cari nama, kelas, atau NIS..." autocomplete="off">
+                                        <button type="button" class="m3-search-clear" id="m3SearchClearBtn" title="Hapus">×</button>
+                                    </div>
+
+                                    <div class="m3-options-list" id="m3StudentOptionsList">
+                                        <div class="m3-option-item ${!initialStudent ? 'selected' : ''}" data-id="" data-nama="Semua Siswa Perwalian" data-kelas="" data-nis="" data-search="semua bimbingan umum perwalian">
+                                            <div class="m3-option-item-left">
+                                                <div class="m3-option-avatar" style="background:#dcfce7; color:#15803d;">👥</div>
+                                                <div class="m3-option-details">
+                                                    <div class="m3-option-name">Semua Siswa Perwalian</div>
+                                                    <div class="m3-option-meta">Bimbingan Umum (Semua Anak Wali)</div>
+                                                </div>
+                                            </div>
+                                            <div class="m3-check-icon">
+                                                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#16a34a" stroke-width="3">
+                                                    <polyline points="20 6 9 17 4 12"></polyline>
+                                                </svg>
+                                            </div>
+                                        </div>
+
+                                        ${anakWaliList.map(s => {
+                                            const isSelected = initialStudent && initialStudent.id == s.id;
+                                            const initial = s.nama ? s.nama.charAt(0).toUpperCase() : 'S';
+                                            return `
+                                                <div class="m3-option-item ${isSelected ? 'selected' : ''}" data-id="${s.id}" data-nama="${escapeHtml(s.nama)}" data-kelas="${escapeHtml(s.kelas)}" data-nis="${escapeHtml(s.nis)}" data-search="${escapeHtml((s.nama + ' ' + s.kelas + ' ' + s.nis).toLowerCase())}">
+                                                    <div class="m3-option-item-left">
+                                                        <div class="m3-option-avatar">${initial}</div>
+                                                        <div class="m3-option-details">
+                                                            <div class="m3-option-name">${escapeHtml(s.nama)}</div>
+                                                            <div class="m3-option-meta">
+                                                                <span class="m3-chip-sm">Kelas ${escapeHtml(s.kelas)}</span>
+                                                                <span>NIS: ${escapeHtml(s.nis)}</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                    <div class="m3-check-icon">
+                                                        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#16a34a" stroke-width="3">
+                                                            <polyline points="20 6 9 17 4 12"></polyline>
+                                                        </svg>
+                                                    </div>
+                                                </div>
+                                            `;
+                                        }).join('')}
+                                    </div>
+
+                                    <div class="m3-empty-results" id="m3EmptyResults" style="display:none;">
+                                        Tidak ada siswa yang sesuai pencarian
+                                    </div>
+                                </div>
+
+                                <div class="m3-select-helper">
+                                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="#16a34a" stroke-width="2.5" style="margin-top:2px; flex-shrink:0;">
+                                        <circle cx="12" cy="12" r="10"></circle>
+                                        <line x1="12" y1="16" x2="12" y2="12"></line>
+                                        <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                                    </svg>
+                                    <span>Catatan dan foto otomatis tampil di <strong>Portal Siswa</strong> perwalian yang dipilih.</span>
+                                </div>
+                            </div>
+                        ` : ''}
+
                         <div class="form-group mt-2">
                             <label class="form-label">Catatan Kegiatan</label>
-                            <textarea class="form-textarea" id="kegiatanCatatanText" placeholder="${placeholder}" style="min-height:120px;">${escapeHtml(existing?.catatan || '')}</textarea>
+                            <textarea class="form-textarea" id="kegiatanCatatanText" placeholder="${placeholder}" style="min-height:110px;">${escapeHtml(existing?.catatan || '')}</textarea>
                         </div>
+
+                        ${isGuruWali ? `
+                            <!-- Webcam Section for Guru Wali -->
+                            <div class="form-group mt-3" style="border-top:1.5px dashed #e2e8f0; padding-top:14px;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                                    <label class="form-label" style="margin:0; font-weight:700; color:var(--text-primary); display:flex; align-items:center; gap:6px;">
+                                        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="#16a34a" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                                        Foto Dokumentasi (Kamera Web Langsung)
+                                    </label>
+                                    <span id="webcamPhotoCounter" style="font-size:0.75rem; font-weight:700; color:#16a34a; background:#dcfce7; padding:2px 8px; border-radius:12px;">0/3 Foto</span>
+                                </div>
+                                
+                                <div style="background:#f8fafc; border:1.5px solid #e2e8f0; border-radius:14px; padding:12px;">
+                                    <!-- Live video stream viewport -->
+                                    <div id="webcamVideoWrap" style="position:relative; width:100%; border-radius:10px; overflow:hidden; background:#0f172a; margin-bottom:10px;">
+                                        <video id="webcamVideo" autoplay playsinline muted style="width:100%; height:200px; object-fit:cover; display:block;"></video>
+                                        <div style="position:absolute; top:8px; left:8px; background:rgba(0,0,0,0.65); color:white; font-size:0.7rem; font-weight:600; padding:2px 8px; border-radius:10px; backdrop-filter:blur(2px);" id="webcamModeLabel">
+                                            📷 Kamera Depan
+                                        </div>
+                                        <div style="position:absolute; bottom:8px; left:8px; right:8px; display:flex; justify-content:space-between; align-items:center; gap:8px;">
+                                            <button type="button" class="btn btn-sm" onclick="GuruApp.toggleWebcamFacing()" style="background:rgba(255,255,255,0.9); color:#1e293b; font-weight:600; font-size:0.75rem; padding:5px 10px; border:none; border-radius:8px; display:flex; align-items:center; gap:5px; backdrop-filter:blur(4px); box-shadow:0 1px 4px rgba(0,0,0,0.2);">
+                                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/></svg>
+                                                Ganti Kamera (Depan/Belakang)
+                                            </button>
+                                            <button type="button" class="btn btn-sm btn-primary" id="btnCaptureWebcam" onclick="GuruApp.captureWebcamSnapshot()" style="font-size:0.75rem; padding:5px 12px; font-weight:700; background:#16a34a; border-color:#16a34a; display:flex; align-items:center; gap:5px; box-shadow:0 2px 6px rgba(22,163,74,0.4);">
+                                                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+                                                Ambil Foto
+                                            </button>
+                                        </div>
+                                    </div>
+
+                                    <div style="font-size:0.72rem; color:#64748b; line-height:1.4; margin-bottom:8px;">
+                                        💡 <em>Input foto diambil dari <strong>kamera web</strong> (bisa ganti kamera depan/belakang, maksimal 3 foto). Setiap foto otomatis dikonversi &amp; dikompresi menjadi &le; 500 KB.</em>
+                                    </div>
+
+                                    <!-- Captured photos gallery -->
+                                    <div id="webcamGalleryStrip">
+                                        <div style="font-size:0.75rem; color:#94a3b8; font-style:italic;">Belum ada foto yang diambil (Maks 3 foto).</div>
+                                    </div>
+                                </div>
+                            </div>
+                        ` : ''}
                     </div>
                     <div class="guru-modal-footer">
                         <button class="btn btn-ghost" onclick="GuruApp.closeModal('kegiatanModal')">Batal</button>
@@ -1145,6 +1317,125 @@
             overlay.addEventListener('click', (e) => {
                 if (e.target === overlay) GuruApp.closeModal('kegiatanModal');
             });
+
+            if (isGuruWali) {
+                // Interactive Material 3 Select Bindings
+                const wrapper = $('#m3StudentSelectWrapper');
+                const trigger = $('#m3SelectTrigger');
+                const searchInput = $('#m3StudentSearchInput');
+                const clearBtn = $('#m3SearchClearBtn');
+                const hiddenInput = $('#kegiatanStudentId');
+                const avatarEl = $('#m3TriggerAvatar');
+                const titleEl = $('#m3TriggerTitle');
+                const subtitleEl = $('#m3TriggerSubtitle');
+                const optionsList = $('#m3StudentOptionsList');
+                const emptyEl = $('#m3EmptyResults');
+
+                if (wrapper && trigger) {
+                    trigger.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        const isOpen = wrapper.classList.toggle('open');
+                        trigger.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+                        if (isOpen && searchInput) {
+                            setTimeout(() => searchInput.focus(), 80);
+                        }
+                    });
+
+                    // Search input live-filtering
+                    if (searchInput && optionsList) {
+                        searchInput.addEventListener('input', (e) => {
+                            const q = e.target.value.toLowerCase().trim();
+                            if (clearBtn) {
+                                clearBtn.classList.toggle('visible', q.length > 0);
+                            }
+                            let matchCount = 0;
+                            const items = optionsList.querySelectorAll('.m3-option-item');
+                            items.forEach(item => {
+                                const searchStr = (item.getAttribute('data-search') || '').toLowerCase();
+                                const isMatch = searchStr.includes(q);
+                                item.style.display = isMatch ? 'flex' : 'none';
+                                if (isMatch) matchCount++;
+                            });
+                            if (emptyEl) {
+                                emptyEl.style.display = matchCount === 0 ? 'block' : 'none';
+                            }
+                        });
+                    }
+
+                    // Clear search button
+                    if (clearBtn && searchInput) {
+                        clearBtn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            searchInput.value = '';
+                            searchInput.dispatchEvent(new Event('input'));
+                            searchInput.focus();
+                        });
+                    }
+
+                    // Selecting an option
+                    if (optionsList) {
+                        optionsList.addEventListener('click', (e) => {
+                            const item = e.target.closest('.m3-option-item');
+                            if (!item) return;
+                            e.stopPropagation();
+
+                            const id = item.getAttribute('data-id') || '';
+                            const nama = item.getAttribute('data-nama') || '';
+                            const kelas = item.getAttribute('data-kelas') || '';
+                            const nis = item.getAttribute('data-nis') || '';
+
+                            if (hiddenInput) hiddenInput.value = id;
+
+                            optionsList.querySelectorAll('.m3-option-item').forEach(el => el.classList.remove('selected'));
+                            item.classList.add('selected');
+
+                            if (id) {
+                                if (avatarEl) {
+                                    avatarEl.className = 'm3-avatar';
+                                    avatarEl.textContent = nama ? nama.charAt(0).toUpperCase() : 'S';
+                                }
+                                if (titleEl) titleEl.textContent = nama;
+                                if (subtitleEl) {
+                                    subtitleEl.innerHTML = `<span class="m3-chip-sm">Kelas ${escapeHtml(kelas)}</span> <span>NIS: ${escapeHtml(nis)}</span>`;
+                                }
+                            } else {
+                                if (avatarEl) {
+                                    avatarEl.className = 'm3-avatar group';
+                                    avatarEl.textContent = '👥';
+                                }
+                                if (titleEl) titleEl.textContent = 'Semua Siswa Perwalian';
+                                if (subtitleEl) {
+                                    subtitleEl.innerHTML = `<span>Bimbingan Umum (${anakWaliList.length} Siswa)</span>`;
+                                }
+                            }
+
+                            wrapper.classList.remove('open');
+                            trigger.setAttribute('aria-expanded', 'false');
+                        });
+                    }
+
+                    // Close dropdown when clicking outside
+                    overlay.addEventListener('click', (e) => {
+                        if (!wrapper.contains(e.target)) {
+                            wrapper.classList.remove('open');
+                            trigger.setAttribute('aria-expanded', 'false');
+                        }
+                    });
+                }
+
+                let existingPhotos = [];
+                if (existing?.foto_kegiatan) {
+                    try {
+                        const parsed = JSON.parse(existing.foto_kegiatan);
+                        existingPhotos = Array.isArray(parsed) ? parsed : [existing.foto_kegiatan];
+                    } catch(e) {
+                        existingPhotos = [existing.foto_kegiatan];
+                    }
+                }
+                setTimeout(() => {
+                    Pages.initWebcamSection(existingPhotos);
+                }, 60);
+            }
         },
 
         async saveKegiatanJurnal(jenis = 'non_kbm', existingId = 0) {
@@ -1167,12 +1458,26 @@
             };
             if (existingId > 0) payload.id = existingId;
 
+            if (jenis === 'guru_wali') {
+                const studentSel = $('#kegiatanStudentId');
+                if (studentSel && studentSel.value) {
+                    payload.student_id = parseInt(studentSel.value, 10);
+                } else {
+                    payload.student_id = null;
+                }
+            }
+
+            if (jenis === 'guru_wali' || Pages._capturedPhotos.length > 0) {
+                payload.foto_kegiatan = Pages._capturedPhotos.map(p => p.dataUrl || p);
+            }
+
             try {
                 const action = existingId > 0 ? 'update' : 'create';
                 const res = await API.post(`api/jurnal.php?action=${action}`, payload);
 
                 if (res.success) {
                     Toast.show(res.message || 'Jurnal kegiatan berhasil disimpan!', 'success');
+                    Pages.stopWebcam();
                     GuruApp.closeModal('kegiatanModal');
                     if (Router.currentPage === 'home') Pages.renderHome();
                     else if (Router.currentPage === 'jurnal') Pages.renderJurnal();
@@ -1187,6 +1492,230 @@
             } finally {
                 if (btn) btn.classList.remove('loading');
             }
+        },
+
+        // --- WEBCAM CAPTURE FOR JURNAL GURU WALI ---
+        _capturedPhotos: [],
+        _webcamStream: null,
+        _webcamFacingMode: 'user',
+
+        async stopWebcam() {
+            if (this._webcamStream) {
+                try {
+                    this._webcamStream.getTracks().forEach(t => {
+                        try { t.stop(); } catch(e) {}
+                    });
+                } catch(e) {}
+                this._webcamStream = null;
+            }
+            const videoEl = $('#webcamVideo');
+            if (videoEl) {
+                videoEl.srcObject = null;
+            }
+        },
+
+        async startWebcamStream(facing = null) {
+            if (facing) {
+                this._webcamFacingMode = facing;
+            }
+            const mode = this._webcamFacingMode || 'user';
+
+            await this.stopWebcam();
+            // Short hardware release pause
+            await new Promise(r => setTimeout(r, 120));
+
+            const videoEl = $('#webcamVideo');
+            if (!videoEl) return;
+
+            const label = $('#webcamModeLabel');
+            if (label) {
+                label.textContent = (mode === 'environment') ? '🔄 Kamera Belakang' : '📷 Kamera Depan';
+            }
+
+            try {
+                if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                    throw new Error('Kamera web tidak didukung pada browser ini atau browser belum memberi izin.');
+                }
+
+                let stream = null;
+                const attempts = [
+                    { audio: false, video: { facingMode: { exact: mode }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+                    { audio: false, video: { facingMode: { ideal: mode }, width: { ideal: 1280 }, height: { ideal: 720 } } },
+                    { audio: false, video: { facingMode: mode } },
+                    { audio: false, video: true }
+                ];
+
+                for (const c of attempts) {
+                    try {
+                        stream = await navigator.mediaDevices.getUserMedia(c);
+                        if (stream) break;
+                    } catch(err) {}
+                }
+
+                if (!stream) {
+                    throw new Error('Tidak dapat mengaktifkan kamera web.');
+                }
+
+                this._webcamStream = stream;
+                videoEl.srcObject = stream;
+                try {
+                    await videoEl.play();
+                } catch(e) {}
+
+                const captureBtn = $('#btnCaptureWebcam');
+                if (captureBtn) {
+                    captureBtn.disabled = this._capturedPhotos.length >= 3;
+                }
+            } catch(e) {
+                Toast.show(e.message || 'Gagal mengakses kamera web. Pastikan izin kamera telah diizinkan.', 'error');
+            }
+        },
+
+        toggleWebcamFacing() {
+            this._webcamFacingMode = (this._webcamFacingMode === 'user') ? 'environment' : 'user';
+            this.startWebcamStream(this._webcamFacingMode);
+        },
+
+        captureWebcamSnapshot() {
+            if (this._capturedPhotos.length >= 3) {
+                Toast.show('Maksimal 3 foto dokumentasi kegiatan.', 'warning');
+                return;
+            }
+
+            const videoEl = $('#webcamVideo');
+            if (!videoEl) {
+                Toast.show('Elemen kamera tidak ditemukan.', 'warning');
+                return;
+            }
+
+            const width = videoEl.videoWidth || videoEl.clientWidth || 640;
+            const height = videoEl.videoHeight || videoEl.clientHeight || 480;
+            if (!width || !height) {
+                Toast.show('Kamera sedang dimuat, silakan tunggu sebentar...', 'warning');
+                return;
+            }
+
+            const canvas = document.createElement('canvas');
+            let w = width;
+            let h = height;
+
+            // Downscale maximum dimension to 1280px for optimal speed & quality
+            const maxDim = 1280;
+            if (w > maxDim || h > maxDim) {
+                if (w > h) {
+                    h = Math.round((h * maxDim) / w);
+                    w = maxDim;
+                } else {
+                    w = Math.round((w * maxDim) / h);
+                    h = maxDim;
+                }
+            }
+
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            try {
+                ctx.drawImage(videoEl, 0, 0, w, h);
+            } catch(drawErr) {
+                Toast.show('Gagal mengambil gambar dari kamera.', 'error');
+                return;
+            }
+
+            // Compress to <= 500 KB JPEG
+            let quality = 0.85;
+            let dataUrl = canvas.toDataURL('image/jpeg', quality);
+            let sizeKB = Math.round((dataUrl.length * 0.75) / 1024);
+
+            while (sizeKB > 500 && quality > 0.15) {
+                quality -= 0.12;
+                dataUrl = canvas.toDataURL('image/jpeg', quality);
+                sizeKB = Math.round((dataUrl.length * 0.75) / 1024);
+            }
+
+            this._capturedPhotos.push({
+                dataUrl: dataUrl,
+                sizeKB: sizeKB,
+                isNew: true
+            });
+
+            this.renderWebcamGallery();
+            Toast.show(`Foto berhasil diambil (${sizeKB} KB)`, 'success');
+        },
+
+        removeWebcamPhoto(idx) {
+            this._capturedPhotos.splice(idx, 1);
+            this.renderWebcamGallery();
+        },
+
+        renderWebcamGallery() {
+            const counter = $('#webcamPhotoCounter');
+            if (counter) {
+                counter.textContent = `${this._capturedPhotos.length}/3 Foto`;
+                counter.style.background = this._capturedPhotos.length >= 3 ? '#fee2e2' : '#dcfce7';
+                counter.style.color = this._capturedPhotos.length >= 3 ? '#b91c1c' : '#16a34a';
+            }
+
+            const captureBtn = $('#btnCaptureWebcam');
+            if (captureBtn) {
+                captureBtn.disabled = this._capturedPhotos.length >= 3;
+                if (this._capturedPhotos.length >= 3) {
+                    captureBtn.style.opacity = '0.5';
+                    captureBtn.style.cursor = 'not-allowed';
+                } else {
+                    captureBtn.style.opacity = '1';
+                    captureBtn.style.cursor = 'pointer';
+                }
+            }
+
+            const container = $('#webcamGalleryStrip');
+            if (!container) return;
+
+            if (this._capturedPhotos.length === 0) {
+                container.innerHTML = '<div style="font-size:0.75rem; color:#94a3b8; font-style:italic;">Belum ada foto yang diambil (Maks 3 foto).</div>';
+                return;
+            }
+
+            container.innerHTML = `
+                <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+                    ${this._capturedPhotos.map((p, idx) => {
+                        const src = typeof p === 'string' ? (p.startsWith('http') || p.startsWith('data:') ? p : ('../' + p.replace(/^\/+/, ''))) : p.dataUrl;
+                        const sizeLabel = p.sizeKB ? `${p.sizeKB} KB` : '';
+                        return `
+                            <div style="position:relative; width:80px; height:80px; border-radius:8px; overflow:hidden; border:1.5px solid #cbd5e1; background:#0f172a; box-shadow:0 1px 4px rgba(0,0,0,0.1);">
+                                <img src="${src}" style="width:100%; height:100%; object-fit:cover; cursor:pointer;" onclick="GuruApp.showImageLightbox('${src}')" alt="Foto">
+                                ${sizeLabel ? `<span style="position:absolute; bottom:2px; left:2px; background:rgba(0,0,0,0.7); color:#fff; font-size:9px; padding:1px 4px; border-radius:4px; font-weight:600;">${sizeLabel}</span>` : ''}
+                                <button type="button" onclick="GuruApp.removeWebcamPhoto(${idx})" style="position:absolute; top:2px; right:2px; background:#ef4444; color:white; border:none; border-radius:50%; width:20px; height:20px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:12px; font-weight:bold; line-height:1; box-shadow:0 1px 3px rgba(0,0,0,0.3);">×</button>
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
+        },
+
+        initWebcamSection(existingPhotos = []) {
+            this._capturedPhotos = Array.isArray(existingPhotos) ? existingPhotos.map(p => (typeof p === 'string' ? { dataUrl: p } : p)) : [];
+            this._webcamFacingMode = 'user';
+            this.renderWebcamGallery();
+            setTimeout(() => {
+                this.startWebcamStream('user');
+            }, 80);
+        },
+
+        showImageLightbox(src) {
+            const old = document.getElementById('imageLightboxModal');
+            if (old) old.remove();
+
+            const modal = document.createElement('div');
+            modal.id = 'imageLightboxModal';
+            modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;cursor:zoom-out;animation:fadeIn 0.2s ease;';
+            modal.innerHTML = `
+                <div style="position:relative;max-width:92vw;max-height:92vh;display:flex;align-items:center;justify-content:center;" onclick="event.stopPropagation()">
+                    <img src="${src}" style="max-width:100%;max-height:88vh;object-fit:contain;border-radius:12px;box-shadow:0 10px 40px rgba(0,0,0,0.5);" alt="Preview">
+                    <button type="button" onclick="document.getElementById('imageLightboxModal').remove()" style="position:absolute;top:-14px;right:-14px;background:#ef4444;color:white;border:none;border-radius:50%;width:32px;height:32px;font-size:16px;font-weight:bold;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.4);">✕</button>
+                </div>
+            `;
+            modal.addEventListener('click', () => modal.remove());
+            document.body.appendChild(modal);
         },
 
         async loadJurnalSchedule() {
@@ -1610,6 +2139,15 @@
                                         <div class="jurnal-item-mapel">Jurnal Guru Wali</div>
                                         <span class="badge badge-success" style="font-size:0.7rem;">Guru Wali</span>
                                     </div>
+                                    ${j.student_nama ? `
+                                        <div style="margin:3px 0 6px; font-size:0.75rem; color:var(--primary); font-weight:600;">
+                                            🎯 Siswa: <span style="background:#eff6ff; padding:2px 6px; border-radius:4px; border:1px solid #bfdbfe;">${escapeHtml(j.student_nama)} (${escapeHtml(j.student_kelas || '')})</span>
+                                        </div>
+                                    ` : `
+                                        <div style="margin:3px 0 6px; font-size:0.75rem; color:#64748b;">
+                                            👥 Siswa: <span style="background:#f1f5f9; padding:2px 6px; border-radius:4px;">Bimbingan Umum</span>
+                                        </div>
+                                    `}
                                     ${j.catatan ? `<div class="jurnal-item-tp" style="margin-top:6px; font-size:0.8rem; color:var(--text-primary); line-height:1.4;">${escapeHtml(j.catatan)}</div>` : ''}
                                     <div class="jurnal-item-footer" style="margin-top:10px;">
                                         <div class="jurnal-item-date">${formatTanggal(j.tanggal)}</div>
@@ -1750,12 +2288,14 @@
                             <div style="padding:12px 14px;background:var(--bg-light);border-radius:var(--radius-md);font-size:0.875rem;line-height:1.6;white-space:pre-wrap;">${escapeHtml(j.catatan || '-')}</div>
                         </div>
                     `;
-                } else if (j.jenis_jurnal === 'wali_kelas') {
-                    modalTitle = 'Detail Jurnal Guru Wali';
+                } else if (j.jenis_jurnal === 'wali_kelas' || j.jenis_jurnal === 'guru_wali') {
+                    const isGw = j.jenis_jurnal === 'guru_wali';
+                    modalTitle = isGw ? 'Detail Jurnal Guru Wali' : 'Detail Jurnal Wali Kelas';
+                    const labelTitle = isGw ? 'Jurnal Guru Wali' : 'Jurnal Wali Kelas';
                     headerMetaHtml = `
                         <div class="form-info-row">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                            <span><strong>${formatTanggal(j.tanggal)}</strong> — Jurnal Guru Wali</span>
+                            <span><strong>${formatTanggal(j.tanggal)}</strong> — ${labelTitle}</span>
                         </div>
                         ${j.nama_kelas ? `
                             <div class="form-info-row">
@@ -1763,10 +2303,16 @@
                                 <span>Kelas: <strong>${escapeHtml(j.nama_kelas)}</strong></span>
                             </div>
                         ` : ''}
+                        ${isGw ? `
+                            <div class="form-info-row">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                                <span>Siswa Bimbingan: <strong>${j.student_nama ? `${escapeHtml(j.student_nama)} (Kelas ${escapeHtml(j.student_kelas || '')} - NIS: ${escapeHtml(j.student_nis || '')})` : 'Bimbingan Umum (Semua Siswa Perwalian)'}</strong></span>
+                            </div>
+                        ` : ''}
                     `;
                     bodyContentHtml = `
                         <div class="form-group mt-2">
-                            <label class="form-label">Catatan Kegiatan Guru Wali</label>
+                            <label class="form-label">Catatan Kegiatan ${labelTitle}</label>
                             <div style="padding:12px 14px;background:var(--bg-light);border-radius:var(--radius-md);font-size:0.875rem;line-height:1.6;white-space:pre-wrap;">${escapeHtml(j.catatan || '-')}</div>
                         </div>
                     `;
@@ -1809,6 +2355,35 @@
                                 <div style="padding:10px 14px;background:var(--danger-light);border-radius:var(--radius-md);font-size:0.875rem;line-height:1.6;color:var(--danger);">${escapeHtml(j.siswa_tidak_hadir)}</div>
                             </div>
                         ` : ''}
+                    `;
+                }
+
+                // Render photo gallery if available
+                let fotos = [];
+                if (j.foto_kegiatan) {
+                    try {
+                        const p = JSON.parse(j.foto_kegiatan);
+                        fotos = Array.isArray(p) ? p : [j.foto_kegiatan];
+                    } catch(e) {
+                        fotos = [j.foto_kegiatan];
+                    }
+                }
+
+                if (fotos.length > 0) {
+                    bodyContentHtml += `
+                        <div class="form-group mt-3">
+                            <label class="form-label" style="font-weight:700;">Foto Dokumentasi Kegiatan (${fotos.length}/3)</label>
+                            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:6px;">
+                                ${fotos.map(f => {
+                                    const cleanSrc = f.startsWith('http') || f.startsWith('data:') ? f : ('../' + f.replace(/^\/+/, ''));
+                                    return `
+                                        <div style="position:relative; width:95px; height:95px; border-radius:10px; overflow:hidden; border:1.5px solid #e2e8f0; cursor:pointer; box-shadow:0 2px 6px rgba(0,0,0,0.08); background:#0f172a;" onclick="GuruApp.showImageLightbox('${cleanSrc}')">
+                                            <img src="${cleanSrc}" style="width:100%; height:100%; object-fit:cover; display:block;" alt="Foto Kegiatan">
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
                     `;
                 }
 
@@ -2367,8 +2942,8 @@
             const list = $('#gwJurnalList');
             if (!list) return;
 
-            const from = $('#gwDateFrom').val();
-            const to = $('#gwDateTo').val();
+            const from = $('#gwDateFrom')?.value || '';
+            const to = $('#gwDateTo')?.value || '';
 
             list.innerHTML = '<div class="skeleton skeleton-card"></div><div class="skeleton skeleton-card"></div>';
 
@@ -2398,8 +2973,33 @@
 
             let html = '';
             data.forEach(item => {
+                let fotoHtml = '';
+                if (item.foto_kegiatan) {
+                    let fotos = [];
+                    try {
+                        const parsed = typeof item.foto_kegiatan === 'string' ? JSON.parse(item.foto_kegiatan) : item.foto_kegiatan;
+                        fotos = Array.isArray(parsed) ? parsed : [item.foto_kegiatan];
+                    } catch(e) {
+                        fotos = [item.foto_kegiatan];
+                    }
+                    if (Array.isArray(fotos) && fotos.length > 0) {
+                        fotoHtml = `
+                            <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">
+                                ${fotos.map(f => {
+                                    const cleanSrc = f.startsWith('http') || f.startsWith('data:') ? f : ('../' + f.replace(/^\/+/, ''));
+                                    return `
+                                        <img src="${cleanSrc}" alt="Foto Jurnal"
+                                             style="width:52px; height:52px; object-fit:cover; border-radius:6px; border:1px solid #cbd5e1; cursor:pointer;"
+                                             onclick="event.stopPropagation(); GuruApp.showImageLightbox('${cleanSrc}')">
+                                    `;
+                                }).join('')}
+                            </div>
+                        `;
+                    }
+                }
+
                 html += `
-                    <div class="jurnal-item-card" onclick="location.hash='#/jurnal-detail/${item.id}'">
+                    <div class="jurnal-item-card" onclick="GuruApp.viewJurnal(${item.id})">
                         <div class="jurnal-item-header">
                             <div>
                                 <div class="jurnal-item-mapel">Jurnal Guru Wali</div>
@@ -2407,9 +3007,23 @@
                             </div>
                             <span class="badge badge-success">Guru Wali</span>
                         </div>
+                        ${item.student_nama ? `
+                            <div style="margin: 4px 0 8px; font-size: 0.8rem; display: flex; align-items: center; gap: 6px; color: var(--primary); font-weight: 600;">
+                                <span>🎯 Siswa:</span>
+                                <span style="background: #eff6ff; padding: 2px 8px; border-radius: 6px; border: 1px solid #bfdbfe;">
+                                    ${escapeHtml(item.student_nama)} (${escapeHtml(item.student_kelas || '')})
+                                </span>
+                            </div>
+                        ` : `
+                            <div style="margin: 4px 0 8px; font-size: 0.8rem; display: flex; align-items: center; gap: 6px; color: #64748b;">
+                                <span>👥 Siswa:</span>
+                                <span style="background: #f1f5f9; padding: 2px 8px; border-radius: 6px;">Bimbingan Umum (Semua Anak Wali)</span>
+                            </div>
+                        `}
                         <div class="jurnal-item-body">
-                            <div class="jurnal-item-materi" style="margin-bottom:8px;">${escapeHtml(item.kegiatan || '-')}</div>
-                            ${item.catatan ? `<div class="jurnal-item-catatan" style="font-size:0.8rem; background:#f8fafc; padding:8px; border-radius:6px; border-left:3px solid #2563eb; color:#475569;">${escapeHtml(item.catatan)}</div>` : ''}
+                            <div class="jurnal-item-materi" style="margin-bottom:8px;">${escapeHtml(item.kegiatan || item.catatan || '-')}</div>
+                            ${item.catatan && item.kegiatan ? `<div class="jurnal-item-catatan" style="font-size:0.8rem; background:#f8fafc; padding:8px; border-radius:6px; border-left:3px solid #2563eb; color:#475569;">${escapeHtml(item.catatan)}</div>` : ''}
+                            ${fotoHtml}
                         </div>
                     </div>
                 `;
@@ -2491,7 +3105,7 @@
         },
 
         async printDailyGuruWaliAbsen() {
-            const tanggal = $('#printGwAbsenTanggal').val();
+            const tanggal = $('#printGwAbsenTanggal')?.value || '';
             if (!tanggal) return Toast.show('Pilih tanggal dulu.', 'warning');
 
             const loader = Toast.loading('Menyiapkan dokumen...');
@@ -2603,7 +3217,7 @@
                 const res = await API.get(`api/jurnal.php?action=get&id=${id}`);
                 if (res.success) {
                     const j = res.data;
-                    if (j.jenis_jurnal === 'non_kbm' || j.jenis_jurnal === 'wali_kelas') {
+                    if (j.jenis_jurnal === 'non_kbm' || j.jenis_jurnal === 'wali_kelas' || j.jenis_jurnal === 'guru_wali' || j.jenis_jurnal === 'waka') {
                         this.openKegiatanModal(j.jenis_jurnal, j.id);
                     } else {
                         this.openJurnalForm({
@@ -3508,6 +4122,7 @@
     // =============================================
     // GLOBAL EXPOSED FUNCTIONS
     // =============================================
+    window.Pages = Pages;
     window.GuruApp = {
         switchDay(hari) {
             Pages.renderDaySchedule(hari);
@@ -3535,11 +4150,30 @@
         },
 
         closeModal(id) {
+            if (id === 'kegiatanModal') {
+                Pages.stopWebcam();
+            }
             const modal = document.getElementById(id);
             if (modal) {
                 modal.style.animation = 'fadeOut 0.2s ease forwards';
                 setTimeout(() => modal.remove(), 200);
             }
+        },
+
+        showImageLightbox(src) {
+            Pages.showImageLightbox(src);
+        },
+
+        toggleWebcamFacing() {
+            Pages.toggleWebcamFacing();
+        },
+
+        captureWebcamSnapshot() {
+            Pages.captureWebcamSnapshot();
+        },
+
+        removeWebcamPhoto(idx) {
+            Pages.removeWebcamPhoto(idx);
         },
 
         async saveJurnal(id, kelas_id, mapel_id, jam_ke, tanggal) {

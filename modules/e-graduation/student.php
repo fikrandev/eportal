@@ -43,7 +43,7 @@ $active = get_active_academic_year();
         <section class="hero">
             <div>
                 <div class="brand">
-                    <?php if ($school_icon): ?><img src="<?php echo BASE_URL . $school_icon; ?>" alt="Logo"><?php endif; ?>
+                    <?php if ($school_icon): ?><img src="<?php echo BASE_URL . ltrim(str_replace('\\', '/', $school_icon), '/'); ?>" alt="Logo" onerror="this.style.display='none'"><?php endif; ?>
                     <div><h1><?php echo htmlspecialchars($school_name); ?></h1><p class="muted">E-Graduation Siswa</p></div>
                 </div>
                 <h2 class="hero-title">Portal Pengumuman Kelulusan</h2>
@@ -127,7 +127,7 @@ $active = get_active_academic_year();
                 document.getElementById('portalWrap').classList.add('logged-in');
                 document.getElementById('studentName').textContent = student.nama;
                 document.getElementById('studentMeta').textContent = `NIS: ${student.nis} | Kelas: ${student.kelas}`;
-                document.getElementById('studentAvatar').innerHTML = student.foto_url ? `<img src="${student.foto_url}">` : student.nama.substring(0,2).toUpperCase();
+                document.getElementById('studentAvatar').innerHTML = student.foto_url ? `<img src="${student.foto_url}" onerror="this.onerror=null;this.parentElement.innerHTML='${this.escapeHtml(student.nama.substring(0,2).toUpperCase())}';">` : this.escapeHtml(student.nama.substring(0,2).toUpperCase());
                 document.getElementById('studentActions').classList.toggle('hidden', announcement.mode !== 'published');
                 document.getElementById('announcementText').textContent = '';
                 this.renderStatusPanel();
@@ -161,7 +161,7 @@ $active = get_active_academic_year();
                     const nameEscaped = this.escapeHtml(a.student_name);
                     const nisEscaped = this.escapeHtml(a.nis);
                     const kelasEscaped = this.escapeHtml(a.kelas);
-                    html = `${a.foto_url ? `<img class="modal-photo" src="${a.foto_url}">` : ''}<h2>SELAMAT</h2><p><strong>${nameEscaped}</strong> / NIS : ${nisEscaped} / KELAS ${kelasEscaped}<br>DINYATAKAN <strong style="font-size:24px; color:#14532d;">LULUS</strong></p><br><button class="btn btn-primary" onclick="StudentPortal.closeMessage()">OK</button>`;
+                    html = `${a.foto_url ? `<img class="modal-photo" src="${a.foto_url}" onerror="this.style.display='none'">` : ''}<h2>SELAMAT</h2><p><strong>${nameEscaped}</strong> / NIS : ${nisEscaped} / KELAS ${kelasEscaped}<br>DINYATAKAN <strong style="font-size:24px; color:#14532d;">LULUS</strong></p><br><button class="btn btn-primary" onclick="StudentPortal.closeMessage()">OK</button>`;
                 }
                 document.getElementById('messageBody').innerHTML = html;
                 document.getElementById('messageModal').classList.add('show');

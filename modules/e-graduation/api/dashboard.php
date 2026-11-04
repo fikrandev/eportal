@@ -26,9 +26,17 @@ function getStats()
         $scopedClasses = $user['scoped_classes'] ?? [];
         $stats = [];
 
-        // Total Siswa (E-Graduation only)
+        $grade12Sql = grad_grade12_sql_condition('s');
+        $scopedClasses = array_values(array_filter($scopedClasses, 'grad_is_grade12_class'));
+
+        // Total Siswa (E-Graduation only - Grade 12)
         if ($isAdmin) {
-            $stmt = db()->prepare("SELECT COUNT(*) FROM grad_student_accounts WHERE academic_year_id = ? AND status = 1");
+            $stmt = db()->prepare("
+                SELECT COUNT(a.id) 
+                FROM grad_student_accounts a
+                JOIN students s ON s.id = a.student_id
+                WHERE a.academic_year_id = ? AND a.status = 1 AND {$grade12Sql}
+            ");
             $stmt->execute([$academicYearId]);
         } else {
             $placeholders = count($scopedClasses) > 0 ? implode(',', array_fill(0, count($scopedClasses), '?')) : "''";
@@ -36,19 +44,19 @@ function getStats()
                 SELECT COUNT(a.id) 
                 FROM grad_student_accounts a
                 JOIN students s ON s.id = a.student_id
-                WHERE a.academic_year_id = ? AND a.status = 1 AND s.kelas IN ($placeholders)
+                WHERE a.academic_year_id = ? AND a.status = 1 AND s.kelas IN ($placeholders) AND {$grade12Sql}
             ");
             $stmt->execute(array_merge([$academicYearId], $scopedClasses));
         }
         $stats['total_siswa'] = (int) $stmt->fetchColumn();
 
-        // Total Kelas (E-Graduation only)
+        // Total Kelas (E-Graduation only - Grade 12)
         if ($isAdmin) {
             $stmt = db()->prepare("
                 SELECT COUNT(DISTINCT s.kelas) 
                 FROM grad_student_accounts a
                 JOIN students s ON s.id = a.student_id
-                WHERE a.academic_year_id = ? AND a.status = 1 AND s.kelas <> ''
+                WHERE a.academic_year_id = ? AND a.status = 1 AND s.kelas <> '' AND {$grade12Sql}
             ");
             $stmt->execute([$academicYearId]);
         } else {
@@ -70,9 +78,14 @@ function getStats()
         $stmt->execute([$academicYearId]);
         $stats['total_mapel'] = (int) $stmt->fetchColumn();
 
-        // Total No Surat
+        // Total No Surat (Grade 12 only)
         if ($isAdmin) {
-            $stmt = db()->prepare("SELECT COUNT(*) FROM grad_student_letters WHERE academic_year_id = ?");
+            $stmt = db()->prepare("
+                SELECT COUNT(l.id) 
+                FROM grad_student_letters l
+                JOIN students s ON s.id = l.student_id
+                WHERE l.academic_year_id = ? AND {$grade12Sql}
+            ");
             $stmt->execute([$academicYearId]);
         } else {
             $placeholders = count($scopedClasses) > 0 ? implode(',', array_fill(0, count($scopedClasses), '?')) : "''";
@@ -80,7 +93,7 @@ function getStats()
                 SELECT COUNT(l.id) 
                 FROM grad_student_letters l
                 JOIN students s ON s.id = l.student_id
-                WHERE l.academic_year_id = ? AND s.kelas IN ($placeholders)
+                WHERE l.academic_year_id = ? AND s.kelas IN ($placeholders) AND {$grade12Sql}
             ");
             $stmt->execute(array_merge([$academicYearId], $scopedClasses));
         }
@@ -101,13 +114,13 @@ function getStats()
         $stmt->execute([$academicYearId]);
         $stats['per_kelompok'] = $stmt->fetchAll();
 
-        // List Kelas
+        // List Kelas (Grade 12 only)
         if ($isAdmin) {
             $stmt = db()->prepare("
                 SELECT s.kelas, COUNT(a.id) as total_siswa
                 FROM grad_student_accounts a
                 JOIN students s ON s.id = a.student_id
-                WHERE a.academic_year_id = ? AND a.status = 1 AND s.kelas <> ''
+                WHERE a.academic_year_id = ? AND a.status = 1 AND s.kelas <> '' AND {$grade12Sql}
                 GROUP BY s.kelas
                 ORDER BY s.kelas ASC
             ");
@@ -120,7 +133,7 @@ function getStats()
                     SELECT s.kelas, COUNT(a.id) as total_siswa
                     FROM grad_student_accounts a
                     JOIN students s ON s.id = a.student_id
-                    WHERE a.academic_year_id = ? AND a.status = 1 AND s.kelas IN ($placeholders)
+                    WHERE a.academic_year_id = ? AND a.status = 1 AND s.kelas IN ($placeholders) AND {$grade12Sql}
                     GROUP BY s.kelas
                     ORDER BY s.kelas ASC
                 ");

@@ -50,6 +50,10 @@ try {
         KEY `idx_buku_kelas` (`kelas_id`),
         KEY `idx_buku_tanggal` (`tanggal`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+
+    try {
+        db()->exec("ALTER TABLE acad_buku_penghubung ADD COLUMN foto text DEFAULT NULL AFTER catatan");
+    } catch (Exception $ex) {}
 } catch (Exception $e) {
     // Continue
 }
