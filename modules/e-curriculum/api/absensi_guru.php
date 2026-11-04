@@ -231,24 +231,87 @@ function saveAbsensiGuru($user) {
 
 /**
  * Rekapitulasi absensi guru per range tanggal
+ * Mendukung Rekapitulasi Detail Matriks per Tanggal (3 Sesi: A, B, C) dan Ringkasan Kehadiran
  */
 function rekapAbsensiGuru($user) {
     try {
         $tanggal_awal = isset($_GET['tanggal_awal']) ? $_GET['tanggal_awal'] : date('Y-m-01');
         $tanggal_akhir = isset($_GET['tanggal_akhir']) ? $_GET['tanggal_akhir'] : date('Y-m-d');
-        $waktu_terlambat = get_setting('waktu_terlambat_guru', '07:15:00') ?: '07:15:00';
+
+        $waktu_terlambat = get_setting('waktu_terlambat_guru', '06:30:00') ?: '06:30:00';
+        $waktu_istirahat_mulai = get_setting('waktu_istirahat_guru_mulai', '10:00:00') ?: '10:00:00';
+        $waktu_istirahat_selesai = get_setting('waktu_istirahat_guru_selesai', '10:15:00') ?: '10:15:00';
+        $waktu_pulang = get_setting('waktu_pulang_guru', '15:30:00') ?: '15:30:00';
+        $wa_mulai_pulang = get_setting('wa_guru_mulai_pulang', '13:00:00') ?: '13:00:00';
+
         if (strlen($waktu_terlambat) === 5) $waktu_terlambat .= ':00';
+        if (strlen($waktu_istirahat_mulai) === 5) $waktu_istirahat_mulai .= ':00';
+        if (strlen($waktu_istirahat_selesai) === 5) $waktu_istirahat_selesai .= ':00';
+        if (strlen($waktu_pulang) === 5) $waktu_pulang .= ':00';
+        if (strlen($wa_mulai_pulang) === 5) $wa_mulai_pulang .= ':00';
+
+        $nama_sekolah = get_setting('nama_sekolah', 'SMA WACHID HASYIM 1 SURABAYA') ?: 'SMA WACHID HASYIM 1 SURABAYA';
+
+        // Format bulan text
+        $bulanIndo = [
+            '01' => 'Januari', '02' => 'Februari', '03' => 'Maret', '04' => 'April',
+            '05' => 'Mei', '06' => 'Juni', '07' => 'Juli', '08' => 'Agustus',
+            '09' => 'September', '10' => 'Oktober', '11' => 'November', '12' => 'Desember'
+        ];
+        $m1 = date('m', strtotime($tanggal_awal));
+        $y1 = date('Y', strtotime($tanggal_awal));
+        $m2 = date('m', strtotime($tanggal_akhir));
+        $y2 = date('Y', strtotime($tanggal_akhir));
+
+        if ($m1 === $m2 && $y1 === $y2) {
+            $bulan_text = ($bulanIndo[$m1] ?? '') . ' ' . $y1;
+        } else {
+            $bulan_text = date('d/m/Y', strtotime($tanggal_awal)) . ' s/d ' . date('d/m/Y', strtotime($tanggal_akhir));
+        }
+
+        // Ambil hari libur dari database
+        $holidays = [];
+        try {
+            $active_year = get_active_academic_year();
+            $year_id = (int)($active_year['id'] ?? 0);
+            $stmtH = db()->prepare("SELECT tanggal FROM acad_hari_libur WHERE academic_year_id = ? AND tanggal BETWEEN ? AND ?");
+            $stmtH->execute([$year_id, $tanggal_awal, $tanggal_akhir]);
+            $holidays = $stmtH->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        } catch (Exception $e) {}
+
+        // Susun daftar hari efektif
+        $effectiveDates = [];
+        $current_ts = strtotime($tanggal_awal);
+        $end_ts = strtotime($tanggal_akhir);
+
+        while ($current_ts <= $end_ts) {
+            $dayOfWeek = (int)date('N', $current_ts); // 1 = Senin, 7 = Minggu
+            $dateStr = date('Y-m-d', $current_ts);
+            if ($dayOfWeek < 6 && !in_array($dateStr, $holidays)) {
+                $effectiveDates[] = [
+                    'date' => $dateStr,
+                    'day' => (int)date('j', $current_ts),
+                    'day_name' => date('D', $current_ts)
+                ];
+            }
+            $current_ts = strtotime('+1 day', $current_ts);
+        }
+
+        $hari_efektif = count($effectiveDates);
 
         // 1. Get all relevant teachers
-        $stmtG = db()->query("SELECT id, kode_guru, nama_lengkap as nama FROM users WHERE role = 'guru' AND status = 1 ORDER BY nama_lengkap");
-        $teachers = $stmtG->fetchAll();
+        $stmtG = db()->query("SELECT id, kode_guru, nama_lengkap as nama, nik FROM users WHERE role = 'guru' AND status = 1 ORDER BY nama_lengkap");
+        $teachers = $stmtG->fetchAll(PDO::FETCH_ASSOC);
 
         if (empty($teachers)) {
             json_response(200, true, 'Rekap absensi guru dimuat.', [
+                'nama_sekolah' => $nama_sekolah,
+                'bulan' => $bulan_text,
                 'waktu_terlambat' => substr($waktu_terlambat, 0, 5),
                 'tanggal_awal' => $tanggal_awal,
                 'tanggal_akhir' => $tanggal_akhir,
-                'hari_efektif' => 0,
+                'hari_efektif' => $hari_efektif,
+                'effective_dates' => $effectiveDates,
                 'rekap' => []
             ]);
         }
@@ -256,11 +319,11 @@ function rekapAbsensiGuru($user) {
         $teacherIds = array_column($teachers, 'id');
 
         // 2. Fetch manual records from acad_absensi_guru for date range
-        $manualMap = []; // [guru_id][tanggal] = status
+        $manualMap = []; 
         try {
             $placeholdersT = implode(',', array_fill(0, count($teacherIds), '?'));
             $stmtA = db()->prepare("
-                SELECT guru_id, tanggal, status 
+                SELECT guru_id, tanggal, sesi, status 
                 FROM acad_absensi_guru 
                 WHERE guru_id IN ($placeholdersT) 
                   AND tanggal BETWEEN ? AND ? 
@@ -268,25 +331,28 @@ function rekapAbsensiGuru($user) {
             $paramsA = array_merge($teacherIds, [$tanggal_awal, $tanggal_akhir]);
             $stmtA->execute($paramsA);
             
-            while ($row = $stmtA->fetch()) {
-                $manualMap[$row['guru_id']][$row['tanggal']] = $row['status'];
+            while ($row = $stmtA->fetch(PDO::FETCH_ASSOC)) {
+                $gid = $row['guru_id'];
+                $tgl = $row['tanggal'];
+                $sesi = strtolower($row['sesi'] ?: 'masuk');
+                $manualMap[$gid][$tgl][$sesi] = $row['status'];
             }
         } catch (Exception $e) {}
 
-        // 3. Fetch E-Absen logs for date range efficiently
+        // 3. Fetch E-Absen logs for date range
         $userMap = [];
         $pins = [];
         try {
-            $stmtMap = db()->query("SELECT user_id, TRIM(LEADING '0' FROM mesin_pin) as clean_pin FROM absen_user_map");
-            while($m = $stmtMap->fetch()) {
-                 if (in_array($m['user_id'], $teacherIds)) {
-                     $userMap[$m['user_id']] = $m['clean_pin'];
-                     $pins[] = $m['clean_pin'];
-                 }
+            $placeholdersT = implode(',', array_fill(0, count($teacherIds), '?'));
+            $stmtMap = db()->prepare("SELECT user_id, TRIM(LEADING '0' FROM mesin_pin) as clean_pin FROM absen_user_map WHERE user_id IN ($placeholdersT)");
+            $stmtMap->execute($teacherIds);
+            while($m = $stmtMap->fetch(PDO::FETCH_ASSOC)) {
+                $userMap[$m['user_id']] = $m['clean_pin'];
+                $pins[] = $m['clean_pin'];
             }
         } catch (Exception $e) {}
         
-        $eAbsenMap = []; // [clean_pin][tgl] = jam_masuk
+        $eAbsenMap = []; 
         if (count($pins) > 0) {
             try {
                 $tanggal_akhir_full = $tanggal_akhir . ' 23:59:59';
@@ -294,92 +360,147 @@ function rekapAbsensiGuru($user) {
                 $stmtL = db()->prepare("
                     SELECT TRIM(LEADING '0' FROM mesin_pin) as clean_pin,
                            DATE(waktu_absen) as tgl,
-                           MIN(TIME(waktu_absen)) as jam_masuk
+                           MIN(CASE WHEN TIME(waktu_absen) < ? THEN TIME(waktu_absen) END) as jam_masuk,
+                           MIN(CASE WHEN TIME(waktu_absen) >= ? AND TIME(waktu_absen) < ? THEN TIME(waktu_absen) END) as jam_istirahat,
+                           MAX(CASE WHEN TIME(waktu_absen) >= ? THEN TIME(waktu_absen) END) as jam_pulang
                     FROM absen_logs 
                     WHERE waktu_absen BETWEEN ? AND ?
                       AND TRIM(LEADING '0' FROM mesin_pin) IN ($placeholdersPins)
                     GROUP BY clean_pin, tgl
                 ");
-                $paramsL = array_merge([$tanggal_awal, $tanggal_akhir_full], $pins);
+                $paramsL = array_merge([$waktu_istirahat_mulai, $waktu_istirahat_mulai, $wa_mulai_pulang, $wa_mulai_pulang, $tanggal_awal, $tanggal_akhir_full], $pins);
                 $stmtL->execute($paramsL);
-                while ($l = $stmtL->fetch()) {
-                    $eAbsenMap[$l['clean_pin']][$l['tgl']] = $l['jam_masuk'];
+                while ($l = $stmtL->fetch(PDO::FETCH_ASSOC)) {
+                    $eAbsenMap[$l['clean_pin']][$l['tgl']] = $l;
                 }
             } catch (Exception $e) {}
         }
 
         // 4. Calculate attendance per teacher
         $rekap = [];
-        $hari_efektif = get_hari_efektif($tanggal_awal, $tanggal_akhir);
-
+        $waktu_terlambat_short = substr($waktu_terlambat, 0, 5);
 
         foreach ($teachers as $t) {
             $tid = $t['id'];
-
-            $countH = 0; // Hadir tepat waktu
-            $countT = 0; // Terlambat
-            $countS = 0; // Sakit
-            $countI = 0; // Izin
-            $countA = 0; // Alpha
-
-            $dates = [];
-            if (isset($manualMap[$tid])) {
-                foreach (array_keys($manualMap[$tid]) as $d) $dates[$d] = true;
-            }
             $cleanPin = isset($userMap[$tid]) ? $userMap[$tid] : null;
-            if ($cleanPin && isset($eAbsenMap[$cleanPin])) {
-                foreach (array_keys($eAbsenMap[$cleanPin]) as $d) $dates[$d] = true;
-            }
 
-            foreach (array_keys($dates) as $d) {
-                // Manual record takes precedence if set
-                if (isset($manualMap[$tid][$d])) {
-                    $st = $manualMap[$tid][$d];
-                    if ($st === 'H') $countH++;
-                    else if ($st === 'T') $countT++;
-                    else if ($st === 'S') $countS++;
-                    else if ($st === 'I') $countI++;
-                    else if ($st === 'A') $countA++;
-                } else if ($cleanPin && isset($eAbsenMap[$cleanPin][$d])) {
-                    $jamMasuk = $eAbsenMap[$cleanPin][$d];
-                    if ($jamMasuk <= $waktu_terlambat) {
-                        $countH++;
-                    } else {
-                        $countT++;
+            $daily = [];
+            $totA = 0; 
+            $totB = 0; 
+            $totC = 0;
+
+            $countH = 0; 
+            $countT = 0; 
+            $countS = 0; 
+            $countI = 0; 
+            $countA = 0;
+
+            foreach ($effectiveDates as $ed) {
+                $d = $ed['date'];
+                $manualEntry = $manualMap[$tid][$d] ?? [];
+                $logEntry = ($cleanPin && isset($eAbsenMap[$cleanPin][$d])) ? $eAbsenMap[$cleanPin][$d] : null;
+
+                // Sesi 1 (A: Datang / Masuk)
+                $stA = $manualEntry['masuk'] ?? null;
+                $logMasuk = $logEntry['jam_masuk'] ?? null;
+                $hadirSesiA = false;
+                $lateSesiA = false;
+
+                if ($stA) {
+                    if ($stA === 'H') {
+                        $hadirSesiA = true;
+                    } else if ($stA === 'T') {
+                        $hadirSesiA = true;
+                        $lateSesiA = true;
                     }
+                } else if ($logMasuk !== null) {
+                    $hadirSesiA = true;
+                    if (substr($logMasuk, 0, 5) > $waktu_terlambat_short) {
+                        $lateSesiA = true;
+                    }
+                }
+                if (!$stA) {
+                    if (isset($manualEntry['istirahat']) && in_array($manualEntry['istirahat'], ['S','I','A'])) $stA = $manualEntry['istirahat'];
+                    elseif (isset($manualEntry['pulang']) && in_array($manualEntry['pulang'], ['S','I','A'])) $stA = $manualEntry['pulang'];
+                }
+
+                // Sesi 2 (B: Istirahat)
+                $stB = $manualEntry['istirahat'] ?? null;
+                $logIstirahat = $logEntry['jam_istirahat'] ?? null;
+                if ($stB === 'H' || ($stB === null && $logIstirahat !== null)) {
+                    $stB = 'H';
+                }
+
+                // Sesi 3 (C: Pulang)
+                $stC = $manualEntry['pulang'] ?? null;
+                $logPulang = $logEntry['jam_pulang'] ?? null;
+                if ($stC === 'H' || ($stC === null && $logPulang !== null)) {
+                    $stC = 'H';
+                }
+
+                $daily[$d] = [
+                    'a' => $stA ?: '',
+                    'b' => $stB ?: '',
+                    'c' => $stC ?: ''
+                ];
+
+                if (!empty($daily[$d]['a'])) $totA++;
+                if (!empty($daily[$d]['b'])) $totB++;
+                if (!empty($daily[$d]['c'])) $totC++;
+
+                // Status Kehadiran
+                if ($stA === 'S') {
+                    $countS++;
+                } elseif ($stA === 'I') {
+                    $countI++;
+                } elseif ($stA === 'A') {
+                    $countA++;
+                } elseif ($stA === 'T') {
+                    $countH++;
+                    $countT++;
+                } elseif ($stA === 'H' || $stC === 'H') {
+                    $countH++;
+                } else {
+                    $countA++;
                 }
             }
 
-            $totalHadir = $countH + $countT;
-            $recordedDaysCount = $countH + $countT + $countS + $countI + $countA;
-            $unrecordedDays = $hari_efektif - $recordedDaysCount;
-            if ($unrecordedDays > 0) {
-                $countA += $unrecordedDays;
-            }
-            
-            $persentase = $hari_efektif > 0 ? round(($totalHadir / $hari_efektif) * 100, 1) : 0;
+            $wh = $hari_efektif;
+            $th = $countS + $countI + $countA;
+            $persentase = $wh > 0 ? round(($countH / $wh) * 100) : 0;
             if ($persentase > 100) $persentase = 100;
 
             $rekap[] = [
                 'guru_id' => $tid,
                 'kode_guru' => $t['kode_guru'],
+                'nik' => $t['nik'] ?: '-',
                 'nama' => $t['nama'],
+                'jenis_kelamin' => '-',
+                'daily' => $daily,
+                'tot_a' => $totA,
+                'tot_b' => $totB,
+                'tot_c' => $totC,
+                'wh' => $wh,
                 'hadir' => $countH,
                 'terlambat' => $countT,
                 'sakit' => $countS,
                 'izin' => $countI,
                 'alpha' => $countA,
-                'total_hadir' => $totalHadir,
-                'total_hari' => $hari_efektif,
+                'th' => $th,
+                'total_hadir' => $countH,
+                'total_hari' => $wh,
                 'persentase' => $persentase
             ];
         }
 
         json_response(200, true, 'Rekap absensi guru dimuat.', [
+            'nama_sekolah' => $nama_sekolah,
+            'bulan' => $bulan_text,
             'waktu_terlambat' => substr($waktu_terlambat, 0, 5),
             'tanggal_awal' => $tanggal_awal,
             'tanggal_akhir' => $tanggal_akhir,
             'hari_efektif' => $hari_efektif,
+            'effective_dates' => $effectiveDates,
             'rekap' => $rekap
         ]);
     } catch (PDOException $e) {

@@ -2740,6 +2740,7 @@ const Curriculum = {
                             <div class="filter-item"><label>Tanggal Akhir</label><input type="date" class="form-input-acad" id="rekapTglAkhir" value="${today}"></div>
                             <div class="filter-item" style="display:flex; flex-direction:row; align-items:flex-end; gap:8px;">
                                 <button class="btn-acad btn-acad-primary" onclick="Curriculum.loadAbsensiRekapTable()">🔍 Tampilkan Rekap</button>
+                                <button class="btn-acad btn-acad-info" onclick="Curriculum.printAbsensiRekap()" style="background:#3B82F6; color:white; border:none;">🖨️ Cetak PDF</button>
                                 <button class="btn-acad btn-acad-success" onclick="Curriculum.exportAbsensiExcel()" style="background:#10B981; color:white; border:none;">📥 Export Excel</button>
                             </div>
                         </div>
@@ -2775,9 +2776,11 @@ const Curriculum = {
             $('#absensiTabHarian').fadeIn(200);
         } else {
             $('#absensiTabRekap').fadeIn(200);
-            if (!$('#rekapAbsensiTableWrapper').children().length) {
-                this.loadAbsensiRekapTable();
+            const curKelas = $('#absensiKelas').val();
+            if (curKelas && $('#rekapAbsensiKelas').val() === '0') {
+                $('#rekapAbsensiKelas').val(curKelas);
             }
+            this.loadAbsensiRekapTable();
         }
     },
 
@@ -2947,6 +2950,9 @@ const Curriculum = {
 
         this.api('absensi.php?action=save', { method: 'POST', data: { tanggal, kelas_id: parseInt(kelas_id), jam_ke: sesi, absensi } }).done(res => {
             EModal.toast({ type: 'success', title: 'Berhasil', message: res.message });
+            if ($('#rekapAbsensiTableWrapper').children().length) {
+                this.loadAbsensiRekapTable();
+            }
         }).fail(xhr => { EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menyimpan.' }); });
     },
 
@@ -2958,56 +2964,152 @@ const Curriculum = {
         $('#rekapAbsensiTableWrapper').html('<div class="skeleton-module" style="height:250px;"></div>');
 
         this.api(`absensi.php?action=rekap&kelas_id=${kelas_id}&tanggal_awal=${tgl_awal}&tanggal_akhir=${tgl_akhir}`).done(res => {
-            const data = res.data ? res.data.rekap || [] : [];
+            const meta = res.data || {};
+            const data = meta.rekap || [];
+            const effectiveDates = meta.effective_dates || [];
+            this.state.rekapAbsensiData = data;
+            this.state.rekapAbsensiMeta = meta;
 
             if (!data.length) {
                 $('#rekapAbsensiTableWrapper').html(`<div class="acad-empty"><h3>Tidak Ada Data Rekap</h3><p>Tidak ada data absensi pada rentang tanggal ini.</p></div>`);
                 return;
             }
 
-            const rows = data.map((r, idx) => `
-                <tr>
-                    <td style="text-align:center;">${idx + 1}</td>
-                    <td>${this.escapeHtml(r.nis)}</td>
-                    <td><strong>${this.escapeHtml(r.nama)}</strong></td>
-                    <td><span class="badge badge-info">${this.escapeHtml(r.kelas)}</span></td>
-                    <td><span style="color:#10B981; font-weight:600;">${r.hadir}</span></td>
-                    <td><span style="color:#F59E0B; font-weight:600;">${r.terlambat}</span></td>
-                    <td><span style="color:#3B82F6; font-weight:600;">${r.sakit}</span></td>
-                    <td><span style="color:#8B5CF6; font-weight:600;">${r.izin}</span></td>
-                    <td><span style="color:#EF4444; font-weight:600;">${r.alpha}</span></td>
-                    <td><strong>${r.total_hadir}</strong></td>
-                    <td>
-                        <div style="display:flex; align-items:center; gap:8px;">
-                            <div style="flex:1; background:#e2e8f0; border-radius:4px; height:8px; overflow:hidden;">
-                                <div style="width:${r.persentase}%; background:${r.persentase >= 80 ? '#10B981' : (r.persentase >= 60 ? '#F59E0B' : '#EF4444')}; height:100%;"></div>
-                            </div>
-                            <span style="font-size:0.8rem; font-weight:600;">${r.persentase}%</span>
-                        </div>
-                    </td>
-                </tr>
+            const valOrDash = (v) => (v && Number(v) > 0 ? v : '-');
+
+            // Dynamic Date Headers
+            const datesHeadersRow1 = effectiveDates.map(ed => `
+                <th colspan="3" style="text-align:center; background:#ffedd5; color:#9a3412; font-weight:700; border:1px solid #fed7aa; padding:4px 2px;">${ed.day}</th>
             `).join('');
 
+            const datesHeadersRow2 = effectiveDates.map(() => `
+                <th style="background:#fff7ed; color:#9a3412; width:28px; text-align:center; font-size:11px; border:1px solid #fed7aa; padding:3px 1px;">A</th>
+                <th style="background:#fff7ed; color:#9a3412; width:28px; text-align:center; font-size:11px; border:1px solid #fed7aa; padding:3px 1px;">B</th>
+                <th style="background:#fff7ed; color:#9a3412; width:28px; text-align:center; font-size:11px; border:1px solid #fed7aa; padding:3px 1px;">C</th>
+            `).join('');
+
+            const rows = data.map((r, idx) => {
+                const dailyCols = effectiveDates.map(ed => {
+                    const d = (r.daily && r.daily[ed.date]) ? r.daily[ed.date] : {};
+                    const valA = d.a || '';
+                    const valB = d.b || '';
+                    const valC = d.c || '';
+                    return `
+                        <td style="text-align:center; padding:4px 1px; font-weight:600; border:1px solid #fed7aa; background:#fffaf0; font-size:11px;">${this.escapeHtml(valA)}</td>
+                        <td style="text-align:center; padding:4px 1px; font-weight:600; border:1px solid #fed7aa; background:#fffaf0; font-size:11px;">${this.escapeHtml(valB)}</td>
+                        <td style="text-align:center; padding:4px 1px; font-weight:600; border:1px solid #fed7aa; background:#fffaf0; font-size:11px;">${this.escapeHtml(valC)}</td>
+                    `;
+                }).join('');
+
+                return `
+                    <tr style="border-bottom:1px solid #e2e8f0;">
+                        <td style="text-align:center; padding:5px 4px; border:1px solid #cbd5e1;">${idx + 1}</td>
+                        <td style="text-align:center; padding:5px 4px; font-family:monospace; border:1px solid #cbd5e1;">${this.escapeHtml(r.nis || '-')}</td>
+                        <td style="text-align:center; padding:5px 4px; font-family:monospace; border:1px solid #cbd5e1;">${this.escapeHtml(r.nisn || '-')}</td>
+                        <td style="text-align:left; padding:5px 8px; font-weight:600; color:#1e293b; border:1px solid #cbd5e1; white-space:nowrap;">${this.escapeHtml(r.nama)}</td>
+                        <td style="text-align:center; padding:5px 4px; font-weight:600; border:1px solid #cbd5e1;">${this.escapeHtml(r.jenis_kelamin || 'L')}</td>
+                        ${dailyCols}
+                        <!-- TOTAL A, B, C -->
+                        <td style="text-align:center; padding:5px 3px; font-weight:600; background:#f0fdf4; border:1px solid #bbf7d0;">${r.tot_a ?? 0}</td>
+                        <td style="text-align:center; padding:5px 3px; font-weight:600; background:#f0fdf4; border:1px solid #bbf7d0;">${r.tot_b ?? 0}</td>
+                        <td style="text-align:center; padding:5px 3px; font-weight:600; background:#f0fdf4; border:1px solid #bbf7d0;">${r.tot_c ?? 0}</td>
+                        <!-- KEHADIRAN WH, H, T, S, I, A, TH, % -->
+                        <td style="text-align:center; padding:5px 3px; font-weight:700; background:#fffbeb; border:1px solid #fde047;">${r.wh ?? 0}</td>
+                        <td style="text-align:center; padding:5px 3px; font-weight:700; color:#10B981; background:#fffbeb; border:1px solid #fde047;">${r.hadir ?? 0}</td>
+                        <td style="text-align:center; padding:5px 3px; font-weight:600; color:#F59E0B; background:#fffbeb; border:1px solid #fde047;">${valOrDash(r.terlambat)}</td>
+                        <td style="text-align:center; padding:5px 3px; font-weight:600; color:#3B82F6; background:#fffbeb; border:1px solid #fde047;">${valOrDash(r.sakit)}</td>
+                        <td style="text-align:center; padding:5px 3px; font-weight:600; color:#8B5CF6; background:#fffbeb; border:1px solid #fde047;">${valOrDash(r.izin)}</td>
+                        <td style="text-align:center; padding:5px 3px; font-weight:600; color:#EF4444; background:#fffbeb; border:1px solid #fde047;">${valOrDash(r.alpha)}</td>
+                        <td style="text-align:center; padding:5px 3px; font-weight:700; color:#475569; background:#fffbeb; border:1px solid #fde047;">${r.th ?? 0}</td>
+                        <td style="text-align:center; padding:5px 3px; font-weight:800; color:#0f172a; background:#fef08a; border:1px solid #fde047;">${r.persentase ?? 0}</td>
+                    </tr>
+                `;
+            }).join('');
+
             $('#rekapAbsensiTableWrapper').html(`
-                <div class="data-table-wrapper">
-                    <table class="data-table" id="tableExportRekapAbsensi">
+                <div class="data-table-wrapper" style="overflow-x:auto; padding:16px 20px; background:white; border-radius:12px; border:1px solid #e2e8f0;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:16px;">
+                        <div>
+                            <div style="font-size:1.15rem; font-weight:800; color:#1e293b; letter-spacing:0.3px;">REKAPITULASI KEHADIRAN MURID</div>
+                            <div style="font-size:0.95rem; font-weight:700; color:#475569; margin-top:2px;">${this.escapeHtml(meta.nama_sekolah || 'SMA WACHID HASYIM 1 SURABAYA')}</div>
+                            
+                            <div style="display:grid; grid-template-columns:auto 1fr; column-gap:14px; row-gap:4px; margin-top:12px; font-size:0.875rem; color:#334155;">
+                                <div><strong>Kelas</strong></div><div>: ${this.escapeHtml(meta.kelas || '-')}</div>
+                                <div><strong>Nama Wali Kelas</strong></div><div>: ${this.escapeHtml(meta.wali_kelas || '-')}</div>
+                                <div><strong>Bulan</strong></div><div>: ${this.escapeHtml(meta.bulan || '-')}</div>
+                            </div>
+                        </div>
+                        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 14px; font-size:0.825rem; color:#334155;">
+                            <div style="display:grid; grid-template-columns:20px 15px auto; row-gap:4px; font-weight:600;">
+                                <div>A</div><div>:</div><div>Absen datang</div>
+                                <div>B</div><div>:</div><div>Absen setelah istirahat</div>
+                                <div>C</div><div>:</div><div>Absen pulang</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <table class="data-table" id="tableExportRekapAbsensi" style="border-collapse:collapse; width:100%; min-width:980px; font-size:0.85rem; border:1px solid #cbd5e1;">
                         <thead>
-                            <tr>
-                                <th width="40" style="text-align:center;">No</th>
-                                <th>NIS</th>
-                                <th>Nama Siswa</th>
-                                <th>Kelas</th>
-                                <th>Hadir</th>
-                                <th>Terlambat</th>
-                                <th>Sakit</th>
-                                <th>Izin</th>
-                                <th>Alpha</th>
-                                <th>Total Kehadiran</th>
-                                <th>% Kehadiran</th>
+                            <tr style="background:#f8fafc;">
+                                <th rowspan="2" style="vertical-align:middle; width:35px; text-align:center; border:1px solid #cbd5e1;">NO</th>
+                                <th rowspan="2" style="vertical-align:middle; width:70px; text-align:center; border:1px solid #cbd5e1;">NIS</th>
+                                <th rowspan="2" style="vertical-align:middle; width:90px; text-align:center; border:1px solid #cbd5e1;">NISN</th>
+                                <th rowspan="2" style="vertical-align:middle; text-align:left; border:1px solid #cbd5e1; padding-left:10px; min-width:180px;">NAMA MURID</th>
+                                <th rowspan="2" style="vertical-align:middle; width:40px; text-align:center; border:1px solid #cbd5e1;">L/P</th>
+                                ${datesHeadersRow1}
+                                <th colspan="3" style="background:#d1fae5; color:#065f46; font-weight:700; border:1px solid #86efac; text-align:center; padding:6px 2px;">TOTAL</th>
+                                <th colspan="8" style="background:#fef08a; color:#854d0e; font-weight:700; border:1px solid #fde047; text-align:center; padding:6px 2px;">KEHADIRAN</th>
+                            </tr>
+                            <tr style="border:1px solid #cbd5e1;">
+                                ${datesHeadersRow2}
+                                <th style="background:#ecfdf5; color:#065f46; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">A</th>
+                                <th style="background:#ecfdf5; color:#065f46; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">B</th>
+                                <th style="background:#ecfdf5; color:#065f46; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">C</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">WH</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">H</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">T</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">S</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">I</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">A</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">TH</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:40px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">%</th>
                             </tr>
                         </thead>
                         <tbody>${rows}</tbody>
                     </table>
+
+                    <div style="margin-top:24px; display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:24px; font-size:0.825rem; color:#334155; line-height:1.6;">
+                        <div style="flex:1; min-width:240px;">
+                            <div style="font-weight:700; margin-bottom:6px; color:#1e293b;">Keterangan Singkatan :</div>
+                            <table style="border:none; margin:0; font-size:0.825rem; color:#334155; width:auto; border-collapse:collapse;">
+                                <tr><td style="padding:2px 8px 2px 0; width:20px;">1</td><td style="padding:2px 8px 2px 0; font-weight:700; width:45px;">WH</td><td style="padding:2px 0;">WAJIB HADIR</td></tr>
+                                <tr><td style="padding:2px 8px 2px 0;">2</td><td style="padding:2px 8px 2px 0; font-weight:700;">H</td><td style="padding:2px 0;">HADIR</td></tr>
+                                <tr><td style="padding:2px 8px 2px 0;">3</td><td style="padding:2px 8px 2px 0; font-weight:700;">T</td><td style="padding:2px 0;">TERLAMBAT</td></tr>
+                                <tr><td style="padding:2px 8px 2px 0;">4</td><td style="padding:2px 8px 2px 0; font-weight:700;">S</td><td style="padding:2px 0;">SAKIT</td></tr>
+                                <tr><td style="padding:2px 8px 2px 0;">5</td><td style="padding:2px 8px 2px 0; font-weight:700;">I</td><td style="padding:2px 0;">IZIN</td></tr>
+                                <tr><td style="padding:2px 8px 2px 0;">6</td><td style="padding:2px 8px 2px 0; font-weight:700;">A</td><td style="padding:2px 0;">ALPHA</td></tr>
+                                <tr><td style="padding:2px 8px 2px 0;">7</td><td style="padding:2px 8px 2px 0; font-weight:700;">TOT</td><td style="padding:2px 0;">TOTAL</td></tr>
+                            </table>
+                        </div>
+
+                        <div style="flex:2; min-width:320px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 16px;">
+                            <div style="font-weight:700; color:#1e293b; margin-bottom:8px;">&gt;&gt; Ketentuan Perhitungan</div>
+                            <div style="margin-bottom:8px;">
+                                <div style="display:inline-block; background:#d1fae5; color:#065f46; font-weight:700; padding:2px 8px; border-radius:4px; font-size:0.75rem; margin-right:6px;">TOTAL (A, B, C)</div>
+                                <span>Menghitung apakah absen datang, istirahat, dan pulang terisi (H, S, I, A, T). Berfungsi sebagai kontrol bahwa murid melakukan absensi 3x.</span>
+                            </div>
+                            <div style="display:grid; grid-template-columns:35px 12px 1fr; row-gap:3px; font-size:0.8rem;">
+                                <div><strong>WH</strong></div><div>:</div><div>Semua hari efektif pada rentang/bulan tersebut (tidak termasuk hari libur).</div>
+                                <div><strong>H</strong></div><div>:</div><div>Dihitung jika A dan C terisi Hadir / Terlambat.</div>
+                                <div><strong>T</strong></div><div>:</div><div>Dihitung jika A terisi Terlambat (T).</div>
+                                <div><strong>S</strong></div><div>:</div><div>Dihitung jika A terisi Sakit (S).</div>
+                                <div><strong>I</strong></div><div>:</div><div>Dihitung jika A terisi Izin (I).</div>
+                                <div><strong>A</strong></div><div>:</div><div>Dihitung jika A terisi Alpha (A).</div>
+                                <div><strong>TH</strong></div><div>:</div><div>Total Tidak Hadir (S + I + A).</div>
+                                <div><strong>%</strong></div><div>:</div><div>(Hadir / Wajib Hadir) &times; 100%</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             `);
         }).fail(xhr => {
@@ -3028,20 +3130,310 @@ const Curriculum = {
         });
     },
 
-
-    exportAbsensiExcel() {
-        const table = document.getElementById('tableExportRekapAbsensi');
-        if (!table) {
-            EModal.toast({ type: 'warning', title: 'Kosong', message: 'Tidak ada data rekap untuk diekspor.' });
+    printAbsensiRekap() {
+        const data = this.state.rekapAbsensiData || [];
+        const meta = this.state.rekapAbsensiMeta || {};
+        const effectiveDates = meta.effective_dates || [];
+        if (!data.length) {
+            EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Tampilkan rekap terlebih dahulu sebelum mencetak.' });
             return;
         }
 
-        const tgl_awal = $('#rekapTglAwal').val();
-        const tgl_akhir = $('#rekapTglAkhir').val();
-        const wb = XLSX.utils.table_to_book(table, { sheet: "Rekap Absensi Siswa" });
-        XLSX.writeFile(wb, `Rekap_Absensi_Siswa_${tgl_awal}_sd_${tgl_akhir}.xlsx`);
+        const valOrDash = (v) => (v && Number(v) > 0 ? v : '-');
+
+        const datesThRow1 = effectiveDates.map(ed => `
+            <th colspan="3" class="bg-date" style="text-align:center;">${ed.day}</th>
+        `).join('');
+
+        const datesThRow2 = effectiveDates.map(() => `
+            <th class="bg-date" style="width:20px; text-align:center; font-size:9px;">A</th>
+            <th class="bg-date" style="width:20px; text-align:center; font-size:9px;">B</th>
+            <th class="bg-date" style="width:20px; text-align:center; font-size:9px;">C</th>
+        `).join('');
+
+        const rowsHtml = data.map((r, idx) => {
+            const dailyCells = effectiveDates.map(ed => {
+                const d = (r.daily && r.daily[ed.date]) ? r.daily[ed.date] : {};
+                return `
+                    <td style="text-align:center; padding:3px 1px; font-size:9px;">${this.escapeHtml(d.a || '')}</td>
+                    <td style="text-align:center; padding:3px 1px; font-size:9px;">${this.escapeHtml(d.b || '')}</td>
+                    <td style="text-align:center; padding:3px 1px; font-size:9px;">${this.escapeHtml(d.c || '')}</td>
+                `;
+            }).join('');
+
+            return `
+                <tr>
+                    <td style="text-align:center; padding:3px 2px;">${idx + 1}</td>
+                    <td style="text-align:center; padding:3px 2px; font-family:monospace;">${this.escapeHtml(r.nis || '')}</td>
+                    <td style="text-align:center; padding:3px 2px; font-family:monospace;">${this.escapeHtml(r.nisn || '')}</td>
+                    <td style="text-align:left; padding:3px 5px; font-weight:600; white-space:nowrap;">${this.escapeHtml(r.nama)}</td>
+                    <td style="text-align:center; padding:3px 2px;">${this.escapeHtml(r.jenis_kelamin || 'L')}</td>
+                    ${dailyCells}
+                    <td style="text-align:center; padding:3px 2px;">${r.tot_a ?? 0}</td>
+                    <td style="text-align:center; padding:3px 2px;">${r.tot_b ?? 0}</td>
+                    <td style="text-align:center; padding:3px 2px;">${r.tot_c ?? 0}</td>
+                    <td style="text-align:center; padding:3px 2px; font-weight:bold;">${r.wh ?? 0}</td>
+                    <td style="text-align:center; padding:3px 2px; font-weight:bold;">${r.hadir ?? 0}</td>
+                    <td style="text-align:center; padding:3px 2px;">${valOrDash(r.terlambat)}</td>
+                    <td style="text-align:center; padding:3px 2px;">${valOrDash(r.sakit)}</td>
+                    <td style="text-align:center; padding:3px 2px;">${valOrDash(r.izin)}</td>
+                    <td style="text-align:center; padding:3px 2px;">${valOrDash(r.alpha)}</td>
+                    <td style="text-align:center; padding:3px 2px; font-weight:bold;">${r.th ?? 0}</td>
+                    <td style="text-align:center; padding:3px 2px; font-weight:bold;">${r.persentase ?? 0}</td>
+                </tr>
+            `;
+        }).join('');
+
+        const printWin = window.open('', '_blank');
+        printWin.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Rekapitulasi Kehadiran Murid - ${this.escapeHtml(meta.kelas || '')}</title>
+                <style>
+                    @page { size: landscape; margin: 8mm 10mm; }
+                    body { font-family: Arial, sans-serif; font-size: 10px; color: #000; background: #fff; margin: 0; padding: 5px; }
+                    .header-container { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+                    .header-title { font-size: 13px; font-weight: bold; text-transform: uppercase; margin-bottom: 2px; }
+                    .header-school { font-size: 11px; font-weight: bold; text-transform: uppercase; margin-bottom: 6px; }
+                    .meta-table { font-size: 10px; border-collapse: collapse; }
+                    .meta-table td { padding: 1px 6px 1px 0; }
+                    .legend-box { font-size: 9.5px; border: 1px solid #999; padding: 4px 8px; border-radius: 4px; }
+                    table.rekap-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 9.5px; }
+                    table.rekap-table th, table.rekap-table td { border: 1px solid #000; }
+                    table.rekap-table th { font-weight: bold; padding: 4px 1px; }
+                    .bg-date { background-color: #ffedd5 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                    .bg-total { background-color: #d1fae5 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                    .bg-hadir { background-color: #fef08a !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                    .legend-footer { display: flex; justify-content: space-between; align-items: flex-start; font-size: 9.5px; line-height: 1.4; margin-top: 6px; }
+                    .legend-table td { border: none; padding: 1px 4px 1px 0; }
+                </style>
+            </head>
+            <body>
+                <div class="header-container">
+                    <div>
+                        <div class="header-title">REKAPITULASI KEHADIRAN MURID</div>
+                        <div class="header-school">${this.escapeHtml(meta.nama_sekolah || 'SMA WACHID HASYIM 1 SURABAYA')}</div>
+                        <table class="meta-table">
+                            <tr><td style="width:105px;">Kelas</td><td>: ${this.escapeHtml(meta.kelas || '-')}</td></tr>
+                            <tr><td>Nama Wali Kelas</td><td>: ${this.escapeHtml(meta.wali_kelas || '-')}</td></tr>
+                            <tr><td>Bulan</td><td>: ${this.escapeHtml(meta.bulan || '-')}</td></tr>
+                        </table>
+                    </div>
+                    <div class="legend-box">
+                        <table style="border:none; border-collapse:collapse;">
+                            <tr><td style="font-weight:bold; width:16px;">A</td><td>:</td><td>Absen datang</td></tr>
+                            <tr><td style="font-weight:bold;">B</td><td>:</td><td>Absen setelah istirahat</td></tr>
+                            <tr><td style="font-weight:bold;">C</td><td>:</td><td>Absen pulang</td></tr>
+                        </table>
+                    </div>
+                </div>
+
+                <table class="rekap-table">
+                    <thead>
+                        <tr>
+                            <th rowspan="2" style="width:24px; text-align:center;">NO</th>
+                            <th rowspan="2" style="width:55px; text-align:center;">NIS</th>
+                            <th rowspan="2" style="width:70px; text-align:center;">NISN</th>
+                            <th rowspan="2" style="text-align:left; padding-left:6px;">NAMA MURID</th>
+                            <th rowspan="2" style="width:30px; text-align:center;">L/P</th>
+                            ${datesThRow1}
+                            <th colspan="3" class="bg-total" style="text-align:center;">TOTAL</th>
+                            <th colspan="8" class="bg-hadir" style="text-align:center;">KEHADIRAN</th>
+                        </tr>
+                        <tr>
+                            ${datesThRow2}
+                            <th class="bg-total" style="width:24px; text-align:center;">A</th>
+                            <th class="bg-total" style="width:24px; text-align:center;">B</th>
+                            <th class="bg-total" style="width:24px; text-align:center;">C</th>
+                            <th class="bg-hadir" style="width:26px; text-align:center;">WH</th>
+                            <th class="bg-hadir" style="width:26px; text-align:center;">H</th>
+                            <th class="bg-hadir" style="width:24px; text-align:center;">T</th>
+                            <th class="bg-hadir" style="width:24px; text-align:center;">S</th>
+                            <th class="bg-hadir" style="width:24px; text-align:center;">I</th>
+                            <th class="bg-hadir" style="width:24px; text-align:center;">A</th>
+                            <th class="bg-hadir" style="width:26px; text-align:center;">TH</th>
+                            <th class="bg-hadir" style="width:30px; text-align:center;">%</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml}
+                    </tbody>
+                </table>
+
+                <div class="legend-footer">
+                    <div>
+                        <strong>Keterangan Singkatan :</strong>
+                        <table class="legend-table">
+                            <tr><td style="width:16px;">1</td><td style="width:30px; font-weight:bold;">WH</td><td>WAJIB HADIR</td></tr>
+                            <tr><td>2</td><td style="font-weight:bold;">H</td><td>HADIR</td></tr>
+                            <tr><td>3</td><td style="font-weight:bold;">T</td><td>TERLAMBAT</td></tr>
+                            <tr><td>4</td><td style="font-weight:bold;">S</td><td>SAKIT</td></tr>
+                            <tr><td>5</td><td style="font-weight:bold;">I</td><td>IZIN</td></tr>
+                            <tr><td>6</td><td style="font-weight:bold;">A</td><td>ALPHA</td></tr>
+                            <tr><td>7</td><td style="font-weight:bold;">TOT</td><td>TOTAL (A: Datang, B: Istirahat, C: Pulang)</td></tr>
+                        </table>
+                    </div>
+                    <div style="max-width:480px; font-size:9px; border-left:1px solid #ccc; padding-left:12px;">
+                        <strong>&gt;&gt; Ketentuan Perhitungan:</strong><br>
+                        <strong>TOTAL (A,B,C)</strong>: Menghitung apakah absen datang, istirahat, dan pulang terisi.<br>
+                        <strong>WH</strong>: Semua hari efektif pada bulan tersebut (selama tidak ditentukan libur).<br>
+                        <strong>H</strong>: Dihitung jika A dan C terisi T atau H.<br>
+                        <strong>T/S/I/A</strong>: Dihitung dari status absen datang.<br>
+                        <strong>TH</strong>: Total Tidak Hadir (S + I + A). | <strong>%</strong>: (Hadir / Wajib Hadir) &times; 100%
+                    </div>
+                </div>
+
+                <script>
+                    window.onload = function() {
+                        window.print();
+                    };
+                </script>
+            </body>
+            </html>
+        `);
+        printWin.document.close();
     },
 
+    exportAbsensiExcel() {
+        const data = this.state.rekapAbsensiData || [];
+        const meta = this.state.rekapAbsensiMeta || {};
+        const effectiveDates = meta.effective_dates || [];
+        if (!data || !data.length) {
+            EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Tidak ada data rekap untuk diekspor. Silakan klik "Tampilkan Rekap" terlebih dahulu.' });
+            return;
+        }
+
+        const kelasText = meta.kelas || $('#rekapAbsensiKelas option:selected').text() || 'Semua_Kelas';
+        const waliKelas = meta.wali_kelas || '-';
+        const bulanText = meta.bulan || '';
+        const namaSekolah = meta.nama_sekolah || 'SMA WACHID HASYIM 1 SURABAYA';
+        const cleanKelas = kelasText.replace(/[^a-zA-Z0-9_\-\.]/g, '_');
+
+        this.loadSheetJS(() => {
+            try {
+                const valOrDash = (v) => (v && Number(v) > 0 ? Number(v) : '-');
+
+                // Header Top
+                const wsData = [
+                    ['REKAPITULASI KEHADIRAN MURID'],
+                    [namaSekolah.toUpperCase()],
+                    [],
+                    ['Kelas', `: ${kelasText}`, '', '', '', '', '', '', '', 'A', ':', 'Absen datang'],
+                    ['Nama Wali Kelas', `: ${waliKelas}`, '', '', '', '', '', '', '', 'B', ':', 'Absen setelah istirahat'],
+                    ['Bulan', `: ${bulanText}`, '', '', '', '', '', '', '', 'C', ':', 'Absen pulang'],
+                    []
+                ];
+
+                // Header Row 1 (Row index 7)
+                const hRow1 = ['NO', 'NIS', 'NISN', 'NAMA MURID', 'L/P'];
+                effectiveDates.forEach(ed => {
+                    hRow1.push(String(ed.day), '', '');
+                });
+                hRow1.push('TOTAL', '', '', 'KEHADIRAN', '', '', '', '', '', '', '');
+                wsData.push(hRow1);
+
+                // Header Row 2 (Row index 8)
+                const hRow2 = ['', '', '', '', ''];
+                effectiveDates.forEach(() => {
+                    hRow2.push('A', 'B', 'C');
+                });
+                hRow2.push('A', 'B', 'C', 'WH', 'H', 'T', 'S', 'I', 'A', 'TH', '%');
+                wsData.push(hRow2);
+
+                // Body rows
+                data.forEach((r, idx) => {
+                    const row = [
+                        idx + 1,
+                        String(r.nis || ''),
+                        String(r.nisn || ''),
+                        r.nama || '',
+                        r.jenis_kelamin || 'L'
+                    ];
+
+                    effectiveDates.forEach(ed => {
+                        const d = (r.daily && r.daily[ed.date]) ? r.daily[ed.date] : {};
+                        row.push(d.a || '', d.b || '', d.c || '');
+                    });
+
+                    row.push(
+                        Number(r.tot_a ?? 0),
+                        Number(r.tot_b ?? 0),
+                        Number(r.tot_c ?? 0),
+                        Number(r.wh ?? 0),
+                        Number(r.hadir ?? 0),
+                        valOrDash(r.terlambat),
+                        valOrDash(r.sakit),
+                        valOrDash(r.izin),
+                        valOrDash(r.alpha),
+                        Number(r.th ?? 0),
+                        Number(r.persentase ?? 0)
+                    );
+                    wsData.push(row);
+                });
+
+                // Legend footer
+                wsData.push([]);
+                wsData.push(['Keterangan Singkatan :']);
+                wsData.push(['1', 'WH', 'WAJIB HADIR', '', '>> Ketentuan Perhitungan']);
+                wsData.push(['2', 'H', 'HADIR', '', 'TOTAL (A,B,C) : Menghitung apakah absen datang, istirahat, dan pulang terisi (H, S, I, A, T)']);
+                wsData.push(['3', 'T', 'TERLAMBAT', '', 'WH : Semua hari efektif pada bulan tersebut (selama tidak ditentukan libur)']);
+                wsData.push(['4', 'S', 'SAKIT', '', 'H : Dihitung jika A dan C terisi T atau H']);
+                wsData.push(['5', 'I', 'IZIN', '', 'T : Dihitung jika A terisi T']);
+                wsData.push(['6', 'A', 'ALPHA', '', 'S : Dihitung jika A terisi S | I : Dihitung jika A terisi I | A : Dihitung jika A terisi A']);
+                wsData.push(['7', 'TOT', 'TOTAL', '', 'TH : Total Tidak Hadir (S + I + A) | % : (Hadir / Wajib Hadir) * 100%']);
+
+                const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+                // Build Merges
+                const merges = [
+                    { s: { r: 7, c: 0 }, e: { r: 8, c: 0 } }, // NO
+                    { s: { r: 7, c: 1 }, e: { r: 8, c: 1 } }, // NIS
+                    { s: { r: 7, c: 2 }, e: { r: 8, c: 2 } }, // NISN
+                    { s: { r: 7, c: 3 }, e: { r: 8, c: 3 } }, // NAMA MURID
+                    { s: { r: 7, c: 4 }, e: { r: 8, c: 4 } }  // L/P
+                ];
+
+                const numDates = effectiveDates.length;
+                for (let i = 0; i < numDates; i++) {
+                    const cStart = 5 + (i * 3);
+                    merges.push({ s: { r: 7, c: cStart }, e: { r: 7, c: cStart + 2 } });
+                }
+
+                const cTot = 5 + (numDates * 3);
+                merges.push({ s: { r: 7, c: cTot }, e: { r: 7, c: cTot + 2 } }); // TOTAL
+
+                const cKeh = cTot + 3;
+                merges.push({ s: { r: 7, c: cKeh }, e: { r: 7, c: cKeh + 7 } }); // KEHADIRAN
+
+                ws['!merges'] = merges;
+
+                // Column widths
+                const cols = [
+                    { wch: 5 },  // NO
+                    { wch: 10 }, // NIS
+                    { wch: 14 }, // NISN
+                    { wch: 32 }, // NAMA MURID
+                    { wch: 6 }   // L/P
+                ];
+                for (let i = 0; i < numDates; i++) {
+                    cols.push({ wch: 4 }, { wch: 4 }, { wch: 4 });
+                }
+                cols.push({ wch: 5 }, { wch: 5 }, { wch: 5 }); // TOTAL A, B, C
+                cols.push({ wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 6 }); // KEHADIRAN
+                ws['!cols'] = cols;
+
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Rekap Murid");
+
+                XLSX.writeFile(wb, `Rekap_Kehadiran_Murid_${cleanKelas}_${meta.tanggal_awal || ''}_sd_${meta.tanggal_akhir || ''}.xlsx`);
+                EModal.toast({ type: 'success', title: 'Berhasil', message: 'File Excel rekap kehadiran murid berhasil diunduh.' });
+            } catch (err) {
+                console.error('Export Excel error:', err);
+                EModal.toast({ type: 'error', title: 'Gagal', message: 'Gagal membuat file Excel: ' + err.message });
+            }
+        });
+    },
     showSettingWaktuModal() {
         this.api('absensi.php?action=get_settings').done(res => {
             const data = res.data || {};
@@ -3217,6 +3609,7 @@ const Curriculum = {
                             <div class="filter-item"><label>Tanggal Akhir</label><input type="date" class="form-input-acad" id="rekapGuruTglAkhir" value="${today}"></div>
                             <div class="filter-item" style="display:flex; flex-direction:row; align-items:flex-end; gap:8px;">
                                 <button class="btn-acad btn-acad-primary" onclick="Curriculum.loadAbsensiGuruRekapTable()">🔍 Tampilkan Rekap</button>
+                                <button class="btn-acad btn-acad-info" onclick="Curriculum.printAbsensiGuruRekap()" style="background:#3B82F6; color:white; border:none;">🖨️ Cetak PDF</button>
                                 <button class="btn-acad btn-acad-success" onclick="Curriculum.exportAbsensiGuruExcel()" style="background:#10B981; color:white; border:none;">📥 Export Excel</button>
                             </div>
                         </div>
@@ -3496,56 +3889,149 @@ const Curriculum = {
                 return;
             }
 
-            const data = res.data ? (res.data.rekap || []) : [];
+            const meta = res.data || {};
+            const data = meta.rekap || [];
+            const effectiveDates = meta.effective_dates || [];
+            this.state.rekapAbsensiGuruData = data;
+            this.state.rekapAbsensiGuruMeta = meta;
+
             if (data.length === 0) {
                 $wrapper.html('<div style="padding:40px; text-align:center; color:#94A3B8;">Tidak ada data rekap guru pada rentang tanggal ini.</div>');
                 return;
             }
 
+            const valOrDash = (v) => (v && Number(v) > 0 ? v : '-');
+
+            // Dynamic Date Headers
+            const datesHeadersRow1 = effectiveDates.map(ed => `
+                <th colspan="3" style="text-align:center; background:#ffedd5; color:#9a3412; font-weight:700; border:1px solid #fed7aa; padding:4px 2px;">${ed.day}</th>
+            `).join('');
+
+            const datesHeadersRow2 = effectiveDates.map(() => `
+                <th style="background:#fff7ed; color:#9a3412; width:28px; text-align:center; font-size:11px; border:1px solid #fed7aa; padding:3px 1px;">A</th>
+                <th style="background:#fff7ed; color:#9a3412; width:28px; text-align:center; font-size:11px; border:1px solid #fed7aa; padding:3px 1px;">B</th>
+                <th style="background:#fff7ed; color:#9a3412; width:28px; text-align:center; font-size:11px; border:1px solid #fed7aa; padding:3px 1px;">C</th>
+            `).join('');
+
             let trs = '';
             data.forEach((t, i) => {
+                const dailyCols = effectiveDates.map(ed => {
+                    const d = (t.daily && t.daily[ed.date]) ? t.daily[ed.date] : {};
+                    const valA = d.a || '';
+                    const valB = d.b || '';
+                    const valC = d.c || '';
+                    return `
+                        <td style="text-align:center; padding:4px 1px; font-weight:600; border:1px solid #fed7aa; background:#fffaf0; font-size:11px;">${this.escapeHtml(valA)}</td>
+                        <td style="text-align:center; padding:4px 1px; font-weight:600; border:1px solid #fed7aa; background:#fffaf0; font-size:11px;">${this.escapeHtml(valB)}</td>
+                        <td style="text-align:center; padding:4px 1px; font-weight:600; border:1px solid #fed7aa; background:#fffaf0; font-size:11px;">${this.escapeHtml(valC)}</td>
+                    `;
+                }).join('');
+
                 trs += `
-                    <tr>
-                        <td style="text-align:center;">${i+1}</td>
-                        <td>${this.escapeHtml(t.kode_guru)}</td>
-                        <td style="font-weight:600;">${this.escapeHtml(t.nama)}</td>
-                        <td style="text-align:center; font-weight:600; color:#10B981;">${t.hadir}</td>
-                        <td style="text-align:center; font-weight:600; color:#F59E0B;">${t.terlambat}</td>
-                        <td style="text-align:center; font-weight:600; color:#3B82F6;">${t.sakit}</td>
-                        <td style="text-align:center; font-weight:600; color:#3B82F6;">${t.izin}</td>
-                        <td style="text-align:center; font-weight:600; color:#EF4444;">${t.alpha}</td>
-                        <td style="text-align:center; font-weight:700;">${t.total_hadir}</td>
-                        <td>
-                            <div style="display:flex; align-items:center; gap:8px;">
-                                <div style="flex-grow:1; background:#e2e8f0; height:8px; border-radius:4px; overflow:hidden;">
-                                    <div style="width:${t.persentase}%; height:100%; background:${t.persentase > 80 ? '#10B981' : (t.persentase > 60 ? '#F59E0B' : '#EF4444')};"></div>
-                                </div>
-                                <span style="font-size:0.8rem; font-weight:600; width:35px; text-align:right;">${t.persentase}%</span>
-                            </div>
-                        </td>
+                    <tr style="border-bottom:1px solid #e2e8f0;">
+                        <td style="text-align:center; padding:5px 4px; border:1px solid #cbd5e1;">${i+1}</td>
+                        <td style="text-align:center; padding:5px 4px; font-family:monospace; font-weight:600; border:1px solid #cbd5e1;">${this.escapeHtml(t.kode_guru)}</td>
+                        <td style="text-align:left; padding:5px 8px; font-weight:600; color:#1e293b; border:1px solid #cbd5e1; white-space:nowrap;">${this.escapeHtml(t.nama)}</td>
+                        <td style="text-align:center; padding:5px 4px; font-weight:600; border:1px solid #cbd5e1;">${this.escapeHtml(t.jenis_kelamin || '-')}</td>
+                        ${dailyCols}
+                        <!-- TOTAL A, B, C -->
+                        <td style="text-align:center; padding:5px 3px; font-weight:600; background:#f0fdf4; border:1px solid #bbf7d0;">${t.tot_a ?? 0}</td>
+                        <td style="text-align:center; padding:5px 3px; font-weight:600; background:#f0fdf4; border:1px solid #bbf7d0;">${t.tot_b ?? 0}</td>
+                        <td style="text-align:center; padding:5px 3px; font-weight:600; background:#f0fdf4; border:1px solid #bbf7d0;">${t.tot_c ?? 0}</td>
+                        <!-- KEHADIRAN WH, H, T, S, I, A, TH, % -->
+                        <td style="text-align:center; padding:5px 3px; font-weight:700; background:#fffbeb; border:1px solid #fde047;">${t.wh ?? 0}</td>
+                        <td style="text-align:center; padding:5px 3px; font-weight:700; color:#10B981; background:#fffbeb; border:1px solid #fde047;">${t.hadir ?? 0}</td>
+                        <td style="text-align:center; padding:5px 3px; font-weight:600; color:#F59E0B; background:#fffbeb; border:1px solid #fde047;">${valOrDash(t.terlambat)}</td>
+                        <td style="text-align:center; padding:5px 3px; font-weight:600; color:#3B82F6; background:#fffbeb; border:1px solid #fde047;">${valOrDash(t.sakit)}</td>
+                        <td style="text-align:center; padding:5px 3px; font-weight:600; color:#8B5CF6; background:#fffbeb; border:1px solid #fde047;">${valOrDash(t.izin)}</td>
+                        <td style="text-align:center; padding:5px 3px; font-weight:600; color:#EF4444; background:#fffbeb; border:1px solid #fde047;">${valOrDash(t.alpha)}</td>
+                        <td style="text-align:center; padding:5px 3px; font-weight:700; color:#475569; background:#fffbeb; border:1px solid #fde047;">${t.th ?? 0}</td>
+                        <td style="text-align:center; padding:5px 3px; font-weight:800; color:#0f172a; background:#fef08a; border:1px solid #fde047;">${t.persentase ?? 0}</td>
                     </tr>
                 `;
             });
 
             $wrapper.html(`
-                <div class="data-table-wrapper">
-                    <table class="data-table" id="tableExportRekapAbsensiGuru">
+                <div class="data-table-wrapper" style="overflow-x:auto; padding:16px 20px; background:white; border-radius:12px; border:1px solid #e2e8f0;">
+                    <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:16px;">
+                        <div>
+                            <div style="font-size:1.15rem; font-weight:800; color:#1e293b; letter-spacing:0.3px;">REKAPITULASI KEHADIRAN GURU</div>
+                            <div style="font-size:0.95rem; font-weight:700; color:#475569; margin-top:2px;">${this.escapeHtml(meta.nama_sekolah || 'SMA WACHID HASYIM 1 SURABAYA')}</div>
+                            
+                            <div style="display:grid; grid-template-columns:auto 1fr; column-gap:14px; row-gap:4px; margin-top:12px; font-size:0.875rem; color:#334155;">
+                                <div><strong>Bulan</strong></div><div>: ${this.escapeHtml(meta.bulan || '-')}</div>
+                            </div>
+                        </div>
+                        <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:10px 14px; font-size:0.825rem; color:#334155;">
+                            <div style="display:grid; grid-template-columns:20px 15px auto; row-gap:4px; font-weight:600;">
+                                <div>A</div><div>:</div><div>Absen datang</div>
+                                <div>B</div><div>:</div><div>Absen setelah istirahat</div>
+                                <div>C</div><div>:</div><div>Absen pulang</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <table class="data-table" id="tableExportRekapAbsensiGuru" style="border-collapse:collapse; width:100%; min-width:950px; font-size:0.85rem; border:1px solid #cbd5e1;">
                         <thead>
                             <tr style="background:#f8fafc;">
-                                <th style="width:50px; text-align:center;">No</th>
-                                <th>Kode</th>
-                                <th>Nama Guru</th>
-                                <th style="text-align:center; width:80px;">Hadir</th>
-                                <th style="text-align:center; width:80px;">Terlambat</th>
-                                <th style="text-align:center; width:80px;">Sakit</th>
-                                <th style="text-align:center; width:80px;">Izin</th>
-                                <th style="text-align:center; width:80px;">Alpha</th>
-                                <th style="text-align:center; width:100px;">Total Kehadiran</th>
-                                <th style="width:120px;">% Kehadiran</th>
+                                <th rowspan="2" style="vertical-align:middle; width:35px; text-align:center; border:1px solid #cbd5e1;">NO</th>
+                                <th rowspan="2" style="vertical-align:middle; width:80px; text-align:center; border:1px solid #cbd5e1;">KODE</th>
+                                <th rowspan="2" style="vertical-align:middle; text-align:left; border:1px solid #cbd5e1; padding-left:10px; min-width:200px;">NAMA GURU</th>
+                                <th rowspan="2" style="vertical-align:middle; width:40px; text-align:center; border:1px solid #cbd5e1;">L/P</th>
+                                ${datesHeadersRow1}
+                                <th colspan="3" style="background:#d1fae5; color:#065f46; font-weight:700; border:1px solid #86efac; text-align:center; padding:6px 2px;">TOTAL</th>
+                                <th colspan="8" style="background:#fef08a; color:#854d0e; font-weight:700; border:1px solid #fde047; text-align:center; padding:6px 2px;">KEHADIRAN</th>
+                            </tr>
+                            <tr style="border:1px solid #cbd5e1;">
+                                ${datesHeadersRow2}
+                                <th style="background:#ecfdf5; color:#065f46; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">A</th>
+                                <th style="background:#ecfdf5; color:#065f46; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">B</th>
+                                <th style="background:#ecfdf5; color:#065f46; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">C</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">WH</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">H</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">T</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">S</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">I</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">A</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">TH</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:40px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">%</th>
                             </tr>
                         </thead>
                         <tbody>${trs}</tbody>
                     </table>
+
+                    <div style="margin-top:24px; display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:24px; font-size:0.825rem; color:#334155; line-height:1.6;">
+                        <div style="flex:1; min-width:240px;">
+                            <div style="font-weight:700; margin-bottom:6px; color:#1e293b;">Keterangan Singkatan :</div>
+                            <table style="border:none; margin:0; font-size:0.825rem; color:#334155; width:auto; border-collapse:collapse;">
+                                <tr><td style="padding:2px 8px 2px 0; width:20px;">1</td><td style="padding:2px 8px 2px 0; font-weight:700; width:45px;">WH</td><td style="padding:2px 0;">WAJIB HADIR</td></tr>
+                                <tr><td style="padding:2px 8px 2px 0;">2</td><td style="padding:2px 8px 2px 0; font-weight:700;">H</td><td style="padding:2px 0;">HADIR</td></tr>
+                                <tr><td style="padding:2px 8px 2px 0;">3</td><td style="padding:2px 8px 2px 0; font-weight:700;">T</td><td style="padding:2px 0;">TERLAMBAT</td></tr>
+                                <tr><td style="padding:2px 8px 2px 0;">4</td><td style="padding:2px 8px 2px 0; font-weight:700;">S</td><td style="padding:2px 0;">SAKIT</td></tr>
+                                <tr><td style="padding:2px 8px 2px 0;">5</td><td style="padding:2px 8px 2px 0; font-weight:700;">I</td><td style="padding:2px 0;">IZIN</td></tr>
+                                <tr><td style="padding:2px 8px 2px 0;">6</td><td style="padding:2px 8px 2px 0; font-weight:700;">A</td><td style="padding:2px 0;">ALPHA</td></tr>
+                                <tr><td style="padding:2px 8px 2px 0;">7</td><td style="padding:2px 8px 2px 0; font-weight:700;">TOT</td><td style="padding:2px 0;">TOTAL</td></tr>
+                            </table>
+                        </div>
+
+                        <div style="flex:2; min-width:320px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 16px;">
+                            <div style="font-weight:700; color:#1e293b; margin-bottom:8px;">&gt;&gt; Ketentuan Perhitungan</div>
+                            <div style="margin-bottom:8px;">
+                                <div style="display:inline-block; background:#d1fae5; color:#065f46; font-weight:700; padding:2px 8px; border-radius:4px; font-size:0.75rem; margin-right:6px;">TOTAL (A, B, C)</div>
+                                <span>Menghitung apakah absen datang, istirahat, dan pulang terisi (H, S, I, A, T). Berfungsi sebagai kontrol kehadiran guru/pegawai 3x.</span>
+                            </div>
+                            <div style="display:grid; grid-template-columns:35px 12px 1fr; row-gap:3px; font-size:0.8rem;">
+                                <div><strong>WH</strong></div><div>:</div><div>Semua hari efektif pada rentang/bulan tersebut (tidak termasuk hari libur).</div>
+                                <div><strong>H</strong></div><div>:</div><div>Dihitung jika A dan C terisi Hadir / Terlambat.</div>
+                                <div><strong>T</strong></div><div>:</div><div>Dihitung jika A terisi Terlambat (T).</div>
+                                <div><strong>S</strong></div><div>:</div><div>Dihitung jika A terisi Sakit (S).</div>
+                                <div><strong>I</strong></div><div>:</div><div>Dihitung jika A terisi Izin (I).</div>
+                                <div><strong>A</strong></div><div>:</div><div>Dihitung jika A terisi Alpha (A).</div>
+                                <div><strong>TH</strong></div><div>:</div><div>Total Tidak Hadir (S + I + A).</div>
+                                <div><strong>%</strong></div><div>:</div><div>(Hadir / Wajib Hadir) &times; 100%</div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             `);
         }).fail(xhr => {
@@ -3566,20 +4052,302 @@ const Curriculum = {
         });
     },
 
+    printAbsensiGuruRekap() {
+        const data = this.state.rekapAbsensiGuruData || [];
+        const meta = this.state.rekapAbsensiGuruMeta || {};
+        const effectiveDates = meta.effective_dates || [];
+        if (!data.length) {
+            EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Tampilkan rekap terlebih dahulu sebelum mencetak.' });
+            return;
+        }
+
+        const valOrDash = (v) => (v && Number(v) > 0 ? v : '-');
+
+        const datesThRow1 = effectiveDates.map(ed => `
+            <th colspan="3" class="bg-date" style="text-align:center;">${ed.day}</th>
+        `).join('');
+
+        const datesThRow2 = effectiveDates.map(() => `
+            <th class="bg-date" style="width:20px; text-align:center; font-size:9px;">A</th>
+            <th class="bg-date" style="width:20px; text-align:center; font-size:9px;">B</th>
+            <th class="bg-date" style="width:20px; text-align:center; font-size:9px;">C</th>
+        `).join('');
+
+        const rowsHtml = data.map((t, idx) => {
+            const dailyCells = effectiveDates.map(ed => {
+                const d = (t.daily && t.daily[ed.date]) ? t.daily[ed.date] : {};
+                return `
+                    <td style="text-align:center; padding:3px 1px; font-size:9px;">${this.escapeHtml(d.a || '')}</td>
+                    <td style="text-align:center; padding:3px 1px; font-size:9px;">${this.escapeHtml(d.b || '')}</td>
+                    <td style="text-align:center; padding:3px 1px; font-size:9px;">${this.escapeHtml(d.c || '')}</td>
+                `;
+            }).join('');
+
+            return `
+                <tr>
+                    <td style="text-align:center; padding:3px 2px;">${idx + 1}</td>
+                    <td style="text-align:center; padding:3px 2px; font-family:monospace; font-weight:600;">${this.escapeHtml(t.kode_guru)}</td>
+                    <td style="text-align:left; padding:3px 5px; font-weight:600; white-space:nowrap;">${this.escapeHtml(t.nama)}</td>
+                    <td style="text-align:center; padding:3px 2px;">${this.escapeHtml(t.jenis_kelamin || '-')}</td>
+                    ${dailyCells}
+                    <td style="text-align:center; padding:3px 2px;">${t.tot_a ?? 0}</td>
+                    <td style="text-align:center; padding:3px 2px;">${t.tot_b ?? 0}</td>
+                    <td style="text-align:center; padding:3px 2px;">${t.tot_c ?? 0}</td>
+                    <td style="text-align:center; padding:3px 2px; font-weight:bold;">${t.wh ?? 0}</td>
+                    <td style="text-align:center; padding:3px 2px; font-weight:bold;">${t.hadir ?? 0}</td>
+                    <td style="text-align:center; padding:3px 2px;">${valOrDash(t.terlambat)}</td>
+                    <td style="text-align:center; padding:3px 2px;">${valOrDash(t.sakit)}</td>
+                    <td style="text-align:center; padding:3px 2px;">${valOrDash(t.izin)}</td>
+                    <td style="text-align:center; padding:3px 2px;">${valOrDash(t.alpha)}</td>
+                    <td style="text-align:center; padding:3px 2px; font-weight:bold;">${t.th ?? 0}</td>
+                    <td style="text-align:center; padding:3px 2px; font-weight:bold;">${t.persentase ?? 0}</td>
+                </tr>
+            `;
+        }).join('');
+
+        const printWin = window.open('', '_blank');
+        printWin.document.write(`
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <title>Rekapitulasi Kehadiran Guru - ${this.escapeHtml(meta.bulan || '')}</title>
+                <style>
+                    @page { size: landscape; margin: 8mm 10mm; }
+                    body { font-family: Arial, sans-serif; font-size: 10px; color: #000; background: #fff; margin: 0; padding: 5px; }
+                    .header-container { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+                    .header-title { font-size: 13px; font-weight: bold; text-transform: uppercase; margin-bottom: 2px; }
+                    .header-school { font-size: 11px; font-weight: bold; text-transform: uppercase; margin-bottom: 6px; }
+                    .meta-table { font-size: 10px; border-collapse: collapse; }
+                    .meta-table td { padding: 1px 6px 1px 0; }
+                    .legend-box { font-size: 9.5px; border: 1px solid #999; padding: 4px 8px; border-radius: 4px; }
+                    table.rekap-table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 9.5px; }
+                    table.rekap-table th, table.rekap-table td { border: 1px solid #000; }
+                    table.rekap-table th { font-weight: bold; padding: 4px 1px; }
+                    .bg-date { background-color: #ffedd5 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                    .bg-total { background-color: #d1fae5 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                    .bg-hadir { background-color: #fef08a !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                    .legend-footer { display: flex; justify-content: space-between; align-items: flex-start; font-size: 9.5px; line-height: 1.4; margin-top: 6px; }
+                    .legend-table td { border: none; padding: 1px 4px 1px 0; }
+                </style>
+            </head>
+            <body>
+                <div class="header-container">
+                    <div>
+                        <div class="header-title">REKAPITULASI KEHADIRAN GURU</div>
+                        <div class="header-school">${this.escapeHtml(meta.nama_sekolah || 'SMA WACHID HASYIM 1 SURABAYA')}</div>
+                        <table class="meta-table">
+                            <tr><td style="width:70px;">Bulan</td><td>: ${this.escapeHtml(meta.bulan || '-')}</td></tr>
+                        </table>
+                    </div>
+                    <div class="legend-box">
+                        <table style="border:none; border-collapse:collapse;">
+                            <tr><td style="font-weight:bold; width:16px;">A</td><td>:</td><td>Absen datang</td></tr>
+                            <tr><td style="font-weight:bold;">B</td><td>:</td><td>Absen setelah istirahat</td></tr>
+                            <tr><td style="font-weight:bold;">C</td><td>:</td><td>Absen pulang</td></tr>
+                        </table>
+                    </div>
+                </div>
+
+                <table class="rekap-table">
+                    <thead>
+                        <tr>
+                            <th rowspan="2" style="width:24px; text-align:center;">NO</th>
+                            <th rowspan="2" style="width:65px; text-align:center;">KODE</th>
+                            <th rowspan="2" style="text-align:left; padding-left:6px;">NAMA GURU</th>
+                            <th rowspan="2" style="width:30px; text-align:center;">L/P</th>
+                            ${datesThRow1}
+                            <th colspan="3" class="bg-total" style="text-align:center;">TOTAL</th>
+                            <th colspan="8" class="bg-hadir" style="text-align:center;">KEHADIRAN</th>
+                        </tr>
+                        <tr>
+                            ${datesThRow2}
+                            <th class="bg-total" style="width:24px; text-align:center;">A</th>
+                            <th class="bg-total" style="width:24px; text-align:center;">B</th>
+                            <th class="bg-total" style="width:24px; text-align:center;">C</th>
+                            <th class="bg-hadir" style="width:26px; text-align:center;">WH</th>
+                            <th class="bg-hadir" style="width:26px; text-align:center;">H</th>
+                            <th class="bg-hadir" style="width:24px; text-align:center;">T</th>
+                            <th class="bg-hadir" style="width:24px; text-align:center;">S</th>
+                            <th class="bg-hadir" style="width:24px; text-align:center;">I</th>
+                            <th class="bg-hadir" style="width:24px; text-align:center;">A</th>
+                            <th class="bg-hadir" style="width:26px; text-align:center;">TH</th>
+                            <th class="bg-hadir" style="width:30px; text-align:center;">%</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${rowsHtml}
+                    </tbody>
+                </table>
+
+                <div class="legend-footer">
+                    <div>
+                        <strong>Keterangan Singkatan :</strong>
+                        <table class="legend-table">
+                            <tr><td style="width:16px;">1</td><td style="width:30px; font-weight:bold;">WH</td><td>WAJIB HADIR</td></tr>
+                            <tr><td>2</td><td style="font-weight:bold;">H</td><td>HADIR</td></tr>
+                            <tr><td>3</td><td style="font-weight:bold;">T</td><td>TERLAMBAT</td></tr>
+                            <tr><td>4</td><td style="font-weight:bold;">S</td><td>SAKIT</td></tr>
+                            <tr><td>5</td><td style="font-weight:bold;">I</td><td>IZIN</td></tr>
+                            <tr><td>6</td><td style="font-weight:bold;">A</td><td>ALPHA</td></tr>
+                            <tr><td>7</td><td style="font-weight:bold;">TOT</td><td>TOTAL (A: Datang, B: Istirahat, C: Pulang)</td></tr>
+                        </table>
+                    </div>
+                    <div style="max-width:480px; font-size:9px; border-left:1px solid #ccc; padding-left:12px;">
+                        <strong>&gt;&gt; Ketentuan Perhitungan:</strong><br>
+                        <strong>TOTAL (A,B,C)</strong>: Menghitung apakah absen datang, istirahat, dan pulang terisi.<br>
+                        <strong>WH</strong>: Semua hari efektif pada bulan tersebut (selama tidak ditentukan libur).<br>
+                        <strong>H</strong>: Dihitung jika A dan C terisi T atau H.<br>
+                        <strong>T/S/I/A</strong>: Dihitung dari status absen datang.<br>
+                        <strong>TH</strong>: Total Tidak Hadir (S + I + A). | <strong>%</strong>: (Hadir / Wajib Hadir) &times; 100%
+                    </div>
+                </div>
+
+                <script>
+                    window.onload = function() {
+                        window.print();
+                    };
+                </script>
+            </body>
+            </html>
+        `);
+        printWin.document.close();
+    },
 
     exportAbsensiGuruExcel() {
-        const table = document.getElementById('tableExportRekapAbsensiGuru');
-        if (!table) {
+        const data = this.state.rekapAbsensiGuruData || [];
+        const meta = this.state.rekapAbsensiGuruMeta || {};
+        const effectiveDates = meta.effective_dates || [];
+        if (!data || !data.length) {
             EModal.toast({ type: 'warning', title: 'Kosong', message: 'Tidak ada data rekap untuk diekspor.' });
             return;
         }
 
-        const tgl_awal = $('#rekapGuruTglAwal').val();
-        const tgl_akhir = $('#rekapGuruTglAkhir').val();
-        const wb = XLSX.utils.table_to_book(table, { sheet: "Rekap Absensi PTK" });
-        XLSX.writeFile(wb, `Rekap_Absensi_PTK_${tgl_awal}_sd_${tgl_akhir}.xlsx`);
-    },
+        const tgl_awal = meta.tanggal_awal || $('#rekapGuruTglAwal').val() || '';
+        const tgl_akhir = meta.tanggal_akhir || $('#rekapGuruTglAkhir').val() || '';
+        const bulanText = meta.bulan || '';
+        const namaSekolah = meta.nama_sekolah || 'SMA WACHID HASYIM 1 SURABAYA';
 
+        this.loadSheetJS(() => {
+            try {
+                const valOrDash = (v) => (v && Number(v) > 0 ? Number(v) : '-');
+
+                // Header Top
+                const wsData = [
+                    ['REKAPITULASI KEHADIRAN GURU'],
+                    [namaSekolah.toUpperCase()],
+                    [],
+                    ['Bulan', `: ${bulanText}`, '', '', '', '', '', '', '', 'A', ':', 'Absen datang'],
+                    ['', '', '', '', '', '', '', '', '', 'B', ':', 'Absen setelah istirahat'],
+                    ['', '', '', '', '', '', '', '', '', 'C', ':', 'Absen pulang'],
+                    []
+                ];
+
+                // Header Row 1 (Row index 7)
+                const hRow1 = ['NO', 'KODE', 'NAMA GURU', 'L/P'];
+                effectiveDates.forEach(ed => {
+                    hRow1.push(String(ed.day), '', '');
+                });
+                hRow1.push('TOTAL', '', '', 'KEHADIRAN', '', '', '', '', '', '', '');
+                wsData.push(hRow1);
+
+                // Header Row 2 (Row index 8)
+                const hRow2 = ['', '', '', ''];
+                effectiveDates.forEach(() => {
+                    hRow2.push('A', 'B', 'C');
+                });
+                hRow2.push('A', 'B', 'C', 'WH', 'H', 'T', 'S', 'I', 'A', 'TH', '%');
+                wsData.push(hRow2);
+
+                // Body rows
+                data.forEach((t, idx) => {
+                    const row = [
+                        idx + 1,
+                        t.kode_guru || '',
+                        t.nama || '',
+                        t.jenis_kelamin || '-'
+                    ];
+
+                    effectiveDates.forEach(ed => {
+                        const d = (t.daily && t.daily[ed.date]) ? t.daily[ed.date] : {};
+                        row.push(d.a || '', d.b || '', d.c || '');
+                    });
+
+                    row.push(
+                        Number(t.tot_a ?? 0),
+                        Number(t.tot_b ?? 0),
+                        Number(t.tot_c ?? 0),
+                        Number(t.wh ?? 0),
+                        Number(t.hadir ?? 0),
+                        valOrDash(t.terlambat),
+                        valOrDash(t.sakit),
+                        valOrDash(t.izin),
+                        valOrDash(t.alpha),
+                        Number(t.th ?? 0),
+                        Number(t.persentase ?? 0)
+                    );
+                    wsData.push(row);
+                });
+
+                // Legend footer
+                wsData.push([]);
+                wsData.push(['Keterangan Singkatan :']);
+                wsData.push(['1', 'WH', 'WAJIB HADIR', '', '>> Ketentuan Perhitungan']);
+                wsData.push(['2', 'H', 'HADIR', '', 'TOTAL (A,B,C) : Menghitung apakah absen datang, istirahat, dan pulang terisi (H, S, I, A, T)']);
+                wsData.push(['3', 'T', 'TERLAMBAT', '', 'WH : Semua hari efektif pada bulan tersebut (selama tidak ditentukan libur)']);
+                wsData.push(['4', 'S', 'SAKIT', '', 'H : Dihitung jika A dan C terisi T atau H']);
+                wsData.push(['5', 'I', 'IZIN', '', 'T : Dihitung jika A terisi T']);
+                wsData.push(['6', 'A', 'ALPHA', '', 'S : Dihitung jika A terisi S | I : Dihitung jika A terisi I | A : Dihitung jika A terisi A']);
+                wsData.push(['7', 'TOT', 'TOTAL', '', 'TH : Total Tidak Hadir (S + I + A) | % : (Hadir / Wajib Hadir) * 100%']);
+
+                const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+                // Build Merges
+                const merges = [
+                    { s: { r: 7, c: 0 }, e: { r: 8, c: 0 } }, // NO
+                    { s: { r: 7, c: 1 }, e: { r: 8, c: 1 } }, // KODE
+                    { s: { r: 7, c: 2 }, e: { r: 8, c: 2 } }, // NAMA GURU
+                    { s: { r: 7, c: 3 }, e: { r: 8, c: 3 } }  // L/P
+                ];
+
+                const numDates = effectiveDates.length;
+                for (let i = 0; i < numDates; i++) {
+                    const cStart = 4 + (i * 3);
+                    merges.push({ s: { r: 7, c: cStart }, e: { r: 7, c: cStart + 2 } });
+                }
+
+                const cTot = 4 + (numDates * 3);
+                merges.push({ s: { r: 7, c: cTot }, e: { r: 7, c: cTot + 2 } }); // TOTAL
+
+                const cKeh = cTot + 3;
+                merges.push({ s: { r: 7, c: cKeh }, e: { r: 7, c: cKeh + 7 } }); // KEHADIRAN
+
+                ws['!merges'] = merges;
+
+                // Column widths
+                const cols = [
+                    { wch: 5 },  // NO
+                    { wch: 10 }, // KODE
+                    { wch: 34 }, // NAMA GURU
+                    { wch: 6 }   // L/P
+                ];
+                for (let i = 0; i < numDates; i++) {
+                    cols.push({ wch: 4 }, { wch: 4 }, { wch: 4 });
+                }
+                cols.push({ wch: 5 }, { wch: 5 }, { wch: 5 }); // TOTAL A, B, C
+                cols.push({ wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 6 }); // KEHADIRAN
+                ws['!cols'] = cols;
+
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Rekap Guru");
+
+                XLSX.writeFile(wb, `Rekap_Kehadiran_Guru_${tgl_awal}_sd_${tgl_akhir}.xlsx`);
+                EModal.toast({ type: 'success', title: 'Berhasil', message: 'File Excel rekap kehadiran guru berhasil diunduh.' });
+            } catch (err) {
+                console.error('Export PTK Excel error:', err);
+                EModal.toast({ type: 'error', title: 'Gagal', message: 'Gagal mengekspor data PTK: ' + err.message });
+            }
+        });
+    },
     showSettingWaktuGuruModal() {
         this.api('absensi_guru.php?action=get_settings').done(res => {
             const data = res.data || {};
@@ -3651,7 +4419,7 @@ const Curriculum = {
                         <div class="form-group-acad" style="margin-bottom:0;">
                             <label class="form-label-acad">Waktu Auto Broadcast WA Pulang</label>
                             <input type="text" class="form-input-acad" id="${idCutoffPulang}" value="${curCutPulang}" placeholder="17:00" maxlength="5">
-                            <small class="text-muted" style="margin-top:4px; display:block;">Laporan WA sore dikirim otomatis ke grup pada jam ini.</small>
+                            <small class="text-muted" style="margin-top:4px; display:block;">Laporan WA sore dikirim otomatis ke grup pada jam ini (disarankan: 16:00 - 16:30).</small>
                         </div>
                     </div>
                 `,
@@ -5487,53 +6255,277 @@ const Curriculum = {
     printJadwal() {
         const viewer = document.getElementById('jdwViewer');
         if (!viewer) return;
-        
-        // Sembunyikan tombol cetak saat mengambil HTML
-        const btn = document.getElementById('btnCetakJadwal');
-        if (btn) btn.style.display = 'none';
-        const html = viewer.innerHTML;
-        if (btn) btn.style.display = 'inline-block';
+
+        // Clone viewer so we can clean up web-only elements before printing
+        const clone = viewer.cloneNode(true);
+
+        // Remove banners, tooltips, buttons, badges
+        const removeSelectors = [
+            '#genProgressOverlay',
+            '.sch-clash-badge',
+            '.sch-empty',
+            'div[style*="fef2f2"]',
+            'div[style*="f0fdf4"]',
+            'span[style*="💡"]',
+            'button',
+            '#btnCetakJadwal',
+            '#btnExportExcelJadwal'
+        ];
+        removeSelectors.forEach(sel => {
+            clone.querySelectorAll(sel).forEach(el => el.remove());
+        });
+
+        // Remove overflow-x styling that breaks browser print pagination
+        clone.querySelectorAll('div').forEach(d => {
+            if (d.style.overflowX === 'auto' || d.style.overflow === 'auto') {
+                d.style.overflow = 'visible';
+                d.style.border = 'none';
+            }
+        });
+
+        // Format empty cells with clean hyphen
+        clone.querySelectorAll('.sch-cell-empty').forEach(td => {
+            td.innerHTML = '<span style="color:#94a3b8;font-size:7pt;">-</span>';
+            td.style.border = '1px solid #475569';
+        });
+
+        const filterKelasVal = $('#jdwFilter').val();
+        const filterKelasText = $('#jdwFilter option:selected').text();
+        const subTitleKelas = filterKelasVal ? `Kelas: ${filterKelasText}` : 'Semua Kelas';
+        const schoolName = this.state.school?.nama || 'E-Portal';
+        const acad = this.state.academicYear;
+        const thnAjaran = acad ? `Tahun Pelajaran ${acad.tahun_ajaran} (Semester ${acad.semester})` : '';
 
         const printWin = window.open('', '_blank');
         printWin.document.write(`
-            <html><head><title>Cetak Jadwal Pelajaran</title>
-            <style>
-                @page { size: landscape; margin: 1cm; }
-                body { 
-                    font-family: Arial, sans-serif; 
-                    -webkit-print-color-adjust: exact !important; 
-                    print-color-adjust: exact !important; 
-                    color-adjust: exact !important; 
-                    margin: 0;
-                    padding: 10px;
-                }
-                .sch-table { width: 100%; border-collapse: collapse; page-break-inside: avoid; margin-bottom: 20px; }
-                .sch-table th, .sch-table td { border: 1px solid #333 !important; padding: 6px; font-size: 11px; }
-                .sch-table th { background-color: #3b82f6 !important; color: white !important; }
+            <!DOCTYPE html>
+            <html lang="id">
+            <head>
+                <meta charset="UTF-8">
+                <title>Jadwal Pelajaran - ${schoolName}</title>
+                <style>
+                    @page {
+                        size: landscape;
+                        margin: 8mm 10mm 10mm 10mm;
+                    }
+                    * {
+                        box-sizing: border-box;
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
+                    }
+                    body {
+                        font-family: Arial, Helvetica, sans-serif;
+                        margin: 0;
+                        padding: 0;
+                        color: #0f172a;
+                        background: #fff;
+                    }
+                    .header-print {
+                        text-align: center;
+                        margin-bottom: 12px;
+                        border-bottom: 2px solid #0f172a;
+                        padding-bottom: 8px;
+                    }
+                    .header-print h2 {
+                        margin: 0 0 3px 0;
+                        font-size: 15pt;
+                        font-weight: 800;
+                        text-transform: uppercase;
+                        letter-spacing: 0.5px;
+                        color: #0f172a;
+                    }
+                    .header-print .school-name {
+                        font-size: 12pt;
+                        font-weight: 700;
+                        color: #1e293b;
+                        margin-bottom: 2px;
+                    }
+                    .header-print .sub-info {
+                        font-size: 8.5pt;
+                        color: #475569;
+                    }
+                    
+                    table {
+                        width: 100% !important;
+                        border-collapse: collapse !important;
+                        margin-bottom: 14px;
+                        page-break-inside: auto;
+                    }
+                    thead {
+                        display: table-header-group;
+                    }
+                    tr {
+                        page-break-inside: avoid;
+                    }
+                    tbody {
+                        page-break-inside: avoid;
+                    }
+                    th, td {
+                        border: 1px solid #475569 !important;
+                        padding: 3px 2px !important;
+                        font-size: 8pt !important;
+                        text-align: center;
+                        vertical-align: middle;
+                    }
+                    
+                    /* Custom background overrides */
+                    tr:first-child td[colspan] {
+                        background: #1e293b !important;
+                        color: #ffffff !important;
+                        font-weight: 800 !important;
+                        font-size: 9pt !important;
+                        letter-spacing: 1px;
+                        padding: 5px !important;
+                        text-transform: uppercase;
+                    }
+                    td[style*="background:#e2e8f0"], td[style*="background: #e2e8f0"] {
+                        background-color: #cbd5e1 !important;
+                        font-weight: 800 !important;
+                        color: #0f172a !important;
+                    }
+                    td[style*="background:#f1f5f9"], td[style*="background: #f1f5f9"] {
+                        background-color: #e2e8f0 !important;
+                        font-weight: 700 !important;
+                        color: #0f172a !important;
+                    }
+                    td[style*="background:#f8fafc"], td[style*="background: #f8fafc"] {
+                        background-color: #f8fafc !important;
+                    }
+                    
+                    .footer-ttd {
+                        margin-top: 18px;
+                        display: flex;
+                        justify-content: space-between;
+                        page-break-inside: avoid;
+                        font-size: 9pt;
+                        padding: 0 40px;
+                    }
+                    .footer-ttd .ttd-box {
+                        text-align: center;
+                        min-width: 200px;
+                    }
+                    .footer-ttd .ttd-space {
+                        height: 55px;
+                    }
+                    .footer-ttd .ttd-name {
+                        font-weight: 700;
+                        text-decoration: underline;
+                    }
+                    .no-print {
+                        display: none !important;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header-print">
+                    <h2>JADWAL PELAJARAN</h2>
+                    <div class="school-name">${schoolName}</div>
+                    <div class="sub-info">${thnAjaran} &bull; ${subTitleKelas} &bull; Dicetak: ${new Date().toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric'})}</div>
+                </div>
                 
-                /* Override specific inline styles from UI for printing */
-                td[style*="background-color:transparent"] { background-color: transparent !important; }
-                td[style*="background-color:#fee2e2"], td[style*="background-color: #fee2e2"] { background-color: #fee2e2 !important; }
-                td[style*="background:#f8fafc"], td[style*="background: #f8fafc"] { background-color: #f8fafc !important; }
-                td[style*="background:#e2e8f0"], td[style*="background: #e2e8f0"] { background-color: #e2e8f0 !important; }
+                ${clone.innerHTML}
                 
-                h4 { font-size: 14px; margin-bottom: 5px; color: #1e293b !important; }
-                h3 { font-size: 18px; text-align: center; margin-bottom: 15px; }
-                .header-wrapper { text-align: center; margin-bottom: 20px; border-bottom: 2px solid #000; padding-bottom: 10px; }
-            </style></head><body>
-            <div class="header-wrapper">
-                <h3>Jadwal Pelajaran<br><small style="font-size:14px; font-weight:normal;">${this.state.school.nama}</small></h3>
-            </div>
-            ${html}
-            <script>
-                setTimeout(() => {
-                    window.print();
-                    window.close();
-                }, 500);
-            <\/script>
-            </body></html>
+                <div class="footer-ttd">
+                    <div class="ttd-box">
+                        <div>Mengetahui,</div>
+                        <div>Kepala Sekolah</div>
+                        <div class="ttd-space"></div>
+                        <div class="ttd-name">( ............................................ )</div>
+                    </div>
+                    <div class="ttd-box">
+                        <div>${new Date().toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric'})}</div>
+                        <div>Waka Kurikulum</div>
+                        <div class="ttd-space"></div>
+                        <div class="ttd-name">( ............................................ )</div>
+                    </div>
+                </div>
+
+                <script>
+                    window.onload = function() {
+                        setTimeout(function() {
+                            window.print();
+                            window.close();
+                        }, 300);
+                    };
+                <\/script>
+            </body>
+            </html>
         `);
         printWin.document.close();
+    },
+
+    exportJadwalExcel() {
+        const viewer = document.getElementById('jdwViewer');
+        if (!viewer || !viewer.querySelector('table')) {
+            EModal.toast({ type: 'warning', title: 'Kosong', message: 'Tidak ada data jadwal untuk diekspor.' });
+            return;
+        }
+
+        const filterKelasVal = $('#jdwFilter').val();
+        const filterKelasText = $('#jdwFilter option:selected').text();
+        const cleanFilter = filterKelasVal ? filterKelasText.replace(/[^a-zA-Z0-9_\-\.]/g, '_') : 'Semua_Kelas';
+        const schoolName = this.state.school?.nama || 'E-Portal';
+        const acadYear = this.state.academicYear;
+        const thnAjaran = acadYear ? `${acadYear.tahun_ajaran} Semester ${acadYear.semester}` : '';
+
+        this.loadSheetJS(() => {
+            try {
+                const wsData = [
+                    ['JADWAL PELAJARAN'],
+                    [schoolName],
+                    ['Tahun Pelajaran: ' + thnAjaran + (filterKelasVal ? ' | Kelas: ' + filterKelasText : ' | Semua Kelas')],
+                    ['Tanggal Export: ' + new Date().toLocaleDateString('id-ID')],
+                    []
+                ];
+
+                const tables = viewer.querySelectorAll('table.sch-table');
+                let maxCols = 0;
+
+                tables.forEach(table => {
+                    const trs = table.querySelectorAll('tr');
+                    trs.forEach(tr => {
+                        const rowData = [];
+                        const cells = tr.querySelectorAll('th, td');
+                        cells.forEach(cell => {
+                            const filled = cell.classList.contains('sch-cell-filled');
+                            const empty = cell.classList.contains('sch-cell-empty');
+                            let text = '';
+                            if (filled) {
+                                const mapel = cell.querySelector('div:first-child')?.innerText?.trim() || '';
+                                const guru = cell.querySelector('div:nth-child(2)')?.innerText?.trim() || '';
+                                text = guru ? `${mapel} (${guru})` : mapel;
+                            } else if (empty) {
+                                text = '-';
+                            } else {
+                                text = cell.innerText.trim();
+                            }
+                            rowData.push(text);
+                        });
+                        if (rowData.length > maxCols) maxCols = rowData.length;
+                        wsData.push(rowData);
+                    });
+                    wsData.push([]);
+                });
+
+                const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+                const colWidths = [{ wch: 10 }];
+                for (let c = 1; c < maxCols; c++) {
+                    colWidths.push({ wch: 16 });
+                }
+                ws['!cols'] = colWidths;
+
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Jadwal Pelajaran");
+
+                const todayStr = new Date().toISOString().split('T')[0];
+                XLSX.writeFile(wb, `Jadwal_Pelajaran_${cleanFilter}_${todayStr}.xlsx`);
+                EModal.toast({ type: 'success', title: 'Berhasil', message: 'File Excel Jadwal Pelajaran berhasil diunduh.' });
+            } catch (err) {
+                console.error('Export Jadwal Excel error:', err);
+                EModal.toast({ type: 'error', title: 'Gagal', message: 'Gagal membuat file Excel: ' + err.message });
+            }
+        });
     },
 
     // ==================== GLOBAL HELPERS ====================
@@ -7208,23 +8200,42 @@ const Curriculum = {
     renderSchJadwal($container) {
         $container.html(`
             <div class="sch-card">
-                <div class="sch-card-header">
-                    <h3>Manajemen Jadwal & Generator</h3>
+                <div class="sch-card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <h3 style="margin:0;">Manajemen Jadwal & Generator</h3>
+                    </div>
+                    <div id="schLockStatusContainer" style="display:flex; align-items:center; gap:10px;">
+                        <span class="badge" style="background:#f1f5f9; color:#64748b; padding:6px 12px; border-radius:20px; font-size:0.85rem;">Memeriksa status kunci...</span>
+                    </div>
                 </div>
                 <div class="sch-card-body">
-                    <div style="display:flex;gap:12px;background:var(--bg-color);padding:24px;border-radius:12px;margin-bottom:24px;align-items:center;justify-content:space-between;flex-wrap:wrap">
-                        <div>
-                            <h4 style="margin:0 0 8px">Engine Algoritma Heuristik</h4>
-                            <p style="margin:0;font-size:0.85rem;color:var(--text-muted)">Menghasilkan jadwal berdasarkan distribusi dan mematuhi constraints ketersediaan dan aturan blok mapel.</p>
+                    <div style="display:flex;gap:16px;background:var(--bg-color);padding:24px;border-radius:12px;margin-bottom:24px;align-items:center;justify-content:space-between;flex-wrap:wrap;border:1px solid var(--border-color);">
+                        <div style="max-width:650px;">
+                            <h4 style="margin:0 0 8px;display:flex;align-items:center;gap:8px;">
+                                <span>Engine Algoritma Heuristik & Multi-Start Solver</span>
+                            </h4>
+                            <p style="margin:0;font-size:0.85rem;color:var(--text-muted);line-height:1.5;">Menghasilkan jadwal otomatis bebas bentrok 100%, mematuhi ketersediaan guru, aturan blok mapel, dan meratakan jam harian. Jadwal yang telah resmi dapat dikunci agar tidak berubah.</p>
                         </div>
-                        <button class="btn btn-primary" onclick="Curriculum.generateJadwal()" style="padding:12px 24px;font-size:1.1rem">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg> Generate Jadwal
-                        </button>
+                        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                            <button id="btnLockJadwal" class="btn btn-outline" onclick="Curriculum.toggleLockJadwal()" style="display:inline-flex;align-items:center;gap:8px;padding:12px 18px;font-size:0.95rem;font-weight:600;border-radius:8px;transition:all 0.2s;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Memuat...
+                            </button>
+                            <button id="btnGenerateJadwal" class="btn btn-primary" onclick="Curriculum.generateJadwal()" style="padding:12px 24px;font-size:1.05rem;font-weight:600;border-radius:8px;display:inline-flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(59,130,246,0.3);">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg> Generate Jadwal
+                            </button>
+                        </div>
                     </div>
 
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
                         <select id="jdwFilter" class="form-select" style="max-width:300px"><option value="">Semua Kelas</option></select>
-                        <button class="btn btn-outline" id="btnCetakJadwal" onclick="Curriculum.printJadwal()">Cetak PDF</button>
+                        <div style="display:flex;gap:8px;">
+                            <button class="btn btn-outline" id="btnCetakJadwal" onclick="Curriculum.printJadwal()" style="display:inline-flex;align-items:center;gap:6px;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Cetak PDF
+                            </button>
+                            <button class="btn btn-success" id="btnExportExcelJadwal" onclick="Curriculum.exportJadwalExcel()" style="display:inline-flex;align-items:center;gap:6px;background:#10B981;color:white;border:none;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export Excel
+                            </button>
+                        </div>
                     </div>
                     <div id="jdwViewer"><div class="sch-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><h3>Memuat jadwal...</h3></div></div>
                 </div>
@@ -7235,10 +8246,120 @@ const Curriculum = {
             res.data.forEach(k => $('#jdwFilter').append(`<option value="${k.id}">Rombel ${k.rombel} - ${k.nama_kelas}</option>`));
         });
         $('#jdwFilter').on('change', (e) => this.viewJadwal($(e.target).val()));
+        this.loadLockStatus();
         this.viewJadwal('');
     },
 
+    loadLockStatus() {
+        return this.api('sch_jadwal.php?action=get_lock').done(res => {
+            if (!res.success) return;
+            this.isJadwalLocked = res.data.locked === 1;
+            this.lockMeta = res.data;
+            this.updateLockUI();
+        });
+    },
+
+    updateLockUI() {
+        const isLocked = this.isJadwalLocked;
+        const meta = this.lockMeta || {};
+
+        const $lockContainer = $('#schLockStatusContainer');
+        const $btnLock = $('#btnLockJadwal');
+        const $btnGen = $('#btnGenerateJadwal');
+
+        if (isLocked) {
+            $lockContainer.html(`
+                <span class="badge" title="Dikunci oleh: ${meta.locked_by || 'Admin'} (${meta.locked_at || '-'})" style="background:#fef3c7; border:1px solid #f59e0b; color:#b45309; padding:8px 14px; border-radius:20px; font-size:0.85rem; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> 🔒 Jadwal Terkunci (Resmi)
+                </span>
+                <span style="font-size:0.8rem; color:var(--text-muted); display:inline-block;">oleh <strong>${meta.locked_by || 'Admin'}</strong> (${meta.locked_at || '-'})</span>
+            `);
+
+            $btnLock.html(`
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg> Buka Kunci Jadwal
+            `).css({
+                'background': '#fff',
+                'border': '1.5px solid #d97706',
+                'color': '#d97706',
+                'box-shadow': 'none'
+            }).attr('title', 'Klik untuk membuka kunci jadwal agar dapat di-generate ulang atau dipindahkan');
+
+            $btnGen.attr('disabled', true).css({
+                'opacity': '0.5',
+                'cursor': 'not-allowed',
+                'pointer-events': 'none',
+                'box-shadow': 'none'
+            }).attr('title', 'Jadwal sedang dikunci resmi. Buka kunci terlebih dahulu jika ingin men-generate ulang.');
+
+        } else {
+            $lockContainer.html(`
+                <span class="badge" style="background:#ecfdf5; border:1px solid #10b981; color:#047857; padding:8px 14px; border-radius:20px; font-size:0.85rem; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg> Status: Draft (Terbuka)
+                </span>
+            `);
+
+            $btnLock.html(`
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Kunci Jadwal (Resmikan)
+            `).css({
+                'background': '#047857',
+                'border': 'none',
+                'color': '#ffffff',
+                'box-shadow': '0 2px 6px rgba(4,120,87,0.2)'
+            }).attr('title', 'Kunci jadwal agar tidak dapat di-generate ulang atau dipindahkan secara tidak sengaja');
+
+            $btnGen.removeAttr('disabled').css({
+                'opacity': '1',
+                'cursor': 'pointer',
+                'pointer-events': 'auto',
+                'box-shadow': '0 4px 12px rgba(59,130,246,0.3)'
+            }).removeAttr('title');
+        }
+    },
+
+    toggleLockJadwal() {
+        const isCurrentlyLocked = this.isJadwalLocked;
+        const title = isCurrentlyLocked ? 'Buka Kunci Jadwal?' : 'Kunci Jadwal Pelajaran?';
+        const message = isCurrentlyLocked 
+            ? 'Jadwal akan kembali ke status <strong>Draft (Terbuka)</strong>.<br>Tombol generate ulang dan fitur penggeseran (drag & drop) jadwal akan aktif kembali. Lanjutkan?' 
+            : 'Jadwal akan <strong>dikunci resmi</strong>.<br>Fitur acak ulang (generate) dan penggeseran jadwal akan dinonaktifkan agar susunan tidak berubah secara tidak sengaja. Lanjutkan?';
+
+        EModal.confirm({
+            title: title,
+            message: message,
+            onConfirm: () => {
+                const loader = EModal.loading('Memproses status kunci jadwal...');
+                this.api('sch_jadwal.php?action=toggle_lock', { method: 'POST' }).done(res => {
+                    EModal.close(loader);
+                    this.isJadwalLocked = res.data.locked === 1;
+                    this.lockMeta = res.data;
+                    this.updateLockUI();
+                    EModal.toast({
+                        type: res.data.locked ? 'warning' : 'success',
+                        title: res.data.locked ? 'Jadwal Dikunci' : 'Kunci Dibuka',
+                        message: res.message
+                    });
+                    this.viewJadwal($('#jdwFilter').val() || '');
+                }).fail(xhr => {
+                    EModal.close(loader);
+                    EModal.toast({
+                        type: 'error',
+                        title: 'Gagal',
+                        message: xhr.responseJSON?.message || 'Gagal mengubah status kunci jadwal.'
+                    });
+                });
+            }
+        });
+    },
+
     generateJadwal() {
+        if (this.isJadwalLocked) {
+            EModal.info({
+                title: 'Jadwal Terkunci',
+                message: 'Jadwal saat ini dalam status <strong>Terkunci Resmi</strong>.<br>Silakan klik tombol <strong>Buka Kunci Jadwal</strong> terlebih dahulu jika Anda ingin men-generate ulang.'
+            });
+            return;
+        }
+
         EModal.confirm({
             title: 'Generate Baru?',
             message: 'Proses ini akan <strong>menghapus semua jadwal yang ada saat ini</strong> dan membuat ulang acakan. Lanjutkan?',
@@ -7274,6 +8395,7 @@ const Curriculum = {
                     setTimeout(() => {
                         $('#genProgressOverlay').fadeOut(400, function() { $(this).remove(); });
                         EModal.info({ title: 'Selesai', message: res.message });
+                        this.loadLockStatus();
                         this.viewJadwal('');
                     }, 600);
                 }).fail(xhr => {
@@ -7361,7 +8483,7 @@ const Curriculum = {
                                 <div style="font-size:0.8rem; color:#b91c1c; margin-top:2px;">Slot berwarna <strong>Merah</strong> menandakan guru mengajar di lebih dari 1 kelas pada jam yang sama. Gunakan fitur <strong>Drag & Drop</strong> (geser & lepas) ke slot lain untuk memindahkan atau menukar jadwal.</div>
                             </div>
                         </div>
-                        <div style="font-size:0.75rem; background:#fee2e2; color:#991b1b; padding:4px 10px; border-radius:6px; font-weight:700;">Drag & Drop Aktif</div>
+                        ${this.isJadwalLocked ? '<div style="font-size:0.75rem; background:#fef3c7; color:#b45309; border:1px solid #fde68a; padding:4px 10px; border-radius:6px; font-weight:700;">🔒 Terkunci Resmi</div>' : '<div style="font-size:0.75rem; background:#fee2e2; color:#991b1b; padding:4px 10px; border-radius:6px; font-weight:700;">Drag & Drop Aktif</div>'}
                     </div>
                 `;
             } else {
@@ -7371,7 +8493,7 @@ const Curriculum = {
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                             <span><strong>Jadwal Rapi & Bebas Bentrok:</strong> Semua jam mengajar tersusun padat tanpa jam kosong di tengah dan tanpa guru tabrakan. Anda dapat menggunakan <strong>Drag & Drop</strong> untuk menukar slot jadwal secara fleksibel.</span>
                         </div>
-                        <div style="font-size:0.75rem; background:#dcfce7; color:#166534; padding:4px 10px; border-radius:6px; font-weight:700;">Drag & Drop Aktif</div>
+                        ${this.isJadwalLocked ? '<div style="font-size:0.75rem; background:#fef3c7; color:#b45309; border:1px solid #fde68a; padding:4px 10px; border-radius:6px; font-weight:700;">🔒 Terkunci Resmi</div>' : '<div style="font-size:0.75rem; background:#dcfce7; color:#166534; padding:4px 10px; border-radius:6px; font-weight:700;">Drag & Drop Aktif</div>'}
                     </div>
                 `;
             }
@@ -7380,7 +8502,7 @@ const Curriculum = {
                 if (!cellJam) return `<td style="background:#f1f5f9; border:1px solid #e2e8f0;"></td>`;
                 
                 if (cellJam.tipe !== 'Pembelajaran') {
-                    return `<td style="background:#f8fafc; border:1px solid #e2e8f0; text-align:center; vertical-align:middle; padding:6px; min-width:92px;">
+                    return `<td style="background:#f8fafc; border:1px solid #e2e8f0; text-align:center; vertical-align:middle; padding:4px 2px; width:58px; min-width:54px; max-width:64px;">
                                 <div style="font-size:0.7rem; font-weight:700; color:#64748b; letter-spacing:0.5px;">${cellJam.nama_jam.toUpperCase()}</div>
                             </td>`;
                 }
@@ -7393,7 +8515,7 @@ const Curriculum = {
                                 data-hari="${cellJam.hari}"
                                 data-jam-ke="${cellJam.jam_ke}"
                                 title="Slot Kosong (Lepaskan jadwal di sini untuk memindahkan)"
-                                style="background:#fff; min-width:92px; border:1px dashed #cbd5e1; text-align:center; vertical-align:middle; padding:8px 6px; transition:all 0.15s;">
+                                style="background:#fff; width:58px; min-width:54px; max-width:64px; border:1px dashed #cbd5e1; text-align:center; vertical-align:middle; padding:4px 2px; transition:all 0.15s;">
                                 <div style="font-size:0.7rem; color:#94a3b8; font-weight:500; pointer-events:none;">(Kosong)</div>
                             </td>`;
                 }
@@ -7407,14 +8529,14 @@ const Curriculum = {
                 let borderWarna = isClash ? 'border: 2px solid #ef4444 !important;' : 'border: 1px solid #cbd5e1;';
                 
                 return `<td class="sch-cell-slot sch-cell-filled ${isClash ? 'sch-clash-cell' : ''}"
-                            draggable="true"
+                            draggable="${this.isJadwalLocked ? 'false' : 'true'}"
                             data-jadwal-id="${slotApp.id}"
                             data-kelas-id="${slotApp.kelas_id || targetKelasId}"
                             data-jam-id="${cellJam.id}"
                             data-hari="${cellJam.hari}"
                             data-jam-ke="${cellJam.jam_ke}"
                             title="${tooltip}"
-                            style="background-color:${bgWarna}; ${borderWarna} padding:8px 6px; min-width:92px; text-align:center; vertical-align:middle; cursor:grab; transition:all 0.15s;">
+                            style="background-color:${bgWarna}; ${borderWarna} padding:4px 2px; width:58px; min-width:54px; max-width:64px; text-align:center; vertical-align:middle; cursor:${this.isJadwalLocked ? 'default' : 'grab'}; transition:all 0.15s;">
                             <div style="font-weight:800; color:${isClash ? '#991b1b' : 'var(--primary)'}; font-size:0.78rem;">${slotApp.kode_mapel}</div>
                             <div style="font-size:0.67rem; color:${isClash ? '#b91c1c' : 'var(--text-muted)'}; line-height:1.2; margin-top:2px; font-weight:700;">${slotApp.singkatan || slotApp.nama_guru}</div>
                             ${isClash ? '<div class="sch-clash-badge">⚠️ TABRAKAN</div>' : ''}
@@ -7433,7 +8555,7 @@ const Curriculum = {
                             <span style="font-size:0.8rem; color:var(--text-muted);">💡 Tarik & lepaskan kotak pelajaran untuk menukar / memindahkan jam.</span>
                         </div>
                         <div style="overflow-x:auto; border:1px solid var(--border-color); border-radius:8px;">
-                            <table class="sch-table matrix-table" style="min-width:800px; background:white; border-collapse:collapse;">
+                            <table class="sch-table matrix-table sch-grid-compact" style="width:max-content; min-width:0; background:white; border-collapse:collapse; margin:0;">
                                 <thead>
                                     <tr><th style="width:100px; background:var(--primary); color:white; border:1px solid #cbd5e1;">HARI</th>
                                     <th colspan="${maxJams}" style="background:var(--primary); color:white; border:1px solid #cbd5e1;">JADWAL</th></tr>
@@ -7457,7 +8579,7 @@ const Curriculum = {
                 const kelasNames = Object.keys(kelasGroups).sort();
                 
                 html += `<div style="overflow-x:auto; border:1px solid var(--border-color); border-radius:8px;">
-                    <table class="sch-table matrix-table" style="min-width:1000px; background:white; border-collapse:collapse;">`;
+                    <table class="sch-table matrix-table sch-grid-compact" style="width:max-content; min-width:0; background:white; border-collapse:collapse; margin:0;">`;
                 
                 daysArr.forEach(d => {
                     const dayJams = jams.filter(x => x.hari === d).sort((a,b) => parseInt(a.jam_ke) - parseInt(b.jam_ke));
@@ -7468,9 +8590,9 @@ const Curriculum = {
                     
                     // Baris Nama Kelas (Header Horizontal)
                     html += `<tr>`;
-                    html += `<td style="font-weight:700; background:#e2e8f0; border:1px solid #cbd5e1; color:var(--primary-dark); text-align:center; width:80px; font-size:0.8rem;">JAM</td>`;
+                    html += `<td style="font-weight:700; background:#e2e8f0; border:1px solid #cbd5e1; color:var(--primary-dark); text-align:center; width:44px; min-width:44px; max-width:48px; padding:5px 2px; font-size:0.75rem;">JAM</td>`;
                     kelasNames.forEach(kname => {
-                        html += `<td style="font-weight:700; background:#f1f5f9; border:1px solid #cbd5e1; color:var(--primary-dark); text-align:center; min-width:92px; font-size:0.8rem;">${kname}</td>`;
+                        html += `<td style="font-weight:700; background:#f1f5f9; border:1px solid #cbd5e1; color:var(--primary-dark); text-align:center; width:58px; min-width:54px; max-width:64px; padding:5px 2px; font-size:0.75rem; white-space:nowrap;">${kname}</td>`;
                     });
                     html += `</tr>`;
                     
@@ -7485,7 +8607,7 @@ const Curriculum = {
                                         <div style="font-size:0.75rem; font-weight:800; color:#64748b;">${cellJam.nama_jam.toUpperCase()}</div>
                                      </td>`;
                         } else {
-                            html += `<td style="font-weight:700; background:#f8fafc; border:1px solid #e2e8f0; border-right:2px solid #94a3b8; color:var(--primary-dark); text-align:center; font-size:0.75rem; letter-spacing:0.5px;">${labelJam}</td>`;
+                            html += `<td style="font-weight:700; background:#f8fafc; border:1px solid #e2e8f0; border-right:2px solid #94a3b8; color:var(--primary-dark); text-align:center; width:44px; min-width:44px; max-width:48px; padding:4px 2px; font-size:0.75rem; letter-spacing:0.2px;">${labelJam}</td>`;
                             kelasNames.forEach(kname => {
                                 const kjadwal = kelasGroups[kname];
                                 const kId = kelasNameToId[kname] || (kjadwal[0] ? kjadwal[0].kelas_id : '');
@@ -7507,6 +8629,10 @@ const Curriculum = {
 
     initJadwalDragAndDrop() {
         const $viewer = $('#jdwViewer');
+        if (this.isJadwalLocked) {
+            $viewer.find('.sch-cell-filled').removeAttr('draggable').css('cursor', 'default');
+            return;
+        }
         let draggedItem = null;
 
         $viewer.find('.sch-cell-filled').on('dragstart', function(e) {
@@ -7622,10 +8748,22 @@ const Curriculum = {
     // ==============================================
     loadSheetJS(callback) {
         if (window.XLSX) { callback(); return; }
-        const loader = EModal.loading('Memuat komponen Export/Import...');
-        $.getScript('https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js')
+        const loader = EModal.loading('Memuat komponen Excel (SheetJS)...');
+        const localVendor = (window.CURRICULUM_CONFIG?.baseUrl || '') + 'assets/vendor/xlsx.full.min.js';
+        $.getScript(localVendor)
             .done(() => { EModal.close(loader); callback(); })
-            .fail(() => { EModal.close(loader); EModal.toast({type:'error', message:'Gagal mengunduh modul SheetJS. Periksa internet Anda!'}); });
+            .fail(() => {
+                $.getScript('https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js')
+                    .done(() => { EModal.close(loader); callback(); })
+                    .fail(() => {
+                        $.getScript('https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js')
+                            .done(() => { EModal.close(loader); callback(); })
+                            .fail(() => {
+                                EModal.close(loader);
+                                EModal.toast({ type: 'error', message: 'Gagal mengunduh modul SheetJS. Periksa koneksi internet Anda!' });
+                            });
+                    });
+            });
     },
 
     exportData(type, l1, l2, f1, f2) {

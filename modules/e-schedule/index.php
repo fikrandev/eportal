@@ -155,6 +155,8 @@ $active_academic_year = get_active_academic_year();
 
     <!-- Vendor Scripts -->
     <script src="<?php echo BASE_URL; ?>assets/vendor/jquery-3.7.1.min.js"></script>
+    <!-- SheetJS Excel Library -->
+    <script src="<?php echo BASE_URL; ?>assets/vendor/xlsx.full.min.js"></script>
     <!-- Modal System -->
     <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=2.0.0"></script>
 

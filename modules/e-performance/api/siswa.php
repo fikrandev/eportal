@@ -26,6 +26,7 @@ switch ($action) {
     case 'list_siswa_by_kelas': listSiswaByKelas(); break;
     case 'save_penugasan':   savePenugasan(); break;
     case 'copy_penugasan':   copyPenugasan(); break;
+    case 'sync_from_jadwal': syncFromJadwal(); break;
     default: json_response(400, false, 'Action tidak valid.');
 }
 
@@ -62,7 +63,16 @@ function listSiswa() {
         foreach ($siswaList as $s) {
             $k = $s['kelas'];
             if (!isset($grouped[$k])) $grouped[$k] = [];
-            $s['target_penilaian'] = isset($mapPenugasan[$s['id']]) ? implode(', ', $mapPenugasan[$s['id']]) : '-';
+            if (isset($mapPenugasan[$s['id']])) {
+                $cnt = count($mapPenugasan[$s['id']]);
+                if ($cnt > 3) {
+                    $s['target_penilaian'] = $cnt . ' Guru (' . implode(', ', array_slice($mapPenugasan[$s['id']], 0, 2)) . ', dst.)';
+                } else {
+                    $s['target_penilaian'] = implode(', ', $mapPenugasan[$s['id']]);
+                }
+            } else {
+                $s['target_penilaian'] = '-';
+            }
             $grouped[$k][] = $s;
         }
         
@@ -678,5 +688,183 @@ function copyPenugasan() {
     } catch (PDOException $e) {
         db()->rollBack();
         json_response(500, false, 'Error: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Sinkronisasi Penugasan Siswa Otomatis Berdasarkan Jadwal Mengajar Portal (E-Schedule)
+ */
+function syncFromJadwal() {
+    perf_require_admin();
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_response(405, false, 'Method not allowed.');
+    
+    $input = get_input();
+    $periode_id = (int)($input['periode_id'] ?? 0);
+    $kelasTarget = trim($input['kelas'] ?? 'all');
+    
+    $db = db();
+    
+    if (!$periode_id) {
+        $stmtP = $db->query("SELECT id FROM perf_periode WHERE status = 'aktif' LIMIT 1");
+        $aktif = $stmtP->fetch();
+        if ($aktif) {
+            $periode_id = (int)$aktif['id'];
+        } else {
+            json_response(400, false, 'Periode ID wajib dipilih.');
+        }
+    }
+    
+    try {
+        $db->beginTransaction();
+        
+        // 1. Pastikan semua guru di sch_guru terdaftar di perf_ptk
+        $stmtG = $db->query("
+            SELECT sg.id, sg.kode_guru, sg.singkatan, sg.nama_guru 
+            FROM sch_guru sg
+            LEFT JOIN perf_ptk pp ON (sg.kode_guru = pp.niy AND pp.niy != '')
+            WHERE pp.id IS NULL
+        ");
+        $missingGurus = $stmtG->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($missingGurus as $mg) {
+            $stmtU = $db->prepare("SELECT tupoksi FROM users WHERE username = ? OR nama_lengkap = ? LIMIT 1");
+            $stmtU->execute([$mg['kode_guru'], $mg['nama_guru']]);
+            $uData = $stmtU->fetch(PDO::FETCH_ASSOC);
+            $jenis_ptk = !empty($uData['tupoksi']) ? $uData['tupoksi'] : 'Guru Mata Pelajaran';
+            
+            $stmtInsPTK = $db->prepare("INSERT INTO perf_ptk (niy, nama, jenis_ptk, status) VALUES (?, ?, ?, 1)");
+            $stmtInsPTK->execute([$mg['kode_guru'], $mg['nama_guru'], $jenis_ptk]);
+            $newPtkId = $db->lastInsertId();
+            
+            $stmtChkU = $db->prepare("SELECT id FROM perf_users WHERE username = ?");
+            $stmtChkU->execute([$mg['kode_guru']]);
+            if (!$stmtChkU->fetch()) {
+                $rawPw = $mg['kode_guru'];
+                $hashPw = password_hash($rawPw, PASSWORD_DEFAULT);
+                $stmtInsPU = $db->prepare("INSERT INTO perf_users (username, password, nama_lengkap, role, perf_ptk_id, status) VALUES (?, ?, ?, 'guru', ?, 1)");
+                $stmtInsPU->execute([$mg['kode_guru'], $hashPw, $mg['nama_guru'], $newPtkId]);
+            }
+        }
+        
+        // 2. Query jadwal pelajaran portal
+        $sqlJadwal = "
+            SELECT DISTINCT 
+                sk.nama_kelas,
+                COALESCE(pp.id, pp_by_name.id) as perf_ptk_id,
+                sg.nama_guru
+            FROM sch_jadwal sj
+            JOIN sch_distribusi sd ON sj.distribusi_id = sd.id
+            JOIN sch_kelas sk ON sj.kelas_id = sk.id
+            JOIN sch_guru sg ON sd.guru_id = sg.id
+            LEFT JOIN perf_ptk pp ON (sg.kode_guru = pp.niy AND pp.niy != '' AND pp.status = 1)
+            LEFT JOIN perf_ptk pp_by_name ON (LOWER(TRIM(sg.nama_guru)) = LOWER(TRIM(pp_by_name.nama)) AND pp_by_name.status = 1)
+            WHERE COALESCE(pp.id, pp_by_name.id) IS NOT NULL
+        ";
+        $paramsJadwal = [];
+        if ($kelasTarget !== 'all' && $kelasTarget !== '') {
+            $sqlJadwal .= " AND sk.nama_kelas = ?";
+            $paramsJadwal[] = $kelasTarget;
+        }
+        $sqlJadwal .= " ORDER BY sk.nama_kelas ASC, sg.nama_guru ASC";
+        
+        $stmtJ = $db->prepare($sqlJadwal);
+        $stmtJ->execute($paramsJadwal);
+        $jadwalRows = $stmtJ->fetchAll(PDO::FETCH_ASSOC);
+        
+        if (empty($jadwalRows)) {
+            $db->rollBack();
+            json_response(400, false, 'Tidak ditemukan data jadwal pelajaran untuk kelas yang dipilih.');
+        }
+        
+        $classTeachers = [];
+        foreach ($jadwalRows as $jr) {
+            $c = trim($jr['nama_kelas']);
+            if (!isset($classTeachers[$c])) $classTeachers[$c] = [];
+            $classTeachers[$c][] = (int)$jr['perf_ptk_id'];
+        }
+        
+        $totalSiswaSynced = 0;
+        $totalClassesSynced = 0;
+        $totalPairsInserted = 0;
+        
+        foreach ($classTeachers as $kelasName => $ptkIds) {
+            if (empty($ptkIds)) continue;
+            
+            // Ambil semua siswa aktif di kelas ini dari tabel portal 'students'
+            $stmtStudents = $db->prepare("
+                SELECT id, nis, nama, kelas, tanggal_lahir 
+                FROM students 
+                WHERE kelas = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '')
+                ORDER BY nama ASC
+            ");
+            $stmtStudents->execute([$kelasName]);
+            $portalStudents = $stmtStudents->fetchAll(PDO::FETCH_ASSOC);
+            
+            if (empty($portalStudents)) continue;
+            
+            $perfSiswaIds = [];
+            
+            foreach ($portalStudents as $s) {
+                $stmtChkS = $db->prepare("SELECT id, perf_user_id FROM perf_siswa WHERE username = ?");
+                $stmtChkS->execute([$s['nis']]);
+                $existing = $stmtChkS->fetch(PDO::FETCH_ASSOC);
+                
+                if ($existing) {
+                    $sid = $existing['id'];
+                    $db->prepare("UPDATE perf_siswa SET kelas = ?, nama_siswa = ? WHERE id = ?")->execute([$s['kelas'], $s['nama'], $sid]);
+                    $perfSiswaIds[] = $sid;
+                } else {
+                    $rawPw = !empty($s['tanggal_lahir']) ? date('dmY', strtotime($s['tanggal_lahir'])) : $s['nis'];
+                    $stmtInsS = $db->prepare("INSERT INTO perf_siswa (nama_siswa, kelas, username, password_plain, status) VALUES (?, ?, ?, ?, 1)");
+                    $stmtInsS->execute([$s['nama'], $s['kelas'], $s['nis'], $rawPw]);
+                    $sid = $db->lastInsertId();
+                    
+                    $hashPw = password_hash($rawPw, PASSWORD_DEFAULT);
+                    $stmtInsU = $db->prepare("INSERT INTO perf_users (username, password, nama_lengkap, role, status) VALUES (?, ?, ?, 'siswa', 1)");
+                    $stmtInsU->execute([$s['nis'], $hashPw, $s['nama']]);
+                    $uid = $db->lastInsertId();
+                    
+                    $db->prepare("UPDATE perf_siswa SET perf_user_id = ? WHERE id = ?")->execute([$uid, $sid]);
+                    $perfSiswaIds[] = $sid;
+                }
+            }
+            
+            if (empty($perfSiswaIds)) continue;
+            
+            // Hapus penugasan lama untuk siswa di kelas ini pada periode ini
+            $placeholdersS = implode(',', array_fill(0, count($perfSiswaIds), '?'));
+            $stmtDel = $db->prepare("DELETE FROM perf_siswa_guru WHERE periode_id = ? AND perf_siswa_id IN ($placeholdersS)");
+            $stmtDel->execute(array_merge([$periode_id], $perfSiswaIds));
+            
+            // Masukkan penugasan secara batch (500 per query)
+            $batch = [];
+            foreach ($perfSiswaIds as $sid) {
+                foreach ($ptkIds as $pid) {
+                    $batch[] = "($periode_id, $sid, $pid)";
+                    $totalPairsInserted++;
+                    if (count($batch) >= 500) {
+                        $db->exec("INSERT IGNORE INTO perf_siswa_guru (periode_id, perf_siswa_id, perf_ptk_id) VALUES " . implode(',', $batch));
+                        $batch = [];
+                    }
+                }
+            }
+            if (!empty($batch)) {
+                $db->exec("INSERT IGNORE INTO perf_siswa_guru (periode_id, perf_siswa_id, perf_ptk_id) VALUES " . implode(',', $batch));
+            }
+            
+            $totalSiswaSynced += count($perfSiswaIds);
+            $totalClassesSynced++;
+        }
+        
+        $db->commit();
+        
+        json_response(200, true, "Sinkronisasi berhasil! Sebanyak {$totalSiswaSynced} siswa dari {$totalClassesSynced} kelas telah dipetakan ke guru pengajar jadwal portal (total {$totalPairsInserted} penugasan).", [
+            'total_classes' => $totalClassesSynced,
+            'total_students' => $totalSiswaSynced,
+            'total_pairs' => $totalPairsInserted
+        ]);
+        
+    } catch (Exception $e) {
+        $db->rollBack();
+        json_response(500, false, 'Gagal melakukan sinkronisasi: ' . $e->getMessage());
     }
 }

@@ -1,7 +1,7 @@
 <?php
 /**
- * Jadwal API for E-Schedule
- * Engine Pembuat Jadwal Pelajaran (Scheduler)
+ * Jadwal API for E-Schedule & E-Curriculum
+ * Engine Pembuat Jadwal Pelajaran (Scheduler) & Kunci Jadwal (Lock Engine)
  */
 require_once __DIR__ . '/../../../api/config.php';
 
@@ -20,7 +20,7 @@ switch ($action) {
                    k.nama_kelas,
                    jb.hari, jb.jam_ke, jb.tipe, jb.nama_jam,
                    d.guru_id, d.mapel_id,
-                   g.nama_guru, g.kode_guru,
+                   g.nama_guru, g.kode_guru, g.singkatan,
                    m.nama_mapel, m.kode_mapel
             FROM sch_jadwal j
             JOIN sch_kelas k ON j.kelas_id = k.id
@@ -39,13 +39,43 @@ switch ($action) {
         json_response(200, true, 'Sukses', $stmt->fetchAll());
         break;
 
+    case 'get_lock':
+        $locked = (int)get_setting('sch_jadwal_locked', 0);
+        $lockedAt = get_setting('sch_jadwal_locked_at', '');
+        $lockedBy = get_setting('sch_jadwal_locked_by', '');
+        json_response(200, true, 'Status kunci jadwal', [
+            'locked' => $locked,
+            'locked_at' => $lockedAt,
+            'locked_by' => $lockedBy
+        ]);
+        break;
+
+    case 'toggle_lock':
+        $current = (int)get_setting('sch_jadwal_locked', 0);
+        $newStatus = $current ? 0 : 1;
+        $nowWib = date('d/m/Y H:i') . ' WIB';
+        $userName = !empty($user['nama_lengkap']) ? $user['nama_lengkap'] : ($user['username'] ?? 'Administrator');
+
+        upsert_setting('sch_jadwal_locked', (string)$newStatus, 'number', 'Status Kunci Jadwal');
+        upsert_setting('sch_jadwal_locked_at', $nowWib, 'text', 'Waktu Penguncian Jadwal');
+        upsert_setting('sch_jadwal_locked_by', $userName, 'text', 'User Pengunci Jadwal');
+
+        $msg = $newStatus 
+            ? "Jadwal pelajaran berhasil dikunci resmi. Jadwal tidak dapat diubah atau di-generate ulang." 
+            : "Kunci jadwal berhasil dibuka. Anda kini dapat memindahkan slot atau men-generate ulang jadwal.";
+
+        json_response(200, true, $msg, [
+            'locked' => $newStatus,
+            'locked_at' => $nowWib,
+            'locked_by' => $userName
+        ]);
+        break;
+
     case 'stats':
-        // Cek kesiapan data
         $tKelas = db()->query("SELECT COUNT(*) FROM sch_kelas")->fetchColumn();
         $tGuru = db()->query("SELECT COUNT(*) FROM sch_guru")->fetchColumn();
         $tDist = db()->query("SELECT COUNT(*) FROM sch_distribusi")->fetchColumn();
         $tJam = db()->query("SELECT COUNT(*) FROM sch_jam_belajar WHERE tipe='Pembelajaran'")->fetchColumn();
-        
         $dist = db()->query("SELECT SUM(jp) as total_jp FROM sch_distribusi")->fetchColumn();
         
         json_response(200, true, 'Info Stats', [
@@ -58,6 +88,10 @@ switch ($action) {
         break;
 
     case 'move_slot':
+        if ((int)get_setting('sch_jadwal_locked', 0) === 1) {
+            json_response(403, false, 'Jadwal sedang dikunci resmi. Buka kunci terlebih dahulu untuk memindahkan jadwal.');
+        }
+
         $source_id = (int)($_POST['source_id'] ?? $_GET['source_id'] ?? 0);
         $target_jam_id = (int)($_POST['target_jam_id'] ?? $_GET['target_jam_id'] ?? 0);
         $target_kelas_id = (int)($_POST['target_kelas_id'] ?? $_GET['target_kelas_id'] ?? 0);
@@ -151,10 +185,13 @@ switch ($action) {
         break;
 
     case 'generate':
-        set_time_limit(0); // Prevent timeout for long algorithm
-        ignore_user_abort(true); // Don't stop if browser disconnects
+        if ((int)get_setting('sch_jadwal_locked', 0) === 1) {
+            json_response(403, false, 'Jadwal sedang dikunci resmi. Buka kunci terlebih dahulu sebelum men-generate ulang.');
+        }
+
+        set_time_limit(0);
+        ignore_user_abort(true);
         
-        // The Engine
         try {
             // 1. Bersihkan jadwal lama
             db()->query("DELETE FROM sch_jadwal");
@@ -182,13 +219,11 @@ switch ($action) {
 
             $kesediaanRows = db()->query("SELECT guru_id, jam_belajar_id FROM sch_kesediaan")->fetchAll(PDO::FETCH_ASSOC);
             
-            // Map Kesediaan (guru -> jam_ids)
             $kesediaanMap = [];
             foreach ($kesediaanRows as $kr) {
                 $kesediaanMap[$kr['guru_id']][$kr['jam_belajar_id']] = true;
             }
 
-            // Group jam by hari for block searching rules (only Pembelajaran slots)
             $jamByHari = [];
             $hariOrder = [];
             $jamLookup = [];
@@ -209,9 +244,122 @@ switch ($action) {
 
             // Multi-Start Optimization Solver
             $bestResult = null;
-            $maxIterations = 150;
+            $maxIterations = 100;
             $startTime = microtime(true);
-            $maxTimeSeconds = 55;
+            $maxTimeSeconds = 45;
+
+            // Helper Repair Function
+            $repairWithSwap = function(&$schedule, &$guruBusy, &$scheduleData, &$unplaced) use ($jamByHari, $kesediaanMap, $distLookup) {
+                $remaining = [];
+
+                foreach ($unplaced as $u) {
+                    $kId = $u['kelas_id'];
+                    $gId = $u['guru_id'];
+                    $dId = $u['id'];
+                    $placed = false;
+
+                    $emptySlots = [];
+                    foreach ($jamByHari as $hari => $slots) {
+                        foreach ($slots as $slot) {
+                            $sId = $slot['id'];
+                            if (!isset($schedule[$kId][$sId])) {
+                                $emptySlots[] = $sId;
+                            }
+                        }
+                    }
+
+                    // Direct empty slot
+                    foreach ($emptySlots as $sE) {
+                        if (!isset($guruBusy[$gId][$sE])) {
+                            if (empty($kesediaanMap[$gId]) || isset($kesediaanMap[$gId][$sE])) {
+                                $schedule[$kId][$sE] = $dId;
+                                $guruBusy[$gId][$sE] = true;
+                                $scheduleData[] = [$kId, $sE, $dId];
+                                $placed = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if ($placed) continue;
+
+                    // Within-class swap (Pass 1: strict kesediaan)
+                    foreach ($emptySlots as $sE) {
+                        if ($placed) break;
+                        foreach ($schedule[$kId] as $sT => $dT) {
+                            $gLain = $distLookup[$dT]['guru_id'];
+                            if ($gLain == $gId) continue;
+
+                            $gIdCanT = !isset($guruBusy[$gId][$sT]) && (empty($kesediaanMap[$gId]) || isset($kesediaanMap[$gId][$sT]));
+                            $gLainCanE = !isset($guruBusy[$gLain][$sE]) && (empty($kesediaanMap[$gLain]) || isset($kesediaanMap[$gLain][$sE]));
+
+                            if ($gIdCanT && $gLainCanE) {
+                                unset($schedule[$kId][$sT]);
+                                unset($guruBusy[$gLain][$sT]);
+
+                                $schedule[$kId][$sE] = $dT;
+                                $guruBusy[$gLain][$sE] = true;
+
+                                for ($idx = 0; $idx < count($scheduleData); $idx++) {
+                                    if ($scheduleData[$idx][0] == $kId && $scheduleData[$idx][1] == $sT && $scheduleData[$idx][2] == $dT) {
+                                        $scheduleData[$idx][1] = $sE;
+                                        break;
+                                    }
+                                }
+
+                                $schedule[$kId][$sT] = $dId;
+                                $guruBusy[$gId][$sT] = true;
+                                $scheduleData[] = [$kId, $sT, $dId];
+
+                                $placed = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    // Within-class swap (Pass 2: relaxed kesediaan)
+                    if (!$placed) {
+                        foreach ($emptySlots as $sE) {
+                            if ($placed) break;
+                            foreach ($schedule[$kId] as $sT => $dT) {
+                                $gLain = $distLookup[$dT]['guru_id'];
+                                if ($gLain == $gId) continue;
+
+                                $gIdCanT = !isset($guruBusy[$gId][$sT]);
+                                $gLainCanE = !isset($guruBusy[$gLain][$sE]);
+
+                                if ($gIdCanT && $gLainCanE) {
+                                    unset($schedule[$kId][$sT]);
+                                    unset($guruBusy[$gLain][$sT]);
+
+                                    $schedule[$kId][$sE] = $dT;
+                                    $guruBusy[$gLain][$sE] = true;
+
+                                    for ($idx = 0; $idx < count($scheduleData); $idx++) {
+                                        if ($scheduleData[$idx][0] == $kId && $scheduleData[$idx][1] == $sT && $scheduleData[$idx][2] == $dT) {
+                                            $scheduleData[$idx][1] = $sE;
+                                            break;
+                                        }
+                                    }
+
+                                    $schedule[$kId][$sT] = $dId;
+                                    $guruBusy[$gId][$sT] = true;
+                                    $scheduleData[] = [$kId, $sT, $dId];
+
+                                    $placed = true;
+                                    break;
+                                }
+                            }
+                        }
+                    }
+
+                    if (!$placed) {
+                        $remaining[] = $u;
+                    }
+                }
+
+                $unplaced = $remaining;
+            };
 
             for ($iter = 0; $iter < $maxIterations; $iter++) {
                 if (microtime(true) - $startTime > $maxTimeSeconds && $bestResult !== null) break;
@@ -224,7 +372,6 @@ switch ($action) {
                 $unplaced = [];
                 $relaxedCount = 0;
 
-                // Most Constrained First (guru dengan rasio beban JP / slot kesediaan tertinggi diproses lebih awal)
                 $teacherLoad = [];
                 foreach ($distribusiRows as $d) {
                     $g = $d['guru_id'];
@@ -238,8 +385,8 @@ switch ($action) {
                     $kesA = isset($kesediaanMap[$gA]) ? count($kesediaanMap[$gA]) : 999;
                     $kesB = isset($kesediaanMap[$gB]) ? count($kesediaanMap[$gB]) : 999;
                     
-                    $ratioA = ($teacherLoad[$gA] / max(1, $kesA)) + (rand(0, 15) / 100);
-                    $ratioB = ($teacherLoad[$gB] / max(1, $kesB)) + (rand(0, 15) / 100);
+                    $ratioA = ($teacherLoad[$gA] / max(1, $kesA)) + (rand(0, 20) / 100);
+                    $ratioB = ($teacherLoad[$gB] / max(1, $kesB)) + (rand(0, 20) / 100);
 
                     if (abs($ratioA - $ratioB) > 0.05) {
                         return $ratioB <=> $ratioA;
@@ -279,13 +426,12 @@ switch ($action) {
 
                         $passes = [true];
                         if (!empty($kesediaanMap[$gId])) {
-                            $passes = [true, false]; // Pass 1: Strict kesediaan; Pass 2: Fallback jika slot kesediaan guru < JP mengajar
+                            $passes = [true, false];
                         }
 
                         foreach ($passes as $strictKesediaan) {
                             if ($placed) break;
 
-                            // Urutkan hari: utamakan hari dengan JP terendah pada kelas ini agar tidak ada HARI KOSONG
                             $haris = $hariOrder;
                             shuffle($haris);
                             usort($haris, function($hA, $hB) use ($kId, $mId, $kelasDailyJp, $classSubjectHari) {
@@ -309,7 +455,6 @@ switch ($action) {
                                 $hariJams = $jamByHari[$hari];
                                 $nSlots = count($hariJams);
 
-                                // Kumpulkan slot yang sudah terisi di hari ini untuk kelas ini
                                 $occupiedIndices = [];
                                 for ($idx = 0; $idx < $nSlots; $idx++) {
                                     if (isset($schedule[$kId][$hariJams[$idx]['id']])) {
@@ -317,30 +462,22 @@ switch ($action) {
                                     }
                                 }
 
-                                // HEURISTIK ANTI JAM KOSONG:
-                                // Prioritaskan slot yang menempel langsung dengan jam yang sudah terisi
-                                // atau mulai dari jam ke-1 jika belum ada jam sama sekali di hari ini
                                 $candidatePositions = [];
                                 for ($i = 0; $i <= $nSlots - $blockSize; $i++) {
                                     $gapScore = 0;
                                     if (empty($occupiedIndices)) {
-                                        // Belum ada jam di hari ini: wajib mulai dari slot paling awal (slot 0)
                                         $gapScore = $i * 50;
                                     } else {
                                         $minOcc = min($occupiedIndices);
                                         $maxOcc = max($occupiedIndices);
 
                                         if ($i == $maxOcc + 1) {
-                                            // Menempel langsung setelah pelajaran yang sudah ada (Terbaik!)
                                             $gapScore = 0;
                                         } elseif ($i + $blockSize == $minOcc) {
-                                            // Menempel langsung sebelum pelajaran yang sudah ada
                                             $gapScore = 5;
                                         } elseif ($i < $minOcc) {
-                                            // Terletak sebelum tapi berjarak/bolong
                                             $gapScore = ($minOcc - ($i + $blockSize)) * 5000 + 1000;
                                         } elseif ($i > $maxOcc) {
-                                            // Terletak setelah tapi berjarak/bolong (Jam kosong di tengah!)
                                             $gapScore = ($i - ($maxOcc + 1)) * 5000 + 1000;
                                         } else {
                                             $gapScore = 3000;
@@ -400,8 +537,15 @@ switch ($action) {
                     }
                 }
 
-                // POST-PROCESSING COMPACTION SWEEP:
-                // Geser maju jam-jam yang tersisa jika ada slot kosong di depannya (Menghapus jam kosong 100%)
+                // SWAP REPAIR PHASE
+                if (!empty($unplaced)) {
+                    for ($sw = 0; $sw < 5; $sw++) {
+                        $repairWithSwap($schedule, $guruBusy, $scheduleData, $unplaced);
+                        if (empty($unplaced)) break;
+                    }
+                }
+
+                // POST-PROCESSING COMPACTION SWEEP
                 for ($compactSweep = 0; $compactSweep < 5; $compactSweep++) {
                     $shifted = false;
                     foreach ($kelasRows as $kr) {
@@ -413,9 +557,8 @@ switch ($action) {
 
                             for ($targetIdx = 0; $targetIdx < $nJ; $targetIdx++) {
                                 $targetSlotId = $hJams[$targetIdx]['id'];
-                                if (isset($schedule[$kId][$targetSlotId])) continue; // terisi
+                                if (isset($schedule[$kId][$targetSlotId])) continue;
 
-                                // targetIdx kosong! Cari jam pembelajaran berikutnya pada kelas ini untuk digeser maju
                                 for ($sourceIdx = $targetIdx + 1; $sourceIdx < $nJ; $sourceIdx++) {
                                     $sourceSlotId = $hJams[$sourceIdx]['id'];
                                     if (!isset($schedule[$kId][$sourceSlotId])) continue;
@@ -424,16 +567,13 @@ switch ($action) {
                                     $dist = $distLookup[$dId];
                                     $gId = $dist['guru_id'];
 
-                                    // Pastikan guru tidak bentrok di targetSlotId
                                     if (!isset($guruBusy[$gId][$targetSlotId])) {
                                         if (empty($kesediaanMap[$gId]) || isset($kesediaanMap[$gId][$targetSlotId])) {
-                                            // Geser maju ke targetSlotId
                                             unset($schedule[$kId][$sourceSlotId]);
                                             unset($guruBusy[$gId][$sourceSlotId]);
                                             $schedule[$kId][$targetSlotId] = $dId;
                                             $guruBusy[$gId][$targetSlotId] = true;
 
-                                            // Update record scheduleData
                                             for ($sIdx = 0; $sIdx < count($scheduleData); $sIdx++) {
                                                 if ($scheduleData[$sIdx][0] == $kId && $scheduleData[$sIdx][1] == $sourceSlotId && $scheduleData[$sIdx][2] == $dId) {
                                                     $scheduleData[$sIdx][1] = $targetSlotId;
@@ -451,11 +591,9 @@ switch ($action) {
                     if (!$shifted) break;
                 }
 
-                // Skor Evaluasi Kualitas Jadwal
                 $penalty = 0;
                 $penalty += count($unplaced) * 1000000;
 
-                // Penalti keras jika ada hari yang kosong untuk kelas yang memiliki cukup JP
                 $emptyDaysCount = 0;
                 $numDays = count($hariOrder);
                 foreach ($kelasTotalJp as $kId => $totJp) {
@@ -470,7 +608,6 @@ switch ($action) {
                     }
                 }
 
-                // Penalti ketidakmerataan harian
                 foreach ($kelasTotalJp as $kId => $totJp) {
                     if ($totJp <= 0) continue;
                     $target = $totJp / $numDays;
@@ -480,7 +617,6 @@ switch ($action) {
                     }
                 }
 
-                // Penalti ketat untuk jam kosong (gap) dalam satu kelas di hari yang sama
                 $totalGaps = 0;
                 foreach ($kelasRows as $kr) {
                     $kId = $kr['id'];
@@ -497,10 +633,9 @@ switch ($action) {
                             $maxIdx = max($occupied);
                             $gap = ($maxIdx - $minIdx + 1) - count($occupied);
                             if ($gap > 0) {
-                                $penalty += $gap * 300000; // Penalti sangat tinggi agar jam kosong 0
+                                $penalty += $gap * 300000;
                                 $totalGaps += $gap;
                             }
-                            // Penalti jika jam pembelajaran mulai siang padahal pagi kosong (leading gap)
                             if ($minIdx > 0) {
                                 $penalty += $minIdx * 40000;
                                 $totalGaps += $minIdx;
@@ -524,8 +659,8 @@ switch ($action) {
 
                 if ($bestResult === null || $currentResult['penalty'] < $bestResult['penalty']) {
                     $bestResult = $currentResult;
-                    if ($bestResult['unplacedCount'] === 0 && $bestResult['emptyDaysCount'] === 0 && $bestResult['totalGaps'] === 0 && $bestResult['relaxedCount'] <= 4) {
-                        if ($iter >= 20) break;
+                    if ($bestResult['unplacedCount'] === 0 && $bestResult['emptyDaysCount'] === 0 && $bestResult['totalGaps'] === 0) {
+                        break;
                     }
                 }
             }

@@ -336,6 +336,10 @@ function checkAndSendWaGroupGuruAbsensiBatch($tanggal = null) {
 
             if (!empty($result['success'])) {
                 return true;
+            } else {
+                // Revert flag jika pengiriman gagal agar bisa retry pada pemicu berikutnya
+                upsert_setting('wa_guru_last_sent_date_masuk', '', 'text', 'Tanggal terakhir WA absen masuk guru dikirim');
+                return false;
             }
         }
         return false;
@@ -356,6 +360,10 @@ function checkAndSendWaGroupGuruAbsensiBatch($tanggal = null) {
 
         if (!empty($result['success'])) {
             return true;
+        } else {
+            // Revert flag jika pengiriman gagal agar bisa retry pada pemicu berikutnya
+            upsert_setting('wa_guru_last_sent_date_pulang', '', 'text', 'Tanggal terakhir WA absen pulang guru dikirim');
+            return false;
         }
     }
 

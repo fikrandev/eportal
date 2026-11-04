@@ -33,6 +33,7 @@ if (!$user) json_response(401, false, 'Sesi tidak valid.');
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
 switch ($action) {
+    case 'daily':
     case 'today':
         getJadwalToday($user);
         break;

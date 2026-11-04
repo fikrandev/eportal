@@ -8,6 +8,7 @@ const Schedule = {
         params: {},
         user: window.SCHEDULE_CONFIG.user,
         school: window.SCHEDULE_CONFIG.school,
+        academicYear: window.SCHEDULE_CONFIG.academicYear,
         token: window.SCHEDULE_CONFIG.token,
         baseUrl: window.SCHEDULE_CONFIG.baseUrl,
         apiUrl: window.SCHEDULE_CONFIG.baseUrl + 'modules/e-schedule/api/'
@@ -1208,23 +1209,42 @@ const Schedule = {
     renderJadwal($container) {
         $container.html(`
             <div class="sch-card">
-                <div class="sch-card-header">
-                    <h3>Manajemen Jadwal & Generator</h3>
+                <div class="sch-card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <h3 style="margin:0;">Manajemen Jadwal & Generator</h3>
+                    </div>
+                    <div id="schLockStatusContainer" style="display:flex; align-items:center; gap:10px;">
+                        <span class="badge" style="background:#f1f5f9; color:#64748b; padding:6px 12px; border-radius:20px; font-size:0.85rem;">Memeriksa status kunci...</span>
+                    </div>
                 </div>
                 <div class="sch-card-body">
-                    <div style="display:flex;gap:12px;background:var(--bg-color);padding:24px;border-radius:12px;margin-bottom:24px;align-items:center;justify-content:space-between;flex-wrap:wrap">
-                        <div>
-                            <h4 style="margin:0 0 8px">Engine Algoritma Heuristik</h4>
-                            <p style="margin:0;font-size:0.85rem;color:var(--text-muted)">Menghasilkan jadwal berdasarkan distribusi dan mematuhi constraints ketersediaan dan aturan blok mapel.</p>
+                    <div style="display:flex;gap:16px;background:var(--bg-color);padding:24px;border-radius:12px;margin-bottom:24px;align-items:center;justify-content:space-between;flex-wrap:wrap;border:1px solid var(--border-color);">
+                        <div style="max-width:650px;">
+                            <h4 style="margin:0 0 8px;display:flex;align-items:center;gap:8px;">
+                                <span>Engine Algoritma Heuristik & Multi-Start Solver</span>
+                            </h4>
+                            <p style="margin:0;font-size:0.85rem;color:var(--text-muted);line-height:1.5;">Menghasilkan jadwal otomatis bebas bentrok 100%, mematuhi ketersediaan guru, aturan blok mapel, dan meratakan jam harian. Jadwal yang telah resmi dapat dikunci agar tidak berubah.</p>
                         </div>
-                        <button class="btn btn-primary" onclick="Schedule.generateJadwal()" style="padding:12px 24px;font-size:1.1rem">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg> Generate Jadwal
-                        </button>
+                        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                            <button id="btnLockJadwal" class="btn btn-outline" onclick="Schedule.toggleLockJadwal()" style="display:inline-flex;align-items:center;gap:8px;padding:12px 18px;font-size:0.95rem;font-weight:600;border-radius:8px;transition:all 0.2s;">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Memuat...
+                            </button>
+                            <button id="btnGenerateJadwal" class="btn btn-primary" onclick="Schedule.generateJadwal()" style="padding:12px 24px;font-size:1.05rem;font-weight:600;border-radius:8px;display:inline-flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(59,130,246,0.3);">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg> Generate Jadwal
+                            </button>
+                        </div>
                     </div>
 
-                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
                         <select id="jdwFilter" class="form-select" style="max-width:300px"><option value="">Semua Kelas</option></select>
-                        <button class="btn btn-outline" onclick="window.print()">Cetak PDF</button>
+                        <div style="display:flex;gap:8px;">
+                            <button class="btn btn-outline" id="btnCetakJadwal" onclick="Schedule.printJadwal()" style="display:inline-flex;align-items:center;gap:6px;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg> Cetak PDF
+                            </button>
+                            <button class="btn btn-success" id="btnExportExcelJadwal" onclick="Schedule.exportJadwalExcel()" style="display:inline-flex;align-items:center;gap:6px;background:#10B981;color:white;border:none;">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg> Export Excel
+                            </button>
+                        </div>
                     </div>
                     <div id="jdwViewer"><div class="sch-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><h3>Memuat jadwal...</h3></div></div>
                 </div>
@@ -1235,10 +1255,120 @@ const Schedule = {
             res.data.forEach(k => $('#jdwFilter').append(`<option value="${k.id}">Rombel ${k.rombel} - ${k.nama_kelas}</option>`));
         });
         $('#jdwFilter').on('change', (e) => this.viewJadwal($(e.target).val()));
+        this.loadLockStatus();
         this.viewJadwal('');
     },
 
+    loadLockStatus() {
+        return this.api('jadwal.php?action=get_lock').done(res => {
+            if (!res.success) return;
+            this.isJadwalLocked = res.data.locked === 1;
+            this.lockMeta = res.data;
+            this.updateLockUI();
+        });
+    },
+
+    updateLockUI() {
+        const isLocked = this.isJadwalLocked;
+        const meta = this.lockMeta || {};
+
+        const $lockContainer = $('#schLockStatusContainer');
+        const $btnLock = $('#btnLockJadwal');
+        const $btnGen = $('#btnGenerateJadwal');
+
+        if (isLocked) {
+            $lockContainer.html(`
+                <span class="badge" title="Dikunci oleh: ${meta.locked_by || 'Admin'} (${meta.locked_at || '-'})" style="background:#fef3c7; border:1px solid #f59e0b; color:#b45309; padding:8px 14px; border-radius:20px; font-size:0.85rem; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> 🔒 Jadwal Terkunci (Resmi)
+                </span>
+                <span style="font-size:0.8rem; color:var(--text-muted); display:inline-block;">oleh <strong>${meta.locked_by || 'Admin'}</strong> (${meta.locked_at || '-'})</span>
+            `);
+
+            $btnLock.html(`
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg> Buka Kunci Jadwal
+            `).css({
+                'background': '#fff',
+                'border': '1.5px solid #d97706',
+                'color': '#d97706',
+                'box-shadow': 'none'
+            }).attr('title', 'Klik untuk membuka kunci jadwal agar dapat di-generate ulang atau dipindahkan');
+
+            $btnGen.attr('disabled', true).css({
+                'opacity': '0.5',
+                'cursor': 'not-allowed',
+                'pointer-events': 'none',
+                'box-shadow': 'none'
+            }).attr('title', 'Jadwal sedang dikunci resmi. Buka kunci terlebih dahulu jika ingin men-generate ulang.');
+
+        } else {
+            $lockContainer.html(`
+                <span class="badge" style="background:#ecfdf5; border:1px solid #10b981; color:#047857; padding:8px 14px; border-radius:20px; font-size:0.85rem; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg> Status: Draft (Terbuka)
+                </span>
+            `);
+
+            $btnLock.html(`
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Kunci Jadwal (Resmikan)
+            `).css({
+                'background': '#047857',
+                'border': 'none',
+                'color': '#ffffff',
+                'box-shadow': '0 2px 6px rgba(4,120,87,0.2)'
+            }).attr('title', 'Kunci jadwal agar tidak dapat di-generate ulang atau dipindahkan secara tidak sengaja');
+
+            $btnGen.removeAttr('disabled').css({
+                'opacity': '1',
+                'cursor': 'pointer',
+                'pointer-events': 'auto',
+                'box-shadow': '0 4px 12px rgba(59,130,246,0.3)'
+            }).removeAttr('title');
+        }
+    },
+
+    toggleLockJadwal() {
+        const isCurrentlyLocked = this.isJadwalLocked;
+        const title = isCurrentlyLocked ? 'Buka Kunci Jadwal?' : 'Kunci Jadwal Pelajaran?';
+        const message = isCurrentlyLocked 
+            ? 'Jadwal akan kembali ke status <strong>Draft (Terbuka)</strong>.<br>Tombol generate ulang dan fitur penggeseran (drag & drop) jadwal akan aktif kembali. Lanjutkan?' 
+            : 'Jadwal akan <strong>dikunci resmi</strong>.<br>Fitur acak ulang (generate) dan penggeseran jadwal akan dinonaktifkan agar susunan tidak berubah secara tidak sengaja. Lanjutkan?';
+
+        EModal.confirm({
+            title: title,
+            message: message,
+            onConfirm: () => {
+                const loader = EModal.loading('Memproses status kunci jadwal...');
+                this.api('jadwal.php?action=toggle_lock', { method: 'POST' }).done(res => {
+                    EModal.close(loader);
+                    this.isJadwalLocked = res.data.locked === 1;
+                    this.lockMeta = res.data;
+                    this.updateLockUI();
+                    EModal.toast({
+                        type: res.data.locked ? 'warning' : 'success',
+                        title: res.data.locked ? 'Jadwal Dikunci' : 'Kunci Dibuka',
+                        message: res.message
+                    });
+                    this.viewJadwal($('#jdwFilter').val() || '');
+                }).fail(xhr => {
+                    EModal.close(loader);
+                    EModal.toast({
+                        type: 'error',
+                        title: 'Gagal',
+                        message: xhr.responseJSON?.message || 'Gagal mengubah status kunci jadwal.'
+                    });
+                });
+            }
+        });
+    },
+
     generateJadwal() {
+        if (this.isJadwalLocked) {
+            EModal.info({
+                title: 'Jadwal Terkunci',
+                message: 'Jadwal saat ini dalam status <strong>Terkunci Resmi</strong>.<br>Silakan klik tombol <strong>Buka Kunci Jadwal</strong> terlebih dahulu jika Anda ingin men-generate ulang.'
+            });
+            return;
+        }
+
         EModal.confirm({
             title: 'Generate Baru?',
             message: 'Proses ini akan <strong>menghapus semua jadwal yang ada saat ini</strong> dan membuat ulang acakan. Lanjutkan?',
@@ -1247,7 +1377,11 @@ const Schedule = {
                 this.api('jadwal.php?action=generate', { method: 'POST' }).done(res => {
                     EModal.close(loader);
                     EModal.info({ title: 'Selesai', message: res.message });
+                    this.loadLockStatus();
                     this.viewJadwal('');
+                }).fail(xhr => {
+                    EModal.close(loader);
+                    EModal.toast({type:'error', title:'Gagal', message: xhr.responseJSON?.message || 'Gagal memproses jadwal.'});
                 });
             }
         });
@@ -1329,7 +1463,7 @@ const Schedule = {
                                 <div style="font-size:0.8rem; color:#b91c1c; margin-top:2px;">Slot berwarna <strong>Merah</strong> menandakan guru mengajar di lebih dari 1 kelas pada jam yang sama. Gunakan fitur <strong>Drag & Drop</strong> (geser & lepas) ke slot lain untuk memindahkan atau menukar jadwal.</div>
                             </div>
                         </div>
-                        <div style="font-size:0.75rem; background:#fee2e2; color:#991b1b; padding:4px 10px; border-radius:6px; font-weight:700;">Drag & Drop Aktif</div>
+                        ${this.isJadwalLocked ? '<div style="font-size:0.75rem; background:#fef3c7; color:#b45309; border:1px solid #fde68a; padding:4px 10px; border-radius:6px; font-weight:700;">🔒 Terkunci Resmi</div>' : '<div style="font-size:0.75rem; background:#fee2e2; color:#991b1b; padding:4px 10px; border-radius:6px; font-weight:700;">Drag & Drop Aktif</div>'}
                     </div>
                 `;
             } else {
@@ -1339,7 +1473,7 @@ const Schedule = {
                             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                             <span><strong>Jadwal Rapi & Bebas Bentrok:</strong> Semua jam mengajar tersusun padat tanpa jam kosong di tengah dan tanpa guru tabrakan. Anda dapat menggunakan <strong>Drag & Drop</strong> untuk menukar slot jadwal secara fleksibel.</span>
                         </div>
-                        <div style="font-size:0.75rem; background:#dcfce7; color:#166534; padding:4px 10px; border-radius:6px; font-weight:700;">Drag & Drop Aktif</div>
+                        ${this.isJadwalLocked ? '<div style="font-size:0.75rem; background:#fef3c7; color:#b45309; border:1px solid #fde68a; padding:4px 10px; border-radius:6px; font-weight:700;">🔒 Terkunci Resmi</div>' : '<div style="font-size:0.75rem; background:#dcfce7; color:#166534; padding:4px 10px; border-radius:6px; font-weight:700;">Drag & Drop Aktif</div>'}
                     </div>
                 `;
             }
@@ -1348,7 +1482,7 @@ const Schedule = {
                 if (!cellJam) return `<td style="background:#f1f5f9; border:1px solid #e2e8f0;"></td>`;
                 
                 if (cellJam.tipe !== 'Pembelajaran') {
-                    return `<td style="background:#f8fafc; border:1px solid #e2e8f0; text-align:center; vertical-align:middle; padding:6px; min-width:92px;">
+                    return `<td style="background:#f8fafc; border:1px solid #e2e8f0; text-align:center; vertical-align:middle; padding:4px 2px; width:58px; min-width:54px; max-width:64px;">
                                 <div style="font-size:0.7rem; font-weight:700; color:#64748b; letter-spacing:0.5px;">${cellJam.nama_jam.toUpperCase()}</div>
                             </td>`;
                 }
@@ -1361,7 +1495,7 @@ const Schedule = {
                                 data-hari="${cellJam.hari}"
                                 data-jam-ke="${cellJam.jam_ke}"
                                 title="Slot Kosong (Lepaskan jadwal di sini untuk memindahkan)"
-                                style="background:#fff; min-width:92px; border:1px dashed #cbd5e1; text-align:center; vertical-align:middle; padding:8px 6px; transition:all 0.15s;">
+                                style="background:#fff; width:58px; min-width:54px; max-width:64px; border:1px dashed #cbd5e1; text-align:center; vertical-align:middle; padding:4px 2px; transition:all 0.15s;">
                                 <div style="font-size:0.7rem; color:#94a3b8; font-weight:500; pointer-events:none;">(Kosong)</div>
                             </td>`;
                 }
@@ -1375,14 +1509,14 @@ const Schedule = {
                 let borderWarna = isClash ? 'border: 2px solid #ef4444 !important;' : 'border: 1px solid #cbd5e1;';
                 
                 return `<td class="sch-cell-slot sch-cell-filled ${isClash ? 'sch-clash-cell' : ''}"
-                            draggable="true"
+                            draggable="${this.isJadwalLocked ? 'false' : 'true'}"
                             data-jadwal-id="${slotApp.id}"
                             data-kelas-id="${slotApp.kelas_id || targetKelasId}"
                             data-jam-id="${cellJam.id}"
                             data-hari="${cellJam.hari}"
                             data-jam-ke="${cellJam.jam_ke}"
                             title="${tooltip}"
-                            style="background-color:${bgWarna}; ${borderWarna} padding:8px 6px; min-width:92px; text-align:center; vertical-align:middle; cursor:grab; transition:all 0.15s;">
+                            style="background-color:${bgWarna}; ${borderWarna} padding:4px 2px; width:58px; min-width:54px; max-width:64px; text-align:center; vertical-align:middle; cursor:${this.isJadwalLocked ? 'default' : 'grab'}; transition:all 0.15s;">
                             <div style="font-weight:800; color:${isClash ? '#991b1b' : 'var(--primary)'}; font-size:0.78rem;">${slotApp.kode_mapel}</div>
                             <div style="font-size:0.67rem; color:${isClash ? '#b91c1c' : 'var(--text-muted)'}; line-height:1.2; margin-top:2px; font-weight:700;">${slotApp.singkatan || slotApp.nama_guru}</div>
                             ${isClash ? '<div class="sch-clash-badge">⚠️ TABRAKAN</div>' : ''}
@@ -1401,7 +1535,7 @@ const Schedule = {
                             <span style="font-size:0.8rem; color:var(--text-muted);">💡 Tarik & lepaskan kotak pelajaran untuk menukar / memindahkan jam.</span>
                         </div>
                         <div style="overflow-x:auto; border:1px solid var(--border-color); border-radius:8px;">
-                            <table class="sch-table matrix-table" style="min-width:800px; background:white; border-collapse:collapse;">
+                            <table class="sch-table matrix-table sch-grid-compact" style="width:max-content; min-width:0; background:white; border-collapse:collapse; margin:0;">
                                 <thead>
                                     <tr><th style="width:100px; background:var(--primary); color:white; border:1px solid #cbd5e1;">HARI</th>
                                     <th colspan="${maxJams}" style="background:var(--primary); color:white; border:1px solid #cbd5e1;">JADWAL</th></tr>
@@ -1425,7 +1559,7 @@ const Schedule = {
                 const kelasNames = Object.keys(kelasGroups).sort();
                 
                 html += `<div style="overflow-x:auto; border:1px solid var(--border-color); border-radius:8px;">
-                    <table class="sch-table matrix-table" style="min-width:1000px; background:white; border-collapse:collapse;">`;
+                    <table class="sch-table matrix-table sch-grid-compact" style="width:max-content; min-width:0; background:white; border-collapse:collapse; margin:0;">`;
                 
                 daysArr.forEach(d => {
                     const dayJams = jams.filter(x => x.hari === d).sort((a,b) => parseInt(a.jam_ke) - parseInt(b.jam_ke));
@@ -1436,9 +1570,9 @@ const Schedule = {
                     
                     // Baris Nama Kelas (Header Horizontal)
                     html += `<tr>`;
-                    html += `<td style="font-weight:700; background:#e2e8f0; border:1px solid #cbd5e1; color:var(--primary-dark); text-align:center; width:80px; font-size:0.8rem;">JAM</td>`;
+                    html += `<td style="font-weight:700; background:#e2e8f0; border:1px solid #cbd5e1; color:var(--primary-dark); text-align:center; width:44px; min-width:44px; max-width:48px; padding:5px 2px; font-size:0.75rem;">JAM</td>`;
                     kelasNames.forEach(kname => {
-                        html += `<td style="font-weight:700; background:#f1f5f9; border:1px solid #cbd5e1; color:var(--primary-dark); text-align:center; min-width:92px; font-size:0.8rem;">${kname}</td>`;
+                        html += `<td style="font-weight:700; background:#f1f5f9; border:1px solid #cbd5e1; color:var(--primary-dark); text-align:center; width:58px; min-width:54px; max-width:64px; padding:5px 2px; font-size:0.75rem; white-space:nowrap;">${kname}</td>`;
                     });
                     html += `</tr>`;
                     
@@ -1453,7 +1587,7 @@ const Schedule = {
                                         <div style="font-size:0.75rem; font-weight:800; color:#64748b;">${cellJam.nama_jam.toUpperCase()}</div>
                                      </td>`;
                         } else {
-                            html += `<td style="font-weight:700; background:#f8fafc; border:1px solid #e2e8f0; border-right:2px solid #94a3b8; color:var(--primary-dark); text-align:center; font-size:0.75rem; letter-spacing:0.5px;">${labelJam}</td>`;
+                            html += `<td style="font-weight:700; background:#f8fafc; border:1px solid #e2e8f0; border-right:2px solid #94a3b8; color:var(--primary-dark); text-align:center; width:44px; min-width:44px; max-width:48px; padding:4px 2px; font-size:0.75rem; letter-spacing:0.2px;">${labelJam}</td>`;
                             kelasNames.forEach(kname => {
                                 const kjadwal = kelasGroups[kname];
                                 const kId = kelasNameToId[kname] || (kjadwal[0] ? kjadwal[0].kelas_id : '');
@@ -1475,6 +1609,10 @@ const Schedule = {
 
     initJadwalDragAndDrop() {
         const $viewer = $('#jdwViewer');
+        if (this.isJadwalLocked) {
+            $viewer.find('.sch-cell-filled').removeAttr('draggable').css('cursor', 'default');
+            return;
+        }
         let draggedItem = null;
 
         $viewer.find('.sch-cell-filled').on('dragstart', function(e) {
@@ -1573,15 +1711,337 @@ const Schedule = {
         });
     },
 
+    printJadwal() {
+        const viewer = document.getElementById('jdwViewer');
+        if (!viewer) return;
+
+        // Clone viewer so we can clean up web-only elements before printing
+        const clone = viewer.cloneNode(true);
+
+        // Remove banners, tooltips, buttons, badges
+        const removeSelectors = [
+            '#genProgressOverlay',
+            '.sch-clash-badge',
+            '.sch-empty',
+            'div[style*="fef2f2"]',
+            'div[style*="f0fdf4"]',
+            'span[style*="💡"]',
+            'button',
+            '#btnCetakJadwal',
+            '#btnExportExcelJadwal'
+        ];
+        removeSelectors.forEach(sel => {
+            clone.querySelectorAll(sel).forEach(el => el.remove());
+        });
+
+        clone.querySelectorAll('div').forEach(el => {
+            if (el.textContent.includes('Jadwal Rapi & Bebas Bentrok') || el.textContent.includes('Jadwal Tabrakan / Bentrok')) {
+                el.remove();
+            }
+        });
+
+        // Remove overflow-x styling that breaks browser print pagination
+        clone.querySelectorAll('div').forEach(d => {
+            if (d.style.overflowX === 'auto' || d.style.overflow === 'auto') {
+                d.style.overflow = 'visible';
+                d.style.border = 'none';
+            }
+        });
+
+        // Format empty cells with clean hyphen
+        clone.querySelectorAll('.sch-cell-empty').forEach(td => {
+            td.innerHTML = '<span style="color:#94a3b8;font-size:7pt;">-</span>';
+            td.style.border = '1px solid #475569';
+        });
+
+        const filterKelasVal = $('#jdwFilter').val();
+        const filterKelasText = $('#jdwFilter option:selected').text();
+        const subTitleKelas = filterKelasVal ? `Kelas: ${filterKelasText}` : 'Semua Kelas';
+        const schoolName = this.state.school?.nama || 'E-Portal';
+        const acad = this.state.academicYear;
+        const thnAjaran = acad ? `Tahun Pelajaran ${acad.tahun_ajaran} (Semester ${acad.semester})` : '';
+
+        const printWin = window.open('', '_blank');
+        printWin.document.write(`
+            <!DOCTYPE html>
+            <html lang="id">
+            <head>
+                <meta charset="UTF-8">
+                <title>Jadwal Pelajaran - ${schoolName}</title>
+                <style>
+                    :root {
+                        --primary: #1e3a8a;
+                        --primary-dark: #0f172a;
+                        --text-muted: #475569;
+                    }
+                    @page {
+                        size: landscape;
+                        margin: 8mm 10mm 10mm 10mm;
+                    }
+                    * {
+                        box-sizing: border-box;
+                        -webkit-print-color-adjust: exact !important;
+                        print-color-adjust: exact !important;
+                    }
+                    body {
+                        font-family: Arial, Helvetica, sans-serif;
+                        margin: 0;
+                        padding: 0;
+                        color: #0f172a;
+                        background: #fff;
+                    }
+                    .header-print {
+                        text-align: center;
+                        margin-bottom: 12px;
+                        border-bottom: 2px solid #0f172a;
+                        padding-bottom: 8px;
+                    }
+                    .header-print h2 {
+                        margin: 0 0 3px 0;
+                        font-size: 15pt;
+                        font-weight: 800;
+                        text-transform: uppercase;
+                        letter-spacing: 0.5px;
+                        color: #0f172a;
+                    }
+                    .header-print .school-name {
+                        font-size: 12pt;
+                        font-weight: 700;
+                        color: #1e293b;
+                        margin-bottom: 2px;
+                    }
+                    .header-print .sub-info {
+                        font-size: 8.5pt;
+                        color: #475569;
+                    }
+                    
+                    div {
+                        overflow: visible !important;
+                        height: auto !important;
+                        max-height: none !important;
+                    }
+                    table {
+                        width: 100% !important;
+                        border-collapse: collapse !important;
+                        margin-bottom: 14px;
+                        page-break-inside: auto !important;
+                    }
+                    thead {
+                        display: table-header-group;
+                    }
+                    tr {
+                        page-break-inside: avoid !important;
+                    }
+                    tbody {
+                        page-break-inside: avoid;
+                    }
+                    th, td {
+                        border: 1px solid #475569 !important;
+                        padding: 3px 2px !important;
+                        font-size: 8pt !important;
+                        text-align: center;
+                        vertical-align: middle;
+                    }
+                    
+                    /* Custom background overrides */
+                    tr:first-child td[colspan], td[style*="var(--primary)"] {
+                        background: #1e293b !important;
+                        color: #ffffff !important;
+                        font-weight: 800 !important;
+                        font-size: 9pt !important;
+                        letter-spacing: 1px;
+                        padding: 5px !important;
+                        text-transform: uppercase;
+                    }
+                    th {
+                        background: #1e3a8a !important;
+                        color: #ffffff !important;
+                        font-weight: 700 !important;
+                    }
+                    h4 {
+                        font-size: 11pt !important;
+                        margin: 8px 0 !important;
+                        color: #0f172a !important;
+                        font-weight: 700 !important;
+                    }
+                    td[style*="background:#e2e8f0"], td[style*="background: #e2e8f0"] {
+                        background-color: #cbd5e1 !important;
+                        font-weight: 800 !important;
+                        color: #0f172a !important;
+                    }
+                    td[style*="background:#f1f5f9"], td[style*="background: #f1f5f9"] {
+                        background-color: #e2e8f0 !important;
+                        font-weight: 700 !important;
+                        color: #0f172a !important;
+                    }
+                    td[style*="background:#f8fafc"], td[style*="background: #f8fafc"] {
+                        background-color: #f8fafc !important;
+                    }
+                    .sch-cell-filled div:first-child {
+                        font-weight: 800 !important;
+                        color: #0f172a !important;
+                        font-size: 8pt !important;
+                    }
+                    .sch-cell-filled div:nth-child(2) {
+                        font-size: 7pt !important;
+                        color: #334155 !important;
+                        font-weight: 600 !important;
+                    }
+                    
+                    .footer-ttd {
+                        margin-top: 18px;
+                        display: flex;
+                        justify-content: space-between;
+                        page-break-inside: avoid;
+                        font-size: 9pt;
+                        padding: 0 40px;
+                    }
+                    .footer-ttd .ttd-box {
+                        text-align: center;
+                        min-width: 200px;
+                    }
+                    .footer-ttd .ttd-space {
+                        height: 55px;
+                    }
+                    .footer-ttd .ttd-name {
+                        font-weight: 700;
+                        text-decoration: underline;
+                    }
+                    .no-print {
+                        display: none !important;
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="header-print">
+                    <h2>JADWAL PELAJARAN</h2>
+                    <div class="school-name">${schoolName}</div>
+                    <div class="sub-info">${thnAjaran} &bull; ${subTitleKelas} &bull; Dicetak: ${new Date().toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric'})}</div>
+                </div>
+                
+                ${clone.innerHTML}
+                
+                <div class="footer-ttd">
+                    <div class="ttd-box">
+                        <div>Mengetahui,</div>
+                        <div>Kepala Sekolah</div>
+                        <div class="ttd-space"></div>
+                        <div class="ttd-name">( ............................................ )</div>
+                    </div>
+                    <div class="ttd-box">
+                        <div>${new Date().toLocaleDateString('id-ID', {day:'numeric', month:'long', year:'numeric'})}</div>
+                        <div>Waka Kurikulum</div>
+                        <div class="ttd-space"></div>
+                        <div class="ttd-name">( ............................................ )</div>
+                    </div>
+                </div>
+
+                <script>
+                    window.onload = function() {
+                        setTimeout(function() {
+                            window.print();
+                            window.close();
+                        }, 300);
+                    };
+                <\/script>
+            </body>
+            </html>
+        `);
+        printWin.document.close();
+    },
+
+    exportJadwalExcel() {
+        const viewer = document.getElementById('jdwViewer');
+        if (!viewer || !viewer.querySelector('table')) {
+            EModal.toast({ type: 'warning', title: 'Kosong', message: 'Tidak ada data jadwal untuk diekspor.' });
+            return;
+        }
+
+        const filterKelasVal = $('#jdwFilter').val();
+        const filterKelasText = $('#jdwFilter option:selected').text();
+        const cleanFilter = filterKelasVal ? filterKelasText.replace(/[^a-zA-Z0-9_\-\.]/g, '_') : 'Semua_Kelas';
+        const schoolName = this.state.school?.nama || 'E-Portal';
+        const acadYear = this.state.academicYear;
+        const thnAjaran = acadYear ? `${acadYear.tahun_ajaran} Semester ${acadYear.semester}` : '';
+
+        this.loadSheetJS(() => {
+            try {
+                const wsData = [
+                    ['JADWAL PELAJARAN'],
+                    [schoolName],
+                    ['Tahun Pelajaran: ' + thnAjaran + (filterKelasVal ? ' | Kelas: ' + filterKelasText : ' | Semua Kelas')],
+                    ['Tanggal Export: ' + new Date().toLocaleDateString('id-ID')],
+                    []
+                ];
+
+                const tables = viewer.querySelectorAll('table.sch-table');
+                let maxCols = 0;
+
+                tables.forEach(table => {
+                    const trs = table.querySelectorAll('tr');
+                    trs.forEach(tr => {
+                        const rowData = [];
+                        const cells = tr.querySelectorAll('th, td');
+                        cells.forEach(cell => {
+                            const filled = cell.classList.contains('sch-cell-filled');
+                            const empty = cell.classList.contains('sch-cell-empty');
+                            let text = '';
+                            if (filled) {
+                                const mapel = cell.querySelector('div:first-child')?.innerText?.trim() || '';
+                                const guru = cell.querySelector('div:nth-child(2)')?.innerText?.trim() || '';
+                                text = guru ? `${mapel} (${guru})` : mapel;
+                            } else if (empty) {
+                                text = '-';
+                            } else {
+                                text = cell.innerText.trim();
+                            }
+                            rowData.push(text);
+                        });
+                        if (rowData.length > maxCols) maxCols = rowData.length;
+                        wsData.push(rowData);
+                    });
+                    wsData.push([]);
+                });
+
+                const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+                const colWidths = [{ wch: 10 }];
+                for (let c = 1; c < maxCols; c++) {
+                    colWidths.push({ wch: 16 });
+                }
+                ws['!cols'] = colWidths;
+
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Jadwal Pelajaran");
+
+                const todayStr = new Date().toISOString().split('T')[0];
+                XLSX.writeFile(wb, `Jadwal_Pelajaran_${cleanFilter}_${todayStr}.xlsx`);
+                EModal.toast({ type: 'success', title: 'Berhasil', message: 'File Excel Jadwal Pelajaran berhasil diunduh.' });
+            } catch (err) {
+                console.error('Export Jadwal Excel error:', err);
+                EModal.toast({ type: 'error', title: 'Gagal', message: 'Gagal membuat file Excel: ' + err.message });
+            }
+        });
+    },
+
     // ==============================================
     // SHEETJS IMPORT/EXPORT WRAPPERS
     // ==============================================
     loadSheetJS(callback) {
         if (window.XLSX) { callback(); return; }
-        const loader = EModal.loading('Memuat komponen Export/Import...');
-        $.getScript('https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js')
-            .done(() => { EModal.close(loader); callback(); })
-            .fail(() => { EModal.close(loader); EModal.toast({type:'error', message:'Gagal mengunduh modul SheetJS. Periksa internet Anda!'}); });
+        const loader = EModal.loading('Memuat modul SheetJS...');
+        const script = document.createElement('script');
+        script.src = (this.state.baseUrl || '') + 'assets/vendor/xlsx.full.min.js';
+        script.onload = () => { EModal.close(loader); callback(); };
+        script.onerror = () => {
+            $.getScript('https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js')
+                .done(() => { EModal.close(loader); callback(); })
+                .fail(() => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'error', title: 'Gagal', message: 'Gagal memuat pustaka XLSX. Periksa koneksi internet.' });
+                });
+        };
+        document.head.appendChild(script);
     },
 
     exportData(type, l1, l2, f1, f2) {

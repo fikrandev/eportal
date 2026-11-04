@@ -110,10 +110,21 @@ function listTarget() {
 
     if ($role === 'siswa') {
         // Ambil ID siswa dari tabel perf_siswa berdasarkan user login
-        $stmtSiswa = $db->prepare("SELECT id FROM perf_siswa WHERE perf_user_id = ? LIMIT 1");
+        $stmtSiswa = $db->prepare("SELECT id, kelas, username FROM perf_siswa WHERE perf_user_id = ? LIMIT 1");
         $stmtSiswa->execute([$perf_user_id]);
         $siswa = $stmtSiswa->fetch(PDO::FETCH_ASSOC);
-        $siswa_id = $siswa ? $siswa['id'] : 0;
+        $siswa_id = $siswa ? (int)$siswa['id'] : 0;
+        $siswa_kelas = $siswa ? trim($siswa['kelas']) : '';
+
+        // Jika kelas di perf_siswa kosong, coba cari dari tabel students
+        if (!$siswa_kelas && $siswa && !empty($siswa['username'])) {
+            $stmtClass = $db->prepare("SELECT kelas FROM students WHERE nis = ? LIMIT 1");
+            $stmtClass->execute([$siswa['username']]);
+            $siswa_kelas = trim((string)$stmtClass->fetchColumn());
+            if ($siswa_kelas) {
+                $db->prepare("UPDATE perf_siswa SET kelas = ? WHERE id = ?")->execute([$siswa_kelas, $siswa_id]);
+            }
+        }
 
         $stmt = $db->prepare("
             SELECT p.id, p.nama, p.jenis_ptk, p.mata_pelajaran 
@@ -124,6 +135,36 @@ function listTarget() {
         ");
         $stmt->execute([$siswa_id, $periode_id]);
         $ptks = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // AUTO-FALLBACK: Jika belum ada target di perf_siswa_guru tapi siswa punya kelas,
+        // otomatis sinkronkan guru pengajar kelasnya dari sch_jadwal secara real-time!
+        if (empty($ptks) && $siswa_id && $siswa_kelas) {
+            $sqlJadwalSiswa = "
+                SELECT DISTINCT 
+                    COALESCE(pp.id, pp_by_name.id) as perf_ptk_id
+                FROM sch_jadwal sj
+                JOIN sch_distribusi sd ON sj.distribusi_id = sd.id
+                JOIN sch_kelas sk ON sj.kelas_id = sk.id
+                JOIN sch_guru sg ON sd.guru_id = sg.id
+                LEFT JOIN perf_ptk pp ON (sg.kode_guru = pp.niy AND pp.niy != '' AND pp.status = 1)
+                LEFT JOIN perf_ptk pp_by_name ON (LOWER(TRIM(sg.nama_guru)) = LOWER(TRIM(pp_by_name.nama)) AND pp_by_name.status = 1)
+                WHERE sk.nama_kelas = ? AND COALESCE(pp.id, pp_by_name.id) IS NOT NULL
+            ";
+            $stmtJS = $db->prepare($sqlJadwalSiswa);
+            $stmtJS->execute([$siswa_kelas]);
+            $guruIds = $stmtJS->fetchAll(PDO::FETCH_COLUMN);
+
+            if (!empty($guruIds)) {
+                $stmtIns = $db->prepare("INSERT IGNORE INTO perf_siswa_guru (periode_id, perf_siswa_id, perf_ptk_id) VALUES (?, ?, ?)");
+                foreach ($guruIds as $gid) {
+                    $stmtIns->execute([$periode_id, $siswa_id, (int)$gid]);
+                }
+
+                // Query ulang setelah di-insert
+                $stmt->execute([$siswa_id, $periode_id]);
+                $ptks = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            }
+        }
         
         foreach ($ptks as $p) {
             $targets[] = [

@@ -1633,6 +1633,7 @@ const Perf = {
                             <span class="pf-badge pf-badge-blue" id="siswaSelCount">0 terpilih</span>
                             <button class="btn btn-danger btn-sm" onclick="Perf.bulkDeleteSiswa()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> Hapus Terpilih</button>
                         </div>
+                        <button class="btn btn-primary btn-sm" onclick="Perf.modalSyncJadwal()" style="background:#10B981; border-color:#10B981; color:white; display:inline-flex; align-items:center; gap:6px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg> Sinkronkan dari Jadwal Portal</button>
                         <button class="btn btn-accent btn-sm" onclick="Perf.modalPengaturanPenilaianSiswa()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg> Pengaturan Penilaian</button>
                     </div>
                 </div>
@@ -1730,6 +1731,64 @@ const Perf = {
                     $('#siswaSelCount').text(count + ' terpilih');
                 } else {
                     $('#siswaBulkActions').addClass('hidden');
+                }
+            });
+        });
+    },
+
+    modalSyncJadwal() {
+        if (!this.state.selectedPeriodeId) return EModal.toast({type:'error', message:'Pilih periode terlebih dahulu'});
+
+        let kelasOptions = '<option value="all">⚡ Semua Kelas (Rekomendasi)</option>';
+
+        this.api('siswa.php?action=list_kelas').done((resKelas) => {
+            if (resKelas.data && resKelas.data.length) {
+                resKelas.data.forEach(k => {
+                    kelasOptions += `<option value="${k}">Kelas ${k}</option>`;
+                });
+            }
+
+            EModal.form({
+                title: '⚡ Sinkronkan Penilai Siswa dari Jadwal Portal',
+                width: '560px',
+                confirmText: 'Mulai Sinkronisasi',
+                form: `
+                    <div style="background:var(--bg-light); border:1px solid var(--border-color); border-radius:8px; padding:12px 14px; margin-bottom:16px;">
+                        <p style="margin:0 0 6px 0; font-weight:600; font-size:0.95rem; color:var(--text-dark);">
+                            Sinkronisasi Jadwal Mengajar Portal
+                        </p>
+                        <p style="margin:0; font-size:0.85rem; color:var(--text-muted); line-height:1.4;">
+                            Siswa akan otomatis dipasangkan dengan guru yang mengajar di kelasnya berdasarkan jadwal pelajaran di Portal Siswa (E-Schedule). Akun siswa yang belum ada di E-Performance juga akan dibuatkan secara otomatis.
+                        </p>
+                    </div>
+                    <div class="form-group" style="margin-bottom:14px;">
+                        <label style="font-weight:600; display:block; margin-bottom:6px;">Pilih Cakupan Kelas</label>
+                        <select class="form-input" id="fSyncKelas" style="width:100%;">${kelasOptions}</select>
+                    </div>
+                    <div style="padding:10px 12px; background:rgba(16, 185, 129, 0.08); border-left:3px solid #10B981; border-radius:4px; font-size:0.85rem; color:#065f46;">
+                        <strong>Catatan:</strong> Penugasan guru untuk kelas yang dipilih pada periode ini akan diperbarui mengikuti jadwal terbaru di portal.
+                    </div>
+                `,
+                onConfirm: () => {
+                    const kelas = $('#fSyncKelas').val() || 'all';
+                    const loading = EModal.loading('Menyinkronkan penilai siswa dari jadwal portal...');
+
+                    Perf.api('siswa.php?action=sync_from_jadwal', {
+                        method: 'POST',
+                        data: {
+                            periode_id: Perf.state.selectedPeriodeId,
+                            kelas: kelas
+                        }
+                    }).done(res => {
+                        EModal.close(loading);
+                        EModal.closeAll();
+                        EModal.toast({type:'success', message: res.message || 'Sinkronisasi berhasil!'});
+                        Perf.loadSiswa();
+                    }).fail(xhr => {
+                        EModal.close(loading);
+                        EModal.toast({type:'error', message: xhr.responseJSON?.message || 'Gagal menyinkronkan data'});
+                    });
+                    return false;
                 }
             });
         });

@@ -2592,3 +2592,15 @@ body {
     0%, 100% { transform: scale(1); opacity: 1; }
     50% { transform: scale(1.05); opacity: 0.88; }
 }
+
+/* Compact Schedule Matrix Table */
+.sch-grid-compact {
+    width: max-content !important;
+    min-width: 0 !important;
+    margin: 0 !important;
+}
+.sch-grid-compact th,
+.sch-grid-compact td {
+    padding: 4px 2px !important;
+    box-sizing: border-box;
+}
