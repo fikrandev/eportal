@@ -91,6 +91,15 @@ function createRefKelas() {
     
     $stmt = db()->prepare("INSERT INTO ref_kelas (tingkat, nama_kelas, wali_kelas_id, keterangan) VALUES (?, ?, ?, ?)");
     $stmt->execute([$tingkat, $nama_kelas, $wali_kelas_id, $keterangan]);
+
+    // Keep sch_kelas and acad_kelas in sync
+    try {
+        $stmtSync1 = db()->prepare("UPDATE sch_kelas SET wali_id = ? WHERE nama_kelas = ?");
+        $stmtSync1->execute([$wali_kelas_id, $nama_kelas]);
+        $stmtSync2 = db()->prepare("UPDATE acad_kelas SET wali_id = ? WHERE nama_kelas = ?");
+        $stmtSync2->execute([$wali_kelas_id, $nama_kelas]);
+    } catch (Exception $e) {}
+
     json_response(201, true, 'Data Kelas berhasil ditambahkan.');
 }
 
@@ -107,6 +116,15 @@ function updateRefKelas() {
     
     $stmt = db()->prepare("UPDATE ref_kelas SET tingkat=?, nama_kelas=?, wali_kelas_id=?, keterangan=? WHERE id=?");
     $stmt->execute([$tingkat, $nama_kelas, $wali_kelas_id, $keterangan, $id]);
+
+    // Keep sch_kelas and acad_kelas in sync
+    try {
+        $stmtSync1 = db()->prepare("UPDATE sch_kelas SET wali_id = ? WHERE nama_kelas = ?");
+        $stmtSync1->execute([$wali_kelas_id, $nama_kelas]);
+        $stmtSync2 = db()->prepare("UPDATE acad_kelas SET wali_id = ? WHERE nama_kelas = ?");
+        $stmtSync2->execute([$wali_kelas_id, $nama_kelas]);
+    } catch (Exception $e) {}
+
     json_response(200, true, 'Data Kelas berhasil diperbarui.');
 }
 

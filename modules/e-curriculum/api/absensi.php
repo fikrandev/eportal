@@ -356,19 +356,64 @@ function getRekapAbsensiData($kelas_id, $tanggal_awal, $tanggal_akhir) {
     $nama_kelas_filter = null;
     $wali_kelas = '-';
     if ($kelas_id > 0) {
+        // 1. Coba cari nama_kelas dan wali dari sch_kelas (join users & ref_kelas)
         $stmtK = db()->prepare("
-            SELECT k.nama_kelas, u.nama_lengkap as nama_wali 
+            SELECT k.nama_kelas, COALESCE(u.nama_lengkap, ur.nama_lengkap) as nama_wali 
             FROM sch_kelas k 
             LEFT JOIN users u ON k.wali_id = u.id 
+            LEFT JOIN ref_kelas r ON k.nama_kelas = r.nama_kelas
+            LEFT JOIN users ur ON r.wali_kelas_id = ur.id
             WHERE k.id = ?
         ");
         $stmtK->execute([$kelas_id]);
         $kData = $stmtK->fetch(PDO::FETCH_ASSOC);
-        if ($kData) {
+
+        // 2. Jika tidak ditemukan di sch_kelas, cek ref_kelas langsung (jika kelas_id berasal dari ref_kelas)
+        if (!$kData || empty($kData['nama_kelas'])) {
+            $stmtR = db()->prepare("
+                SELECT r.nama_kelas, u.nama_lengkap as nama_wali
+                FROM ref_kelas r
+                LEFT JOIN users u ON r.wali_kelas_id = u.id
+                WHERE r.id = ?
+            ");
+            $stmtR->execute([$kelas_id]);
+            $kData = $stmtR->fetch(PDO::FETCH_ASSOC);
+        }
+
+        // 3. Jika masih belum ditemukan, cek acad_kelas
+        if (!$kData || empty($kData['nama_kelas'])) {
+            $stmtA = db()->prepare("
+                SELECT ak.nama_kelas, COALESCE(u.nama_lengkap, ur.nama_lengkap) as nama_wali
+                FROM acad_kelas ak
+                LEFT JOIN users u ON ak.wali_id = u.id
+                LEFT JOIN ref_kelas r ON ak.nama_kelas = r.nama_kelas
+                LEFT JOIN users ur ON r.wali_kelas_id = ur.id
+                WHERE ak.id = ?
+            ");
+            $stmtA->execute([$kelas_id]);
+            $kData = $stmtA->fetch(PDO::FETCH_ASSOC);
+        }
+
+        if ($kData && !empty($kData['nama_kelas'])) {
             $nama_kelas_filter = $kData['nama_kelas'];
             if (!empty($kData['nama_wali'])) {
                 $wali_kelas = $kData['nama_wali'];
             }
+        }
+    }
+
+    // Jika wali_kelas masih '-' tapi nama_kelas_filter sudah ada, cari langsung ke ref_kelas berdasarkan nama_kelas
+    if ($wali_kelas === '-' && $nama_kelas_filter) {
+        $stmtWali = db()->prepare("
+            SELECT u.nama_lengkap 
+            FROM ref_kelas r 
+            JOIN users u ON r.wali_kelas_id = u.id 
+            WHERE r.nama_kelas = ?
+        ");
+        $stmtWali->execute([$nama_kelas_filter]);
+        $foundWali = $stmtWali->fetchColumn();
+        if ($foundWali) {
+            $wali_kelas = $foundWali;
         }
     }
 
@@ -391,9 +436,7 @@ function getRekapAbsensiData($kelas_id, $tanggal_awal, $tanggal_akhir) {
     }
     $students = $stmtS->fetchAll(PDO::FETCH_ASSOC);
 
-    if ($wali_kelas === '-' && !empty($students[0]['guru_wali'])) {
-        $wali_kelas = $students[0]['guru_wali'];
-    }
+    // Jangan sembarangan ambil students[0]['guru_wali'] karena di students guru_wali adalah pembimbing perorangan, bukan wali rombel
 
     $nama_sekolah = get_setting('nama_sekolah', 'SMA WACHID HASYIM 1 SURABAYA') ?: 'SMA WACHID HASYIM 1 SURABAYA';
 

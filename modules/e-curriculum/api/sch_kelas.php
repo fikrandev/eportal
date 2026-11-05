@@ -11,9 +11,11 @@ switch ($action) {
     case 'list':
         try {
             $stmt = db()->query("
-                SELECT k.*, u.nama_lengkap as wali_nama 
+                SELECT k.*, COALESCE(u.nama_lengkap, ur.nama_lengkap) as wali_nama 
                 FROM sch_kelas k 
                 LEFT JOIN users u ON k.wali_id = u.id 
+                LEFT JOIN ref_kelas r ON k.nama_kelas = r.nama_kelas
+                LEFT JOIN users ur ON r.wali_kelas_id = ur.id
                 ORDER BY k.rombel ASC, k.nama_kelas ASC
             ");
             $data = $stmt->fetchAll(PDO::FETCH_ASSOC);

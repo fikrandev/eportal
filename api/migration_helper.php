@@ -7,7 +7,7 @@ require_once __DIR__ . '/config.php';
 
 if (!function_exists('run_auto_migrations')) {
 function run_auto_migrations() {
-    $target_version = 23;
+    $target_version = 24;
     
     // 1. Get current version (default to 0 if not set or if table settings doesn't exist yet)
     $current_version = 0;
@@ -1063,6 +1063,15 @@ function run_auto_migrations() {
                     $pdo->exec("ALTER TABLE `acad_jurnal` ADD INDEX `idx_jurnal_student` (`student_id`)");
                 }
             }
+        } catch (Exception $e) {}
+    }
+
+    // Version 24 migrations (Collation utf8mb4_unicode_ci & Wali Kelas synchronization across tables)
+    if ($current_version < 24) {
+        try {
+            $pdo->exec("ALTER TABLE `ref_kelas` MODIFY `nama_kelas` VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL");
+            $pdo->exec("UPDATE sch_kelas sk JOIN ref_kelas rk ON sk.nama_kelas = rk.nama_kelas SET sk.wali_id = rk.wali_kelas_id WHERE rk.wali_kelas_id IS NOT NULL");
+            $pdo->exec("UPDATE acad_kelas ak JOIN ref_kelas rk ON ak.nama_kelas = rk.nama_kelas SET ak.wali_id = rk.wali_kelas_id WHERE rk.wali_kelas_id IS NOT NULL");
         } catch (Exception $e) {}
     }
 
