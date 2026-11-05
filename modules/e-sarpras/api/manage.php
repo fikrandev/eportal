@@ -740,7 +740,7 @@ function handlePrintLaporan($type) {
             echo "<div class='kop-line' style='text-align:center; padding-bottom:10px'><h2 style='margin:0 0 5px 0; font-size:16pt'>{$school}</h2></div>";
         }
         
-        echo "<div class='judul'><h3>BERITA ACARA</h3><div class='sub'>SERAH TERIMA BARANG INVENTARIS</div><div class='nomor'>Nomor : {$nomorBa}</div></div>";
+        echo "<div class='judul'><h3>BERITA ACARA</h3><div class='sub'>PENGHAPUSAN BARANG</div><div class='nomor'>Nomor : {$nomorBa}</div></div>";
         echo "<div class='isi'><p>Pada hari ini, {$hariNama} tanggal {$tglTerbilang} bulan {$bulanNama} tahun {$tahunTerbilang}, kami yang bertanda tangan di bawah ini:</p></div>";
         echo "<div class='identitas'><table><tr><td>Nama</td><td>:</td><td>{$wakaSarpras}</td></tr><tr><td>Jabatan</td><td>:</td><td>Wakil Kepala Sekolah Sarana dan Prasarana</td></tr><tr><td>Unit</td><td>:</td><td>SMA Wachid Hasyim 1 Surabaya</td></tr></table></div>";
         echo "<div class='isi'><p>berdasarkan hasil pengecekan dinyatakan bahwa alat tersebut sudah tidak bisa diperbaiki dan lebih baik dilakukan penghapusan.</p><p>adapun barang tersebut adalah sebagai berikut:</p></div>";
