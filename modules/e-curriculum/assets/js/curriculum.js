@@ -6888,6 +6888,63 @@ const Curriculum = {
         printWin.document.close();
     },
 
+    printDailyRekap(hari) {
+        const curHari = hari || this.state.selectedRekapHari || 'Senin';
+        const target = document.getElementById('schDailyRekapContainer');
+        if (!target) return;
+
+        const table = target.querySelector('table');
+        if (!table) {
+            EModal.toast({ type: 'warning', title: 'Kosong', message: 'Tidak ada tabel rekap untuk dicetak.' });
+            return;
+        }
+
+        const cloneTable = table.cloneNode(true);
+        const schoolName = this.state.school?.nama || 'E-Portal';
+        const acad = this.state.academicYear;
+        const thnAjaran = acad ? `Tahun Pelajaran ${acad.tahun_ajaran} (Semester ${acad.semester})` : '';
+
+        const printWin = window.open('', '_blank');
+        printWin.document.write(`
+            <!DOCTYPE html>
+            <html lang="id">
+            <head>
+                <meta charset="UTF-8">
+                <title>Rekap Distribusi Harian ${curHari} - ${schoolName}</title>
+                <style>
+                    @page { size: portrait; margin: 10mm; }
+                    body { font-family: Arial, sans-serif; font-size: 9pt; color: #1e293b; padding: 10px; }
+                    .header { text-align: center; margin-bottom: 16px; border-bottom: 2px solid #334155; padding-bottom: 8px; }
+                    .header h2 { margin: 0 0 4px; font-size: 14pt; font-weight: 800; }
+                    .header h3 { margin: 0 0 4px; font-size: 11pt; }
+                    .header p { margin: 0; font-size: 9pt; color: #475569; }
+                    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+                    th, td { border: 1px solid #cbd5e1; padding: 6px 8px; font-size: 8.5pt; vertical-align: middle; }
+                    th { background-color: #f1f5f9; font-weight: bold; text-align: left; }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h2>${schoolName.toUpperCase()}</h2>
+                    <h3>REKAPITULASI DISTRIBUSI MENGAJAR HARIAN</h3>
+                    <p>Hari: <strong>${curHari.toUpperCase()}</strong> | ${thnAjaran}</p>
+                </div>
+                ${cloneTable.outerHTML}
+                <div style="margin-top:20px;display:flex;justify-content:flex-end;">
+                    <div style="text-align:center;width:200px;font-size:9pt;">
+                        <p>Surabaya, ${new Date().toLocaleDateString('id-ID', {day:'numeric',month:'long',year:'numeric'})}</p>
+                        <p style="margin-top:50px;font-weight:bold;">Waka Kurikulum</p>
+                    </div>
+                </div>
+                <script>
+                    window.onload = function() { window.print(); window.close(); };
+                </script>
+            </body>
+            </html>
+        `);
+        printWin.document.close();
+    },
+
 exportJadwalExcel() {
         const viewer = document.getElementById('jdwViewer');
         if (!viewer || !viewer.querySelector('table')) {
@@ -8635,32 +8692,22 @@ exportJadwalExcel() {
     renderSchJadwal($container) {
         this._schContainer = $container;
         $container.html(`
-            <div class="sch-card">
+            <div class="sch-card" id="schJadwalMainCard">
                 <div class="sch-card-header" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
                     <div style="display:flex; align-items:center; gap:12px;">
-                        <h3 style="margin:0;">Manajemen Jadwal & Generator</h3>
+                        <h3 style="margin:0;display:flex;align-items:center;gap:10px;">
+                            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                            Manajemen Jadwal Pelajaran
+                        </h3>
                     </div>
-                    <div id="schLockStatusContainer" style="display:flex; align-items:center; gap:10px;">
+                    <div id="schLockStatusBadge" style="display:flex; align-items:center; gap:10px;">
                         <span class="badge" style="background:#f1f5f9; color:#64748b; padding:6px 12px; border-radius:20px; font-size:0.85rem;">Memeriksa status kunci...</span>
                     </div>
                 </div>
-                <div class="sch-card-body">
-                    <div style="display:flex;gap:12px;background:var(--bg-color);padding:20px;border-radius:12px;margin-bottom:24px;align-items:center;justify-content:space-between;flex-wrap:wrap;border:1px solid var(--border-color);">
-                        <div style="max-width:650px;">
-                            <h4 style="margin:0 0 6px">Engine Algoritma & Pengatur Jadwal</h4>
-                            <p style="margin:0;font-size:0.85rem;color:var(--text-muted)">Padatkan slot kosong, hilangkan jam bolong di tengah hari, mematuhi kesediaan guru & blok JP. Jadwal yang telah resmi dapat dikunci agar tidak berubah.</p>
-                        </div>
-                        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-                            <button id="btnLockJadwal" class="btn btn-outline" onclick="Curriculum.toggleLockJadwal()" style="display:inline-flex;align-items:center;gap:8px;padding:10px 16px;font-size:0.95rem;font-weight:600;border-radius:8px;transition:all 0.2s;">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Memuat...
-                            </button>
-                            <button class="btn btn-warning" onclick="Curriculum.autoFillGaps()" style="padding:10px 18px;font-size:0.95rem;display:flex;align-items:center;gap:8px;font-weight:700;" title="Otomatis isi slot jam yang masih kosong dan padatkan jadwal">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg> Padatkan & Isi Jam Kosong
-                            </button>
-                            <button id="btnGenerateJadwal" class="btn btn-primary" onclick="Curriculum.generateJadwal()" style="padding:10px 20px;font-size:0.95rem;display:flex;align-items:center;gap:8px;box-shadow:0 4px 12px rgba(59,130,246,0.3);">
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg> Generate Jadwal
-                            </button>
-                        </div>
+                <div class="sch-card-body" id="schJadwalBody">
+                    <div style="text-align:center;padding:40px 20px;color:var(--text-muted);">
+                        <div class="spinner-border text-primary" role="status" style="width:2rem;height:2rem;margin-bottom:12px;"></div>
+                        <div>Memuat konfigurasi dan status jadwal...</div>
                     </div>
                 </div>
             </div>
@@ -8673,6 +8720,8 @@ exportJadwalExcel() {
         ]).then(([lockRes, kelasRes]) => {
             const lock = lockRes.data || { is_locked: false, can_unlock: false };
             this.state.schLock = lock;
+            this.isJadwalLocked = !!lock.is_locked;
+            this.lockMeta = lock;
             const kelasList = kelasRes.data || [];
 
             this.renderSchJadwalUI(lock, kelasList);
@@ -8769,32 +8818,23 @@ exportJadwalExcel() {
             `;
         }
 
-        // Active tab: if locked, show rekap first as requested by user
-        const activeTab = isLocked ? 'rekap' : 'matriks';
+        // Active tab: default to matriks so schedule is directly visible
+        const activeTab = this._activeSchTab || 'matriks';
 
         const bodyHtml = `
             ${controlBannerHtml}
 
             <!-- TAB NAVIGASI -->
             <div style="display:flex;gap:8px;border-bottom:2px solid #e2e8f0;margin-bottom:20px;align-items:center;">
+                <button id="tabBtnMatriks" class="sch-nav-tab ${activeTab === 'matriks' ? 'active' : ''}" onclick="Curriculum.switchSchTab('matriks')" style="padding:10px 18px;font-weight:700;font-size:0.9rem;border:none;background:transparent;cursor:pointer;border-bottom:3px solid ${activeTab === 'matriks' ? 'var(--primary)' : 'transparent'};color:${activeTab === 'matriks' ? 'var(--primary)' : '#64748b'};display:inline-flex;align-items:center;gap:8px;transition:all 0.2s;">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+                    Matriks Jadwal Pelajaran
+                </button>
                 <button id="tabBtnRekap" class="sch-nav-tab ${activeTab === 'rekap' ? 'active' : ''}" onclick="Curriculum.switchSchTab('rekap')" style="padding:10px 18px;font-weight:700;font-size:0.9rem;border:none;background:transparent;cursor:pointer;border-bottom:3px solid ${activeTab === 'rekap' ? 'var(--primary)' : 'transparent'};color:${activeTab === 'rekap' ? 'var(--primary)' : '#64748b'};display:inline-flex;align-items:center;gap:8px;transition:all 0.2s;">
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                     Rekapitulasi Distribusi Harian
                     ${isLocked ? '<span style="font-size:0.7rem;background:#fee2e2;color:#991b1b;padding:2px 8px;border-radius:10px;font-weight:800;">LOCKED</span>' : ''}
                 </button>
-                <button id="tabBtnMatriks" class="sch-nav-tab ${activeTab === 'matriks' ? 'active' : ''}" onclick="Curriculum.switchSchTab('matriks')" style="padding:10px 18px;font-weight:700;font-size:0.9rem;border:none;background:transparent;cursor:pointer;border-bottom:3px solid ${activeTab === 'matriks' ? 'var(--primary)' : 'transparent'};color:${activeTab === 'matriks' ? 'var(--primary)' : '#64748b'};display:inline-flex;align-items:center;gap:8px;transition:all 0.2s;">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
-                    Matriks Jadwal Pelajaran
-                </button>
-            </div>
-
-            <!-- SECTION: REKAPITULASI DISTRIBUSI HARIAN -->
-            <div id="schDailyRekapSection" style="display:${activeTab === 'rekap' ? 'block' : 'none'};">
-                <div id="schDailyRekapContainer">
-                    <div style="text-align:center;padding:30px 20px;color:var(--text-muted);">
-                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div> Memuat rekap distribusi harian...
-                    </div>
-                </div>
             </div>
 
             <!-- SECTION: MATRIKS JADWAL PELAJARAN -->
@@ -8811,10 +8851,23 @@ exportJadwalExcel() {
                             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
                             Cetak PDF (1 Halaman Mampat)
                         </button>
+                        <button class="btn-acad btn-acad-outline" id="btnExportExcelJadwal" onclick="Curriculum.exportJadwalExcel()" style="display:inline-flex;align-items:center;gap:6px;font-weight:700;color:#166534;border-color:#86efac;background:#f0fdf4;">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            Export Excel
+                        </button>
                     </div>
                 </div>
                 <div id="jdwViewer">
                     <div class="sch-empty"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><h3>Memuat jadwal...</h3></div>
+                </div>
+            </div>
+
+            <!-- SECTION: REKAPITULASI DISTRIBUSI HARIAN -->
+            <div id="schDailyRekapSection" style="display:${activeTab === 'rekap' ? 'block' : 'none'};">
+                <div id="schDailyRekapContainer">
+                    <div style="text-align:center;padding:30px 20px;color:var(--text-muted);">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div> Memuat rekap distribusi harian...
+                    </div>
                 </div>
             </div>
         `;
@@ -8826,16 +8879,18 @@ exportJadwalExcel() {
             $('#jdwFilter').append(`<option value="${k.id}">Rombel ${k.rombel} - ${k.nama_kelas}</option>`);
         });
         $('#jdwFilter').on('change', (e) => this.viewJadwal($(e.target).val()));
-        this.loadLockStatus();
+
         this.loadDailyRekap();
-        this.viewJadwal('');
+        this.viewJadwal($('#jdwFilter').val() || '');
     },
 
     loadLockStatus() {
-        return this.api('sch_jadwal.php?action=get_lock').done(res => {
+        return this.api('sch_jadwal.php?action=get_lock_status').done(res => {
             if (!res.success) return;
-            this.isJadwalLocked = res.data.locked === 1;
-            this.lockMeta = res.data;
+            const lock = res.data || { is_locked: false, can_unlock: false };
+            this.state.schLock = lock;
+            this.isJadwalLocked = !!lock.is_locked;
+            this.lockMeta = lock;
             this.updateLockUI();
         });
     },
@@ -8844,95 +8899,51 @@ exportJadwalExcel() {
         const isLocked = this.isJadwalLocked;
         const meta = this.lockMeta || {};
 
-        const $lockContainer = $('#schLockStatusContainer');
-        const $btnLock = $('#btnLockJadwal');
-        const $btnGen = $('#btnGenerateJadwal');
-
-        if (isLocked) {
-            $lockContainer.html(`
-                <span class="badge" title="Dikunci oleh: ${meta.locked_by || 'Admin'} (${meta.locked_at || '-'})" style="background:#fef3c7; border:1px solid #f59e0b; color:#b45309; padding:8px 14px; border-radius:20px; font-size:0.85rem; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> 🔒 Jadwal Terkunci (Resmi)
-                </span>
-                <span style="font-size:0.8rem; color:var(--text-muted); display:inline-block;">oleh <strong>${meta.locked_by || 'Admin'}</strong> (${meta.locked_at || '-'})</span>
-            `);
-
-            $btnLock.html(`
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg> Buka Kunci Jadwal
-            `).css({
-                'background': '#fff',
-                'border': '1.5px solid #d97706',
-                'color': '#d97706',
-                'box-shadow': 'none'
-            }).attr('title', 'Klik untuk membuka kunci jadwal agar dapat di-generate ulang atau dipindahkan');
-
-            $btnGen.attr('disabled', true).css({
-                'opacity': '0.5',
-                'cursor': 'not-allowed',
-                'pointer-events': 'none',
-                'box-shadow': 'none'
-            }).attr('title', 'Jadwal sedang dikunci resmi. Buka kunci terlebih dahulu jika ingin men-generate ulang.');
-
-        } else {
-            $lockContainer.html(`
-                <span class="badge" style="background:#ecfdf5; border:1px solid #10b981; color:#047857; padding:8px 14px; border-radius:20px; font-size:0.85rem; font-weight:700; display:inline-flex; align-items:center; gap:6px;">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg> Status: Draft (Terbuka)
-                </span>
-            `);
-
-            $btnLock.html(`
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Kunci Jadwal (Resmikan)
-            `).css({
-                'background': '#047857',
-                'border': 'none',
-                'color': '#ffffff',
-                'box-shadow': '0 2px 6px rgba(4,120,87,0.2)'
-            }).attr('title', 'Kunci jadwal agar tidak dapat di-generate ulang atau dipindahkan secara tidak sengaja');
-
-            $btnGen.removeAttr('disabled').css({
-                'opacity': '1',
-                'cursor': 'pointer',
-                'pointer-events': 'auto',
-                'box-shadow': '0 4px 12px rgba(59,130,246,0.3)'
-            }).removeAttr('title');
+        const $lockBadge = $('#schLockStatusBadge');
+        if ($lockBadge.length) {
+            const canUnlock = !!(this.state.schLock && this.state.schLock.can_unlock);
+            let badgeHtml = '';
+            if (isLocked) {
+                badgeHtml = `
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                        <span class="badge" style="background:#fee2e2;color:#991b1b;border:1px solid #f87171;padding:6px 14px;border-radius:20px;font-weight:700;font-size:0.85rem;display:inline-flex;align-items:center;gap:6px;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> TERKUNCI (LOCKED)
+                        </span>
+                        ${canUnlock ? `
+                            <button class="btn btn-sm" onclick="Curriculum.unlockJadwal()" style="background:#ef4444;color:white;font-weight:700;padding:6px 14px;border-radius:8px;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;" title="Buka kunci jadwal (Hanya Superadmin)">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg> Buka Kunci (UNLOCK)
+                            </button>
+                        ` : `
+                            <span style="font-size:0.75rem;color:#64748b;font-weight:600;">(Hanya Superadmin yang dapat membuka kunci)</span>
+                        `}
+                    </div>
+                `;
+            } else {
+                badgeHtml = `
+                    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                        <span class="badge" style="background:#dcfce7;color:#166534;border:1px solid #86efac;padding:6px 14px;border-radius:20px;font-weight:700;font-size:0.85rem;display:inline-flex;align-items:center;gap:6px;">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/></svg> DRAFT / TERBUKA
+                        </span>
+                        <button class="btn btn-sm" onclick="Curriculum.lockJadwal()" style="background:#16a34a;color:white;font-weight:700;padding:6px 14px;border-radius:8px;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:6px;box-shadow:0 2px 6px rgba(22,163,74,0.3);" title="Kunci jadwal agar tidak berubah">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg> Kunci Jadwal (LOCK)
+                        </button>
+                    </div>
+                `;
+            }
+            $lockBadge.html(badgeHtml);
         }
     },
 
     toggleLockJadwal() {
-        const isCurrentlyLocked = this.isJadwalLocked;
-        const title = isCurrentlyLocked ? 'Buka Kunci Jadwal?' : 'Kunci Jadwal Pelajaran?';
-        const message = isCurrentlyLocked 
-            ? 'Jadwal akan kembali ke status <strong>Draft (Terbuka)</strong>.<br>Tombol generate ulang dan fitur penggeseran (drag & drop) jadwal akan aktif kembali. Lanjutkan?' 
-            : 'Jadwal akan <strong>dikunci resmi</strong>.<br>Fitur acak ulang (generate) dan penggeseran jadwal akan dinonaktifkan agar susunan tidak berubah secara tidak sengaja. Lanjutkan?';
-
-        EModal.confirm({
-            title: title,
-            message: message,
-            onConfirm: () => {
-                const loader = EModal.loading('Memproses status kunci jadwal...');
-                this.api('sch_jadwal.php?action=toggle_lock', { method: 'POST' }).done(res => {
-                    EModal.close(loader);
-                    this.isJadwalLocked = res.data.locked === 1;
-                    this.lockMeta = res.data;
-                    this.updateLockUI();
-                    EModal.toast({
-                        type: res.data.locked ? 'warning' : 'success',
-                        title: res.data.locked ? 'Jadwal Dikunci' : 'Kunci Dibuka',
-                        message: res.message
-                    });
-                    this.viewJadwal($('#jdwFilter').val() || '');
-                }).fail(xhr => {
-                    EModal.close(loader);
-                    EModal.toast({
-                        type: 'error',
-                        title: 'Gagal',
-                        message: xhr.responseJSON?.message || 'Gagal mengubah status kunci jadwal.'
-                    });
-                });
-            }
-        });
+        if (this.state.schLock && this.state.schLock.is_locked) {
+            this.unlockJadwal();
+        } else {
+            this.lockJadwal();
+        }
     },
 
     switchSchTab(tabName) {
+        this._activeSchTab = tabName;
         if (tabName === 'rekap') {
             $('#tabBtnRekap').addClass('active').css({
                 'border-bottom': '3px solid var(--primary)',
@@ -8957,7 +8968,6 @@ exportJadwalExcel() {
             $('#schMatriksSection').show();
         }
     },
-
     loadDailyRekap(hari) {
         const $target = $('#schDailyRekapContainer');
         if (!$target.length) return;
@@ -9145,7 +9155,7 @@ exportJadwalExcel() {
                         title: 'Jadwal Dikunci',
                         message: res.message || 'Jadwal pelajaran berhasil dikunci!'
                     });
-                    this.renderSchJadwal(this._schContainer || $('#curriculumContent'));
+                    this.renderSchJadwal(this._schContainer || $('#mainContent'));
 
                 }).fail(xhr => {
                     EModal.close(loader);
@@ -9175,7 +9185,7 @@ title: 'Gagal Mengunci',
                         title: 'Kunci Dibuka',
                         message: res.message || 'Jadwal pelajaran berhasil dibuka kuncinya!'
                     });
-                    this.renderSchJadwal(this._schContainer || $('#curriculumContent'));
+                    this.renderSchJadwal(this._schContainer || $('#mainContent'));
                 }).fail(xhr => {
                     EModal.close(loader);
                     EModal.toast({
@@ -9271,9 +9281,7 @@ title: 'Gagal Mengunci',
                     setTimeout(() => {
                         $('#genProgressOverlay').fadeOut(400, function() { $(this).remove(); });
                         EModal.info({ title: 'Selesai', message: res.message });
-                        this.loadLockStatus();
-                        this.viewJadwal('');
-                        this.loadDailyRekap();
+                        this.renderSchJadwal(this._schContainer || $('#mainContent'));
                     }, 600);
                 }).fail(xhr => {
                     clearInterval(interval);

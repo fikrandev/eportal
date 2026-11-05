@@ -350,6 +350,7 @@ switch ($action) {
         ]);
         break;
 
+    case 'get_lock':
     case 'get_lock_status':
         $isLocked = (int)get_setting('sch_jadwal_locked', 0) === 1;
         $lockedAt = get_setting('sch_jadwal_locked_at', '');
@@ -357,12 +358,46 @@ switch ($action) {
         $canUnlock = (($user['role'] ?? '') === 'superadmin');
 
         json_response(200, true, 'Status lock jadwal', [
+            'locked' => $isLocked ? 1 : 0,
             'is_locked' => $isLocked,
             'locked_at' => $lockedAt,
             'locked_by' => $lockedBy,
             'can_unlock' => $canUnlock,
             'user_role' => $user['role'] ?? ''
         ]);
+        break;
+
+    case 'toggle_lock':
+        $isLocked = (int)get_setting('sch_jadwal_locked', 0) === 1;
+        if ($isLocked) {
+            if (($user['role'] ?? '') !== 'superadmin') {
+                json_response(403, false, 'Akses ditolak. Hanya Superadmin yang berhak membuka kunci (UNLOCK) jadwal.');
+            }
+            upsert_setting('sch_jadwal_locked', '0', 'number', 'Status Kunci Jadwal');
+            json_response(200, true, 'Kunci jadwal berhasil DIBUKA (UNLOCKED).', [
+                'locked' => 0,
+                'is_locked' => false
+            ]);
+        } else {
+            if (!portal_has_permission($user, 'jadwal_manage') && ($user['role'] ?? '') !== 'superadmin') {
+                json_response(403, false, 'Akses ditolak. Anda tidak memiliki izin mengunci jadwal.');
+            }
+            $totalJadwal = (int)db()->query("SELECT COUNT(*) FROM sch_jadwal")->fetchColumn();
+            if ($totalJadwal === 0) {
+                json_response(400, false, 'Jadwal masih kosong, tidak dapat mengunci jadwal.');
+            }
+            $nowStr = date('d/m/Y H:i') . ' WIB';
+            $byName = $user['nama_lengkap'] ?? $user['username'];
+            upsert_setting('sch_jadwal_locked', '1', 'number', 'Status Kunci Jadwal');
+            upsert_setting('sch_jadwal_locked_at', $nowStr, 'text', 'Waktu Penguncian Jadwal');
+            upsert_setting('sch_jadwal_locked_by', $byName, 'text', 'User Pengunci Jadwal');
+            json_response(200, true, 'Jadwal berhasil DIKUNCI (LOCKED).', [
+                'locked' => 1,
+                'is_locked' => true,
+                'locked_at' => $nowStr,
+                'locked_by' => $byName
+            ]);
+        }
         break;
 
     case 'lock':
