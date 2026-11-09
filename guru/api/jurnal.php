@@ -704,8 +704,10 @@ function getJurnalMeta($user) {
             foreach ($classes as $c) $classNames[$c['id']] = $c['nama_kelas'];
 
             $placeholders = implode(',', array_fill(0, count($classNames), '?'));
-            $stmt = db()->prepare("SELECT id, nis, nama, kelas FROM students WHERE kelas IN ($placeholders) AND status = 1 ORDER BY kelas, nama");
-            $stmt->execute(array_values($classNames));
+            $params = array_values($classNames);
+            $params[] = $year_id;
+            $stmt = db()->prepare("SELECT id, nis, nama, kelas FROM students WHERE kelas IN ($placeholders) AND academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY kelas, nama");
+            $stmt->execute($params);
             $students = $stmt->fetchAll();
         }
 
@@ -727,14 +729,17 @@ function getStudentsByKelas($user) {
     if ($kelas_id <= 0) json_response(400, false, 'Kelas wajib dipilih.');
 
     try {
+        $active_year = get_active_academic_year();
+        $year_id = $active_year['id'] ?? 0;
+
         // Resolve class name
         $stmtK = db()->prepare("SELECT nama_kelas FROM sch_kelas WHERE id = ?");
         $stmtK->execute([$kelas_id]);
         $kelas = $stmtK->fetch(PDO::FETCH_ASSOC);
         if (!$kelas) json_response(404, false, 'Kelas tidak ditemukan.');
 
-        $stmt = db()->prepare("SELECT id, nis, nama FROM students WHERE kelas = ? AND status = 1 ORDER BY nama");
-        $stmt->execute([$kelas['nama_kelas']]);
+        $stmt = db()->prepare("SELECT id, nis, nama FROM students WHERE kelas = ? AND academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY nama");
+        $stmt->execute([$kelas['nama_kelas'], $year_id]);
         $students = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         json_response(200, true, 'Daftar siswa berhasil dimuat.', $students);
@@ -835,8 +840,8 @@ function rekapAbsensiWaliKelas($user) {
         $year_id = $active_year['id'] ?? 0;
 
         // Get all active students in this class
-        $stmtS = db()->prepare("SELECT id, nis, nama FROM students WHERE kelas = ? AND status = 1 ORDER BY nama");
-        $stmtS->execute([$className]);
+        $stmtS = db()->prepare("SELECT id, nis, nama FROM students WHERE kelas = ? AND academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY nama");
+        $stmtS->execute([$className, $year_id]);
         $students = $stmtS->fetchAll(PDO::FETCH_ASSOC);
 
         // Fetch attendance stats
@@ -917,9 +922,12 @@ function dailyAbsenWaliKelas($user) {
         $sch_kelas = $stmtSK->fetch(PDO::FETCH_ASSOC);
         $sch_kelas_id = $sch_kelas['id'] ?? 0;
 
+        $active_year = get_active_academic_year();
+        $year_id = $active_year['id'] ?? 0;
+
         // Get all active students in this class
-        $stmtS = db()->prepare("SELECT id, nis, nama FROM students WHERE kelas = ? AND status = 1 ORDER BY nama");
-        $stmtS->execute([$className]);
+        $stmtS = db()->prepare("SELECT id, nis, nama FROM students WHERE kelas = ? AND academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') ORDER BY nama");
+        $stmtS->execute([$className, $year_id]);
         $students = $stmtS->fetchAll(PDO::FETCH_ASSOC);
 
         // Fetch daily attendance records from acad_absensi for this class, date and jam_ke 1-10
@@ -928,9 +936,9 @@ function dailyAbsenWaliKelas($user) {
             $stmtA = db()->prepare("
                 SELECT student_id, jam_ke, status
                 FROM acad_absensi
-                WHERE kelas_id = ? AND tanggal = ? AND jam_ke BETWEEN 1 AND 10
+                WHERE kelas_id = ? AND tanggal = ? AND academic_year_id = ? AND jam_ke BETWEEN 1 AND 10
             ");
-            $stmtA->execute([$sch_kelas_id, $tanggal]);
+            $stmtA->execute([$sch_kelas_id, $tanggal, $year_id]);
             $rawAbsen = $stmtA->fetchAll(PDO::FETCH_ASSOC);
             
             // Group by student_id
@@ -1109,8 +1117,8 @@ function getDashboardStats($user) {
             $className = $wali['nama_kelas'];
             
             // Get total active students in class
-            $stmtTotalS = db()->prepare("SELECT COUNT(*) FROM students WHERE kelas = ? AND status = 1");
-            $stmtTotalS->execute([$className]);
+            $stmtTotalS = db()->prepare("SELECT COUNT(*) FROM students WHERE kelas = ? AND academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '')");
+            $stmtTotalS->execute([$className, $year_id]);
             $totalStudents = (int)$stmtTotalS->fetchColumn();
 
             // Resolve class ID
@@ -1122,9 +1130,9 @@ function getDashboardStats($user) {
             $stmtAbsent = db()->prepare("
                 SELECT COUNT(*) 
                 FROM acad_absensi 
-                WHERE kelas_id = ? AND tanggal = ? AND status IN ('S', 'I', 'A')
+                WHERE kelas_id = ? AND tanggal = ? AND academic_year_id = ? AND status IN ('S', 'I', 'A')
             ");
-            $stmtAbsent->execute([$sch_kelas_id, $tanggalIni]);
+            $stmtAbsent->execute([$sch_kelas_id, $tanggalIni, $year_id]);
             $absentCount = (int)$stmtAbsent->fetchColumn();
             
             $presentCount = max(0, $totalStudents - $absentCount);
@@ -1219,6 +1227,9 @@ function createIzin($user) {
  */
 function getGuruWaliStudents($user) {
     try {
+        $active_year = get_active_academic_year();
+        $year_id = $active_year['id'] ?? 0;
+
         $namaLengkap = $user['nama_lengkap'] ?? $user['username'];
         $baseName = trim(preg_replace('/,.*$/', '', $namaLengkap));
         $baseName = trim(preg_replace('/^(Drs\.|Dra\.|Ir\.|H\.|Hj\.)\s*/i', '', $baseName));
@@ -1226,10 +1237,13 @@ function getGuruWaliStudents($user) {
         $stmt = db()->prepare("
             SELECT id, nis, nama, kelas, foto_path, guru_wali
             FROM students
-            WHERE (guru_wali = ? OR guru_wali LIKE ?) AND status = 1
+            WHERE (guru_wali = ? OR guru_wali LIKE ?) 
+              AND academic_year_id = ? 
+              AND status = 1 
+              AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '')
             ORDER BY nama ASC
         ");
-        $stmt->execute([$namaLengkap, '%' . $baseName . '%']);
+        $stmt->execute([$namaLengkap, '%' . $baseName . '%', $year_id]);
         $students = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         json_response(200, true, 'Data anak perwalian berhasil dimuat.', $students);
@@ -1243,12 +1257,23 @@ function getGuruWaliStudents($user) {
  */
 function rekapAbsensiGuruWali($user) {
     try {
+        $active_year = get_active_academic_year();
+        $year_id = $active_year['id'] ?? 0;
+
         $namaLengkap = $user['nama_lengkap'] ?? $user['username'];
         $baseName = trim(preg_replace('/,.*$/', '', $namaLengkap));
         $baseName = trim(preg_replace('/^(Drs\.|Dra\.|Ir\.|H\.|Hj\.)\s*/i', '', $baseName));
 
-        $stmtS = db()->prepare("SELECT id, nis, nama, kelas FROM students WHERE (guru_wali = ? OR guru_wali LIKE ?) AND status = 1 ORDER BY nama");
-        $stmtS->execute([$namaLengkap, '%' . $baseName . '%']);
+        $stmtS = db()->prepare("
+            SELECT id, nis, nama, kelas 
+            FROM students 
+            WHERE (guru_wali = ? OR guru_wali LIKE ?) 
+              AND academic_year_id = ? 
+              AND status = 1 
+              AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') 
+            ORDER BY nama
+        ");
+        $stmtS->execute([$namaLengkap, '%' . $baseName . '%', $year_id]);
         $students = $stmtS->fetchAll(PDO::FETCH_ASSOC);
 
         if (empty($students)) {
@@ -1257,9 +1282,6 @@ function rekapAbsensiGuruWali($user) {
             ]);
             return;
         }
-
-        $active_year = get_active_academic_year();
-        $year_id = $active_year['id'] ?? 0;
 
         $stats = [];
         $studentIds = array_column($students, 'id');
@@ -1317,13 +1339,24 @@ function rekapAbsensiGuruWali($user) {
  */
 function dailyAbsenGuruWali($user) {
     try {
+        $active_year = get_active_academic_year();
+        $year_id = $active_year['id'] ?? 0;
+
         $tanggal = isset($_GET['tanggal']) ? $_GET['tanggal'] : date('Y-m-d');
         $namaLengkap = $user['nama_lengkap'] ?? $user['username'];
         $baseName = trim(preg_replace('/,.*$/', '', $namaLengkap));
         $baseName = trim(preg_replace('/^(Drs\.|Dra\.|Ir\.|H\.|Hj\.)\s*/i', '', $baseName));
         
-        $stmtS = db()->prepare("SELECT id, nis, nama, kelas FROM students WHERE (guru_wali = ? OR guru_wali LIKE ?) AND status = 1 ORDER BY nama");
-        $stmtS->execute([$namaLengkap, '%' . $baseName . '%']);
+        $stmtS = db()->prepare("
+            SELECT id, nis, nama, kelas 
+            FROM students 
+            WHERE (guru_wali = ? OR guru_wali LIKE ?) 
+              AND academic_year_id = ? 
+              AND status = 1 
+              AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '') 
+            ORDER BY nama
+        ");
+        $stmtS->execute([$namaLengkap, '%' . $baseName . '%', $year_id]);
         $students = $stmtS->fetchAll(PDO::FETCH_ASSOC);
         
         if (empty($students)) {
@@ -1332,12 +1365,12 @@ function dailyAbsenGuruWali($user) {
 
         $studentIds = array_column($students, 'id');
         $inClause = implode(',', array_fill(0, count($studentIds), '?'));
-        $params = array_merge([$tanggal], $studentIds);
+        $params = array_merge([$tanggal, $year_id], $studentIds);
 
         $stmtA = db()->prepare("
             SELECT student_id, jam_ke, status
             FROM acad_absensi
-            WHERE tanggal = ? AND student_id IN ($inClause)
+            WHERE tanggal = ? AND academic_year_id = ? AND student_id IN ($inClause)
         ");
         $stmtA->execute($params);
         $absensi = $stmtA->fetchAll(PDO::FETCH_ASSOC);

@@ -477,9 +477,17 @@ function getStats() {
         $stmt = db()->query("SELECT COUNT(*) as total FROM modules WHERE status = 1");
         $stats['total_modules'] = (int)$stmt->fetch()['total'];
 
-        // Total students
-        $stmt = db()->query("SELECT COUNT(*) as total FROM students");
-        $stats['total_students'] = (int)$stmt->fetch()['total'];
+        // Total students (active in current academic year)
+        $activeYear = get_active_academic_year();
+        $activeYearId = $activeYear['id'] ?? 0;
+        if ($activeYearId > 0) {
+            $stmt = db()->prepare("SELECT COUNT(*) as total FROM students WHERE academic_year_id = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '')");
+            $stmt->execute([$activeYearId]);
+            $stats['total_students'] = (int)$stmt->fetch()['total'];
+        } else {
+            $stmt = db()->query("SELECT COUNT(*) as total FROM students WHERE status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '')");
+            $stats['total_students'] = (int)$stmt->fetch()['total'];
+        }
 
         // Total teachers
         $stmt = db()->query("SELECT COUNT(*) as total FROM users WHERE role = 'guru'");

@@ -161,8 +161,18 @@ function getTeacherMetadata($userId, $username) {
     $baseName = trim(preg_replace('/,.*$/', '', $namaLengkap));
     $baseName = trim(preg_replace('/^(Drs\.|Dra\.|Ir\.|H\.|Hj\.)\s*/i', '', $baseName));
     
-    $stmtGw = db()->prepare("SELECT COUNT(*) FROM students WHERE guru_wali LIKE ? AND status = 1");
-    $stmtGw->execute(['%' . $baseName . '%']);
+    $activeAcademicYear = get_active_academic_year();
+    $yearId = $activeAcademicYear['id'] ?? 0;
+
+    $stmtGw = db()->prepare("
+        SELECT COUNT(*) 
+        FROM students 
+        WHERE (guru_wali = ? OR guru_wali LIKE ?) 
+          AND academic_year_id = ? 
+          AND status = 1 
+          AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '')
+    ");
+    $stmtGw->execute([$namaLengkap, '%' . $baseName . '%', $yearId]);
     $isGuruWali = ((int)$stmtGw->fetchColumn() > 0);
 
     // Fallback: Check if tupoksi or jabatan contains 'guru wali'
