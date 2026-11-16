@@ -41,8 +41,6 @@ $config = [
     
     <!-- Core Design System -->
     <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css?v=<?php echo time(); ?>">
-    <!-- Modal CSS -->
-    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/emodal.css">
     
     <!-- Absen Module Styles -->
     <link rel="stylesheet" href="assets/css/absen.css?v=<?php echo time(); ?>">

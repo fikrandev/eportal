@@ -133,34 +133,74 @@ async function executeSendMessage(chatId, message) {
 
     try {
         const sendAction = (async () => {
-            // Untuk group chat (@g.us): Pastikan model chat di WhatsApp Web sudah ter-load melalui getChatById
-            if (isGroup) {
+            // Evaluasi pengiriman langsung di browser page context untuk keandalan maksimal (terutama grup)
+            if (client && client.pupPage && typeof client.pupPage.evaluate === 'function') {
                 try {
-                    console.log(`[WA Send] Mempersiapkan chat grup ${chatId}...`);
-                    const chat = await client.getChatById(chatId);
-                    if (chat && typeof chat.sendMessage === 'function') {
-                        const res = await chat.sendMessage(message, sendOptions);
-                        if (res) return res;
+                    const result = await client.pupPage.evaluate(async (targetChatId, textContent, options, isGroupChat) => {
+                        try {
+                            const WWebJS = window.WWebJS;
+                            if (!WWebJS || !window.require) return null;
+
+                            const Collections = window.require('WAWebCollections');
+                            const WidFactory = window.require('WAWebWidFactory');
+                            if (!Collections || !Collections.Chat || !WidFactory) return null;
+
+                            const chatWid = WidFactory.createWid(targetChatId);
+                            let chat = Collections.Chat.get(chatWid);
+
+                            // Jika belum ada di memory, cari di database internal WhatsApp
+                            if (!chat && typeof Collections.Chat.find === 'function') {
+                                try {
+                                    chat = await Collections.Chat.find(chatWid);
+                                } catch (findErr) {}
+                            }
+
+                            // Fallback findOrCreateLatestChat untuk personal chat
+                            if (!chat) {
+                                try {
+                                    const findAction = window.require('WAWebFindChatAction');
+                                    if (findAction && typeof findAction.findOrCreateLatestChat === 'function') {
+                                        const res = await findAction.findOrCreateLatestChat(chatWid);
+                                        chat = res ? res.chat : null;
+                                    }
+                                } catch (findActionErr) {}
+                            }
+
+                            if (!chat) {
+                                if (isGroupChat) {
+                                    return { error: `Grup ${targetChatId} tidak ditemukan di akun WhatsApp ini. Pastikan akun WhatsApp yang di-scan adalah anggota grup tersebut, atau buka menu WhatsApp Gateway dan klik Refresh Grup untuk memilih grup yang benar.` };
+                                }
+                                return { error: `Nomor/Chat ${targetChatId} tidak ditemukan di WhatsApp.` };
+                            }
+
+                            const sent = await WWebJS.sendMessage(chat, textContent, options);
+                            return { success: true, messageId: sent ? (sent.id?._serialized || 'ok') : 'ok' };
+                        } catch (evalErr) {
+                            return { error: evalErr.message || String(evalErr) };
+                        }
+                    }, chatId, message, sendOptions, isGroup);
+
+                    if (result) {
+                        if (result.error) {
+                            throw new Error(result.error);
+                        }
+                        if (result.success) {
+                            return result;
+                        }
                     }
-                } catch (groupErr) {
-                    console.log(`[WA Send Group] getChatById warning: ${groupErr.message}. Mencoba fallback client.sendMessage...`);
+                } catch (browserErr) {
+                    console.log(`[WA Send] Direct evaluate error: ${browserErr.message}. Mencoba fallback client.sendMessage...`);
+                    if (browserErr.message && (browserErr.message.includes('tidak ditemukan') || browserErr.message.includes('bukan anggota'))) {
+                        throw browserErr;
+                    }
                 }
             }
 
-            // Direct send via client.sendMessage
-            try {
-                const res = await client.sendMessage(chatId, message, sendOptions);
-                if (res) return res;
-            } catch (firstErr) {
-                console.log(`[WA Send] sendMessage direct gagal: ${firstErr.message}. Mencoba fallback getChatById...`);
-                const chat = await client.getChatById(chatId);
-                if (chat && typeof chat.sendMessage === 'function') {
-                    return await chat.sendMessage(message, sendOptions);
-                }
-                throw firstErr;
-            }
+            // Fallback via library client.sendMessage
+            const sentMsg = await client.sendMessage(chatId, message, sendOptions);
+            if (sentMsg) return sentMsg;
 
-            // Jika return undefined/null, fallback ke chat instance
+            // Jika return undefined (biasanya chat belum ter-cache)
             const chat = await client.getChatById(chatId);
             if (chat && typeof chat.sendMessage === 'function') {
                 return await chat.sendMessage(message, sendOptions);
@@ -406,20 +446,65 @@ app.get('/groups', async (req, res) => {
 
     try {
         console.log('[WA Groups] Mengambil daftar grup WhatsApp...');
-        const chats = await client.getChats();
         let groups = [];
-        
-        if (Array.isArray(chats)) {
-            groups = chats
-                .filter(c => c && (c.isGroup || (c.id && (c.id._serialized || c.id.toString()).endsWith('@g.us'))))
-                .map(g => ({
-                    id: g.id ? (g.id._serialized || g.id.toString()) : '',
-                    name: g.name || g.formattedTitle || 'Grup WhatsApp'
-                }))
-                .filter(g => g.id.length > 0);
+        if (client.pupPage && typeof client.pupPage.evaluate === 'function') {
+            groups = await client.pupPage.evaluate(async () => {
+                try {
+                    const Collections = window.require('WAWebCollections');
+                    if (!Collections || !Collections.Chat) return [];
+
+                    const groupMap = new Map();
+
+                    // 1. Ambil dari Chat collection yang aktif
+                    const chats = Collections.Chat.getModelsArray() || [];
+                    for (const c of chats) {
+                        const rawId = c.id?._serialized || (typeof c.id?.toString === 'function' ? c.id.toString() : '');
+                        const isGroup = Boolean(c.isGroup) || (rawId && rawId.endsWith('@g.us')) || Boolean(c.groupMetadata);
+                        if (isGroup && rawId) {
+                            const name = c.name || c.formattedTitle || (c.contact && (c.contact.name || c.contact.pushname)) || 'Grup WhatsApp';
+                            groupMap.set(rawId, { id: rawId, name: name });
+                        }
+                    }
+
+                    // 2. Ambil juga dari GroupMetadata jika ada grup yang tersimpan di internal WhatsApp
+                    const gmColl = Collections.GroupMetadata || Collections.WAWebGroupMetadataCollection;
+                    if (gmColl && typeof gmColl.getModelsArray === 'function') {
+                        const gmList = gmColl.getModelsArray() || [];
+                        for (const gm of gmList) {
+                            const rawId = gm.id?._serialized || (typeof gm.id?.toString === 'function' ? gm.id.toString() : '');
+                            if (rawId && !groupMap.has(rawId)) {
+                                const name = gm.subject || 'Grup WhatsApp';
+                                groupMap.set(rawId, { id: rawId, name: name });
+                            }
+                        }
+                    }
+
+                    return Array.from(groupMap.values());
+                } catch (e) {
+                    return [];
+                }
+            });
         }
 
-        console.log(`[WA Groups] Ditemukan ${groups.length} grup.`);
+        // Fallback jika evaluate kosong
+        if (!groups || groups.length === 0) {
+            try {
+                const chats = await client.getChats();
+                if (Array.isArray(chats)) {
+                    groups = chats
+                        .filter(c => c && (c.isGroup || (c.id && (c.id._serialized || c.id.toString()).endsWith('@g.us'))))
+                        .map(g => ({
+                            id: g.id ? (g.id._serialized || g.id.toString()) : '',
+                            name: g.name || g.formattedTitle || 'Grup WhatsApp'
+                        }))
+                        .filter(g => g.id.length > 0);
+                }
+            } catch (fallbackErr) {
+                console.warn('[WA Groups] Fallback getChats error:', fallbackErr.message);
+            }
+        }
+
+        console.log(`[WA Groups] Ditemukan ${(groups || []).length} grup.`);
         res.json({ success: true, groups: groups || [] });
     } catch (error) {
         console.error('[WA Groups Error]', error);
