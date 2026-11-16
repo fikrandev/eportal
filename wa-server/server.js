@@ -28,23 +28,24 @@ const sendQueue = [];
 let isProcessingQueue = false;
 
 /**
- * Deteksi path executable Google Chrome atau Microsoft Edge di Windows / Linux VPS
+ * Deteksi path executable Google Chrome atau Microsoft Edge
+ * Di Linux/VPS: Biarkan default Puppeteer (menghindari snap wrapper yang sering crash/hang)
  */
 function getChromeExecutable() {
-    const candidates = [
-        'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-        'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
-        path.join(process.env.LOCALAPPDATA || '', 'Google\\Chrome\\Application\\chrome.exe'),
-        'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-        'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-        // Linux / VPS paths
-        '/usr/bin/google-chrome',
-        '/usr/bin/google-chrome-stable',
-        '/usr/bin/chromium',
-        '/usr/bin/chromium-browser'
-    ];
-    for (const p of candidates) {
-        if (p && fs.existsSync(p)) return p;
+    if (process.platform === 'win32') {
+        const candidates = [
+            'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+            'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+            path.join(process.env.LOCALAPPDATA || '', 'Google\\Chrome\\Application\\chrome.exe'),
+            'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+            'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'
+        ];
+        for (const p of candidates) {
+            if (p && fs.existsSync(p)) return p;
+        }
+    }
+    if (process.env.PUPPETEER_EXECUTABLE_PATH && fs.existsSync(process.env.PUPPETEER_EXECUTABLE_PATH)) {
+        return process.env.PUPPETEER_EXECUTABLE_PATH;
     }
     return undefined;
 }
@@ -223,7 +224,10 @@ function initClient() {
                 // Optimasi Background & RAM aman
                 '--disable-background-timer-throttling',
                 '--disable-backgrounding-occluded-windows',
-                '--disable-renderer-backgrounding'
+                '--disable-renderer-backgrounding',
+                '--renderer-process-limit=1',
+                '--disable-features=Translate,OptimizationHints,MediaRouter,DialMediaRouteProvider,AudioServiceOutOfProcess',
+                '--js-flags=--expose-gc'
             ]
         }
     });
@@ -248,6 +252,7 @@ function initClient() {
         console.log('[WA] ======================================================\n');
         isReady = true;
         currentQR = '';
+        setTimeout(cleanBrowserMemory, 3000);
     });
 
     client.on('authenticated', () => {
