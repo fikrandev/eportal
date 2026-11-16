@@ -28,7 +28,7 @@ const sendQueue = [];
 let isProcessingQueue = false;
 
 /**
- * Deteksi path executable Google Chrome atau Microsoft Edge di Windows
+ * Deteksi path executable Google Chrome atau Microsoft Edge di Windows / Linux VPS
  */
 function getChromeExecutable() {
     const candidates = [
@@ -36,7 +36,12 @@ function getChromeExecutable() {
         'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
         path.join(process.env.LOCALAPPDATA || '', 'Google\\Chrome\\Application\\chrome.exe'),
         'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-        'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe'
+        'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+        // Linux / VPS paths
+        '/usr/bin/google-chrome',
+        '/usr/bin/google-chrome-stable',
+        '/usr/bin/chromium',
+        '/usr/bin/chromium-browser'
     ];
     for (const p of candidates) {
         if (p && fs.existsSync(p)) return p;
