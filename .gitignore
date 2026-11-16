@@ -4,3 +4,6 @@ wa-server/.wwebjs_cache/
 .wwebjs_auth/
 .wwebjs_cache/
 *.log
+*.zip
+.zip
+scratch/

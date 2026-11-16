@@ -91,9 +91,10 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
         $pulang = null;
         $istirahat = null;
 
+        $cutoffPulangTap = !empty($jamMulaiPulang) ? $jamMulaiPulang : '11:00:00';
         if ($first !== $last) {
-            // Evaluasi jam pulang: ambil scan terakhir jika sudah agak siang (misal >= 11:00)
-            if ($last >= '11:00:00') {
+            // Evaluasi jam pulang: ambil scan terakhir jika sudah mencapai jam mulai pulang
+            if ($last >= $cutoffPulangTap) {
                 $pulang = $last;
             }
             
@@ -272,7 +273,7 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
     curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Content-Length: ' . strlen($postData)]);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 35);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 70);
     $response = curl_exec($ch);
     curl_close($ch);
 
