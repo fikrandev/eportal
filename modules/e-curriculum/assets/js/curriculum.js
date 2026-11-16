@@ -7026,11 +7026,12 @@ exportJadwalExcel() {
         if (this.state.token && !fullUrl.includes('token=')) {
             fullUrl += (fullUrl.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(this.state.token);
         }
+        const isWa = endpoint.includes('wa') || endpoint.includes('send_wa_group');
         const defaults = {
             url: fullUrl,
             dataType: 'json',
             contentType: 'application/json',
-            timeout: 30000,
+            timeout: isWa ? 75000 : 30000,
             headers: { 'Authorization': 'Bearer ' + this.state.token }
         };
 

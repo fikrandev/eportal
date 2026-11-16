@@ -596,17 +596,23 @@ const Absen = {
             return EModal.toast({ type: 'warning', message: 'Pilih atau masukkan ID Grup WhatsApp terlebih dahulu!' });
         }
 
-        EModal.toast({ type: 'info', message: 'Mengirim pesan pengujian ke grup...' });
+        const loader = EModal.loading('Mengirim pesan pengujian ke grup...');
         this.api('settings.php?action=wa_test', {
             method: 'POST',
+            timeout: 70000,
             data: {
                 number: groupId,
                 message: 'Halo! Ini adalah pesan uji coba integrasi Grup WhatsApp E-Portal Absensi.'
             }
         }).done(res => {
+            EModal.close(loader);
             EModal.toast({ type: 'success', title: 'Terkirim', message: res.message });
         }).fail(xhr => {
-            EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal mengirim pesan ke grup.' });
+            EModal.close(loader);
+            const msg = xhr.statusText === 'timeout'
+                ? 'Waktu pengujian melebihi batas waktu (timeout), namun pesan kemungkinan sedang dikirim oleh server WhatsApp.'
+                : (xhr.responseJSON?.message || 'Gagal mengirim pesan ke grup.');
+            EModal.toast({ type: 'error', title: 'Gagal', message: msg });
         });
     },
 
@@ -617,15 +623,21 @@ const Absen = {
             return EModal.toast({ type: 'warning', message: 'Masukkan Nomor HP / Group ID untuk testing!' });
         }
 
-        EModal.toast({ type: 'info', message: 'Mengirim pesan percobaan...' });
+        const loader = EModal.loading('Mengirim pesan percobaan...');
         
         this.api('settings.php?action=wa_test', {
             method: 'POST',
+            timeout: 70000,
             data: { number: phone, message: 'Halo! Ini adalah pesan pengujian WhatsApp Gateway dari E-Portal.' }
         }).done(res => {
+            EModal.close(loader);
             EModal.toast({ type: 'success', title: 'Terkirim', message: res.message });
         }).fail(xhr => {
-            EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal mengirim pesan.' });
+            EModal.close(loader);
+            const msg = xhr.statusText === 'timeout'
+                ? 'Waktu pengujian melebihi batas waktu (timeout), namun pesan kemungkinan sedang dikirim oleh server WhatsApp.'
+                : (xhr.responseJSON?.message || 'Gagal mengirim pesan.');
+            EModal.toast({ type: 'error', title: 'Gagal', message: msg });
         });
     },
 
@@ -1009,11 +1021,13 @@ const Absen = {
 
     // ==================== HELPERS ====================
     api(endpoint, options = {}) {
+        const isWa = endpoint.includes('wa') || endpoint.includes('send_wa_group');
+        const defaultTimeout = isWa ? 70000 : 15000;
         const defaults = {
             url: this.moduleUrl + 'api/' + endpoint,
             dataType: 'json',
             contentType: 'application/json',
-            timeout: 10000, // ZKLibrary operations might take time
+            timeout: defaultTimeout,
             headers: { 'Authorization': 'Bearer ' + (this.state.token || '') }
         };
         if (options.data && typeof options.data === 'object' && !(options.data instanceof FormData)) {
