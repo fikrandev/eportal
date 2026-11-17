@@ -27,6 +27,9 @@ let isReinitializing = false;
 const sendQueue = [];
 let isProcessingQueue = false;
 
+// Anti-Spam / Anti-Duplicate cache: map<"chatId:::message", timestamp>
+const recentMessages = new Map();
+
 /**
  * Deteksi path executable Google Chrome atau Microsoft Edge
  * Di Linux/VPS: Biarkan default Puppeteer (menghindari snap wrapper yang sering crash/hang)
@@ -585,6 +588,33 @@ app.post('/send', async (req, res) => {
                 formattedNumber = '62' + formattedNumber.substring(1);
             }
             chatId = `${formattedNumber}@c.us`;
+        }
+
+        // Anti-Duplicate & Anti-Storm Guard:
+        // Cegah pengiriman pesan yang persis sama ke tujuan yang sama dalam rentang 90 detik
+        const dedupKey = `${chatId}:::${message}`;
+        const now = Date.now();
+        if (recentMessages.has(dedupKey) && (now - recentMessages.get(dedupKey)) < 90000) {
+            console.log(`[WA Dedup] Pesan duplikat terdeteksi ke ${chatId}. Melewati pengiriman ulang.`);
+            return res.json({ success: true, message: 'Pesan duplikat terdeteksi (sudah terkirim sebelumnya).' });
+        }
+
+        // Cek juga apakah pesan serupa saat ini sedang menunggu dalam antrean (sendQueue)
+        const alreadyInQueue = sendQueue.some(item => item.chatId === chatId && item.message === message);
+        if (alreadyInQueue) {
+            console.log(`[WA Dedup] Pesan yang sama sudah berada dalam antrean untuk ${chatId}.`);
+            return res.json({ success: true, message: 'Pesan serupa sudah dalam antrean.' });
+        }
+
+        recentMessages.set(dedupKey, now);
+
+        // Pembersihan berkala jika cache dedup melebihi 200 entri
+        if (recentMessages.size > 200) {
+            for (const [k, ts] of recentMessages.entries()) {
+                if (now - ts > 300000) {
+                    recentMessages.delete(k);
+                }
+            }
         }
 
         // Masukkan ke antrean berurutan (Sequential Queue) untuk stabilitas

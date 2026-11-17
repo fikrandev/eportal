@@ -293,8 +293,8 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
 
 /**
  * Check if teacher attendance reports should be broadcasted to WA Group:
- * - Absen Masuk (Pagi)  : Broadcast in batches of 10 teachers up until cutoff (default: 06:30:59)
- * - Absen Pulang (Sore) : Broadcast ONLY once at 17:00 (default: 17:00:00) per day
+ * - Absen Masuk (Pagi)  : Broadcast ONLY once when cutoff time arrives (default: 06:30:59)
+ * - Absen Pulang (Sore) : Broadcast ONLY once at evening cutoff time (default: 17:00:00) per day
  */
 function checkAndSendWaGroupGuruAbsensiBatch($tanggal = null) {
     if (!$tanggal) $tanggal = date('Y-m-d');
@@ -316,56 +316,74 @@ function checkAndSendWaGroupGuruAbsensiBatch($tanggal = null) {
     $jamKirimPulang = get_setting('wa_guru_cutoff_pulang', '17:00:00');
     if (strlen($jamKirimPulang) === 5) $jamKirimPulang .= ':00';
 
-    $jamMulaiPulang = get_setting('wa_guru_mulai_pulang', '13:00:00');
-    if (strlen($jamMulaiPulang) === 5) $jamMulaiPulang .= ':00';
+    $isPagi = ($currentTime < '12:00:00' && $currentTime >= $cutoffMasuk);
+    $isSore = ($currentTime >= '12:00:00' && $currentTime >= $jamKirimPulang);
 
-    // 1. PERIODE PAGI (MASUK): Sebelum jam 12:00
-    if ($currentTime < '12:00:00') {
-        // TAMPUNG SEMUA dan hanya kirim SATU KALI saat jam sudah mencapai batas waktu masuk (cutoffMasuk) e.g. 06:30
-        if ($currentTime >= $cutoffMasuk) {
-            // Cek apakah laporan masuk sudah terkirim hari ini
-            $lastDateMasuk = get_setting('wa_guru_last_sent_date_masuk');
-            if ($lastDateMasuk === $tanggal) {
-                return false; // Sudah dikirim hari ini
-            }
-
-            // Set flag LEBIH DULU untuk mencegah double send jika WA server lemot/timeout (Race Condition)
-            upsert_setting('wa_guru_last_sent_date_masuk', $tanggal, 'text', 'Tanggal terakhir WA absen masuk guru dikirim');
-
-            // Kirim laporan WA masuk secara lengkap (semua guru)
-            $result = sendWaGroupAbsensiGuruDirect($tanggal, 'masuk');
-
-            if (!empty($result['success'])) {
-                return true;
-            } else {
-                // Revert flag jika pengiriman gagal agar bisa retry pada pemicu berikutnya
-                upsert_setting('wa_guru_last_sent_date_masuk', '', 'text', 'Tanggal terakhir WA absen masuk guru dikirim');
-                return false;
-            }
-        }
+    if (!$isPagi && !$isSore) {
         return false;
-    } 
-    // 2. PERIODE PULANG: Kirim jika sudah mencapai jam cutoff pulang (default 17:00)
-    else if ($currentTime >= $jamKirimPulang) {
-        // Cek apakah laporan pulang sudah terkirim hari ini
+    }
+
+    // 1. Fast Path: Cek flag hari ini terlebih dahulu sebelum meminta lock database
+    if ($isPagi) {
+        $lastDateMasuk = get_setting('wa_guru_last_sent_date_masuk');
+        if ($lastDateMasuk === $tanggal) {
+            return false; // Sudah dikirim hari ini, jangan kirim ulang!
+        }
+    } else if ($isSore) {
         $lastDatePulang = get_setting('wa_guru_last_sent_date_pulang');
         if ($lastDatePulang === $tanggal) {
-            return false; // Sudah dikirim hari ini
+            return false; // Sudah dikirim hari ini, jangan kirim ulang!
         }
+    }
 
-        // Set flag LEBIH DULU untuk mencegah double send
-        upsert_setting('wa_guru_last_sent_date_pulang', $tanggal, 'text', 'Tanggal terakhir WA absen pulang guru dikirim');
-
-        // Kirim laporan WA absen pulang lengkap
-        $result = sendWaGroupAbsensiGuruDirect($tanggal, 'pulang');
-
-        if (!empty($result['success'])) {
-            return true;
-        } else {
-            // Revert flag jika pengiriman gagal agar bisa retry pada pemicu berikutnya
-            upsert_setting('wa_guru_last_sent_date_pulang', '', 'text', 'Tanggal terakhir WA absen pulang guru dikirim');
-            return false;
+    // 2. Gunakan MySQL Named Lock (GET_LOCK) dengan timeout 0
+    // Menjamin secara atomik hanya ada 1 proses broadcast yang berjalan pada satu waktu.
+    // Jika proses lain sedang berjalan, proses ini langsung keluar tanpa menumpuk.
+    try {
+        $lockStmt = db()->query("SELECT GET_LOCK('wa_guru_broadcast_lock', 0)");
+        $locked = $lockStmt ? (int)$lockStmt->fetchColumn() : 0;
+        if ($locked !== 1) {
+            return false; // Sedang ada proses broadcast lain yang berjalan
         }
+    } catch (Exception $lockEx) {
+        // Fallback jika database tidak mendukung GET_LOCK
+    }
+
+    try {
+        if ($isPagi) {
+            // Double-checked locking setelah lock diperoleh
+            $lastDateMasuk = get_setting('wa_guru_last_sent_date_masuk');
+            if ($lastDateMasuk === $tanggal) {
+                return false;
+            }
+
+            // KUNCI TANGGAL SEKARANG: Tandai langsung sebagai sudah diproses untuk tanggal ini!
+            // PENTING: JANGAN PERNAH me-revert flag ini menjadi kosong agar tidak memicu badai broadcast berulang.
+            upsert_setting('wa_guru_last_sent_date_masuk', $tanggal, 'text', 'Tanggal terakhir WA absen masuk guru dikirim');
+            upsert_setting('wa_guru_last_sent_time_masuk', date('Y-m-d H:i:s'), 'text', 'Waktu pengiriman WA absen masuk guru');
+
+            // Kirim laporan WA absen masuk
+            $result = sendWaGroupAbsensiGuruDirect($tanggal, 'masuk');
+            return !empty($result['success']);
+        } else if ($isSore) {
+            // Double-checked locking setelah lock diperoleh
+            $lastDatePulang = get_setting('wa_guru_last_sent_date_pulang');
+            if ($lastDatePulang === $tanggal) {
+                return false;
+            }
+
+            // KUNCI TANGGAL SEKARANG: Tandai langsung sebagai sudah diproses untuk tanggal ini!
+            upsert_setting('wa_guru_last_sent_date_pulang', $tanggal, 'text', 'Tanggal terakhir WA absen pulang guru dikirim');
+            upsert_setting('wa_guru_last_sent_time_pulang', date('Y-m-d H:i:s'), 'text', 'Waktu pengiriman WA absen pulang guru');
+
+            // Kirim laporan WA absen pulang
+            $result = sendWaGroupAbsensiGuruDirect($tanggal, 'pulang');
+            return !empty($result['success']);
+        }
+    } finally {
+        try {
+            db()->query("SELECT RELEASE_LOCK('wa_guru_broadcast_lock')");
+        } catch (Exception $relEx) {}
     }
 
     return false;
