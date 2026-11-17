@@ -496,6 +496,23 @@ const Absen = {
             const s = res.data || {};
             const savedGroupId = s.wa_group_guru_id || '';
 
+            const todayStr = new Date().toISOString().split('T')[0];
+            const lastMasukDate = s.wa_guru_last_sent_date_masuk || '';
+            const lastMasukTime = s.wa_guru_last_sent_time_masuk ? s.wa_guru_last_sent_time_masuk.substring(11, 16) : '';
+            const lastPulangDate = s.wa_guru_last_sent_date_pulang || '';
+            const lastPulangTime = s.wa_guru_last_sent_time_pulang ? s.wa_guru_last_sent_time_pulang.substring(11, 16) : '';
+
+            const isMasukSentToday = (lastMasukDate === todayStr);
+            const isPulangSentToday = (lastPulangDate === todayStr);
+
+            const statusPagiBadge = isMasukSentToday 
+                ? `<span style="color:#16a34a; font-weight:600;">✅ Terkirim (pk ${lastMasukTime || 'Pagi'} WIB)</span>`
+                : `<span style="color:#d97706; font-weight:600;">⏳ Belum Terkirim</span>`;
+
+            const statusPulangBadge = isPulangSentToday
+                ? `<span style="color:#16a34a; font-weight:600;">✅ Terkirim (pk ${lastPulangTime || 'Sore'} WIB)</span>`
+                : `<span style="color:#64748b; font-weight:600;">⏳ Belum Terkirim</span>`;
+
             $('#waFormWrapper').html(`
                 <div class="form-group">
                     <label class="form-label">URL Gateway Lokal / Server</label>
@@ -511,7 +528,7 @@ const Absen = {
                     </label>
                     <div style="display:flex; gap:8px;">
                         <select class="form-select" id="waGroupGuru" style="flex:1;">
-                            <option value="${this.escapeHtml(savedGroupId)}">${savedGroupId ? '👥 Grup Tersimpan: ' + this.escapeHtml(savedGroupId) : '-- Pilih Grup WA --'}</option>
+                            <option value="${this.escapeHtml(savedGroupId)}">${savedGroupId ? '👥 Grup Tersimpan: ' + this.escapeHtml(savedGroupId) : '-- Pilih Grup WA Guru --'}</option>
                         </select>
                         <button type="button" class="btn btn-outline btn-sm" id="btnRefreshGroups" onclick="Absen.fetchWaGroups('${this.escapeHtml(savedGroupId)}')" title="Muat Ulang Daftar Grup WA">
                             🔄 Refresh Grup
@@ -519,17 +536,65 @@ const Absen = {
                     </div>
                     <div id="manualGroupWrapper" style="display:none; margin-top:8px;">
                         <input type="text" class="form-input" id="waGroupGuruManual" placeholder="Tempel ID Grup WhatsApp (misal: 120363xxx@g.us)" value="${this.escapeHtml(savedGroupId)}" oninput="$('#waGroupGuru').val(this.value)">
-                        <small class="text-muted">Masukkan ID grup secara langsung jika daftar grup tidak ingin dimuat ulang.</small>
+                        <small class="text-muted">Masukkan ID grup secara langsung jika tidak muncul dalam daftar.</small>
                     </div>
-                    <small class="text-muted" style="display:block; margin-top:4px;">Grup ini akan menerima siaran Absen Pagi & Absen Pulang Guru secara otomatis / realtime.</small>
+                    <small class="text-muted" style="display:block; margin-top:4px;">Grup ini akan menerima siaran Absen Pagi & Absen Pulang Guru secara otomatis setiap hari kerja.</small>
                 </div>
+
+                <div style="background:var(--bg-light, #f8fafc); border:1px solid var(--border-light, #e2e8f0); border-radius:8px; padding:15px; margin-bottom:15px;">
+                    <div style="font-weight:600; font-size:0.95rem; margin-bottom:12px; color:var(--text-dark, #1e293b); display:flex; align-items:center; gap:8px;">
+                        <span>⏰ Jadwal Siaran Otomatis (Auto Broadcast) Rekap Guru</span>
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:12px;">
+                        <div>
+                            <label class="form-label" style="font-size:0.85rem;">Jam Broadcast Absen Pagi (WIB)</label>
+                            <input type="time" class="form-input" id="waCutoffMasuk" value="${this.escapeHtml(s.wa_guru_cutoff_masuk || '06:30')}">
+                            <small class="text-muted">Default: 06:30. Sistem otomatis mengirim rekap kehadiran pagi ke grup.</small>
+                        </div>
+                        <div>
+                            <label class="form-label" style="font-size:0.85rem;">Jam Broadcast Absen Pulang (WIB)</label>
+                            <input type="time" class="form-input" id="waCutoffPulang" value="${this.escapeHtml(s.wa_guru_cutoff_pulang || '17:00')}">
+                            <small class="text-muted">Default: 17:00. Sistem otomatis mengirim rekap kepulangan sore ke grup.</small>
+                        </div>
+                    </div>
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px; padding-top:10px; border-top:1px dashed var(--border-light, #cbd5e1); font-size:0.85rem;">
+                        <div>
+                            <div><b>Status Hari Ini:</b></div>
+                            <div style="margin-top:2px;">
+                                <span>Pagi: ${statusPagiBadge}</span> &nbsp;•&nbsp; 
+                                <span>Pulang: ${statusPulangBadge}</span>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="Absen.resetWaBroadcastToday()" title="Hapus catatan pengiriman hari ini agar auto-sync dapat mengirim ulang otomatis">
+                            🔄 Reset Status Hari Ini (Kirim Ulang)
+                        </button>
+                    </div>
+                </div>
+
+                <div style="background:var(--bg-light, #f0fdf4); border:1px solid #bbf7d0; border-radius:8px; padding:12px; margin-bottom:15px;">
+                    <div style="font-weight:600; font-size:0.9rem; color:#166534; margin-bottom:6px;">
+                        🚀 Kirim Instan Rekap Absen ke Grup (Manual / Pengujian)
+                    </div>
+                    <p style="font-size:0.82rem; color:#15803d; margin:0 0 10px 0;">
+                        Klik tombol di bawah ini untuk langsung mengirimkan laporan kehadiran guru saat ini ke grup WhatsApp tanpa menunggu jam otomatis:
+                    </p>
+                    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+                        <button type="button" class="btn btn-outline btn-sm" onclick="Absen.sendWaRekapNow('masuk')" style="border-color:#16a34a; color:#15803d; background:#fff;">
+                            📋 Kirim Rekap Absen Pagi Sekarang
+                        </button>
+                        <button type="button" class="btn btn-outline btn-sm" onclick="Absen.sendWaRekapNow('pulang')" style="border-color:#0284c7; color:#0369a1; background:#fff;">
+                            🏠 Kirim Rekap Absen Pulang Sekarang
+                        </button>
+                    </div>
+                </div>
+
                 <div class="form-group">
                     <label class="form-label">Template Pesan Notifikasi Siswa (Ke Orang Tua)</label>
                     <textarea class="form-input" id="waTemplate" rows="3" style="resize:vertical;">${this.escapeHtml(s.wa_message_template || 'Halo Orang Tua/Wali dari {nama}. Menginformasikan bahwa ananda telah {status_absen} di sekolah pada {waktu}. Terima Kasih.')}</textarea>
                     <small class="text-muted" style="display:block; margin-bottom:15px;">Gunakan <b>{nama}</b>, <b>{status_absen}</b>, <b>{waktu}</b> sebagai variabel.</small>
                 </div>
                 <div style="border-top:1px solid var(--border-light); padding-top:15px; margin-top:10px;">
-                    <label class="form-label">Testing Pengiriman Pesan</label>
+                    <label class="form-label">Testing Pengiriman Pesan Bebas</label>
                     <div style="display:flex; gap:10px; margin-bottom:8px;">
                         <input type="text" class="form-input" id="waTestPhone" placeholder="Nomor HP / Group ID (misal: 0812xxx atau 120363xxx@g.us)" style="flex:1;">
                         <button class="btn btn-outline" onclick="Absen.testWa()">Tes Kirim Pesan</button>
@@ -541,7 +606,7 @@ const Absen = {
                     </div>
                 </div>
                 <div style="text-align:right;">
-                    <button class="btn btn-primary" onclick="Absen.saveWaSettings()">💾 Simpan Pengaturan Utama</button>
+                    <button class="btn btn-primary" onclick="Absen.saveWaSettings()">💾 Simpan Semua Pengaturan</button>
                 </div>
             `);
             this.checkWaStatus();
@@ -556,7 +621,7 @@ const Absen = {
 
         $btn.html('Memuat... ⏳').prop('disabled', true);
 
-        this.api('settings.php?action=get_wa_groups').done(res => {
+        this.api('settings.php?action=get_wa_groups', { timeout: 65000 }).done(res => {
             if (res.success && Array.isArray(res.data) && res.data.length > 0) {
                 let html = '<option value="">-- Pilih Grup WA Guru --</option>';
                 let matched = false;
@@ -587,6 +652,54 @@ const Absen = {
             EModal.toast({ type: 'error', title: 'Gagal Muat Grup', message: msg });
         }).always(() => {
             $btn.html('🔄 Refresh Grup').prop('disabled', false);
+        });
+    },
+
+    resetWaBroadcastToday() {
+        EModal.confirm({
+            title: 'Reset Status Siaran Hari Ini',
+            message: 'Yakin ingin mereset status siaran hari ini? Sistem akan menghapus tanda kirim hari ini sehingga laporan kehadiran guru dapat dikirim ulang secara otomatis jika waktu saat ini sudah melewati jam broadcast.',
+            type: 'warning',
+            confirmText: 'Ya, Reset Status',
+            onConfirm: () => {
+                const loader = EModal.loading('Mereset status siaran...');
+                this.api('settings.php?action=reset_wa_broadcast_today', { method: 'POST' }).done(res => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'success', title: 'Berhasil', message: res.message });
+                    this.loadWaSettings();
+                }).fail(xhr => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal mereset status siaran.' });
+                });
+            }
+        });
+    },
+
+    sendWaRekapNow(tipe = 'masuk') {
+        const label = (tipe === 'masuk') ? 'Absen Pagi' : 'Absen Pulang';
+        EModal.confirm({
+            title: `Kirim Rekap ${label} Sekarang`,
+            message: `Kirim laporan ${label} seluruh guru hari ini ke grup WhatsApp yang dipilih sekarang?`,
+            type: 'info',
+            confirmText: 'Ya, Kirim Sekarang',
+            onConfirm: () => {
+                const loader = EModal.loading(`Menyusun dan mengirim laporan ${label} ke Grup WA...`);
+                this.api('settings.php?action=send_wa_rekap_now', {
+                    method: 'POST',
+                    timeout: 70000,
+                    data: { tipe: tipe }
+                }).done(res => {
+                    EModal.close(loader);
+                    EModal.toast({ type: 'success', title: 'Berhasil', message: res.message });
+                    this.loadWaSettings();
+                }).fail(xhr => {
+                    EModal.close(loader);
+                    const msg = xhr.statusText === 'timeout'
+                        ? 'Pengiriman membutuhkan waktu lebih lama di server WA. Silakan cek grup WhatsApp Anda.'
+                        : (xhr.responseJSON?.message || `Gagal mengirim rekap ${label}.`);
+                    EModal.toast({ type: 'error', title: 'Gagal', message: msg });
+                });
+            }
         });
     },
 
@@ -646,13 +759,18 @@ const Absen = {
         const data = {
             wa_gateway_url: $('#waUrl').val(),
             wa_message_template: $('#waTemplate').val(),
-            wa_group_guru_id: groupId
+            wa_group_guru_id: groupId,
+            wa_guru_cutoff_masuk: $('#waCutoffMasuk').val() || '06:30',
+            wa_guru_cutoff_pulang: $('#waCutoffPulang').val() || '17:00'
         };
+        const loader = EModal.loading('Menyimpan pengaturan WhatsApp...');
         this.api('settings.php?action=save_wa', { method: 'POST', data }).done(res => {
+            EModal.close(loader);
             EModal.toast({ type: 'success', message: res.message });
-            this.checkWaStatus();
+            this.loadWaSettings();
         }).fail(xhr => {
-            EModal.toast({ type: 'error', message: 'Gagal menyimpan pengaturan.' });
+            EModal.close(loader);
+            EModal.toast({ type: 'error', message: xhr.responseJSON?.message || 'Gagal menyimpan pengaturan.' });
         });
     },
 

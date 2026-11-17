@@ -281,6 +281,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isCdata) {
             }
         }
     }
+
+    // Cek dan kirim siaran rekap absen WA Group Guru jika sudah memasuki waktu cutoff (Pagi / Pulang)
+    try {
+        require_once __DIR__ . '/../../e-curriculum/api/wa_group_helper.php';
+        checkAndSendWaGroupGuruAbsensiBatch();
+    } catch (Exception $ex) {}
     
     // Selalu balas OK agar mesin menganggap data sukses diproses
     echo "OK";

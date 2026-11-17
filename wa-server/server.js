@@ -482,73 +482,73 @@ app.post('/logout', async (req, res) => {
     }
 });
 
-// Endpoint to list WhatsApp Groups
+// Endpoint to list WhatsApp Groups (Fast & Pure Local - Zero Network Blocking)
 app.get('/groups', async (req, res) => {
     if (!isReady || !client) {
         return res.status(503).json({ success: false, message: 'WhatsApp Client belum terhubung. Silakan lakukan scan QR Code terlebih dahulu.' });
     }
 
     try {
-        console.log('[WA Groups] Mengambil daftar grup WhatsApp...');
+        console.log('[WA Groups] Mengambil daftar grup WhatsApp secara lokal...');
         let groups = [];
         if (client.pupPage && typeof client.pupPage.evaluate === 'function') {
             groups = await client.pupPage.evaluate(async () => {
+                const groupMap = new Map();
                 try {
                     const Collections = window.require('WAWebCollections');
-                    if (!Collections || !Collections.Chat) return [];
-
-                    const groupMap = new Map();
-
-                    // 1. Ambil dari Chat collection yang aktif
-                    const chats = Collections.Chat.getModelsArray() || [];
-                    for (const c of chats) {
-                        const rawId = c.id?._serialized || (typeof c.id?.toString === 'function' ? c.id.toString() : '');
-                        const isGroup = Boolean(c.isGroup) || (rawId && rawId.endsWith('@g.us')) || Boolean(c.groupMetadata);
-                        if (isGroup && rawId) {
-                            const name = c.name || c.formattedTitle || (c.contact && (c.contact.name || c.contact.pushname)) || 'Grup WhatsApp';
-                            groupMap.set(rawId, { id: rawId, name: name });
+                    if (Collections) {
+                        // 1. Ambil dari Chat collection yang ada di memori
+                        if (Collections.Chat && typeof Collections.Chat.getModelsArray === 'function') {
+                            const chats = Collections.Chat.getModelsArray() || [];
+                            for (const c of chats) {
+                                try {
+                                    const rawId = c.id?._serialized || (c.id && typeof c.id.toString === 'function' ? c.id.toString() : '');
+                                    const isGroup = Boolean(c.isGroup) || (rawId && rawId.endsWith('@g.us')) || Boolean(c.groupMetadata);
+                                    if (isGroup && rawId && rawId.endsWith('@g.us')) {
+                                        const name = c.name || c.formattedTitle || (c.contact && (c.contact.name || c.contact.pushname)) || 'Grup WhatsApp';
+                                        groupMap.set(rawId, { id: rawId, name: String(name).trim() || 'Grup WhatsApp' });
+                                    }
+                                } catch (e) {}
+                            }
                         }
-                    }
 
-                    // 2. Ambil juga dari GroupMetadata jika ada grup yang tersimpan di internal WhatsApp
-                    const gmColl = Collections.GroupMetadata || Collections.WAWebGroupMetadataCollection;
-                    if (gmColl && typeof gmColl.getModelsArray === 'function') {
-                        const gmList = gmColl.getModelsArray() || [];
-                        for (const gm of gmList) {
-                            const rawId = gm.id?._serialized || (typeof gm.id?.toString === 'function' ? gm.id.toString() : '');
-                            if (rawId && !groupMap.has(rawId)) {
-                                const name = gm.subject || 'Grup WhatsApp';
-                                groupMap.set(rawId, { id: rawId, name: name });
+                        // 2. Ambil dari Contact collection (di WA Web modern, semua grup memiliki Contact model)
+                        if (Collections.Contact && typeof Collections.Contact.getModelsArray === 'function') {
+                            const contacts = Collections.Contact.getModelsArray() || [];
+                            for (const c of contacts) {
+                                try {
+                                    const rawId = c.id?._serialized || (c.id && typeof c.id.toString === 'function' ? c.id.toString() : '');
+                                    const isGroup = Boolean(c.isGroup) || (rawId && rawId.endsWith('@g.us'));
+                                    if (isGroup && rawId && rawId.endsWith('@g.us') && !groupMap.has(rawId)) {
+                                        const name = c.name || c.pushname || c.formattedTitle || 'Grup WhatsApp';
+                                        groupMap.set(rawId, { id: rawId, name: String(name).trim() || 'Grup WhatsApp' });
+                                    }
+                                } catch (e) {}
+                            }
+                        }
+
+                        // 3. Ambil juga dari GroupMetadata collection
+                        const gmColl = Collections.GroupMetadata || Collections.WAWebGroupMetadataCollection;
+                        if (gmColl && typeof gmColl.getModelsArray === 'function') {
+                            const gmList = gmColl.getModelsArray() || [];
+                            for (const gm of gmList) {
+                                try {
+                                    const rawId = gm.id?._serialized || (gm.id && typeof gm.id.toString === 'function' ? gm.id.toString() : '');
+                                    if (rawId && rawId.endsWith('@g.us') && !groupMap.has(rawId)) {
+                                        const name = gm.subject || 'Grup WhatsApp';
+                                        groupMap.set(rawId, { id: rawId, name: String(name).trim() || 'Grup WhatsApp' });
+                                    }
+                                } catch (e) {}
                             }
                         }
                     }
+                } catch (e) {}
 
-                    return Array.from(groupMap.values());
-                } catch (e) {
-                    return [];
-                }
+                return Array.from(groupMap.values());
             });
         }
 
-        // Fallback jika evaluate kosong
-        if (!groups || groups.length === 0) {
-            try {
-                const chats = await client.getChats();
-                if (Array.isArray(chats)) {
-                    groups = chats
-                        .filter(c => c && (c.isGroup || (c.id && (c.id._serialized || c.id.toString()).endsWith('@g.us'))))
-                        .map(g => ({
-                            id: g.id ? (g.id._serialized || g.id.toString()) : '',
-                            name: g.name || g.formattedTitle || 'Grup WhatsApp'
-                        }))
-                        .filter(g => g.id.length > 0);
-                }
-            } catch (fallbackErr) {
-                console.warn('[WA Groups] Fallback getChats error:', fallbackErr.message);
-            }
-        }
-
-        console.log(`[WA Groups] Ditemukan ${(groups || []).length} grup.`);
+        console.log(`[WA Groups] Ditemukan ${(groups || []).length} grup WhatsApp.`);
         res.json({ success: true, groups: groups || [] });
     } catch (error) {
         console.error('[WA Groups Error]', error);
@@ -591,12 +591,12 @@ app.post('/send', async (req, res) => {
         }
 
         // Anti-Duplicate & Anti-Storm Guard:
-        // Cegah pengiriman pesan yang persis sama ke tujuan yang sama dalam rentang 90 detik
+        // Cegah pengiriman double-click dalam rentang 5 detik
         const dedupKey = `${chatId}:::${message}`;
         const now = Date.now();
-        if (recentMessages.has(dedupKey) && (now - recentMessages.get(dedupKey)) < 90000) {
-            console.log(`[WA Dedup] Pesan duplikat terdeteksi ke ${chatId}. Melewati pengiriman ulang.`);
-            return res.json({ success: true, message: 'Pesan duplikat terdeteksi (sudah terkirim sebelumnya).' });
+        if (recentMessages.has(dedupKey) && (now - recentMessages.get(dedupKey)) < 5000) {
+            console.log(`[WA Dedup] Double-click terdeteksi ke ${chatId}. Melewati pengiriman.`);
+            return res.json({ success: true, message: 'Pesan sedang dalam proses pengiriman.' });
         }
 
         // Cek juga apakah pesan serupa saat ini sedang menunggu dalam antrean (sendQueue)
@@ -608,10 +608,10 @@ app.post('/send', async (req, res) => {
 
         recentMessages.set(dedupKey, now);
 
-        // Pembersihan berkala jika cache dedup melebihi 200 entri
-        if (recentMessages.size > 200) {
+        // Pembersihan berkala jika cache dedup melebihi 100 entri
+        if (recentMessages.size > 100) {
             for (const [k, ts] of recentMessages.entries()) {
-                if (now - ts > 300000) {
+                if (now - ts > 60000) {
                     recentMessages.delete(k);
                 }
             }
@@ -663,16 +663,52 @@ setInterval(async () => {
 
 // ==========================================
 // BACKGROUND AUTO-SYNC POLLING (Setiap 15 detik)
-// Hanya mencatat log jika ADA data log baru
+// Mendukung VPS (/modules/...) dan Localhost (/eportal/modules/...)
 // ==========================================
+let resolvedAutoSyncUrl = null;
+
 setInterval(async () => {
-    try {
-        const res = await fetch('http://localhost/eportal/modules/e-absen/api/auto_sync.php?cron_token=eportal_auto_sync_secret');
-        const data = await res.json();
-        if (data && data.message && data.message.includes('baru') && !data.message.includes('0 log baru')) {
-            console.log('[Auto-Sync]', data.message);
+    const urls = [
+        'http://localhost/modules/e-absen/api/auto_sync.php?cron_token=eportal_auto_sync_secret',
+        'http://localhost/eportal/modules/e-absen/api/auto_sync.php?cron_token=eportal_auto_sync_secret',
+        'http://127.0.0.1/modules/e-absen/api/auto_sync.php?cron_token=eportal_auto_sync_secret',
+        'http://127.0.0.1/eportal/modules/e-absen/api/auto_sync.php?cron_token=eportal_auto_sync_secret'
+    ];
+
+    if (resolvedAutoSyncUrl) {
+        try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 8000);
+            const res = await fetch(resolvedAutoSyncUrl, { signal: controller.signal });
+            clearTimeout(timer);
+            if (res.status === 200 || res.status === 400) {
+                const data = await res.json().catch(() => null);
+                if (data && data.message && data.message.includes('baru') && !data.message.includes('0 log baru')) {
+                    console.log('[Auto-Sync]', data.message);
+                }
+                return;
+            } else {
+                resolvedAutoSyncUrl = null;
+            }
+        } catch (err) {
+            resolvedAutoSyncUrl = null;
         }
-    } catch (err) {
-        // Abaikan error koneksi saat eportal offline
+    }
+
+    for (const testUrl of urls) {
+        try {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 4000);
+            const res = await fetch(testUrl, { signal: controller.signal });
+            clearTimeout(timer);
+            if (res.status === 200 || res.status === 400) {
+                resolvedAutoSyncUrl = testUrl;
+                const data = await res.json().catch(() => null);
+                if (data && data.message && data.message.includes('baru') && !data.message.includes('0 log baru')) {
+                    console.log('[Auto-Sync]', data.message);
+                }
+                break;
+            }
+        } catch (e) {}
     }
 }, 15000);

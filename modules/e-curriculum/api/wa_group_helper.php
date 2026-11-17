@@ -310,8 +310,8 @@ function checkAndSendWaGroupGuruAbsensiBatch($tanggal = null) {
 
     $currentTime = date('H:i:s');
 
-    $cutoffMasuk = get_setting('wa_guru_cutoff_masuk', '06:30:59');
-    if (strlen($cutoffMasuk) === 5) $cutoffMasuk .= ':59';
+    $cutoffMasuk = get_setting('wa_guru_cutoff_masuk', '06:30:00');
+    if (strlen($cutoffMasuk) === 5) $cutoffMasuk .= ':00';
 
     $jamKirimPulang = get_setting('wa_guru_cutoff_pulang', '17:00:00');
     if (strlen($jamKirimPulang) === 5) $jamKirimPulang .= ':00';
