@@ -2906,13 +2906,13 @@ const Curriculum = {
                     <div style="font-size:0.85rem; color:#64748B;">Total: <strong>${data.length} Siswa</strong></div>
                 </div>
                 <div class="data-table-wrapper">
-                    <table class="data-table" id="absensiDataTable">
+                    <table class="data-table" id="absensiDataTable" data-page-size="100">
                         <thead><tr><th width="45" style="text-align:center;">No</th><th>NIS</th><th>Nama Siswa</th><th>Log Mesin (${labelSesi})</th><th>Status Kehadiran</th><th>Keterangan</th></tr></thead>
                         <tbody>${rows}</tbody>
                     </table>
                 </div>
                 <div style="margin-top:16px; display:flex; justify-content:flex-end;">
-                    <button class="btn-acad btn-acad-primary" onclick="Curriculum.saveAbsensi()">💾 Simpan Absensi ${labelSesi}</button>
+                    <button class="btn-acad btn-acad-primary" id="btnSaveAbsensiMurid" onclick="Curriculum.saveAbsensi()">💾 Simpan Absensi ${labelSesi}</button>
                 </div>
             `);
 
@@ -2948,12 +2948,24 @@ const Curriculum = {
 
         if (!absensi.length) { EModal.toast({ type: 'warning', title: 'Perhatian', message: 'Tidak ada data absensi.' }); return; }
 
+        const $btn = $('#btnSaveAbsensiMurid');
+        const oldHtml = $btn.length ? $btn.html() : `💾 Simpan Absensi ${sesi}`;
+        if ($btn.length) {
+            $btn.prop('disabled', true).html('💾 Menyimpan... ⏳');
+        }
+
         this.api('absensi.php?action=save', { method: 'POST', data: { tanggal, kelas_id: parseInt(kelas_id), jam_ke: sesi, absensi } }).done(res => {
             EModal.toast({ type: 'success', title: 'Berhasil', message: res.message });
             if ($('#rekapAbsensiTableWrapper').children().length) {
                 this.loadAbsensiRekapTable();
             }
-        }).fail(xhr => { EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menyimpan.' }); });
+        }).fail(xhr => { 
+            EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menyimpan.' }); 
+        }).always(() => {
+            if ($btn.length) {
+                $btn.prop('disabled', false).html(oldHtml);
+            }
+        });
     },
 
     loadAbsensiRekapTable() {
@@ -3932,7 +3944,7 @@ const Curriculum = {
                     <div style="font-size:0.85rem; color:#64748B;">Total: <strong>${data.length} Guru</strong></div>
                 </div>
                 <div class="data-table-wrapper">
-                    <table class="data-table">
+                    <table class="data-table" id="absensiGuruDataTable" data-page-size="100">
                         <thead>
                             <tr>
                                 <th style="width:50px; text-align:center;">No</th>
@@ -3946,7 +3958,7 @@ const Curriculum = {
                     </table>
                 </div>
                 <div style="margin-top:16px; text-align:right;">
-                    <button class="btn-acad btn-acad-primary" onclick="Curriculum.saveAbsensiGuru()">💾 Simpan Data Absensi PTK ${labelSesi}</button>
+                    <button class="btn-acad btn-acad-primary" id="btnSaveAbsensiGuru" onclick="Curriculum.saveAbsensiGuru()">💾 Simpan Data Absensi PTK ${labelSesi}</button>
                 </div>
             `);
 
@@ -3985,9 +3997,11 @@ const Curriculum = {
 
         if (absensi.length === 0) return;
 
-        const btn = $('#absensiGuruTableWrapper button');
-        const oldText = btn.text();
-        btn.prop('disabled', true).text('Menyimpan...');
+        const $btn = $('#btnSaveAbsensiGuru');
+        const oldHtml = $btn.length ? $btn.html() : `💾 Simpan Data Absensi PTK ${sesi}`;
+        if ($btn.length) {
+            $btn.prop('disabled', true).html('💾 Menyimpan... ⏳');
+        }
 
         this.api('absensi_guru.php?action=save', {
             method: 'POST',
@@ -3998,8 +4012,12 @@ const Curriculum = {
             } else {
                 EModal.toast({ type: 'error', title: 'Gagal', message: res.message });
             }
+        }).fail(xhr => {
+            EModal.toast({ type: 'error', title: 'Gagal', message: xhr.responseJSON?.message || 'Gagal menyimpan absensi.' });
         }).always(() => {
-            btn.prop('disabled', false).text(oldText);
+            if ($btn.length) {
+                $btn.prop('disabled', false).html(oldHtml);
+            }
         });
     },
 
