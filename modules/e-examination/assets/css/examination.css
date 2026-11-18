@@ -910,3 +910,51 @@
     bottom: -0.25em;
 }
 
+/* ============================================================
+   KOREKSI MANUAL & SKORING STYLING
+   ============================================================ */
+.koreksi-item-card {
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.koreksi-item-card:hover {
+    border-color: #cbd5e1;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+}
+
+.koreksi-skor-field:focus {
+    border-color: #2563eb !important;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15) !important;
+    outline: none;
+}
+
+.btn-preset-score {
+    border: 1px solid #cbd5e1 !important;
+    background: #f8fafc;
+    color: #475569;
+    font-weight: 600;
+    cursor: pointer;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+}
+.btn-preset-score:hover {
+    background: #e2e8f0;
+    color: #0f172a;
+    border-color: #94a3b8 !important;
+}
+
+.ex-filter-tabs .btn-filter-tab {
+    transition: all 0.2s ease;
+}
+.ex-filter-tabs .btn-filter-tab:hover {
+    color: #0f172a;
+}
+
+@keyframes koreksiPulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.85; transform: scale(0.98); }
+}
+.badge-perlu-koreksi {
+    animation: koreksiPulse 2.5s infinite ease-in-out;
+}
+
+

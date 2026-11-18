@@ -1768,68 +1768,197 @@ const Exam = {
             
             const rawData = r.data || {};
             const ujianInfo = rawData.ujian || {};
+            const summary = rawData.summary || {};
             const res = Array.isArray(rawData) ? rawData : (rawData.results || []);
             const isPsikologi = (ujianInfo.jenis === 'psikologi');
+            const hasUraian = (summary.count_uraian > 0);
             const displayJudul = judul || ujianInfo.judul || 'Hasil Ujian';
             
-            let rows = res.map((s, i) => {
-                let statusSesi = '';
-                if (s.status === 'mengerjakan' || s.status === 'berlangsung') {
-                    statusSesi = '<span class="ex-badge ex-badge-gray">Sedang Ujian</span>';
-                } else if (s.status === 'dihentikan' || s.status === 'didiskualifikasi') {
-                    statusSesi = '<span class="ex-badge ex-badge-red">Dihentikan (Curang)</span>';
-                } else if (s.status === 'selesai') {
-                    statusSesi = '<span class="ex-badge ex-badge-green">Selesai</span>';
-                } else {
-                    statusSesi = '<span class="ex-badge" style="background:#f1f5f9;color:#64748b;">Belum Mulai</span>';
-                }
+            this._currentLaporan = {
+                ujianId: ujianId,
+                judul: displayJudul,
+                ujianInfo: ujianInfo,
+                summary: summary,
+                results: res,
+                hasUraian: hasUraian,
+                isPsikologi: isPsikologi,
+                filterStatus: 'semua',
+                searchKeyword: ''
+            };
 
-                let pelanggaranBadge = (s.pelanggaran > 0) 
-                    ? `<span title="Pelanggaran Anti-Cheat" style="display:inline-flex;align-items:center;gap:2px;padding:2px 6px;border-radius:4px;background:#fee2e2;color:#991b1b;font-size:11px;font-weight:700;margin-left:6px;">⚠ ${s.pelanggaran}×</span>` 
-                    : '';
+            const renderTable = () => {
+                const state = this._currentLaporan;
+                const kw = (state.searchKeyword || '').toLowerCase().trim();
+                const filter = state.filterStatus;
 
-                let nilaiCol = '';
-                if (isPsikologi) {
-                    if (s.psikologi_hasil) {
-                        nilaiCol = `<span class="ex-badge" style="background:#f3e8ff;color:#6b21a8;font-weight:700;">${this.esc(s.psikologi_hasil)}</span><br><span style="font-size:11px;color:#64748b;">Skor: ${s.skor !== null ? Math.round(s.skor) : '-'}</span>`;
-                    } else if (s.skor !== null) {
-                        nilaiCol = `<strong>${Math.round(s.skor)}</strong>`;
-                    } else {
-                        nilaiCol = '<span style="color:#94a3b8">Belum Selesai</span>';
+                let filtered = state.results.filter(s => {
+                    // Filter Keyword
+                    if (kw) {
+                        const matchName = (s.nama_siswa || '').toLowerCase().includes(kw);
+                        const matchNis = (s.nis || '').toLowerCase().includes(kw);
+                        const matchKelas = (s.kelas || '').toLowerCase().includes(kw);
+                        if (!matchName && !matchNis && !matchKelas) return false;
                     }
-                } else {
-                    nilaiCol = s.skor !== null ? `<strong>${Math.round(s.skor)}</strong>` : '<span style="color:#94a3b8">Belum Dinilai</span>';
+                    // Filter Status
+                    if (filter === 'perlu_koreksi') {
+                        return (s.status === 'selesai' && state.hasUraian && s.status_koreksi !== 'sudah_dikoreksi');
+                    } else if (filter === 'sudah_dikoreksi') {
+                        return (s.status === 'selesai' && (!state.hasUraian || s.status_koreksi === 'sudah_dikoreksi'));
+                    } else if (filter === 'belum_selesai') {
+                        return (s.status !== 'selesai');
+                    }
+                    return true;
+                });
+
+                let rows = filtered.map((s, i) => {
+                    let statusSesi = '';
+                    if (s.status === 'mengerjakan' || s.status === 'berlangsung') {
+                        statusSesi = '<span class="ex-badge ex-badge-gray">Sedang Ujian</span>';
+                    } else if (s.status === 'dihentikan' || s.status === 'didiskualifikasi') {
+                        statusSesi = '<span class="ex-badge ex-badge-red">Dihentikan (Curang)</span>';
+                    } else if (s.status === 'selesai') {
+                        statusSesi = '<span class="ex-badge ex-badge-green">Selesai</span>';
+                    } else {
+                        statusSesi = '<span class="ex-badge" style="background:#f1f5f9;color:#64748b;">Belum Mulai</span>';
+                    }
+
+                    let pelanggaranBadge = (s.pelanggaran > 0) 
+                        ? `<span title="Pelanggaran Anti-Cheat" style="display:inline-flex;align-items:center;gap:2px;padding:2px 6px;border-radius:4px;background:#fee2e2;color:#991b1b;font-size:11px;font-weight:700;margin-left:6px;">⚠ ${s.pelanggaran}×</span>` 
+                        : '';
+
+                    // Status Koreksi Column
+                    let statusKoreksiBadge = '-';
+                    if (s.status === 'selesai') {
+                        if (state.hasUraian) {
+                            if (s.status_koreksi === 'sudah_dikoreksi') {
+                                statusKoreksiBadge = `<span class="ex-badge ex-badge-green" style="font-weight:600;" title="Dikoreksi oleh: ${this.esc(s.nama_korektor || 'Guru')} pada ${this.esc(s.dikoreksi_pada || '')}">✓ Sudah Dikoreksi</span>`;
+                            } else {
+                                statusKoreksiBadge = `<span class="ex-badge ex-badge-yellow" style="font-weight:700;background:#fef3c7;color:#92400e;">⚠ Belum Skoring</span>`;
+                            }
+                        } else {
+                            statusKoreksiBadge = `<span class="ex-badge ex-badge-blue">Otomatis (PG)</span>`;
+                        }
+                    }
+
+                    // Score Column
+                    let nilaiCol = '';
+                    if (state.isPsikologi) {
+                        if (s.psikologi_hasil) {
+                            nilaiCol = `<span class="ex-badge" style="background:#f3e8ff;color:#6b21a8;font-weight:700;">${this.esc(s.psikologi_hasil)}</span><br><span style="font-size:11px;color:#64748b;">Skor: ${s.skor !== null ? Math.round(s.skor) : '-'}</span>`;
+                        } else if (s.skor !== null) {
+                            nilaiCol = `<strong>${Math.round(s.skor)}</strong>`;
+                        } else {
+                            nilaiCol = '<span style="color:#94a3b8">Belum Selesai</span>';
+                        }
+                    } else {
+                        nilaiCol = s.skor !== null ? `<strong style="font-size:15px;color:#1e293b;">${Math.round(s.skor)}</strong>` : '<span style="color:#94a3b8">Belum Dinilai</span>';
+                    }
+
+                    // Action buttons
+                    let aksiBtn = '-';
+                    if (s.sesi_id && s.status === 'selesai') {
+                        if (state.hasUraian) {
+                            if (s.status_koreksi === 'sudah_dikoreksi') {
+                                aksiBtn = `
+                                    <button class="btn btn-outline btn-sm" onclick="Exam.showKoreksiModal(${s.sesi_id})" title="Koreksi ulang / edit nilai" style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;font-size:12px;">
+                                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                        Edit Nilai
+                                    </button>`;
+                            } else {
+                                aksiBtn = `
+                                    <button class="btn btn-primary btn-sm" onclick="Exam.showKoreksiModal(${s.sesi_id})" title="Koreksi jawaban uraian siswa" style="background:#f59e0b;border-color:#d97706;color:#ffffff;font-weight:700;display:inline-flex;align-items:center;gap:4px;padding:4px 10px;font-size:12px;">
+                                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                        📝 Koreksi
+                                    </button>`;
+                            }
+                        } else {
+                            aksiBtn = `
+                                <button class="btn btn-outline btn-sm" onclick="Exam.showKoreksiModal(${s.sesi_id})" title="Lihat detail pengerjaan" style="display:inline-flex;align-items:center;gap:4px;padding:4px 8px;font-size:12px;">
+                                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                    Detail
+                                </button>`;
+                        }
+                    }
+
+                    return `
+                    <tr>
+                        <td>${i+1}</td>
+                        <td>
+                            <strong>${this.esc(s.nama_siswa)}</strong> ${pelanggaranBadge}<br>
+                            <span style="font-size:12px;color:#64748b;">NIS: ${this.esc(s.nis)}</span>
+                        </td>
+                        <td>${this.esc(s.kelas)}</td>
+                        <td>${statusSesi}</td>
+                        <td>${statusKoreksiBadge}</td>
+                        ${state.hasUraian ? `
+                            <td style="font-size:12px;color:#475569;">${s.status === 'selesai' ? (Math.round((s.skor_pg || 0) * 10) / 10) : '-'}</td>
+                            <td style="font-size:12px;color:#475569;">${s.status === 'selesai' ? (Math.round((s.skor_uraian || 0) * 10) / 10) : '-'}</td>
+                        ` : ''}
+                        <td>${nilaiCol}</td>
+                        <td>${aksiBtn}</td>
+                    </tr>`;
+                }).join('');
+
+                const colCount = state.hasUraian ? 9 : 7;
+                if (!rows) {
+                    rows = `<tr><td colspan="${colCount}" style="text-align:center;padding:40px;color:var(--text-muted);">Tidak ada data siswa yang cocok dengan filter.</td></tr>`;
                 }
 
-                return `
-                <tr>
-                    <td>${i+1}</td>
-                    <td>
-                        <strong>${this.esc(s.nama_siswa)}</strong> ${pelanggaranBadge}<br>
-                        <span style="font-size:12px;color:#64748b;">NIS: ${this.esc(s.nis)}</span>
-                    </td>
-                    <td>${this.esc(s.kelas)}</td>
-                    <td>${statusSesi}</td>
-                    <td>${s.waktu_mulai ? s.waktu_mulai.substring(0,16) : '-'}</td>
-                    <td>${s.waktu_selesai ? s.waktu_selesai.substring(0,16) : '-'}</td>
-                    <td>${nilaiCol}</td>
-                </tr>`;
-            }).join('');
+                $('#laporanTableBody').html(rows);
+                $('#laporanCountShowing').text(filtered.length);
+            };
 
-            if (!rows) rows = '<tr><td colspan="7" style="text-align:center;padding:40px;color:var(--text-muted);">Belum ada data siswa untuk kelas ujian ini</td></tr>';
+            // Summary Badges Cards
+            const statTotalPeserta = summary.total_peserta || 0;
+            const statTotalSelesai = summary.total_selesai || 0;
+            const statPerluKoreksi = summary.total_perlu_koreksi || 0;
+            const statSudahDikoreksi = summary.total_sudah_dikoreksi || 0;
+            const statRataRata = summary.rata_rata || 0;
 
-            const scoreColHeader = isPsikologi ? 'Hasil Psikologi' : 'Nilai (0-100)';
+            const scoreColHeader = isPsikologi ? 'Hasil Psikologi' : 'Nilai Akhir (0-100)';
 
             $c.html(`
                 <button class="btn btn-primary btn-sm" style="margin-bottom:16px;" onclick="Exam.navigate('laporan')">
                     <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
                     Kembali ke Daftar Laporan
                 </button>
+
+                <!-- Statistik Ringkasan -->
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-bottom:18px;">
+                    <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+                        <div style="font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase;">Total Peserta</div>
+                        <div style="font-size:22px; font-weight:800; color:#1e293b; margin-top:2px;">${statTotalPeserta}</div>
+                    </div>
+                    <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+                        <div style="font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase;">Sudah Selesai</div>
+                        <div style="font-size:22px; font-weight:800; color:#2563eb; margin-top:2px;">${statTotalSelesai}</div>
+                    </div>
+                    ${hasUraian ? `
+                    <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:10px; padding:14px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+                        <div style="font-size:11px; font-weight:700; color:#92400e; text-transform:uppercase; display:flex; align-items:center; gap:4px;">
+                            ⚠ Perlu Koreksi Uraian
+                        </div>
+                        <div style="font-size:22px; font-weight:800; color:#b45309; margin-top:2px;">${statPerluKoreksi} <span style="font-size:12px; font-weight:normal; color:#92400e;">siswa</span></div>
+                    </div>
+                    <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:14px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+                        <div style="font-size:11px; font-weight:700; color:#166534; text-transform:uppercase;">✓ Sudah Dikoreksi</div>
+                        <div style="font-size:22px; font-weight:800; color:#15803d; margin-top:2px;">${statSudahDikoreksi} <span style="font-size:12px; font-weight:normal; color:#166534;">siswa</span></div>
+                    </div>
+                    ` : ''}
+                    <div style="background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 18px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+                        <div style="font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase;">Rata-rata Nilai</div>
+                        <div style="font-size:22px; font-weight:800; color:#0f172a; margin-top:2px;">${statRataRata}</div>
+                    </div>
+                </div>
+
                 <div class="ex-card ex-slide-up">
                     <div class="ex-card-header" style="flex-wrap:wrap; gap:16px;">
                         <div>
                             <h3 style="margin:0 0 4px 0;">Hasil: ${this.esc(displayJudul)}</h3>
-                            <span style="font-size:13px;color:var(--text-secondary);">${isPsikologi ? 'Tipe: Tes Psikologi' : 'Tipe: Tes Penilaian'}</span>
+                            <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                                <span style="font-size:13px;color:var(--text-secondary);">${isPsikologi ? 'Tipe: Tes Psikologi' : 'Tipe: Tes Penilaian'}</span>
+                                ${hasUraian ? `<span class="ex-badge ex-badge-purple" style="font-size:11px;">Terdapat Soal Uraian (${summary.count_uraian})</span>` : ''}
+                            </div>
                         </div>
                         <div class="ex-toolbar">
                             <button class="btn btn-primary btn-sm" onclick="Exam.koreksiMasal(${ujianId})" style="background:#eab308;color:#854d0e;border:none;">
@@ -1838,20 +1967,362 @@ const Exam = {
                             </button>
                             <a href="${this.state.apiUrl}laporan.php?action=download_excel&ujian_id=${ujianId}&token=${this.state.token}" target="_blank" class="btn btn-primary btn-sm" style="background:#10b981;border:none;">
                                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                                Export Excel (CSV)
+                                Download Excel (CSV)
+                            </a>
+                            <a href="${this.state.apiUrl}laporan.php?action=cetak_laporan&ujian_id=${ujianId}&token=${this.state.token}" target="_blank" class="btn btn-primary btn-sm" style="background:#6366f1;border:none;">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                                Cetak / PDF
                             </a>
                         </div>
                     </div>
+
+                    <!-- Filter & Pencarian Bar -->
+                    <div style="padding:14px 20px; background:#f8fafc; border-bottom:1px solid #e2e8f0; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                        <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">
+                            <span style="font-size:12px; font-weight:600; color:#64748b;">Filter Status:</span>
+                            <div class="ex-filter-tabs" style="display:inline-flex; gap:4px; background:#e2e8f0; padding:2px; border-radius:6px;">
+                                <button type="button" class="btn btn-sm btn-filter-tab active" data-filter="semua" style="border:none; padding:4px 10px; font-size:12px; border-radius:4px; background:#ffffff; font-weight:600; color:#1e293b; cursor:pointer;">Semua (${statTotalPeserta})</button>
+                                ${hasUraian ? `
+                                <button type="button" class="btn btn-sm btn-filter-tab" data-filter="perlu_koreksi" style="border:none; padding:4px 10px; font-size:12px; border-radius:4px; background:transparent; font-weight:600; color:#b45309; cursor:pointer;">⚠ Perlu Koreksi (${statPerluKoreksi})</button>
+                                <button type="button" class="btn btn-sm btn-filter-tab" data-filter="sudah_dikoreksi" style="border:none; padding:4px 10px; font-size:12px; border-radius:4px; background:transparent; font-weight:600; color:#15803d; cursor:pointer;">✓ Sudah Dikoreksi (${statSudahDikoreksi})</button>
+                                ` : ''}
+                                <button type="button" class="btn btn-sm btn-filter-tab" data-filter="belum_selesai" style="border:none; padding:4px 10px; font-size:12px; border-radius:4px; background:transparent; font-weight:600; color:#64748b; cursor:pointer;">Belum Selesai</button>
+                            </div>
+                        </div>
+                        <div style="position:relative; width:240px;">
+                            <input type="text" id="laporanSearchInput" placeholder="Cari nama atau NIS siswa..." class="form-input" style="font-size:12px; padding:6px 12px; padding-left:30px; width:100%;">
+                            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#94a3b8" stroke-width="2" style="position:absolute; left:10px; top:50%; transform:translateY(-50%); pointer-events:none;"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        </div>
+                    </div>
+
                     <div class="ex-card-body" style="padding:0;">
                         <div class="ex-table-wrapper">
                             <table class="ex-table">
-                                <thead><tr><th style="width:40px">#</th><th>Nama & NIS</th><th>Kelas</th><th>Status</th><th>Mulai</th><th>Selesai</th><th>${scoreColHeader}</th></tr></thead>
-                                <tbody>${rows}</tbody>
+                                <thead>
+                                    <tr>
+                                        <th style="width:40px">#</th>
+                                        <th>Nama & NIS</th>
+                                        <th style="width:90px">Kelas</th>
+                                        <th style="width:110px">Status Ujian</th>
+                                        <th style="width:130px">Status Koreksi</th>
+                                        ${hasUraian ? `
+                                            <th style="width:75px">Skor PG</th>
+                                            <th style="width:85px">Skor Uraian</th>
+                                        ` : ''}
+                                        <th style="width:120px">${scoreColHeader}</th>
+                                        <th style="width:110px">Aksi</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="laporanTableBody"></tbody>
                             </table>
                         </div>
                     </div>
                 </div>
             `);
+
+            // Initial render
+            renderTable();
+
+            // Bind filter tabs click
+            $('.btn-filter-tab').on('click', (e) => {
+                const $btn = $(e.currentTarget);
+                $('.btn-filter-tab').css({ background: 'transparent', color: '#64748b' });
+                $btn.css({ background: '#ffffff', color: '#1e293b' });
+                this._currentLaporan.filterStatus = $btn.data('filter');
+                renderTable();
+            });
+
+            // Bind search input
+            $('#laporanSearchInput').on('input', (e) => {
+                this._currentLaporan.searchKeyword = $(e.currentTarget).val();
+                renderTable();
+            });
+        });
+    },
+
+    showKoreksiModal(sesiId) {
+        const loader = EModal.loading('Memuat data jawaban siswa...');
+        this.api('koreksi.php?action=get_koreksi_siswa&sesi_id=' + sesiId).then(r => {
+            EModal.close(loader);
+            if (!r.success) {
+                EModal.alert('Gagal', r.message || 'Tidak dapat memuat detail jawaban siswa');
+                return;
+            }
+
+            const data = r.data || {};
+            const sesi = data.sesi || {};
+            const summary = data.summary || {};
+            const soalUraian = data.soal_uraian || [];
+            const soalPg = data.soal_pg || [];
+            const isSudah = (sesi.status_koreksi === 'sudah_dikoreksi');
+
+            // Render form HTML
+            let uraianHtml = '';
+            if (soalUraian.length === 0) {
+                uraianHtml = '<div style="text-align:center;padding:30px;color:#64748b;">Tidak ada soal uraian/esai pada ujian ini.</div>';
+            } else {
+                uraianHtml = soalUraian.map((item, idx) => {
+                    const voiceHtml = item.jawaban_voice ? `
+                        <div style="background:#fefce8; border:1px solid #fef08a; padding:12px; border-radius:8px; margin:10px 0;">
+                            <div style="font-weight:600; font-size:12px; color:#854d0e; margin-bottom:6px; display:flex; align-items:center; gap:6px;">
+                                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                                Rekaman Jawaban Suara Siswa:
+                            </div>
+                            <audio controls src="${this.state.baseUrl}${item.jawaban_voice}" style="width:100%; height:38px;"></audio>
+                        </div>` : '';
+
+                    const aiFeedbackHtml = item.ai_feedback ? `
+                        <div style="font-size:12px; color:#6b21a8; background:#faf5ff; border:1px solid #e9d5ff; padding:8px 12px; border-radius:6px; margin-bottom:10px;">
+                            <strong>💡 Saran AI:</strong> ${this.esc(item.ai_feedback)}
+                        </div>` : '';
+
+                    const mediaHtml = item.gambar ? `
+                        <div style="margin:8px 0;"><img src="${this.state.baseUrl}${item.gambar}" style="max-width:100%; max-height:220px; border-radius:6px; border:1px solid #e2e8f0;"></div>
+                    ` : '';
+
+                    const currentVal = item.skor !== null ? item.skor : '';
+
+                    return `
+                    <div class="koreksi-item-card" style="background:#ffffff; border:1px solid #e2e8f0; border-radius:10px; padding:18px; margin-bottom:20px; box-shadow:0 1px 3px rgba(0,0,0,0.05);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid #f1f5f9; padding-bottom:8px;">
+                            <span style="font-weight:700; font-size:14px; color:#1e293b;">
+                                Soal #${item.urutan || (idx+1)} <span class="ex-badge ex-badge-blue" style="font-size:11px; margin-left:6px;">${item.tipe_soal === 'esai' ? 'Esai / Uraian' : 'Jawaban Singkat'}</span>
+                            </span>
+                            <span style="font-size:12px; font-weight:600; color:#475569; background:#f1f5f9; padding:3px 8px; border-radius:6px;">
+                                Bobot Maks: <strong>${item.bobot}</strong>
+                            </span>
+                        </div>
+
+                        <!-- Pertanyaan -->
+                        <div style="font-size:14px; color:#0f172a; margin-bottom:12px; line-height:1.6;">
+                            ${item.pertanyaan}
+                            ${mediaHtml}
+                        </div>
+
+                        <!-- Kunci Jawaban / Panduan Rubrik -->
+                        <div style="background:#f8fafc; border-left:3px solid #64748b; padding:10px 12px; border-radius:4px; margin-bottom:12px; font-size:13px;">
+                            <div style="font-weight:600; color:#475569; margin-bottom:4px; font-size:12px;">🔑 Kunci / Panduan Penilaian:</div>
+                            <div style="color:#334155;">${item.kunci_jawaban ? this.esc(item.kunci_jawaban) : '<em style="color:#94a3b8;">Tidak ada kunci/rubrik khusus</em>'}</div>
+                        </div>
+
+                        <!-- Jawaban Siswa -->
+                        <div style="background:#eff6ff; border-left:3px solid #2563eb; padding:12px; border-radius:4px; margin-bottom:12px;">
+                            <div style="font-weight:600; color:#1e40af; margin-bottom:4px; font-size:12px;">✏️ Jawaban Teks Siswa:</div>
+                            <div style="color:#1e293b; font-size:14px; white-space:pre-wrap; word-break:break-word;">${item.jawaban ? this.esc(item.jawaban) : '<em style="color:#94a3b8;">(Siswa tidak mengisi jawaban teks)</em>'}</div>
+                        </div>
+
+                        ${voiceHtml}
+                        ${aiFeedbackHtml}
+
+                        <!-- Form Input Nilai -->
+                        <div class="koreksi-score-wrap" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin-top:10px;">
+                            <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <label style="font-weight:700; font-size:13px; color:#1e293b;">Beri Skor:</label>
+                                    <input type="number" min="0" max="${item.bobot}" step="0.5" 
+                                           class="form-input koreksi-skor-field" 
+                                           data-bobot="${item.bobot}" 
+                                           data-jawaban-id="${item.jawaban_id}" 
+                                           value="${currentVal}" 
+                                           placeholder="0 - ${item.bobot}" 
+                                           style="width:90px; font-weight:800; font-size:16px; text-align:center; padding:6px 8px; border:2px solid #cbd5e1; border-radius:6px;">
+                                    <span style="font-size:13px; color:#64748b;">/ ${item.bobot}</span>
+                                </div>
+                                <div style="display:flex; gap:6px;">
+                                    <button type="button" class="btn btn-sm btn-ghost btn-preset-score" data-pct="0" style="padding:4px 8px; font-size:11px;">0</button>
+                                    <button type="button" class="btn btn-sm btn-ghost btn-preset-score" data-pct="0.5" style="padding:4px 8px; font-size:11px;">50%</button>
+                                    <button type="button" class="btn btn-sm btn-ghost btn-preset-score" data-pct="1" style="padding:4px 8px; font-size:11px; background:#e0f2fe; color:#0369a1; font-weight:600;">Penuh</button>
+                                </div>
+                            </div>
+                            <div style="margin-top:8px;">
+                                <input type="text" class="form-input koreksi-catatan-field" data-jawaban-id="${item.jawaban_id}" value="${this.esc(item.catatan_guru || '')}" placeholder="Catatan/alasan penilaian guru untuk siswa (opsional)..." style="font-size:12px; padding:6px 10px;">
+                            </div>
+                        </div>
+                    </div>`;
+                }).join('');
+            }
+
+            // PG items preview collapsible
+            let pgListHtml = '';
+            if (soalPg.length > 0) {
+                pgListHtml = `
+                <details style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 16px; margin-top:20px;">
+                    <summary style="font-weight:600; cursor:pointer; color:#475569; font-size:13px;">
+                        🔍 Lihat Jawaban Pilihan Ganda / Objektif (${soalPg.length} Soal) — Skor: ${summary.skor_pg}/${summary.max_skor_pg}
+                    </summary>
+                    <div style="margin-top:12px; font-size:12px;">
+                        <table style="width:100%; border-collapse:collapse;">
+                            <thead><tr style="border-bottom:1px solid #cbd5e1; text-align:left;"><th style="padding:4px 8px;">No</th><th style="padding:4px 8px;">Pertanyaan</th><th style="padding:4px 8px;">Kunci</th><th style="padding:4px 8px;">Jawaban Siswa</th><th style="padding:4px 8px;">Skor</th></tr></thead>
+                            <tbody>
+                                ${soalPg.map((p, pidx) => `
+                                    <tr style="border-bottom:1px solid #f1f5f9;">
+                                        <td style="padding:6px 8px;">${p.urutan || (pidx+1)}</td>
+                                        <td style="padding:6px 8px;">${this.esc(p.pertanyaan.substring(0, 60))}...</td>
+                                        <td style="padding:6px 8px;"><span class="ex-badge ex-badge-green" style="font-size:10px;">${this.esc(p.kunci_jawaban || '-')}</span></td>
+                                        <td style="padding:6px 8px;"><span class="ex-badge ${p.skor > 0 ? 'ex-badge-green' : 'ex-badge-red'}" style="font-size:10px;">${this.esc(p.jawaban || '-')}</span></td>
+                                        <td style="padding:6px 8px; font-weight:bold;">${p.skor}/${p.bobot}</td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                </details>`;
+            }
+
+            const statusKoreksiBadge = isSudah 
+                ? `<span class="ex-badge ex-badge-green" style="font-size:12px; font-weight:700;">✓ Sudah Dikoreksi ${sesi.nama_korektor ? `(${this.esc(sesi.nama_korektor)})` : ''}</span>`
+                : `<span class="ex-badge ex-badge-yellow" style="font-size:12px; font-weight:700; background:#fef3c7; color:#92400e;">⚠ Belum Skoring</span>`;
+
+            const formContent = `
+                <!-- Sticky Header Penilaian -->
+                <div style="position:sticky; top:-32px; z-index:10; background:#ffffff; border-bottom:2px solid #e2e8f0; padding:12px 16px; margin:-32px -32px 20px -32px; box-shadow:0 4px 6px -1px rgba(0,0,0,0.05); display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px;">
+                    <div>
+                        <div style="font-weight:700; font-size:15px; color:#0f172a;">${this.esc(sesi.nama_siswa)} (${this.esc(sesi.nis)})</div>
+                        <div style="font-size:12px; color:#64748b;">Kelas: <strong>${this.esc(sesi.kelas)}</strong> | Ujian: <strong>${this.esc(sesi.judul_ujian)}</strong> | Status: ${statusKoreksiBadge}</div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:16px; background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:6px 14px;">
+                        <div style="text-align:center;">
+                            <div style="font-size:10px; color:#64748b; font-weight:600; text-transform:uppercase;">Skor PG</div>
+                            <div style="font-size:14px; font-weight:700; color:#334155;">${summary.skor_pg} / ${summary.max_skor_pg}</div>
+                        </div>
+                        <div style="width:1px; height:24px; background:#cbd5e1;"></div>
+                        <div style="text-align:center;">
+                            <div style="font-size:10px; color:#64748b; font-weight:600; text-transform:uppercase;">Skor Uraian</div>
+                            <div style="font-size:14px; font-weight:700; color:#2563eb;"><span id="koreksiLiveUraian">${summary.skor_uraian}</span> / ${summary.max_skor_uraian}</div>
+                        </div>
+                        <div style="width:1px; height:24px; background:#cbd5e1;"></div>
+                        <div style="text-align:center;">
+                            <div style="font-size:10px; color:#64748b; font-weight:600; text-transform:uppercase;">Nilai Akhir (0-100)</div>
+                            <div style="font-size:18px; font-weight:900; color:#16a34a;"><span id="koreksiLiveTotal">${sesi.nilai_akhir !== null ? sesi.nilai_akhir : 0}</span></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-bottom:14px; font-size:13px; color:#475569;">
+                    Silakan periksa jawaban uraian siswa di bawah ini, dengarkan rekaman suara (jika ada), lalu masukkan skor pada kolom yang disediakan.
+                </div>
+
+                ${uraianHtml}
+                ${pgListHtml}
+            `;
+
+            const modalOverlay = EModal.form({
+                title: 'Koreksi & Skoring Jawaban Siswa',
+                size: 'xl',
+                form: formContent,
+                confirmText: '💾 Simpan Skoring Siswa',
+                cancelText: 'Tutup',
+                onOpen: () => {
+                    const $overlay = $(modalOverlay);
+
+                    // Live calculation function
+                    const recalcScores = () => {
+                        let sumUraian = 0;
+                        $overlay.find('.koreksi-skor-field').each(function() {
+                            const val = parseFloat($(this).val());
+                            if (!isNaN(val)) sumUraian += val;
+                        });
+                        $overlay.find('#koreksiLiveUraian').text(sumUraian.toFixed(1));
+
+                        const totalBobot = parseFloat(summary.total_bobot) || 0;
+                        const totalRaw = parseFloat(summary.skor_pg || 0) + sumUraian;
+                        let finalScore = 0;
+                        if (totalBobot > 0) {
+                            finalScore = Math.round((totalRaw / totalBobot) * 100);
+                        }
+                        $overlay.find('#koreksiLiveTotal').text(finalScore);
+                    };
+
+                    // Bind input change
+                    $overlay.on('input change', '.koreksi-skor-field', function() {
+                        const $inp = $(this);
+                        const bobot = parseFloat($inp.data('bobot'));
+                        let val = parseFloat($inp.val());
+                        if (val > bobot) {
+                            $inp.val(bobot);
+                        } else if (val < 0) {
+                            $inp.val(0);
+                        }
+                        $inp.removeClass('is-invalid').css('border-color', '#cbd5e1');
+                        recalcScores();
+                    });
+
+                    // Preset buttons
+                    $overlay.on('click', '.btn-preset-score', function(e) {
+                        e.preventDefault();
+                        const pct = parseFloat($(this).data('pct'));
+                        const $card = $(this).closest('.koreksi-score-wrap');
+                        const $field = $card.find('.koreksi-skor-field');
+                        const bobot = parseFloat($field.data('bobot'));
+                        const calcVal = Math.round(bobot * pct * 10) / 10;
+                        $field.val(calcVal).trigger('input');
+                    });
+
+                    // Render KaTeX math
+                    if (window.renderMathInElement) {
+                        try {
+                            renderMathInElement($overlay[0], {
+                                delimiters: [
+                                    {left: "$$", right: "$$", display: true},
+                                    {left: "$", right: "$", display: false}
+                                ]
+                            });
+                        } catch(e) {}
+                    }
+                },
+                onConfirm: () => {
+                    const $overlay = $(modalOverlay);
+                    const scores = [];
+                    let hasEmpty = false;
+
+                    $overlay.find('.koreksi-skor-field').each(function() {
+                        const $inp = $(this);
+                        const jId = parseInt($inp.data('jawaban-id'));
+                        const valStr = $inp.val();
+                        if (valStr === '' || isNaN(parseFloat(valStr))) {
+                            hasEmpty = true;
+                            $inp.focus().css('border-color', '#ef4444');
+                            return false;
+                        }
+                        const scoreVal = parseFloat(valStr);
+                        const catatanVal = $overlay.find(`.koreksi-catatan-field[data-jawaban-id="${jId}"]`).val() || '';
+                        scores.push({
+                            jawaban_id: jId,
+                            skor: scoreVal,
+                            catatan_guru: catatanVal
+                        });
+                    });
+
+                    if (hasEmpty) {
+                        EModal.alert('Nilai Belum Lengkap', 'Mohon isi semua skor untuk seluruh soal uraian sebelum menyimpan.');
+                        return false;
+                    }
+
+                    const saveLoader = EModal.loading('Menyimpan skor...');
+                    this.api('koreksi.php?action=simpan_koreksi_manual', {
+                        method: 'POST',
+                        data: {
+                            sesi_id: sesiId,
+                            scores: scores
+                        }
+                    }).then(res => {
+                        EModal.close(saveLoader);
+                        if (res.success) {
+                            EModal.close(modalOverlay);
+                            EModal.toast({ type: 'success', title: 'Skoring Berhasil Disimpan', message: `Nilai akhir siswa: ${res.data.nilai_akhir}` });
+                            // Refresh detail laporan
+                            this.detailLaporan(this.state.params.id, this.state.params.judul || '');
+                        } else {
+                            EModal.alert('Gagal Menyimpan', res.message || 'Terjadi kesalahan server');
+                        }
+                    }).catch(err => {
+                        EModal.close(saveLoader);
+                        EModal.alert('Error', 'Gagal menghubungi server');
+                    });
+
+                    return false; // prevent premature close
+                }
+            });
         });
     },
 

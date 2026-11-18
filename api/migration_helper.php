@@ -7,7 +7,7 @@ require_once __DIR__ . '/config.php';
 
 if (!function_exists('run_auto_migrations')) {
 function run_auto_migrations() {
-    $target_version = 24;
+    $target_version = 25;
     
     // 1. Get current version (default to 0 if not set or if table settings doesn't exist yet)
     $current_version = 0;
@@ -1075,6 +1075,39 @@ function run_auto_migrations() {
             $pdo->exec("ALTER TABLE `ref_kelas` MODIFY `nama_kelas` VARCHAR(100) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL");
             $pdo->exec("UPDATE sch_kelas sk JOIN ref_kelas rk ON sk.nama_kelas = rk.nama_kelas SET sk.wali_id = rk.wali_kelas_id WHERE rk.wali_kelas_id IS NOT NULL");
             $pdo->exec("UPDATE acad_kelas ak JOIN ref_kelas rk ON ak.nama_kelas = rk.nama_kelas SET ak.wali_id = rk.wali_kelas_id WHERE rk.wali_kelas_id IS NOT NULL");
+        } catch (Exception $e) {}
+    }
+
+    // Version 25 migrations (E-Examination: Koreksi Manual Guru & Status Skoring)
+    if ($current_version < 25) {
+        try {
+            $checkSesi = $pdo->query("SHOW TABLES LIKE 'exam_sesi'")->fetch();
+            if ($checkSesi) {
+                $colsSesi = $pdo->query("SHOW COLUMNS FROM `exam_sesi` LIKE 'status_koreksi'")->fetchAll();
+                if (empty($colsSesi)) {
+                    $pdo->exec("ALTER TABLE `exam_sesi` ADD COLUMN `status_koreksi` ENUM('belum_dikoreksi', 'sudah_dikoreksi') NOT NULL DEFAULT 'belum_dikoreksi' AFTER `nilai_akhir`");
+                }
+                $colsOleh = $pdo->query("SHOW COLUMNS FROM `exam_sesi` LIKE 'dikoreksi_oleh'")->fetchAll();
+                if (empty($colsOleh)) {
+                    $pdo->exec("ALTER TABLE `exam_sesi` ADD COLUMN `dikoreksi_oleh` INT(10) UNSIGNED DEFAULT NULL AFTER `status_koreksi`");
+                }
+                $colsPada = $pdo->query("SHOW COLUMNS FROM `exam_sesi` LIKE 'dikoreksi_pada'")->fetchAll();
+                if (empty($colsPada)) {
+                    $pdo->exec("ALTER TABLE `exam_sesi` ADD COLUMN `dikoreksi_pada` DATETIME DEFAULT NULL AFTER `dikoreksi_oleh`");
+                }
+            }
+
+            $checkJawaban = $pdo->query("SHOW TABLES LIKE 'exam_jawaban'")->fetch();
+            if ($checkJawaban) {
+                $colsCatatan = $pdo->query("SHOW COLUMNS FROM `exam_jawaban` LIKE 'catatan_guru'")->fetchAll();
+                if (empty($colsCatatan)) {
+                    $pdo->exec("ALTER TABLE `exam_jawaban` ADD COLUMN `catatan_guru` TEXT DEFAULT NULL AFTER `ai_feedback`");
+                }
+                $colsManual = $pdo->query("SHOW COLUMNS FROM `exam_jawaban` LIKE 'is_koreksi_manual'")->fetchAll();
+                if (empty($colsManual)) {
+                    $pdo->exec("ALTER TABLE `exam_jawaban` ADD COLUMN `is_koreksi_manual` TINYINT(1) NOT NULL DEFAULT 0 AFTER `catatan_guru`");
+                }
+            }
         } catch (Exception $e) {}
     }
 

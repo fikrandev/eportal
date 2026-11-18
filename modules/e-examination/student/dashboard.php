@@ -210,7 +210,12 @@ $pastExams = $stmtPast->fetchAll();
                                 <?php endif; ?>
                             </td>
                             <td>
-                                <?php if ($p['skor'] !== null): ?>
+                                <?php if ($p['status_koreksi'] === 'belum_dikoreksi'): ?>
+                                    <span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600;background:#fef3c7;color:#92400e;">
+                                        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                        Menunggu Koreksi Guru
+                                    </span>
+                                <?php elseif ($p['skor'] !== null): ?>
                                     <?php if ($p['jenis'] === 'psikologi'): 
                                         $stmtH = db()->prepare("
                                             SELECT kode_hasil FROM exam_psikologi_hasil 
@@ -225,7 +230,7 @@ $pastExams = $stmtPast->fetchAll();
                                         <span class="score-badge"><?php echo round($p['skor'], 0); ?></span>
                                     <?php endif; ?>
                                 <?php else: ?>
-                                    <span style="color:#94a3b8;">Tidak ditampilkan / Menunggu AI</span>
+                                    <span style="color:#94a3b8;font-size:12px;">Belum Dinilai</span>
                                 <?php endif; ?>
                             </td>
                         </tr>

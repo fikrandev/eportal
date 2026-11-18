@@ -29,6 +29,32 @@ function exam_ensure_tables() {
                 $pdo->exec("ALTER TABLE `exam_soal` ADD COLUMN `audio_play_limit` INT NOT NULL DEFAULT 0 AFTER `audio`");
             }
         }
+        $checkSesi = $pdo->query("SHOW TABLES LIKE 'exam_sesi'")->fetch();
+        if ($checkSesi) {
+            $colsSesi = $pdo->query("SHOW COLUMNS FROM `exam_sesi` LIKE 'status_koreksi'")->fetchAll();
+            if (empty($colsSesi)) {
+                $pdo->exec("ALTER TABLE `exam_sesi` ADD COLUMN `status_koreksi` ENUM('belum_dikoreksi', 'sudah_dikoreksi') NOT NULL DEFAULT 'belum_dikoreksi' AFTER `nilai_akhir`");
+            }
+            $colsOleh = $pdo->query("SHOW COLUMNS FROM `exam_sesi` LIKE 'dikoreksi_oleh'")->fetchAll();
+            if (empty($colsOleh)) {
+                $pdo->exec("ALTER TABLE `exam_sesi` ADD COLUMN `dikoreksi_oleh` INT(10) UNSIGNED DEFAULT NULL AFTER `status_koreksi`");
+            }
+            $colsPada = $pdo->query("SHOW COLUMNS FROM `exam_sesi` LIKE 'dikoreksi_pada'")->fetchAll();
+            if (empty($colsPada)) {
+                $pdo->exec("ALTER TABLE `exam_sesi` ADD COLUMN `dikoreksi_pada` DATETIME DEFAULT NULL AFTER `dikoreksi_oleh`");
+            }
+        }
+        $checkJawaban = $pdo->query("SHOW TABLES LIKE 'exam_jawaban'")->fetch();
+        if ($checkJawaban) {
+            $colsCatatan = $pdo->query("SHOW COLUMNS FROM `exam_jawaban` LIKE 'catatan_guru'")->fetchAll();
+            if (empty($colsCatatan)) {
+                $pdo->exec("ALTER TABLE `exam_jawaban` ADD COLUMN `catatan_guru` TEXT DEFAULT NULL AFTER `ai_feedback`");
+            }
+            $colsManual = $pdo->query("SHOW COLUMNS FROM `exam_jawaban` LIKE 'is_koreksi_manual'")->fetchAll();
+            if (empty($colsManual)) {
+                $pdo->exec("ALTER TABLE `exam_jawaban` ADD COLUMN `is_koreksi_manual` TINYINT(1) NOT NULL DEFAULT 0 AFTER `catatan_guru`");
+            }
+        }
     } catch (Throwable $e) {}
     run_auto_migrations();
 }

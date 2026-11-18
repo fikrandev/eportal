@@ -432,6 +432,10 @@ try {
                 try {
                     db()->prepare("UPDATE exam_student_login SET status = 'selesai', is_locked = 0 WHERE student_id = ?")->execute([$_SESSION['exam_student']['id']]);
                 } catch (Exception $e) {}
+                try {
+                    require_once __DIR__ . '/koreksi.php';
+                    processGrading($session_id);
+                } catch (Exception $e) {}
                 throw new Exception('Waktu ujian telah habis', 403);
             }
 
@@ -579,6 +583,12 @@ try {
             if ($stmt->rowCount() > 0) {
                 try {
                     db()->prepare("UPDATE exam_student_login SET status = 'selesai', is_locked = 0, lock_reason = NULL, updated_at = NOW() WHERE student_id = ?")->execute([$_SESSION['exam_student']['id']]);
+                } catch (Exception $e) {}
+
+                // Auto-grade objective questions & set initial status_koreksi
+                try {
+                    require_once __DIR__ . '/koreksi.php';
+                    processGrading($session_id);
                 } catch (Exception $e) {}
 
                 json_response(200, true, 'Ujian berhasil diselesaikan');
