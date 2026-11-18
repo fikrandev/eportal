@@ -170,15 +170,18 @@ function acad_run_migrations() {
         db()->exec("CREATE TABLE IF NOT EXISTS acad_absensi_guru (
             id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
             guru_id bigint(20) unsigned NOT NULL,
-            year_id bigint(20) unsigned NOT NULL,
+            year_id bigint(20) unsigned DEFAULT NULL,
+            academic_year_id bigint(20) unsigned DEFAULT NULL,
             tanggal date NOT NULL,
-            status enum('H','T','S','I','A') NOT NULL DEFAULT 'H',
+            sesi enum('masuk','istirahat','pulang') NOT NULL DEFAULT 'masuk',
+            status varchar(10) NOT NULL DEFAULT 'H',
             keterangan varchar(255) DEFAULT NULL,
             dicatat_oleh bigint(20) unsigned NOT NULL,
             created_at timestamp NULL DEFAULT current_timestamp(),
             updated_at timestamp NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
             PRIMARY KEY (id),
-            UNIQUE KEY guru_tanggal_unique (guru_id,tanggal)
+            UNIQUE KEY uk_guru_tgl_sesi (guru_id, tanggal, sesi),
+            KEY idx_guru_tgl_sesi (tanggal, sesi)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
 
         // Table acad_hari_libur (Auto-migration for holidays and effective days)
@@ -337,6 +340,46 @@ function acad_run_migrations() {
 
         try {
             db()->exec("ALTER TABLE acad_buku_penghubung MODIFY COLUMN jenis varchar(100) NOT NULL DEFAULT 'Konsultasi'");
+        } catch (Exception $e) {}
+
+        // Auto-migration for acad_absensi_guru schema & indexes
+        try {
+            $colsAg = db()->query("SHOW COLUMNS FROM acad_absensi_guru")->fetchAll(PDO::FETCH_COLUMN);
+            if (!in_array('academic_year_id', $colsAg)) {
+                db()->exec("ALTER TABLE acad_absensi_guru ADD COLUMN academic_year_id bigint(20) unsigned DEFAULT NULL AFTER guru_id");
+                if (in_array('year_id', $colsAg)) {
+                    db()->exec("UPDATE acad_absensi_guru SET academic_year_id = year_id WHERE academic_year_id IS NULL AND year_id IS NOT NULL");
+                }
+            }
+            if (!in_array('year_id', $colsAg)) {
+                db()->exec("ALTER TABLE acad_absensi_guru ADD COLUMN year_id bigint(20) unsigned DEFAULT NULL AFTER guru_id");
+                if (in_array('academic_year_id', $colsAg)) {
+                    db()->exec("UPDATE acad_absensi_guru SET year_id = academic_year_id WHERE year_id IS NULL AND academic_year_id IS NOT NULL");
+                }
+            }
+            if (!in_array('sesi', $colsAg)) {
+                db()->exec("ALTER TABLE acad_absensi_guru ADD COLUMN sesi enum('masuk','istirahat','pulang') NOT NULL DEFAULT 'masuk' AFTER tanggal");
+            }
+        } catch (Exception $e) {}
+
+        try {
+            $indexes = db()->query("SHOW INDEX FROM acad_absensi_guru")->fetchAll(PDO::FETCH_ASSOC);
+            $indexNames = array_unique(array_column($indexes, 'Key_name'));
+            if (in_array('guru_tanggal_unique', $indexNames)) {
+                db()->exec("ALTER TABLE acad_absensi_guru DROP INDEX guru_tanggal_unique");
+            }
+            if (in_array('uk_guru_tanggal', $indexNames)) {
+                db()->exec("ALTER TABLE acad_absensi_guru DROP INDEX uk_guru_tanggal");
+            }
+            if (in_array('unique_guru_tanggal', $indexNames)) {
+                db()->exec("ALTER TABLE acad_absensi_guru DROP INDEX unique_guru_tanggal");
+            }
+            if (!in_array('uk_guru_tgl_sesi', $indexNames)) {
+                db()->exec("ALTER TABLE acad_absensi_guru ADD UNIQUE KEY uk_guru_tgl_sesi (guru_id, tanggal, sesi)");
+            }
+            if (!in_array('idx_guru_tgl_sesi', $indexNames)) {
+                db()->exec("ALTER TABLE acad_absensi_guru ADD INDEX idx_guru_tgl_sesi (tanggal, sesi)");
+            }
         } catch (Exception $e) {}
 
         try {

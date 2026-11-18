@@ -227,22 +227,64 @@ function saveAbsensiGuru($user) {
         ];
         $sesiText = $sesiLabels[$sesi] ?? 'Harian';
 
+        // Detect column names dynamically to guarantee 100% compatibility across MySQL schemas
+        $colsAg = db()->query("SHOW COLUMNS FROM acad_absensi_guru")->fetchAll(PDO::FETCH_COLUMN);
+        $hasAcademicYearId = in_array('academic_year_id', $colsAg);
+        $hasYearId = in_array('year_id', $colsAg);
+
+        $insertCols = ['guru_id'];
+        $insertVals = ['?'];
+
+        if ($hasAcademicYearId) {
+            $insertCols[] = 'academic_year_id';
+            $insertVals[] = '?';
+        }
+        if ($hasYearId) {
+            $insertCols[] = 'year_id';
+            $insertVals[] = '?';
+        }
+
+        $insertCols[] = 'tanggal';
+        $insertVals[] = '?';
+        $insertCols[] = 'sesi';
+        $insertVals[] = '?';
+        $insertCols[] = 'status';
+        $insertVals[] = '?';
+        $insertCols[] = 'keterangan';
+        $insertVals[] = '?';
+        $insertCols[] = 'dicatat_oleh';
+        $insertVals[] = '?';
+
+        $sql = "
+            INSERT INTO acad_absensi_guru (" . implode(', ', $insertCols) . ")
+            VALUES (" . implode(', ', $insertVals) . ")
+            ON DUPLICATE KEY UPDATE status = VALUES(status), keterangan = VALUES(keterangan), dicatat_oleh = VALUES(dicatat_oleh)
+        ";
+        $stmt = db()->prepare($sql);
+
+        $executeRow = function($guru_id, $targetSesi, $status, $keterangan) use ($stmt, $hasAcademicYearId, $hasYearId, $year_id, $tanggal, $user) {
+            $params = [$guru_id];
+            if ($hasAcademicYearId) $params[] = $year_id;
+            if ($hasYearId) $params[] = $year_id;
+            $params[] = $tanggal;
+            $params[] = $targetSesi;
+            $params[] = $status;
+            $params[] = $keterangan;
+            $params[] = $user['user_id'];
+            $stmt->execute($params);
+        };
+
         foreach ($absensi as $a) {
             $guru_id = (int)$a['guru_id'];
             $status = in_array($a['status'], ['H','S','I','A','T','TA','DNS']) ? $a['status'] : 'H';
             $keterangan = isset($a['keterangan']) ? trim($a['keterangan']) : '';
 
-            $stmt = db()->prepare("
-                INSERT INTO acad_absensi_guru (guru_id, academic_year_id, tanggal, sesi, status, keterangan, dicatat_oleh)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE status = VALUES(status), keterangan = VALUES(keterangan), dicatat_oleh = VALUES(dicatat_oleh)
-            ");
-            $stmt->execute([$guru_id, $year_id, $tanggal, $sesi, $status, $keterangan, $user['user_id']]);
+            $executeRow($guru_id, $sesi, $status, $keterangan);
 
             // Requirement 1: Jika sakit / izin pada absen kehadiran (sesi masuk), maka di sesi istirahat dan pulang otomatis terisi. Namun jika alpha, tetap alpha.
             if ($sesi === 'masuk' && ($status === 'S' || $status === 'I')) {
-                $stmt->execute([$guru_id, $year_id, $tanggal, 'istirahat', $status, $keterangan, $user['user_id']]);
-                $stmt->execute([$guru_id, $year_id, $tanggal, 'pulang', $status, $keterangan, $user['user_id']]);
+                $executeRow($guru_id, 'istirahat', $status, $keterangan);
+                $executeRow($guru_id, 'pulang', $status, $keterangan);
             }
         }
 

@@ -665,6 +665,9 @@ function run_auto_migrations() {
             if (in_array('unique_guru_tanggal', $indexNames)) {
                 $pdo->exec("ALTER TABLE `acad_absensi_guru` DROP INDEX `unique_guru_tanggal`");
             }
+            if (in_array('guru_tanggal_unique', $indexNames)) {
+                $pdo->exec("ALTER TABLE `acad_absensi_guru` DROP INDEX `guru_tanggal_unique`");
+            }
             if (!in_array('uk_guru_tgl_sesi', $indexNames)) {
                 $pdo->exec("ALTER TABLE `acad_absensi_guru` ADD UNIQUE KEY `uk_guru_tgl_sesi` (`guru_id`, `tanggal`, `sesi`)");
             }
