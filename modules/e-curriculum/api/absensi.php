@@ -116,6 +116,23 @@ function listAbsensi($user) {
             }
         }
 
+        // Jika sesi 2 atau 3, cek apakah sesi 1 divalidasi Sakit (S) atau Izin (I) untuk auto-inheritance
+        $sesi1SakitIzin = [];
+        if ($jam_ke > 1) {
+            $stmtSesi1 = db()->prepare("
+                SELECT student_id, status, keterangan 
+                FROM acad_absensi 
+                WHERE tanggal = ? AND kelas_id = ? AND jam_ke IN (0, 1) AND status IN ('S', 'I')
+                ORDER BY jam_ke DESC
+            ");
+            $stmtSesi1->execute([$tanggal, $kelas_id]);
+            while ($s1 = $stmtSesi1->fetch()) {
+                if (!isset($sesi1SakitIzin[$s1['student_id']])) {
+                    $sesi1SakitIzin[$s1['student_id']] = $s1;
+                }
+            }
+        }
+
         // Get E-Absen logs for this date partitioned into 3 sessions
         $stmtLogs = db()->prepare("
             SELECT TRIM(LEADING '0' FROM mesin_pin) COLLATE utf8mb4_unicode_ci as clean_pin, 
@@ -183,8 +200,10 @@ function listAbsensi($user) {
             }
 
             // Manual override takes precedence if recorded in acad_absensi for this session
-            $finalStatus = isset($existingManual[$s['id']]) ? $existingManual[$s['id']]['status'] : $calculatedStatus;
-            $keterangan = isset($existingManual[$s['id']]) ? $existingManual[$s['id']]['keterangan'] : ($jamScanSesi !== null ? "Fingerprint: $jamScanSesi" : '');
+            // Jika sesi 2 (istirahat) atau sesi 3 (pulang) dan belum diset manual, mewarisi status Sakit / Izin dari sesi masuk
+            $inherited = ($jam_ke > 1 && !isset($existingManual[$s['id']]) && isset($sesi1SakitIzin[$s['id']])) ? $sesi1SakitIzin[$s['id']] : null;
+            $finalStatus = isset($existingManual[$s['id']]) ? $existingManual[$s['id']]['status'] : ($inherited ? $inherited['status'] : $calculatedStatus);
+            $keterangan = isset($existingManual[$s['id']]) ? $existingManual[$s['id']]['keterangan'] : ($inherited ? $inherited['keterangan'] : ($jamScanSesi !== null ? "Fingerprint: $jamScanSesi" : ''));
 
             $result[] = [
                 'student_id' => $s['id'],
@@ -258,7 +277,7 @@ function saveAbsensi($user) {
 
         foreach ($absensi as $a) {
             $student_id = (int)$a['student_id'];
-            $status = in_array($a['status'], ['H','S','I','A','T']) ? $a['status'] : 'H';
+            $status = in_array($a['status'], ['H','S','I','A','T','TA','DNS']) ? $a['status'] : 'H';
             $keterangan = isset($a['keterangan']) ? trim($a['keterangan']) : '';
 
             // Cek status lama untuk mencegah pengiriman pesan berulang
@@ -276,6 +295,11 @@ function saveAbsensi($user) {
             // Jika sesi 1 (Absen Masuk / Harian Utama), selaraskan juga ke jam_ke = 0 agar sistem legacy/rekap selalu sinkron
             if ($jam_ke == 1) {
                 $stmt->execute([$student_id, $kelas_id, $year_id, $tanggal, 0, $status, $keterangan, $user['user_id']]);
+                // Requirement 1: Jika sakit / izin pada absen kehadiran, maka di absen istirahat (2) dan pulang (3) otomatis terisi. Namun jika alpha, tetap alpha.
+                if ($status === 'S' || $status === 'I') {
+                    $stmt->execute([$student_id, $kelas_id, $year_id, $tanggal, 2, $status, $keterangan, $user['user_id']]);
+                    $stmt->execute([$student_id, $kelas_id, $year_id, $tanggal, 3, $status, $keterangan, $user['user_id']]);
+                }
             }
 
             // Jika status berubah atau baru pertama kali, dan template WA diset, kirim Notifikasi WA
@@ -735,9 +759,9 @@ function exportExcelAbsensi($user) {
         // DETAIL TABLE (Sesuai Gambar 2)
         if ($mode === 'detail' || $mode === 'all') {
             echo "<table>";
-            echo "<tr><td class='title-h1' colspan='" . (5 + ($numDates * 3) + 11) . "'>REKAPITULASI KEHADIRAN MURID</td></tr>";
-            echo "<tr><td class='title-h2' colspan='" . (5 + ($numDates * 3) + 11) . "'>" . htmlspecialchars(strtoupper($data['nama_sekolah'])) . "</td></tr>";
-            echo "<tr><td class='no-border' colspan='" . (5 + ($numDates * 3) + 11) . "'></td></tr>";
+            echo "<tr><td class='title-h1' colspan='" . (6 + ($numDates * 3) + 11) . "'>REKAPITULASI KEHADIRAN MURID</td></tr>";
+            echo "<tr><td class='title-h2' colspan='" . (6 + ($numDates * 3) + 11) . "'>" . htmlspecialchars(strtoupper($data['nama_sekolah'])) . "</td></tr>";
+            echo "<tr><td class='no-border' colspan='" . (6 + ($numDates * 3) + 11) . "'></td></tr>";
             
             // Info Row 1
             echo "<tr>";
@@ -760,7 +784,7 @@ function exportExcelAbsensi($user) {
             echo "<td class='no-border bold'>C</td><td class='no-border'>:</td><td class='no-border' colspan='6'>Absen pulang</td>";
             echo "</tr>";
 
-            echo "<tr><td class='no-border' colspan='" . (5 + ($numDates * 3) + 11) . "'></td></tr>";
+            echo "<tr><td class='no-border' colspan='" . (6 + ($numDates * 3) + 11) . "'></td></tr>";
 
             // Table Header 1
             echo "<tr>";
@@ -768,6 +792,7 @@ function exportExcelAbsensi($user) {
             echo "<th rowspan='2' style='width:80px;'>NIS</th>";
             echo "<th rowspan='2' style='width:100px;'>NISN</th>";
             echo "<th rowspan='2' style='width:220px;'>NAMA MURID</th>";
+            echo "<th rowspan='2' style='width:90px;'>KELAS</th>";
             echo "<th rowspan='2' style='width:40px;'>L/P</th>";
             foreach ($effectiveDates as $ed) {
                 echo "<th colspan='3' class='th-date'>" . $ed['day'] . "</th>";
@@ -792,6 +817,7 @@ function exportExcelAbsensi($user) {
                 echo "<td class='center' style='mso-number-format:\"\\@\";'>" . htmlspecialchars($r['nis'] ?? '') . "</td>";
                 echo "<td class='center' style='mso-number-format:\"\\@\";'>" . htmlspecialchars($r['nisn'] ?? '') . "</td>";
                 echo "<td>" . htmlspecialchars($r['nama'] ?? '') . "</td>";
+                echo "<td class='center'>" . htmlspecialchars($r['kelas'] ?? '') . "</td>";
                 echo "<td class='center'>" . htmlspecialchars($r['jenis_kelamin'] ?? 'L') . "</td>";
 
                 foreach ($effectiveDates as $ed) {
@@ -815,7 +841,7 @@ function exportExcelAbsensi($user) {
                 echo "</tr>";
             }
 
-            echo "<tr><td class='no-border' colspan='" . (5 + ($numDates * 3) + 11) . "'></td></tr>";
+            echo "<tr><td class='no-border' colspan='" . (6 + ($numDates * 3) + 11) . "'></td></tr>";
 
             // Legend Footer (Gambar 2)
             echo "<tr><td class='no-border legend-title' colspan='3'>Keterangan Singkatan :</td><td class='no-border' colspan='2'></td><td class='no-border legend-title' colspan='10'>&gt;&gt; Ketentuan Perhitungan</td></tr>";
@@ -835,13 +861,13 @@ function exportExcelAbsensi($user) {
                 echo "<br><br><hr style='border:1px dashed #ccc;'><br><br>";
             }
             echo "<table>";
-            echo "<tr><td class='title-h1' colspan='16'>REKAPITULASI KEHADIRAN MURID (RINGKASAN)</td></tr>";
-            echo "<tr><td class='title-h2' colspan='16'>" . htmlspecialchars(strtoupper($data['nama_sekolah'])) . "</td></tr>";
-            echo "<tr><td class='no-border' colspan='16'></td></tr>";
-            echo "<tr><td class='no-border bold' colspan='2'>Kelas</td><td class='no-border' colspan='14'>: " . htmlspecialchars($data['kelas']) . "</td></tr>";
-            echo "<tr><td class='no-border bold' colspan='2'>Nama Wali Kelas</td><td class='no-border' colspan='14'>: " . htmlspecialchars($data['wali_kelas']) . "</td></tr>";
-            echo "<tr><td class='no-border bold' colspan='2'>Bulan</td><td class='no-border' colspan='14'>: " . htmlspecialchars($data['bulan']) . "</td></tr>";
-            echo "<tr><td class='no-border' colspan='16'></td></tr>";
+            echo "<tr><td class='title-h1' colspan='17'>REKAPITULASI KEHADIRAN MURID (RINGKASAN)</td></tr>";
+            echo "<tr><td class='title-h2' colspan='17'>" . htmlspecialchars(strtoupper($data['nama_sekolah'])) . "</td></tr>";
+            echo "<tr><td class='no-border' colspan='17'></td></tr>";
+            echo "<tr><td class='no-border bold' colspan='2'>Kelas</td><td class='no-border' colspan='15'>: " . htmlspecialchars($data['kelas']) . "</td></tr>";
+            echo "<tr><td class='no-border bold' colspan='2'>Nama Wali Kelas</td><td class='no-border' colspan='15'>: " . htmlspecialchars($data['wali_kelas']) . "</td></tr>";
+            echo "<tr><td class='no-border bold' colspan='2'>Bulan</td><td class='no-border' colspan='15'>: " . htmlspecialchars($data['bulan']) . "</td></tr>";
+            echo "<tr><td class='no-border' colspan='17'></td></tr>";
 
             // Header 1
             echo "<tr>";
@@ -849,6 +875,7 @@ function exportExcelAbsensi($user) {
             echo "<th rowspan='2' style='width:80px;'>NIS</th>";
             echo "<th rowspan='2' style='width:100px;'>NISN</th>";
             echo "<th rowspan='2' style='width:220px;'>NAMA MURID</th>";
+            echo "<th rowspan='2' style='width:90px;'>KELAS</th>";
             echo "<th rowspan='2' style='width:40px;'>L/P</th>";
             echo "<th colspan='3' class='th-total'>TOTAL</th>";
             echo "<th colspan='8' class='th-keh'>KEHADIRAN</th>";
@@ -866,6 +893,7 @@ function exportExcelAbsensi($user) {
                 echo "<td class='center' style='mso-number-format:\"\\@\";'>" . htmlspecialchars($r['nis'] ?? '') . "</td>";
                 echo "<td class='center' style='mso-number-format:\"\\@\";'>" . htmlspecialchars($r['nisn'] ?? '') . "</td>";
                 echo "<td>" . htmlspecialchars($r['nama'] ?? '') . "</td>";
+                echo "<td class='center'>" . htmlspecialchars($r['kelas'] ?? '') . "</td>";
                 echo "<td class='center'>" . htmlspecialchars($r['jenis_kelamin'] ?? 'L') . "</td>";
                 echo "<td class='center bold'>" . (int)($r['tot_a'] ?? 0) . "</td>";
                 echo "<td class='center bold'>" . (int)($r['tot_b'] ?? 0) . "</td>";
@@ -881,15 +909,15 @@ function exportExcelAbsensi($user) {
                 echo "</tr>";
             }
 
-            echo "<tr><td class='no-border' colspan='16'></td></tr>";
-            echo "<tr><td class='no-border legend-title' colspan='16'>Keterangan Singkatan :</td></tr>";
-            echo "<tr><td class='no-border center'>1</td><td class='no-border bold'>WH</td><td class='no-border' colspan='14'>WAJIB HADIR</td></tr>";
-            echo "<tr><td class='no-border center'>2</td><td class='no-border bold'>H</td><td class='no-border' colspan='14'>HADIR</td></tr>";
-            echo "<tr><td class='no-border center'>3</td><td class='no-border bold'>T</td><td class='no-border' colspan='14'>TERLAMBAT</td></tr>";
-            echo "<tr><td class='no-border center'>4</td><td class='no-border bold'>S</td><td class='no-border' colspan='14'>SAKIT</td></tr>";
-            echo "<tr><td class='no-border center'>5</td><td class='no-border bold'>I</td><td class='no-border' colspan='14'>IZIN</td></tr>";
-            echo "<tr><td class='no-border center'>6</td><td class='no-border bold'>A</td><td class='no-border' colspan='14'>ALPHA</td></tr>";
-            echo "<tr><td class='no-border center'>7</td><td class='no-border bold'>TOT</td><td class='no-border' colspan='14'>TOTAL</td></tr>";
+            echo "<tr><td class='no-border' colspan='17'></td></tr>";
+            echo "<tr><td class='no-border legend-title' colspan='17'>Keterangan Singkatan :</td></tr>";
+            echo "<tr><td class='no-border center'>1</td><td class='no-border bold'>WH</td><td class='no-border' colspan='15'>WAJIB HADIR</td></tr>";
+            echo "<tr><td class='no-border center'>2</td><td class='no-border bold'>H</td><td class='no-border' colspan='15'>HADIR</td></tr>";
+            echo "<tr><td class='no-border center'>3</td><td class='no-border bold'>T</td><td class='no-border' colspan='15'>TERLAMBAT</td></tr>";
+            echo "<tr><td class='no-border center'>4</td><td class='no-border bold'>S</td><td class='no-border' colspan='15'>SAKIT</td></tr>";
+            echo "<tr><td class='no-border center'>5</td><td class='no-border bold'>I</td><td class='no-border' colspan='15'>IZIN</td></tr>";
+            echo "<tr><td class='no-border center'>6</td><td class='no-border bold'>A</td><td class='no-border' colspan='15'>ALPHA</td></tr>";
+            echo "<tr><td class='no-border center'>7</td><td class='no-border bold'>TOT</td><td class='no-border' colspan='15'>TOTAL</td></tr>";
             echo "</table>";
         }
 

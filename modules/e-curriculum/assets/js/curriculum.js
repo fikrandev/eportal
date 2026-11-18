@@ -3007,6 +3007,7 @@ const Curriculum = {
                         <td style="text-align:center; padding:5px 4px; font-family:monospace; border:1px solid #cbd5e1;">${this.escapeHtml(r.nis || '-')}</td>
                         <td style="text-align:center; padding:5px 4px; font-family:monospace; border:1px solid #cbd5e1;">${this.escapeHtml(r.nisn || '-')}</td>
                         <td style="text-align:left; padding:5px 8px; font-weight:600; color:#1e293b; border:1px solid #cbd5e1; white-space:nowrap;">${this.escapeHtml(r.nama)}</td>
+                        <td style="text-align:center; padding:5px 4px; font-weight:600; color:#475569; border:1px solid #cbd5e1;">${this.escapeHtml(r.kelas || '-')}</td>
                         <td style="text-align:center; padding:5px 4px; font-weight:600; border:1px solid #cbd5e1;">${this.escapeHtml(r.jenis_kelamin || 'L')}</td>
                         ${dailyCols}
                         <!-- TOTAL A, B, C -->
@@ -3055,6 +3056,7 @@ const Curriculum = {
                                 <th rowspan="2" style="vertical-align:middle; width:70px; text-align:center; border:1px solid #cbd5e1;">NIS</th>
                                 <th rowspan="2" style="vertical-align:middle; width:90px; text-align:center; border:1px solid #cbd5e1;">NISN</th>
                                 <th rowspan="2" style="vertical-align:middle; text-align:left; border:1px solid #cbd5e1; padding-left:10px; min-width:180px;">NAMA MURID</th>
+                                <th rowspan="2" style="vertical-align:middle; width:80px; text-align:center; border:1px solid #cbd5e1;">KELAS</th>
                                 <th rowspan="2" style="vertical-align:middle; width:40px; text-align:center; border:1px solid #cbd5e1;">L/P</th>
                                 ${datesHeadersRow1}
                                 <th colspan="3" style="background:#d1fae5; color:#065f46; font-weight:700; border:1px solid #86efac; text-align:center; padding:6px 2px;">TOTAL</th>
@@ -3167,6 +3169,7 @@ const Curriculum = {
                     <td style="text-align:center; padding:3px 2px; font-family:monospace;">${this.escapeHtml(r.nis || '')}</td>
                     <td style="text-align:center; padding:3px 2px; font-family:monospace;">${this.escapeHtml(r.nisn || '')}</td>
                     <td style="text-align:left; padding:3px 5px; font-weight:600; white-space:nowrap;">${this.escapeHtml(r.nama)}</td>
+                    <td style="text-align:center; padding:3px 2px; font-weight:600;">${this.escapeHtml(r.kelas || '')}</td>
                     <td style="text-align:center; padding:3px 2px;">${this.escapeHtml(r.jenis_kelamin || 'L')}</td>
                     ${dailyCells}
                     <td style="text-align:center; padding:3px 2px;">${r.tot_a ?? 0}</td>
@@ -3236,6 +3239,7 @@ const Curriculum = {
                             <th rowspan="2" style="width:55px; text-align:center;">NIS</th>
                             <th rowspan="2" style="width:70px; text-align:center;">NISN</th>
                             <th rowspan="2" style="text-align:left; padding-left:6px;">NAMA MURID</th>
+                            <th rowspan="2" style="width:50px; text-align:center;">KELAS</th>
                             <th rowspan="2" style="width:30px; text-align:center;">L/P</th>
                             ${datesThRow1}
                             <th colspan="3" class="bg-total" style="text-align:center;">TOTAL</th>
@@ -3813,8 +3817,17 @@ const Curriculum = {
     },
 
     setAllAbsensiGuruStatus(status) {
-        $('.absensi-guru-status').val(status).trigger('change');
-        EModal.toast({ type: 'info', message: `Semua guru di-set ${status === 'H' ? 'Hadir' : status}.` });
+        $('.absensi-guru-radio-group').each(function() {
+            const $group = $(this);
+            $group.find('.absensi-radio').removeClass('active-h active-s active-i active-a active-t active-ta active-dns');
+            const $radio = $group.find(`input[value="${status}"]`);
+            if ($radio.length) {
+                $radio.prop('checked', true);
+                $radio.parent().addClass(`active-${status.toLowerCase()}`);
+            }
+        });
+        const labelMap = { 'H': 'Hadir', 'S': 'Sakit', 'I': 'Izin', 'A': 'Alpha', 'TA': 'TA', 'DNS': 'DNS' };
+        EModal.toast({ type: 'info', message: `Semua guru di-set ${labelMap[status] || status}.` });
     },
 
     loadAbsensiGuruTable() {
@@ -3848,7 +3861,6 @@ const Curriculum = {
             let trs = '';
             data.forEach((t, i) => {
                 const hasScan = t.jam_scan !== null;
-                const statusColor = t.status === 'H' ? '#10B981' : (t.status === 'T' ? '#F59E0B' : (t.status === 'A' ? '#EF4444' : '#3B82F6'));
                 
                 let scanBadge = '';
                 if (sesi === 'masuk') {
@@ -3871,6 +3883,13 @@ const Curriculum = {
                     }
                 }
 
+                const isH = (t.status === 'H' || t.status === 'T');
+                const isS = (t.status === 'S');
+                const isI = (t.status === 'I');
+                const isA = (t.status === 'A');
+                const isTA = (t.status === 'TA');
+                const isDNS = (t.status === 'DNS');
+
                 trs += `
                     <tr>
                         <td style="text-align:center;">${i+1}</td>
@@ -3881,26 +3900,30 @@ const Curriculum = {
                             <input type="hidden" class="absensi-guru-id" value="${t.guru_id}">
                         </td>
                         <td>
-                            <select class="form-select-acad absensi-guru-status" style="width:130px; font-weight:600; color:${statusColor};" onchange="this.style.color = this.value==='H'?'#10B981':(this.value==='T'?'#F59E0B':(this.value==='A'?'#EF4444':'#3B82F6'))">
-                                <option value="H" ${t.status === 'H' ? 'selected' : ''} style="color:#10B981;">Hadir</option>
-                                <option value="T" ${t.status === 'T' ? 'selected' : ''} style="color:#F59E0B;">Terlambat</option>
-                                <option value="S" ${t.status === 'S' ? 'selected' : ''} style="color:#3B82F6;">Sakit</option>
-                                <option value="I" ${t.status === 'I' ? 'selected' : ''} style="color:#3B82F6;">Izin</option>
-                                <option value="A" ${t.status === 'A' ? 'selected' : ''} style="color:#EF4444;">Alpha</option>
-                            </select>
+                            <div class="absensi-radio-group absensi-guru-radio-group" data-guruid="${t.guru_id}">
+                                <label class="absensi-radio ${isH ? 'active-h' : ''}"><input type="radio" name="abs_guru_${t.guru_id}" value="H" ${isH ? 'checked' : ''}> Hadir</label>
+                                <label class="absensi-radio ${isS ? 'active-s' : ''}"><input type="radio" name="abs_guru_${t.guru_id}" value="S" ${isS ? 'checked' : ''}> Sakit</label>
+                                <label class="absensi-radio ${isI ? 'active-i' : ''}"><input type="radio" name="abs_guru_${t.guru_id}" value="I" ${isI ? 'checked' : ''}> Izin</label>
+                                <label class="absensi-radio ${isA ? 'active-a' : ''}"><input type="radio" name="abs_guru_${t.guru_id}" value="A" ${isA ? 'checked' : ''}> Alpha</label>
+                                <label class="absensi-radio ${isTA ? 'active-ta' : ''}"><input type="radio" name="abs_guru_${t.guru_id}" value="TA" ${isTA ? 'checked' : ''}> TA</label>
+                                <label class="absensi-radio ${isDNS ? 'active-dns' : ''}"><input type="radio" name="abs_guru_${t.guru_id}" value="DNS" ${isDNS ? 'checked' : ''}> DNS</label>
+                            </div>
                         </td>
                         <td>
-                            <input type="text" class="form-input-acad absensi-guru-keterangan" value="${this.escapeHtml(t.keterangan || '')}" placeholder="Opsional...">
+                            <input type="text" class="form-input-acad absensi-guru-keterangan" value="${this.escapeHtml(t.keterangan || '')}" placeholder="Keterangan..." style="width:100%; font-size:0.85rem;">
                         </td>
                     </tr>
                 `;
             });
 
             $wrapper.html(`
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                    <div style="display:flex; gap:8px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">
+                    <div style="display:flex; gap:8px; flex-wrap:wrap;">
                         <button class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.setAllAbsensiGuruStatus('H')" style="font-size:0.8rem; border-color:#10B981; color:#059669;">
                             ✅ Set Semua Hadir
+                        </button>
+                        <button class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.setAllAbsensiGuruStatus('A')" style="font-size:0.8rem; border-color:#EF4444; color:#DC2626;">
+                            ❌ Set Semua Alpha
                         </button>
                         <button class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.loadAbsensiGuruTable()" style="font-size:0.8rem;">
                             🔄 Reset Sesuai Mesin
@@ -3913,10 +3936,10 @@ const Curriculum = {
                         <thead>
                             <tr>
                                 <th style="width:50px; text-align:center;">No</th>
-                                <th style="width:120px;">Kode Guru</th>
+                                <th style="width:110px;">Kode Guru</th>
                                 <th>Nama Guru & Info Scan (${labelSesi})</th>
-                                <th style="width:150px;">Status</th>
-                                <th>Keterangan (Manual)</th>
+                                <th style="min-width:340px;">Pilihan Status Kehadiran</th>
+                                <th>Keterangan</th>
                             </tr>
                         </thead>
                         <tbody>${trs}</tbody>
@@ -3926,6 +3949,14 @@ const Curriculum = {
                     <button class="btn-acad btn-acad-primary" onclick="Curriculum.saveAbsensiGuru()">💾 Simpan Data Absensi PTK ${labelSesi}</button>
                 </div>
             `);
+
+            // Radio change handler for PTK visual feedback
+            $('#absensiGuruTableWrapper input[type=radio]').on('change', function() {
+                const $group = $(this).closest('.absensi-radio-group');
+                $group.find('.absensi-radio').removeClass('active-h active-s active-i active-a active-t active-ta active-dns');
+                const val = $(this).val();
+                $(this).parent().addClass(`active-${val.toLowerCase()}`);
+            });
         });
     },
 
@@ -3940,11 +3971,16 @@ const Curriculum = {
         const absensi = [];
         $('#absensiGuruTableWrapper tbody tr').each(function() {
             const tr = $(this);
-            absensi.push({
-                guru_id: tr.find('.absensi-guru-id').val(),
-                status: tr.find('.absensi-guru-status').val(),
-                keterangan: tr.find('.absensi-guru-keterangan').val()
-            });
+            const guru_id = tr.find('.absensi-guru-id').val();
+            const status = tr.find('input[type=radio]:checked').val() || 'H';
+            const keterangan = tr.find('.absensi-guru-keterangan').val() || '';
+            if (guru_id) {
+                absensi.push({
+                    guru_id: guru_id,
+                    status: status,
+                    keterangan: keterangan
+                });
+            }
         });
 
         if (absensi.length === 0) return;

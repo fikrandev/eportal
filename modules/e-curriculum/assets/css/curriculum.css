@@ -688,6 +688,18 @@ body {
     color: #DC2626;
 }
 
+.absensi-radio.active-ta {
+    border-color: #8B5CF6;
+    background: rgba(139, 92, 246, 0.12);
+    color: #6D28D9;
+}
+
+.absensi-radio.active-dns {
+    border-color: #06B6D4;
+    background: rgba(6, 182, 212, 0.12);
+    color: #0891B2;
+}
+
 /* ======================== */
 /* Data Tables */
 /* ======================== */

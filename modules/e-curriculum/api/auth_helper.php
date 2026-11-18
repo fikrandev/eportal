@@ -339,6 +339,14 @@ function acad_run_migrations() {
             db()->exec("ALTER TABLE acad_buku_penghubung MODIFY COLUMN jenis varchar(100) NOT NULL DEFAULT 'Konsultasi'");
         } catch (Exception $e) {}
 
+        try {
+            db()->exec("ALTER TABLE acad_absensi_guru MODIFY COLUMN status VARCHAR(10) NOT NULL DEFAULT 'H'");
+        } catch (Exception $e) {}
+
+        try {
+            db()->exec("ALTER TABLE acad_absensi MODIFY COLUMN status VARCHAR(10) NOT NULL DEFAULT 'H'");
+        } catch (Exception $e) {}
+
     } catch (Exception $e) {
         // Ignore errors to not break the API if migration fails
     }

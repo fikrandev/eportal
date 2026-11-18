@@ -77,6 +77,20 @@ function listAbsensiGuru($user) {
             $existingManual[$row['guru_id']] = $row;
         }
 
+        // Jika sesi istirahat atau pulang, cek apakah sesi masuk berstatus S (Sakit) atau I (Izin) untuk auto-inheritance
+        $sesiMasukSakitIzin = [];
+        if ($sesi !== 'masuk') {
+            $stmtSM = db()->prepare("
+                SELECT guru_id, status, keterangan 
+                FROM acad_absensi_guru 
+                WHERE tanggal = ? AND sesi = 'masuk' AND status IN ('S', 'I')
+            ");
+            $stmtSM->execute([$tanggal]);
+            while ($sm = $stmtSM->fetch()) {
+                $sesiMasukSakitIzin[$sm['guru_id']] = $sm;
+            }
+        }
+
         // Get E-Absen logs for this date efficiently
         $stmtMap = db()->query("SELECT user_id, TRIM(LEADING '0' FROM mesin_pin) as clean_pin FROM absen_user_map");
         $userMap = [];
@@ -152,8 +166,10 @@ function listAbsensiGuru($user) {
             }
 
             // Manual override takes precedence if recorded in acad_absensi_guru
-            $finalStatus = isset($existingManual[$tid]) ? $existingManual[$tid]['status'] : $calculatedStatus;
-            $keterangan = isset($existingManual[$tid]) ? $existingManual[$tid]['keterangan'] : ($jamScanSesi !== null ? "Fingerprint: $jamScanSesi" : '');
+            // Jika sesi istirahat atau pulang dan belum diset manual, mewarisi status Sakit / Izin dari sesi masuk
+            $inherited = ($sesi !== 'masuk' && !isset($existingManual[$tid]) && isset($sesiMasukSakitIzin[$tid])) ? $sesiMasukSakitIzin[$tid] : null;
+            $finalStatus = isset($existingManual[$tid]) ? $existingManual[$tid]['status'] : ($inherited ? $inherited['status'] : $calculatedStatus);
+            $keterangan = isset($existingManual[$tid]) ? $existingManual[$tid]['keterangan'] : ($inherited ? $inherited['keterangan'] : ($jamScanSesi !== null ? "Fingerprint: $jamScanSesi" : ''));
 
             $result[] = [
                 'guru_id' => $tid,
@@ -213,7 +229,7 @@ function saveAbsensiGuru($user) {
 
         foreach ($absensi as $a) {
             $guru_id = (int)$a['guru_id'];
-            $status = in_array($a['status'], ['H','S','I','A','T']) ? $a['status'] : 'H';
+            $status = in_array($a['status'], ['H','S','I','A','T','TA','DNS']) ? $a['status'] : 'H';
             $keterangan = isset($a['keterangan']) ? trim($a['keterangan']) : '';
 
             $stmt = db()->prepare("
@@ -222,6 +238,12 @@ function saveAbsensiGuru($user) {
                 ON DUPLICATE KEY UPDATE status = VALUES(status), keterangan = VALUES(keterangan), dicatat_oleh = VALUES(dicatat_oleh)
             ");
             $stmt->execute([$guru_id, $year_id, $tanggal, $sesi, $status, $keterangan, $user['user_id']]);
+
+            // Requirement 1: Jika sakit / izin pada absen kehadiran (sesi masuk), maka di sesi istirahat dan pulang otomatis terisi. Namun jika alpha, tetap alpha.
+            if ($sesi === 'masuk' && ($status === 'S' || $status === 'I')) {
+                $stmt->execute([$guru_id, $year_id, $tanggal, 'istirahat', $status, $keterangan, $user['user_id']]);
+                $stmt->execute([$guru_id, $year_id, $tanggal, 'pulang', $status, $keterangan, $user['user_id']]);
+            }
         }
 
         db()->commit();
@@ -315,12 +337,31 @@ function getRekapAbsensiGuruData($tanggal_awal, $tanggal_akhir) {
     }
 
     $teacherIds = array_column($teachers, 'id');
-    $nikList = array_filter(array_map(function($t) { return ltrim($t['nik'] ?? '', '0'); }, $teachers));
+
+    // 1. Ambil mapping PIN mesin dari absen_user_map
+    $userMap = [];
+    $placeholdersT = implode(',', array_fill(0, count($teacherIds), '?'));
+    try {
+        $stmtMap = db()->prepare("SELECT user_id, TRIM(LEADING '0' FROM mesin_pin) as clean_pin FROM absen_user_map WHERE user_id IN ($placeholdersT)");
+        $stmtMap->execute($teacherIds);
+        while ($m = $stmtMap->fetch(PDO::FETCH_ASSOC)) {
+            $userMap[$m['user_id']] = $m['clean_pin'];
+        }
+    } catch (Exception $e) {}
+
+    // Kumpulkan daftar PIN mesin untuk query log fingerprint (dan NIK jika ada)
+    $pinList = array_unique(array_filter(array_values($userMap)));
+    foreach ($teachers as $t) {
+        if (!empty($t['nik'])) {
+            $cleanNik = ltrim($t['nik'], '0');
+            if ($cleanNik) $pinList[] = $cleanNik;
+        }
+    }
+    $pinList = array_values(array_unique(array_filter($pinList)));
 
     // 2. Fetch manual records from acad_absensi_guru
     $manualMap = []; 
     try {
-        $placeholdersT = implode(',', array_fill(0, count($teacherIds), '?'));
         $stmtA = db()->prepare("
             SELECT guru_id, tanggal, sesi, status 
             FROM acad_absensi_guru 
@@ -331,19 +372,21 @@ function getRekapAbsensiGuruData($tanggal_awal, $tanggal_akhir) {
         $paramsA = array_merge($teacherIds, [$tanggal_awal, $tanggal_akhir]);
         $stmtA->execute($paramsA);
         
+        $sesiMap = ['masuk' => 1, 'istirahat' => 2, 'pulang' => 3];
         while ($row = $stmtA->fetch(PDO::FETCH_ASSOC)) {
             $gid = $row['guru_id'];
             $tgl = $row['tanggal'];
-            $sesi = (int)$row['sesi'];
-            $manualMap[$gid][$tgl][$sesi] = $row['status'];
+            $sesiStr = strtolower(trim($row['sesi']));
+            $sNum = $sesiMap[$sesiStr] ?? ((int)$row['sesi'] ?: 1);
+            $manualMap[$gid][$tgl][$sNum] = $row['status'];
         }
     } catch (Exception $e) {}
 
     // 3. Fetch E-Absen logs partitioned into 3 sessions
     $eAbsenMap = [];
-    if (count($nikList) > 0) {
+    if (count($pinList) > 0) {
         try {
-            $placeholdersNik = implode(',', array_fill(0, count($nikList), '?'));
+            $placeholdersPin = implode(',', array_fill(0, count($pinList), '?'));
             $tanggal_akhir_full = $tanggal_akhir . ' 23:59:59';
             $stmtL = db()->prepare("
                 SELECT TRIM(LEADING '0' FROM mesin_pin) as clean_pin,
@@ -353,10 +396,10 @@ function getRekapAbsensiGuruData($tanggal_awal, $tanggal_akhir) {
                        MAX(CASE WHEN TIME(waktu_absen) >= ? THEN TIME(waktu_absen) END) as jam_pulang
                 FROM absen_logs
                 WHERE waktu_absen BETWEEN ? AND ?
-                  AND TRIM(LEADING '0' FROM mesin_pin) IN ($placeholdersNik)
+                  AND TRIM(LEADING '0' FROM mesin_pin) IN ($placeholdersPin)
                 GROUP BY clean_pin, tgl
             ");
-            $paramsL = array_merge([$waktu_istirahat_mulai, $waktu_istirahat_mulai, $wa_mulai_pulang, $wa_mulai_pulang, $tanggal_awal, $tanggal_akhir_full], array_values($nikList));
+            $paramsL = array_merge([$waktu_istirahat_mulai, $waktu_istirahat_mulai, $wa_mulai_pulang, $wa_mulai_pulang, $tanggal_awal, $tanggal_akhir_full], $pinList);
             $stmtL->execute($paramsL);
             while ($l = $stmtL->fetch(PDO::FETCH_ASSOC)) {
                 $eAbsenMap[$l['clean_pin']][$l['tgl']] = $l;
@@ -370,7 +413,9 @@ function getRekapAbsensiGuruData($tanggal_awal, $tanggal_akhir) {
 
     foreach ($teachers as $t) {
         $tid = $t['id'];
+        $cleanPin = $userMap[$tid] ?? null;
         $cleanNik = ltrim($t['nik'] ?? '', '0');
+        $logKey = ($cleanPin && isset($eAbsenMap[$cleanPin])) ? $cleanPin : (($cleanNik && isset($eAbsenMap[$cleanNik])) ? $cleanNik : null);
 
         $daily = [];
         $totA = 0; 
@@ -382,11 +427,13 @@ function getRekapAbsensiGuruData($tanggal_awal, $tanggal_akhir) {
         $countS = 0; 
         $countI = 0; 
         $countA = 0;
+        $countTA = 0;
+        $countDNS = 0;
 
         foreach ($effectiveDates as $ed) {
             $d = $ed['date'];
             $manual = $manualMap[$tid][$d] ?? [];
-            $log = $cleanNik ? ($eAbsenMap[$cleanNik][$d] ?? null) : null;
+            $log = $logKey ? ($eAbsenMap[$logKey][$d] ?? null) : null;
 
             // Sesi 1 (A: Datang)
             $stA = $manual[1] ?? null;
@@ -394,18 +441,24 @@ function getRekapAbsensiGuruData($tanggal_awal, $tanggal_akhir) {
                 $stA = (substr($log['jam_masuk'], 0, 5) <= $waktu_terlambat_short) ? 'H' : 'T';
             }
             if (!$stA) {
-                if (isset($manual[2]) && in_array($manual[2], ['S','I','A'])) $stA = $manual[2];
-                elseif (isset($manual[3]) && in_array($manual[3], ['S','I','A'])) $stA = $manual[3];
+                if (isset($manual[2]) && in_array($manual[2], ['S','I','A','TA','DNS'])) $stA = $manual[2];
+                elseif (isset($manual[3]) && in_array($manual[3], ['S','I','A','TA','DNS'])) $stA = $manual[3];
             }
 
             // Sesi 2 (B: Istirahat)
             $stB = $manual[2] ?? null;
+            if (!$stB && in_array($stA, ['S', 'I'])) {
+                $stB = $stA; // Inherit S/I dari sesi masuk
+            }
             if (!$stB && $log && !empty($log['jam_istirahat'])) {
                 $stB = 'H';
             }
 
             // Sesi 3 (C: Pulang)
             $stC = $manual[3] ?? null;
+            if (!$stC && in_array($stA, ['S', 'I'])) {
+                $stC = $stA; // Inherit S/I dari sesi masuk
+            }
             if (!$stC && $log && !empty($log['jam_pulang'])) {
                 $stC = 'H';
             }
@@ -424,6 +477,12 @@ function getRekapAbsensiGuruData($tanggal_awal, $tanggal_akhir) {
                 $countS++;
             } elseif ($stA === 'I') {
                 $countI++;
+            } elseif ($stA === 'DNS') {
+                $countDNS++;
+                $countH++; // Dinas Luar dihitung hadir
+            } elseif ($stA === 'TA') {
+                $countTA++;
+                $countA++; // Tidak Absen dihitung alpa
             } elseif ($stA === 'A') {
                 $countA++;
             } elseif ($stA === 'T') {
@@ -457,6 +516,8 @@ function getRekapAbsensiGuruData($tanggal_awal, $tanggal_akhir) {
             'sakit' => $countS,
             'izin' => $countI,
             'alpha' => $countA,
+            'ta' => $countTA,
+            'dns' => $countDNS,
             'th' => $th,
             'total_hadir' => $countH,
             'total_hari' => $wh,
