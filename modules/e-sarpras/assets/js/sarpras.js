@@ -6243,6 +6243,10 @@ const Sarpras = {
                                     <label>Nama Waka Sarpras</label>
                                     <input class="form-input" id="f_waka" value="${d.waka_sarpras || ''}" placeholder="Contoh: Shobahul Hoir, S.Pd., M.Pd.">
                                 </div>
+                                <div class="form-group" style="margin-bottom:15px;">
+                                    <label>Kota (Untuk TTD Surat / Laporan)</label>
+                                    <input class="form-input" id="f_kota" value="${d.kota || 'Surabaya'}" placeholder="Contoh: Surabaya">
+                                </div>
                             </div>
                         </div>
                         <div style="margin-top:20px; text-align:right;">
@@ -6260,6 +6264,7 @@ const Sarpras = {
     saveSettingsSurat() {
         const formData = new FormData();
         formData.append('waka_sarpras', $('#f_waka').val());
+        formData.append('kota', $('#f_kota').val());
         
         $.ajax({
             url: `api/manage.php?entity=settings&action=save&token=${this.getToken()}`,

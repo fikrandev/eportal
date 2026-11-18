@@ -33,9 +33,15 @@ function global_kepala_sekolah($default = '') {
     return trim((string) get_setting('sarpras_kepala_sekolah', $default));
 }
 
-function global_kota($default = 'Palu') {
+function global_kota($default = 'Surabaya') {
     $value = trim((string) get_setting('kota', ''));
-    return strtoupper($value !== '' ? $value : $default);
+    if ($value === '' || strcasecmp($value, 'Palu') === 0) {
+        $value = trim((string) get_setting('sarpras_kota', ''));
+    }
+    if ($value === '' || strcasecmp($value, 'Palu') === 0) {
+        $value = $default;
+    }
+    return strtoupper($value);
 }
 
 function report_clean_keterangan($value) {
@@ -770,10 +776,12 @@ function handleSettings($action) {
             $kopSurat = global_kop_surat_path();
             $kepalaSekolah = global_kepala_sekolah('');
             $wakaSarpras = get_setting('sarpras_waka_sarpras', '');
+            $kota = ucfirst(strtolower(global_kota('Surabaya')));
             json_response(200, true, 'OK', [
                 'kop_surat' => $kopSurat,
                 'kepala_sekolah' => $kepalaSekolah,
-                'waka_sarpras' => $wakaSarpras
+                'waka_sarpras' => $wakaSarpras,
+                'kota' => $kota
             ]);
             break;
         case 'save':
@@ -781,6 +789,11 @@ function handleSettings($action) {
             
             if (isset($d['waka_sarpras'])) {
                 upsert_setting('sarpras_waka_sarpras', sanitize($d['waka_sarpras']), 'text', 'Nama waka sarpras untuk surat');
+            }
+            if (isset($d['kota']) && trim($d['kota']) !== '') {
+                $cleanKota = sanitize(trim($d['kota']));
+                upsert_setting('kota', $cleanKota, 'text', 'Nama Kota untuk TTD');
+                upsert_setting('sarpras_kota', $cleanKota, 'text', 'Nama Kota untuk TTD Sarpras');
             }
             
             json_response(200, true, 'Pengaturan disimpan');
