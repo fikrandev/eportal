@@ -26,6 +26,9 @@ if ($action === 'pull') {
 
         $active_year = get_active_academic_year();
         $year_id = $active_year['id'] ?? 0;
+        $waktu_terlambat_siswa = substr(get_setting('waktu_terlambat_siswa', '06:30:00') ?: '06:30:00', 0, 5);
+        $waktu_istirahat_siswa_mulai = get_setting('waktu_istirahat_siswa_mulai', '09:30:00') ?: '09:30:00';
+        if (strlen($waktu_istirahat_siswa_mulai) === 5) $waktu_istirahat_siswa_mulai .= ':00';
 
         $newLogsCount = 0;
         $mesinErrors = [];
@@ -90,14 +93,23 @@ if ($action === 'pull') {
                             $kelasId = $stmtKelas->fetchColumn() ?: 0;
                             
                             if ($year_id > 0) {
-                                $tanggal_absen = date('Y-m-d', strtotime($log['timestamp']));
-                                
-                                $stmtAbsensi = db()->prepare("
-                                    INSERT INTO acad_absensi (student_id, kelas_id, academic_year_id, tanggal, jam_ke, status, keterangan, dicatat_oleh)
-                                    VALUES (?, ?, ?, ?, 0, 'H', 'Hadir via Fingerprint', NULL)
-                                    ON DUPLICATE KEY UPDATE status = 'H', keterangan = 'Hadir via Fingerprint'
-                                ");
-                                $stmtAbsensi->execute([$siswa['id'], $kelasId, $year_id, $tanggal_absen]);
+                                $ts_absen = strtotime($log['timestamp']);
+                                $tanggal_absen = date('Y-m-d', $ts_absen);
+                                $jam_full = date('H:i:s', $ts_absen);
+                                $jam_short = substr($jam_full, 0, 5);
+
+                                if ($jam_full < $waktu_istirahat_siswa_mulai) {
+                                    $autoStatus = ($jam_short <= $waktu_terlambat_siswa) ? 'H' : 'T';
+                                    $autoKet = ($autoStatus === 'T' ? 'Terlambat' : 'Hadir') . ' via Fingerprint';
+                                    $stmtAbsensi = db()->prepare("
+                                        INSERT INTO acad_absensi (student_id, kelas_id, academic_year_id, tanggal, jam_ke, status, keterangan, dicatat_oleh)
+                                        VALUES (?, ?, ?, ?, 0, ?, ?, NULL)
+                                        ON DUPLICATE KEY UPDATE
+                                            status = IF(dicatat_oleh IS NULL, VALUES(status), status),
+                                            keterangan = IF(dicatat_oleh IS NULL, VALUES(keterangan), keterangan)
+                                    ");
+                                    $stmtAbsensi->execute([$siswa['id'], $kelasId, $year_id, $tanggal_absen, $autoStatus, $autoKet]);
+                                }
                             }
                         } catch (Exception $ex) {}
 

@@ -82,7 +82,7 @@ function listAbsensi($user) {
 
         // Get existing manual absensi from acad_absensi
         $stmtA = db()->prepare("
-            SELECT student_id, status, keterangan 
+            SELECT student_id, jam_ke, status, keterangan, dicatat_oleh 
             FROM acad_absensi 
             WHERE tanggal = ? AND kelas_id = ? AND (jam_ke = ? " . ($jam_ke == 1 ? "OR jam_ke = 0" : "") . ")
             ORDER BY jam_ke DESC
@@ -90,6 +90,11 @@ function listAbsensi($user) {
         $stmtA->execute([$tanggal, $kelas_id, $jam_ke]);
         $existingManual = [];
         while ($row = $stmtA->fetch()) {
+            // Abaikan record otomatis mesin (jam_ke = 0 & dicatat_oleh IS NULL / 'Hadir via Fingerprint')
+            // agar status Hadir/Terlambat dihitung akurat dari jam_masuk & batas waktu_terlambat_siswa
+            if ((int)$row['jam_ke'] === 0 && empty($row['dicatat_oleh']) && in_array($row['keterangan'], ['Hadir via Fingerprint', 'Terlambat via Fingerprint'], true)) {
+                continue;
+            }
             if (!isset($existingManual[$row['student_id']])) {
                 $existingManual[$row['student_id']] = $row;
             }
@@ -179,10 +184,21 @@ function listAbsensi($user) {
             }
 
             // Manual override takes precedence if recorded in acad_absensi for this session
-            // Jika sesi 2 (istirahat) atau sesi 3 (pulang) dan belum diset manual, mewarisi status Sakit / Izin dari sesi masuk
+            // Jika record manual berstatus 'H' dari auto-sync fingerprint (keterangan 'Hadir via Fingerprint' atau 'Fingerprint: ...') padahal hasil kalkulasi jam scan adalah 'T' (Terlambat), otomatis koreksi ke 'T'
             $inherited = ($jam_ke > 1 && !isset($existingManual[$s['id']]) && isset($sesi1SakitIzin[$s['id']])) ? $sesi1SakitIzin[$s['id']] : null;
-            $finalStatus = isset($existingManual[$s['id']]) ? $existingManual[$s['id']]['status'] : ($inherited ? $inherited['status'] : $calculatedStatus);
-            $keterangan = isset($existingManual[$s['id']]) ? $existingManual[$s['id']]['keterangan'] : ($inherited ? $inherited['keterangan'] : ($jamScanSesi !== null ? "Fingerprint: $jamScanSesi" : ''));
+            if (isset($existingManual[$s['id']])) {
+                $manRow = $existingManual[$s['id']];
+                $manKet = trim((string)($manRow['keterangan'] ?? ''));
+                if ($jam_ke == 1 && $manRow['status'] === 'H' && $calculatedStatus === 'T' && ($manKet === '' || stripos($manKet, 'Fingerprint') !== false)) {
+                    $finalStatus = 'T';
+                } else {
+                    $finalStatus = $manRow['status'];
+                }
+                $keterangan = $manRow['keterangan'];
+            } else {
+                $finalStatus = $inherited ? $inherited['status'] : $calculatedStatus;
+                $keterangan = $inherited ? $inherited['keterangan'] : ($jamScanSesi !== null ? "Fingerprint: $jamScanSesi" : '');
+            }
 
             $result[] = [
                 'student_id' => $s['id'],
@@ -511,7 +527,7 @@ function getRekapAbsensiData($kelas_id, $tanggal_awal, $tanggal_akhir) {
     try {
         $placeholdersS = implode(',', array_fill(0, count($studentIds), '?'));
         $stmtA = db()->prepare("
-            SELECT student_id, tanggal, jam_ke, status 
+            SELECT student_id, tanggal, jam_ke, status, keterangan, dicatat_oleh 
             FROM acad_absensi 
             WHERE student_id IN ($placeholdersS) 
               AND tanggal BETWEEN ? AND ? 
@@ -524,7 +540,13 @@ function getRekapAbsensiData($kelas_id, $tanggal_awal, $tanggal_akhir) {
             $sid = $row['student_id'];
             $tgl = $row['tanggal'];
             $jke = (int)$row['jam_ke'];
-            $manualMap[$sid][$tgl][$jke] = $row['status'];
+            if ($jke === 0 && empty($row['dicatat_oleh']) && in_array($row['keterangan'], ['Hadir via Fingerprint', 'Terlambat via Fingerprint'], true)) {
+                continue;
+            }
+            $manualMap[$sid][$tgl][$jke] = [
+                'status' => $row['status'],
+                'keterangan' => trim((string)($row['keterangan'] ?? ''))
+            ];
         }
     } catch (Exception $e) {}
 
@@ -578,23 +600,31 @@ function getRekapAbsensiData($kelas_id, $tanggal_awal, $tanggal_akhir) {
             $log = $eAbsenMap[$cleanNis][$d] ?? null;
 
             // Sesi 1 (A: Datang / Masuk)
-            $stA = $manual[1] ?? ($manual[0] ?? null);
-            if (!$stA && $log && !empty($log['jam_masuk'])) {
-                $stA = (substr($log['jam_masuk'], 0, 5) <= $waktu_terlambat_short) ? 'H' : 'T';
+            $man1 = $manual[1] ?? ($manual[0] ?? null);
+            $stA = is_array($man1) ? $man1['status'] : $man1;
+            $ketA = is_array($man1) ? ($man1['keterangan'] ?? '') : '';
+            $calcA = ($log && !empty($log['jam_masuk'])) ? ((substr($log['jam_masuk'], 0, 5) <= $waktu_terlambat_short) ? 'H' : 'T') : null;
+
+            if (!$stA && $calcA) {
+                $stA = $calcA;
+            } elseif ($stA === 'H' && $calcA === 'T' && ($ketA === '' || stripos($ketA, 'Fingerprint') !== false)) {
+                $stA = 'T';
             }
             if (!$stA) {
-                if (isset($manual[2]) && in_array($manual[2], ['S','I','A'])) $stA = $manual[2];
-                elseif (isset($manual[3]) && in_array($manual[3], ['S','I','A'])) $stA = $manual[3];
+                $man2St = is_array($manual[2] ?? null) ? $manual[2]['status'] : ($manual[2] ?? null);
+                $man3St = is_array($manual[3] ?? null) ? $manual[3]['status'] : ($manual[3] ?? null);
+                if ($man2St && in_array($man2St, ['S','I','A'])) $stA = $man2St;
+                elseif ($man3St && in_array($man3St, ['S','I','A'])) $stA = $man3St;
             }
 
             // Sesi 2 (B: Istirahat)
-            $stB = $manual[2] ?? null;
+            $stB = is_array($manual[2] ?? null) ? $manual[2]['status'] : ($manual[2] ?? null);
             if (!$stB && $log && !empty($log['jam_istirahat'])) {
                 $stB = 'H';
             }
 
             // Sesi 3 (C: Pulang)
-            $stC = $manual[3] ?? null;
+            $stC = is_array($manual[3] ?? null) ? $manual[3]['status'] : ($manual[3] ?? null);
             if (!$stC && $log && !empty($log['jam_pulang'])) {
                 $stC = 'H';
             }

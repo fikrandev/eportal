@@ -2851,10 +2851,11 @@ const Curriculum = {
             }
 
             const rows = data.map((s, idx) => {
+                const isScanLate = (sesi === 1 && s.scan_info && s.scan_info.indexOf('Terlambat') === 0);
                 let scanBadge = '';
                 if (sesi === 1) {
                     if (s.jam_scan) {
-                        scanBadge = `<span class="badge ${s.status === 'T' ? 'badge-warning' : 'badge-success'}" style="font-size:0.8rem; background:${s.status === 'T' ? '#FEF3C7; color:#92400E; border:1px solid #FCD34D' : '#DCFCE7; color:#166534; border:1px solid #86EFAC'};">${this.escapeHtml(s.scan_info)}</span>`;
+                        scanBadge = `<span class="badge ${(s.status === 'T' || isScanLate) ? 'badge-warning' : 'badge-success'}" style="font-size:0.8rem; background:${(s.status === 'T' || isScanLate) ? '#FEF3C7; color:#92400E; border:1px solid #FCD34D' : '#DCFCE7; color:#166534; border:1px solid #86EFAC'};">${this.escapeHtml(s.scan_info)}</span>`;
                     } else {
                         scanBadge = `<span class="badge badge-secondary" style="font-size:0.8rem; background:#F1F5F9; color:#64748B; border:1px solid #CBD5E1;">Belum Scan Mesin</span>`;
                     }
