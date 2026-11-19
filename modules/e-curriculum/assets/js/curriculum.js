@@ -3094,34 +3094,42 @@ const Curriculum = {
                     </table>
 
                     <div style="margin-top:24px; display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:24px; font-size:0.825rem; color:#334155; line-height:1.6;">
-                        <div style="flex:1; min-width:240px;">
+                        <div style="flex:0 0 auto; min-width:190px;">
                             <div style="font-weight:700; margin-bottom:6px; color:#1e293b;">Keterangan Singkatan :</div>
-                            <table style="border:none; margin:0; font-size:0.825rem; color:#334155; width:auto; border-collapse:collapse;">
-                                <tr><td style="padding:2px 8px 2px 0; width:20px;">1</td><td style="padding:2px 8px 2px 0; font-weight:700; width:45px;">WH</td><td style="padding:2px 0;">WAJIB HADIR</td></tr>
-                                <tr><td style="padding:2px 8px 2px 0;">2</td><td style="padding:2px 8px 2px 0; font-weight:700;">H</td><td style="padding:2px 0;">HADIR</td></tr>
-                                <tr><td style="padding:2px 8px 2px 0;">3</td><td style="padding:2px 8px 2px 0; font-weight:700;">T</td><td style="padding:2px 0;">TERLAMBAT</td></tr>
-                                <tr><td style="padding:2px 8px 2px 0;">4</td><td style="padding:2px 8px 2px 0; font-weight:700;">S</td><td style="padding:2px 0;">SAKIT</td></tr>
-                                <tr><td style="padding:2px 8px 2px 0;">5</td><td style="padding:2px 8px 2px 0; font-weight:700;">I</td><td style="padding:2px 0;">IZIN</td></tr>
-                                <tr><td style="padding:2px 8px 2px 0;">6</td><td style="padding:2px 8px 2px 0; font-weight:700;">A</td><td style="padding:2px 0;">ALPHA</td></tr>
-                                <tr><td style="padding:2px 8px 2px 0;">7</td><td style="padding:2px 8px 2px 0; font-weight:700;">TOT</td><td style="padding:2px 0;">TOTAL</td></tr>
+                            <table style="border:none; margin:0; font-size:0.8rem; color:#334155; width:auto; border-collapse:collapse;">
+                                <tr><td style="padding:2px 12px 2px 0; font-weight:700;">WH</td><td style="padding:2px 0;">WAJIB HADIR</td></tr>
+                                <tr><td style="padding:2px 12px 2px 0; font-weight:700;">H</td><td style="padding:2px 0;">HADIR</td></tr>
+                                <tr><td style="padding:2px 12px 2px 0; font-weight:700;">T</td><td style="padding:2px 0;">TERLAMBAT</td></tr>
+                                <tr><td style="padding:2px 12px 2px 0; font-weight:700;">S</td><td style="padding:2px 0;">SAKIT</td></tr>
+                                <tr><td style="padding:2px 12px 2px 0; font-weight:700;">I</td><td style="padding:2px 0;">IZIN</td></tr>
+                                <tr><td style="padding:2px 12px 2px 0; font-weight:700;">A</td><td style="padding:2px 0;">ALPHA</td></tr>
+                                <tr><td style="padding:2px 12px 2px 0; font-weight:700;">D</td><td style="padding:2px 0;">DNS</td></tr>
+                                <tr><td style="padding:2px 12px 2px 0; font-weight:700;">TOT</td><td style="padding:2px 0;">TOTAL</td></tr>
                             </table>
                         </div>
 
-                        <div style="flex:2; min-width:320px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 16px;">
-                            <div style="font-weight:700; color:#1e293b; margin-bottom:8px;">&gt;&gt; Ketentuan Perhitungan</div>
-                            <div style="margin-bottom:8px;">
-                                <div style="display:inline-block; background:#d1fae5; color:#065f46; font-weight:700; padding:2px 8px; border-radius:4px; font-size:0.75rem; margin-right:6px;">TOTAL (A, B, C)</div>
-                                <span>Menghitung apakah absen datang, istirahat, dan pulang terisi (H, S, I, A, T). Berfungsi sebagai kontrol bahwa murid melakukan absensi 3x.</span>
+                        <div style="flex:1; min-width:340px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 16px;">
+                            <div style="font-weight:700; color:#1e293b; margin-bottom:10px;">Ketentuan Perhitungan</div>
+                            <div style="display:flex; gap:12px; align-items:flex-start; margin-bottom:12px;">
+                                <table style="border-collapse:collapse; font-size:0.72rem; text-align:center; background:#d9ead3; border:1px solid #6aa84f; flex-shrink:0;">
+                                    <tr><th colspan="3" style="padding:2px 8px; border:1px solid #6aa84f;">TOTAL</th></tr>
+                                    <tr><th style="padding:2px 8px; border:1px solid #6aa84f;">A</th><th style="padding:2px 8px; border:1px solid #6aa84f;">B</th><th style="padding:2px 8px; border:1px solid #6aa84f;">C</th></tr>
+                                </table>
+                                <div style="font-size:0.8rem; line-height:1.45;">
+                                    Menghitung apakah absen datang, istirahat, dan pulang terisi<br>
+                                    Jika terisi dengan variabel apapun (H, S, I, A, T, DNS), maka akan terhitung<br>
+                                    Bagian ini berfungsi sebagai kontrol bahwa melakukan absensi 3x
+                                </div>
                             </div>
-                            <div style="display:grid; grid-template-columns:35px 12px 1fr; row-gap:3px; font-size:0.8rem;">
-                                <div><strong>WH</strong></div><div>:</div><div>Semua hari efektif pada rentang/bulan tersebut (tidak termasuk hari libur).</div>
-                                <div><strong>H</strong></div><div>:</div><div>Dihitung jika A dan C terisi Hadir / Terlambat.</div>
-                                <div><strong>T</strong></div><div>:</div><div>Dihitung jika A terisi Terlambat (T).</div>
-                                <div><strong>S</strong></div><div>:</div><div>Dihitung jika A terisi Sakit (S).</div>
-                                <div><strong>I</strong></div><div>:</div><div>Dihitung jika A terisi Izin (I).</div>
-                                <div><strong>A</strong></div><div>:</div><div>Dihitung jika A terisi Alpha (A).</div>
-                                <div><strong>TH</strong></div><div>:</div><div>Total Tidak Hadir (S + I + A).</div>
-                                <div><strong>%</strong></div><div>:</div><div>(Hadir / Wajib Hadir) &times; 100%</div>
+                            <div style="display:grid; grid-template-columns:52px 12px 1fr; row-gap:6px; align-items:center; font-size:0.8rem;">
+                                <div style="background:#fff2cc; border:1px solid #bf9000; text-align:center; font-weight:700; padding:1px 4px;">WH</div><div style="text-align:center;">:</div><div>Semua hari efektif pada rentang/bulan tersebut (selama tidak ditentukan libur, maka terhitung wajib hadir).</div>
+                                <div style="background:#fff2cc; border:1px solid #bf9000; text-align:center; font-weight:700; padding:1px 4px;">H</div><div style="text-align:center;">:</div><div>Dihitung jika A dan C terisi T, H, atau d</div>
+                                <div style="background:#fff2cc; border:1px solid #bf9000; text-align:center; font-weight:700; padding:1px 4px;">T</div><div style="text-align:center;">:</div><div>Dihitung jika A terisi T</div>
+                                <div style="background:#fff2cc; border:1px solid #bf9000; text-align:center; font-weight:700; padding:1px 4px;">S</div><div style="text-align:center;">:</div><div>Dihitung jika A terisi S, B dan C terisi otomatis sama</div>
+                                <div style="background:#fff2cc; border:1px solid #bf9000; text-align:center; font-weight:700; padding:1px 4px;">I</div><div style="text-align:center;">:</div><div>Dihitung jika A terisi I, B dan C terisi otomatis sama</div>
+                                <div style="background:#fff2cc; border:1px solid #bf9000; text-align:center; font-weight:700; padding:1px 4px;">A</div><div style="text-align:center;">:</div><div>Dihitung jika A terisi A, B dan C terisi otomatis sama</div>
+                                <div style="background:#fff2cc; border:1px solid #bf9000; text-align:center; font-weight:700; padding:1px 4px;">TH</div><div style="text-align:center;">:</div><div>Total Tidak Hadir (S + I + A)</div>
+                                <div style="background:#fff2cc; border:1px solid #bf9000; text-align:center; font-weight:700; padding:1px 4px;">%</div><div style="text-align:center;">:</div><div>(Hadir / Wajib Hadir) &times; 100%</div>
                             </div>
                         </div>
                     </div>
@@ -3278,26 +3286,39 @@ const Curriculum = {
                     </tbody>
                 </table>
 
-                <div class="legend-footer">
-                    <div>
+                <div class="legend-footer" style="gap:24px;">
+                    <div style="min-width:150px;">
                         <strong>Keterangan Singkatan :</strong>
-                        <table class="legend-table">
-                            <tr><td style="width:16px;">1</td><td style="width:30px; font-weight:bold;">WH</td><td>WAJIB HADIR</td></tr>
-                            <tr><td>2</td><td style="font-weight:bold;">H</td><td>HADIR</td></tr>
-                            <tr><td>3</td><td style="font-weight:bold;">T</td><td>TERLAMBAT</td></tr>
-                            <tr><td>4</td><td style="font-weight:bold;">S</td><td>SAKIT</td></tr>
-                            <tr><td>5</td><td style="font-weight:bold;">I</td><td>IZIN</td></tr>
-                            <tr><td>6</td><td style="font-weight:bold;">A</td><td>ALPHA</td></tr>
-                            <tr><td>7</td><td style="font-weight:bold;">TOT</td><td>TOTAL (A: Datang, B: Istirahat, C: Pulang)</td></tr>
+                        <table class="legend-table" style="margin-top:4px;">
+                            <tr><td style="width:34px; font-weight:bold;">WH</td><td>WAJIB HADIR</td></tr>
+                            <tr><td style="font-weight:bold;">H</td><td>HADIR</td></tr>
+                            <tr><td style="font-weight:bold;">T</td><td>TERLAMBAT</td></tr>
+                            <tr><td style="font-weight:bold;">S</td><td>SAKIT</td></tr>
+                            <tr><td style="font-weight:bold;">I</td><td>IZIN</td></tr>
+                            <tr><td style="font-weight:bold;">A</td><td>ALPHA</td></tr>
+                            <tr><td style="font-weight:bold;">D</td><td>DNS</td></tr>
+                            <tr><td style="font-weight:bold;">TOT</td><td>TOTAL</td></tr>
                         </table>
                     </div>
-                    <div style="max-width:480px; font-size:9px; border-left:1px solid #ccc; padding-left:12px;">
-                        <strong>&gt;&gt; Ketentuan Perhitungan:</strong><br>
-                        <strong>TOTAL (A,B,C)</strong>: Menghitung apakah absen datang, istirahat, dan pulang terisi.<br>
-                        <strong>WH</strong>: Semua hari efektif pada bulan tersebut (selama tidak ditentukan libur).<br>
-                        <strong>H</strong>: Dihitung jika A dan C terisi T atau H.<br>
-                        <strong>T/S/I/A</strong>: Dihitung dari status absen datang.<br>
-                        <strong>TH</strong>: Total Tidak Hadir (S + I + A). | <strong>%</strong>: (Hadir / Wajib Hadir) &times; 100%
+                    <div style="flex:1; font-size:9px; border-left:1px solid #ccc; padding-left:14px;">
+                        <div style="font-weight:bold; margin-bottom:6px;">Ketentuan Perhitungan</div>
+                        <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:6px;">
+                            <table style="border-collapse:collapse; font-size:8px; text-align:center; background:#d9ead3; flex-shrink:0;">
+                                <tr><th colspan="3" style="border:1px solid #333; padding:1px 6px;">TOTAL</th></tr>
+                                <tr><th style="border:1px solid #333; padding:1px 6px;">A</th><th style="border:1px solid #333; padding:1px 6px;">B</th><th style="border:1px solid #333; padding:1px 6px;">C</th></tr>
+                            </table>
+                            <div>Menghitung apakah absen datang, istirahat, dan pulang terisi. Jika terisi dengan variabel apapun (H, S, I, A, T, DNS), maka akan terhitung. Bagian ini berfungsi sebagai kontrol bahwa melakukan absensi 3x.</div>
+                        </div>
+                        <table class="legend-table" style="font-size:9px;">
+                            <tr><td style="width:42px; font-weight:bold; border:1px solid #666; background:#fff2cc; text-align:center;">WH</td><td style="width:10px; text-align:center;">:</td><td>Semua hari efektif pada bulan tersebut (selama tidak ditentukan libur, maka terhitung wajib hadir).</td></tr>
+                            <tr><td style="font-weight:bold; border:1px solid #666; background:#fff2cc; text-align:center;">H</td><td style="text-align:center;">:</td><td>Dihitung jika A dan C terisi T, H, atau d</td></tr>
+                            <tr><td style="font-weight:bold; border:1px solid #666; background:#fff2cc; text-align:center;">T</td><td style="text-align:center;">:</td><td>Dihitung jika A terisi T</td></tr>
+                            <tr><td style="font-weight:bold; border:1px solid #666; background:#fff2cc; text-align:center;">S</td><td style="text-align:center;">:</td><td>Dihitung jika A terisi S, B dan C terisi otomatis sama</td></tr>
+                            <tr><td style="font-weight:bold; border:1px solid #666; background:#fff2cc; text-align:center;">I</td><td style="text-align:center;">:</td><td>Dihitung jika A terisi I, B dan C terisi otomatis sama</td></tr>
+                            <tr><td style="font-weight:bold; border:1px solid #666; background:#fff2cc; text-align:center;">A</td><td style="text-align:center;">:</td><td>Dihitung jika A terisi A, B dan C terisi otomatis sama</td></tr>
+                            <tr><td style="font-weight:bold; border:1px solid #666; background:#fff2cc; text-align:center;">TH</td><td style="text-align:center;">:</td><td>Total Tidak Hadir (S + I + A)</td></tr>
+                            <tr><td style="font-weight:bold; border:1px solid #666; background:#fff2cc; text-align:center;">%</td><td style="text-align:center;">:</td><td>(Hadir / Wajib Hadir) &times; 100%</td></tr>
+                        </table>
                     </div>
                 </div>
 
@@ -3373,14 +3394,14 @@ const Curriculum = {
                     []
                 ];
 
-                const hRow1 = ['NO', 'NIS', 'NISN', 'NAMA MURID', 'L/P'];
+                const hRow1 = ['NO', 'NIS', 'NISN', 'NAMA MURID', 'KELAS', 'L/P'];
                 effectiveDates.forEach(ed => {
                     hRow1.push(String(ed.day), '', '');
                 });
                 hRow1.push('TOTAL', '', '', 'KEHADIRAN', '', '', '', '', '', '', '');
                 wsDataDetail.push(hRow1);
 
-                const hRow2 = ['', '', '', '', ''];
+                const hRow2 = ['', '', '', '', '', ''];
                 effectiveDates.forEach(() => {
                     hRow2.push('A', 'B', 'C');
                 });
@@ -3393,6 +3414,7 @@ const Curriculum = {
                         String(r.nis || ''),
                         String(r.nisn || ''),
                         r.nama || '',
+                        r.kelas || '',
                         r.jenis_kelamin || 'L'
                     ];
 
@@ -3418,14 +3440,15 @@ const Curriculum = {
                 });
 
                 wsDataDetail.push([]);
-                wsDataDetail.push(['Keterangan Singkatan :']);
-                wsDataDetail.push(['1', 'WH', 'WAJIB HADIR', '', '>> Ketentuan Perhitungan']);
-                wsDataDetail.push(['2', 'H', 'HADIR', '', 'TOTAL (A,B,C) : Menghitung apakah absen datang, istirahat, dan pulang terisi (H, S, I, A, T)']);
-                wsDataDetail.push(['3', 'T', 'TERLAMBAT', '', 'WH : Semua hari efektif pada bulan tersebut (selama tidak ditentukan libur)']);
-                wsDataDetail.push(['4', 'S', 'SAKIT', '', 'H : Dihitung jika A dan C terisi T atau H']);
-                wsDataDetail.push(['5', 'I', 'IZIN', '', 'T : Dihitung jika A terisi T']);
-                wsDataDetail.push(['6', 'A', 'ALPHA', '', 'S : Dihitung jika A terisi S | I : Dihitung jika A terisi I | A : Dihitung jika A terisi A']);
-                wsDataDetail.push(['7', 'TOT', 'TOTAL', '', 'TH : Total Tidak Hadir (S + I + A) | % : (Hadir / Wajib Hadir) * 100%']);
+                wsDataDetail.push(['Keterangan Singkatan :', '', '', 'Ketentuan Perhitungan']);
+                wsDataDetail.push(['WH', 'WAJIB HADIR', '', 'TOTAL (A, B, C)', 'Menghitung apakah absen datang, istirahat, dan pulang terisi (H, S, I, A, T, DNS)']);
+                wsDataDetail.push(['H', 'HADIR', '', 'WH', 'Semua hari efektif pada bulan tersebut (selama tidak ditentukan libur, terhitung wajib hadir)']);
+                wsDataDetail.push(['T', 'TERLAMBAT', '', 'H', 'Dihitung jika A dan C terisi T, H, atau d']);
+                wsDataDetail.push(['S', 'SAKIT', '', 'T', 'Dihitung jika A terisi T']);
+                wsDataDetail.push(['I', 'IZIN', '', 'S / I / A', 'Dihitung jika A terisi S / I / A, B dan C terisi otomatis sama']);
+                wsDataDetail.push(['A', 'ALPHA', '', 'TH', 'Total Tidak Hadir (S + I + A)']);
+                wsDataDetail.push(['D', 'DNS', '', '%', '(Hadir / Wajib Hadir) * 100%']);
+                wsDataDetail.push(['TOT', 'TOTAL']);
 
                 const wsDetail = XLSX.utils.aoa_to_sheet(wsDataDetail);
 
@@ -3435,13 +3458,14 @@ const Curriculum = {
                     { s: { r: 7, c: 1 }, e: { r: 8, c: 1 } },
                     { s: { r: 7, c: 2 }, e: { r: 8, c: 2 } },
                     { s: { r: 7, c: 3 }, e: { r: 8, c: 3 } },
-                    { s: { r: 7, c: 4 }, e: { r: 8, c: 4 } }
+                    { s: { r: 7, c: 4 }, e: { r: 8, c: 4 } },
+                    { s: { r: 7, c: 5 }, e: { r: 8, c: 5 } }
                 ];
                 for (let i = 0; i < numDates; i++) {
-                    const cStart = 5 + (i * 3);
+                    const cStart = 6 + (i * 3);
                     mergesDetail.push({ s: { r: 7, c: cStart }, e: { r: 7, c: cStart + 2 } });
                 }
-                const cTot = 5 + (numDates * 3);
+                const cTot = 6 + (numDates * 3);
                 mergesDetail.push({ s: { r: 7, c: cTot }, e: { r: 7, c: cTot + 2 } });
                 const cKeh = cTot + 3;
                 mergesDetail.push({ s: { r: 7, c: cKeh }, e: { r: 7, c: cKeh + 7 } });
@@ -3452,6 +3476,7 @@ const Curriculum = {
                     { wch: 10 }, // NIS
                     { wch: 14 }, // NISN
                     { wch: 32 }, // NAMA MURID
+                    { wch: 12 }, // KELAS
                     { wch: 6 }   // L/P
                 ];
                 for (let i = 0; i < numDates; i++) {
@@ -3473,13 +3498,13 @@ const Curriculum = {
                 ];
 
                 wsDataRingkasan.push([
-                    'NO', 'NIS', 'NISN', 'NAMA MURID', 'L/P',
+                    'NO', 'NIS', 'NISN', 'NAMA MURID', 'KELAS', 'L/P',
                     'TOTAL', '', '',
                     'KEHADIRAN', '', '', '', '', '', '', ''
                 ]);
 
                 wsDataRingkasan.push([
-                    '', '', '', '', '',
+                    '', '', '', '', '', '',
                     'A', 'B', 'C',
                     'WH', 'H', 'T', 'S', 'I', 'A', 'TH', '%'
                 ]);
@@ -3490,6 +3515,7 @@ const Curriculum = {
                         String(r.nis || ''),
                         String(r.nisn || ''),
                         r.nama || '',
+                        r.kelas || '',
                         r.jenis_kelamin || 'L',
                         Number(r.tot_a ?? 0),
                         Number(r.tot_b ?? 0),
@@ -3507,13 +3533,14 @@ const Curriculum = {
 
                 wsDataRingkasan.push([]);
                 wsDataRingkasan.push(['Keterangan Singkatan :']);
-                wsDataRingkasan.push(['1', 'WH', 'WAJIB HADIR']);
-                wsDataRingkasan.push(['2', 'H', 'HADIR']);
-                wsDataRingkasan.push(['3', 'T', 'TERLAMBAT']);
-                wsDataRingkasan.push(['4', 'S', 'SAKIT']);
-                wsDataRingkasan.push(['5', 'I', 'IZIN']);
-                wsDataRingkasan.push(['6', 'A', 'ALPHA']);
-                wsDataRingkasan.push(['7', 'TOT', 'TOTAL']);
+                wsDataRingkasan.push(['WH', 'WAJIB HADIR']);
+                wsDataRingkasan.push(['H', 'HADIR']);
+                wsDataRingkasan.push(['T', 'TERLAMBAT']);
+                wsDataRingkasan.push(['S', 'SAKIT']);
+                wsDataRingkasan.push(['I', 'IZIN']);
+                wsDataRingkasan.push(['A', 'ALPHA']);
+                wsDataRingkasan.push(['D', 'DNS']);
+                wsDataRingkasan.push(['TOT', 'TOTAL']);
 
                 const wsRingkasan = XLSX.utils.aoa_to_sheet(wsDataRingkasan);
                 wsRingkasan['!merges'] = [
@@ -3522,14 +3549,16 @@ const Curriculum = {
                     { s: { r: 7, c: 2 }, e: { r: 8, c: 2 } },
                     { s: { r: 7, c: 3 }, e: { r: 8, c: 3 } },
                     { s: { r: 7, c: 4 }, e: { r: 8, c: 4 } },
-                    { s: { r: 7, c: 5 }, e: { r: 7, c: 7 } },
-                    { s: { r: 7, c: 8 }, e: { r: 7, c: 15 } }
+                    { s: { r: 7, c: 5 }, e: { r: 8, c: 5 } },
+                    { s: { r: 7, c: 6 }, e: { r: 7, c: 8 } },
+                    { s: { r: 7, c: 9 }, e: { r: 7, c: 16 } }
                 ];
                 wsRingkasan['!cols'] = [
                     { wch: 5 },  // NO
                     { wch: 10 }, // NIS
                     { wch: 14 }, // NISN
                     { wch: 32 }, // NAMA MURID
+                    { wch: 12 }, // KELAS
                     { wch: 6 },  // L/P
                     { wch: 5 }, { wch: 5 }, { wch: 5 }, // TOTAL A, B, C
                     { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 6 } // KEHADIRAN
@@ -3878,11 +3907,13 @@ const Curriculum = {
                 let scanBadge = '';
                 if (sesi === 'masuk') {
                     if (hasScan) {
-                        if (t.status === 'T') {
+                        if (t.status === 'T' || (t.scan_info && t.scan_info.indexOf('Terlambat') === 0)) {
                             scanBadge = `<span style="font-size:0.75rem; padding:2px 8px; background:#fef3c7; color:#92400e; border:1px solid #fcd34d; border-radius:4px; font-weight:600;">${this.escapeHtml(t.scan_info)}</span>`;
                         } else {
                             scanBadge = `<span style="font-size:0.75rem; padding:2px 8px; background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; border-radius:4px; font-weight:600;">${this.escapeHtml(t.scan_info)}</span>`;
                         }
+                    } else if (t.status === 'TA') {
+                        scanBadge = `<span style="font-size:0.75rem; padding:2px 8px; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; border-radius:4px; font-weight:600;">Tidak Ada Jadwal (TA)</span>`;
                     } else {
                         scanBadge = `<span style="font-size:0.75rem; padding:2px 8px; background:#f8fafc; color:#64748b; border:1px solid #cbd5e1; border-radius:4px;">Belum Scan Mesin</span>`;
                     }
@@ -3891,17 +3922,20 @@ const Curriculum = {
                     if (hasScan) {
                         const timeStr = t.scan_info || t.jam_scan.substring(0, 5);
                         scanBadge = `<span style="font-size:0.8rem; font-weight:600; padding:2px 8px; background:#f8fafc; color:#1e293b; border:1px solid #cbd5e1; border-radius:4px; display:inline-flex; align-items:center; gap:4px;">🕒 ${this.escapeHtml(timeStr)}</span>`;
+                    } else if (t.status === 'TA') {
+                        scanBadge = `<span style="font-size:0.75rem; padding:2px 8px; background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; border-radius:4px; font-weight:600;">TA</span>`;
                     } else {
                         scanBadge = `<span style="font-size:0.75rem; padding:2px 8px; background:#f8fafc; color:#94a3b8; border:1px dashed #cbd5e1; border-radius:4px;">Belum Scan</span>`;
                     }
                 }
 
-                const isH = (t.status === 'H' || t.status === 'T');
+                const isH = (t.status === 'H');
+                const isT = (t.status === 'T');
                 const isS = (t.status === 'S');
                 const isI = (t.status === 'I');
                 const isA = (t.status === 'A');
                 const isTA = (t.status === 'TA');
-                const isDNS = (t.status === 'DNS');
+                const isDNS = (t.status === 'DNS' || t.status === 'D');
 
                 trs += `
                     <tr>
@@ -3909,12 +3943,14 @@ const Curriculum = {
                         <td>${this.escapeHtml(t.kode_guru)}</td>
                         <td>
                             <div style="font-weight:600; color:var(--acad-text-main);">${this.escapeHtml(t.nama)}</div>
+                            ${t.tupoksi && t.tupoksi !== '-' ? `<div style="font-size:0.72rem; color:#64748b;">${this.escapeHtml(t.tupoksi)}</div>` : ''}
                             <div style="margin-top:4px;">${scanBadge}</div>
                             <input type="hidden" class="absensi-guru-id" value="${t.guru_id}">
                         </td>
                         <td>
                             <div class="absensi-radio-group absensi-guru-radio-group" data-guruid="${t.guru_id}">
                                 <label class="absensi-radio ${isH ? 'active-h' : ''}"><input type="radio" name="abs_guru_${t.guru_id}" value="H" ${isH ? 'checked' : ''}> Hadir</label>
+                                <label class="absensi-radio ${isT ? 'active-t' : ''}"><input type="radio" name="abs_guru_${t.guru_id}" value="T" ${isT ? 'checked' : ''}> Terlambat</label>
                                 <label class="absensi-radio ${isS ? 'active-s' : ''}"><input type="radio" name="abs_guru_${t.guru_id}" value="S" ${isS ? 'checked' : ''}> Sakit</label>
                                 <label class="absensi-radio ${isI ? 'active-i' : ''}"><input type="radio" name="abs_guru_${t.guru_id}" value="I" ${isI ? 'checked' : ''}> Izin</label>
                                 <label class="absensi-radio ${isA ? 'active-a' : ''}"><input type="radio" name="abs_guru_${t.guru_id}" value="A" ${isA ? 'checked' : ''}> Alpha</label>
@@ -4081,21 +4117,22 @@ const Curriculum = {
                 trs += `
                     <tr style="border-bottom:1px solid #e2e8f0;">
                         <td style="text-align:center; padding:5px 4px; border:1px solid #cbd5e1;">${i+1}</td>
-                        <td style="text-align:center; padding:5px 4px; font-family:monospace; font-weight:600; border:1px solid #cbd5e1;">${this.escapeHtml(t.kode_guru)}</td>
                         <td style="text-align:left; padding:5px 8px; font-weight:600; color:#1e293b; border:1px solid #cbd5e1; white-space:nowrap;">${this.escapeHtml(t.nama)}</td>
-                        <td style="text-align:center; padding:5px 4px; font-weight:600; border:1px solid #cbd5e1;">${this.escapeHtml(t.jenis_kelamin || '-')}</td>
+                        <td style="text-align:left; padding:5px 8px; color:#475569; border:1px solid #cbd5e1; white-space:nowrap;">${this.escapeHtml(t.tupoksi || '-')}</td>
                         ${dailyCols}
                         <!-- TOTAL A, B, C -->
                         <td style="text-align:center; padding:5px 3px; font-weight:600; background:#f0fdf4; border:1px solid #bbf7d0;">${t.tot_a ?? 0}</td>
                         <td style="text-align:center; padding:5px 3px; font-weight:600; background:#f0fdf4; border:1px solid #bbf7d0;">${t.tot_b ?? 0}</td>
                         <td style="text-align:center; padding:5px 3px; font-weight:600; background:#f0fdf4; border:1px solid #bbf7d0;">${t.tot_c ?? 0}</td>
-                        <!-- KEHADIRAN WH, H, T, S, I, A, TH, % -->
+                        <!-- KEHADIRAN TA, WH, H, T, S, I, A, DNS, TH, % -->
+                        <td style="text-align:center; padding:5px 3px; font-weight:600; color:#64748B; background:#fffbeb; border:1px solid #fde047;">${t.ta ?? 0}</td>
                         <td style="text-align:center; padding:5px 3px; font-weight:700; background:#fffbeb; border:1px solid #fde047;">${t.wh ?? 0}</td>
                         <td style="text-align:center; padding:5px 3px; font-weight:700; color:#10B981; background:#fffbeb; border:1px solid #fde047;">${t.hadir ?? 0}</td>
                         <td style="text-align:center; padding:5px 3px; font-weight:600; color:#F59E0B; background:#fffbeb; border:1px solid #fde047;">${valOrDash(t.terlambat)}</td>
                         <td style="text-align:center; padding:5px 3px; font-weight:600; color:#3B82F6; background:#fffbeb; border:1px solid #fde047;">${valOrDash(t.sakit)}</td>
                         <td style="text-align:center; padding:5px 3px; font-weight:600; color:#8B5CF6; background:#fffbeb; border:1px solid #fde047;">${valOrDash(t.izin)}</td>
                         <td style="text-align:center; padding:5px 3px; font-weight:600; color:#EF4444; background:#fffbeb; border:1px solid #fde047;">${valOrDash(t.alpha)}</td>
+                        <td style="text-align:center; padding:5px 3px; font-weight:600; color:#0EA5E9; background:#fffbeb; border:1px solid #fde047;">${valOrDash(t.dns)}</td>
                         <td style="text-align:center; padding:5px 3px; font-weight:700; color:#475569; background:#fffbeb; border:1px solid #fde047;">${t.th ?? 0}</td>
                         <td style="text-align:center; padding:5px 3px; font-weight:800; color:#0f172a; background:#fef08a; border:1px solid #fde047;">${t.persentase ?? 0}</td>
                     </tr>
@@ -4106,10 +4143,10 @@ const Curriculum = {
                 <div class="data-table-wrapper" style="overflow-x:auto; padding:16px 20px; background:white; border-radius:12px; border:1px solid #e2e8f0;">
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px; margin-bottom:16px;">
                         <div>
-                            <div style="font-size:1.15rem; font-weight:800; color:#1e293b; letter-spacing:0.3px;">REKAPITULASI KEHADIRAN GURU</div>
+                            <div style="font-size:1.1rem; font-weight:800; color:#1e293b; letter-spacing:0.3px;">REKAPITULASI KEHADIRAN PENDIDIK DAN TENAGA KEPENDIDIKAN</div>
                             <div style="font-size:0.95rem; font-weight:700; color:#475569; margin-top:2px;">${this.escapeHtml(meta.nama_sekolah || 'SMA WACHID HASYIM 1 SURABAYA')}</div>
                             
-                            <div style="display:grid; grid-template-columns:auto 1fr; column-gap:14px; row-gap:4px; margin-top:12px; font-size:0.875rem; color:#334155;">
+                            <div style="display:grid; grid-template-columns:auto 1fr; column-gap:14px; row-gap:4px; margin-top:10px; font-size:0.875rem; color:#334155;">
                                 <div><strong>Bulan</strong></div><div>: ${this.escapeHtml(meta.bulan || '-')}</div>
                             </div>
                         </div>
@@ -4122,64 +4159,75 @@ const Curriculum = {
                         </div>
                     </div>
 
-                    <table class="data-table" id="tableExportRekapAbsensiGuru" style="border-collapse:collapse; width:100%; min-width:950px; font-size:0.85rem; border:1px solid #cbd5e1;">
+                    <table class="data-table" id="tableExportRekapAbsensiGuru" style="border-collapse:collapse; width:100%; min-width:980px; font-size:0.85rem; border:1px solid #cbd5e1;">
                         <thead>
                             <tr style="background:#f8fafc;">
                                 <th rowspan="2" style="vertical-align:middle; width:35px; text-align:center; border:1px solid #cbd5e1;">NO</th>
-                                <th rowspan="2" style="vertical-align:middle; width:80px; text-align:center; border:1px solid #cbd5e1;">KODE</th>
-                                <th rowspan="2" style="vertical-align:middle; text-align:left; border:1px solid #cbd5e1; padding-left:10px; min-width:200px;">NAMA GURU</th>
-                                <th rowspan="2" style="vertical-align:middle; width:40px; text-align:center; border:1px solid #cbd5e1;">L/P</th>
+                                <th rowspan="2" style="vertical-align:middle; text-align:left; border:1px solid #cbd5e1; padding-left:10px; min-width:190px;">NAMA PTK</th>
+                                <th rowspan="2" style="vertical-align:middle; text-align:left; border:1px solid #cbd5e1; padding-left:10px; min-width:140px;">TUPOKSI</th>
                                 ${datesHeadersRow1}
                                 <th colspan="3" style="background:#d1fae5; color:#065f46; font-weight:700; border:1px solid #86efac; text-align:center; padding:6px 2px;">TOTAL</th>
-                                <th colspan="8" style="background:#fef08a; color:#854d0e; font-weight:700; border:1px solid #fde047; text-align:center; padding:6px 2px;">KEHADIRAN</th>
+                                <th colspan="10" style="background:#fef08a; color:#854d0e; font-weight:700; border:1px solid #fde047; text-align:center; padding:6px 2px;">KEHADIRAN</th>
                             </tr>
                             <tr style="border:1px solid #cbd5e1;">
                                 ${datesHeadersRow2}
                                 <th style="background:#ecfdf5; color:#065f46; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">A</th>
                                 <th style="background:#ecfdf5; color:#065f46; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">B</th>
                                 <th style="background:#ecfdf5; color:#065f46; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">C</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:32px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">TA</th>
                                 <th style="background:#fffbeb; color:#854d0e; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">WH</th>
-                                <th style="background:#fffbeb; color:#854d0e; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">H</th>
-                                <th style="background:#fffbeb; color:#854d0e; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">T</th>
-                                <th style="background:#fffbeb; color:#854d0e; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">S</th>
-                                <th style="background:#fffbeb; color:#854d0e; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">I</th>
-                                <th style="background:#fffbeb; color:#854d0e; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">A</th>
-                                <th style="background:#fffbeb; color:#854d0e; width:34px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">TH</th>
-                                <th style="background:#fffbeb; color:#854d0e; width:40px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">%</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:32px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">H</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:30px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">T</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:30px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">S</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:30px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">I</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:30px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">A</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:38px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">DNS</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:32px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">TH</th>
+                                <th style="background:#fffbeb; color:#854d0e; width:38px; text-align:center; font-size:11px; border:1px solid #cbd5e1;">%</th>
                             </tr>
                         </thead>
                         <tbody>${trs}</tbody>
                     </table>
 
                     <div style="margin-top:24px; display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:24px; font-size:0.825rem; color:#334155; line-height:1.6;">
-                        <div style="flex:1; min-width:240px;">
+                        <div style="flex:0 0 auto; min-width:190px;">
                             <div style="font-weight:700; margin-bottom:6px; color:#1e293b;">Keterangan Singkatan :</div>
-                            <table style="border:none; margin:0; font-size:0.825rem; color:#334155; width:auto; border-collapse:collapse;">
-                                <tr><td style="padding:2px 8px 2px 0; width:20px;">1</td><td style="padding:2px 8px 2px 0; font-weight:700; width:45px;">WH</td><td style="padding:2px 0;">WAJIB HADIR</td></tr>
-                                <tr><td style="padding:2px 8px 2px 0;">2</td><td style="padding:2px 8px 2px 0; font-weight:700;">H</td><td style="padding:2px 0;">HADIR</td></tr>
-                                <tr><td style="padding:2px 8px 2px 0;">3</td><td style="padding:2px 8px 2px 0; font-weight:700;">T</td><td style="padding:2px 0;">TERLAMBAT</td></tr>
-                                <tr><td style="padding:2px 8px 2px 0;">4</td><td style="padding:2px 8px 2px 0; font-weight:700;">S</td><td style="padding:2px 0;">SAKIT</td></tr>
-                                <tr><td style="padding:2px 8px 2px 0;">5</td><td style="padding:2px 8px 2px 0; font-weight:700;">I</td><td style="padding:2px 0;">IZIN</td></tr>
-                                <tr><td style="padding:2px 8px 2px 0;">6</td><td style="padding:2px 8px 2px 0; font-weight:700;">A</td><td style="padding:2px 0;">ALPHA</td></tr>
-                                <tr><td style="padding:2px 8px 2px 0;">7</td><td style="padding:2px 8px 2px 0; font-weight:700;">TOT</td><td style="padding:2px 0;">TOTAL</td></tr>
+                            <table style="border:none; margin:0; font-size:0.8rem; color:#334155; width:auto; border-collapse:collapse;">
+                                <tr><td style="padding:2px 12px 2px 0; font-weight:700;">WH</td><td style="padding:2px 0;">WAJIB HADIR</td></tr>
+                                <tr><td style="padding:2px 12px 2px 0; font-weight:700;">H</td><td style="padding:2px 0;">HADIR</td></tr>
+                                <tr><td style="padding:2px 12px 2px 0; font-weight:700;">T</td><td style="padding:2px 0;">TERLAMBAT</td></tr>
+                                <tr><td style="padding:2px 12px 2px 0; font-weight:700;">S</td><td style="padding:2px 0;">SAKIT</td></tr>
+                                <tr><td style="padding:2px 12px 2px 0; font-weight:700;">I</td><td style="padding:2px 0;">IZIN</td></tr>
+                                <tr><td style="padding:2px 12px 2px 0; font-weight:700;">A</td><td style="padding:2px 0;">ALPHA</td></tr>
+                                <tr><td style="padding:2px 12px 2px 0; font-weight:700;">D</td><td style="padding:2px 0;">DNS</td></tr>
+                                <tr><td style="padding:2px 12px 2px 0; font-weight:700;">TOT</td><td style="padding:2px 0;">TOTAL</td></tr>
                             </table>
                         </div>
 
-                        <div style="flex:2; min-width:320px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 16px;">
-                            <div style="font-weight:700; color:#1e293b; margin-bottom:8px;">&gt;&gt; Ketentuan Perhitungan</div>
-                            <div style="margin-bottom:8px;">
-                                <div style="display:inline-block; background:#d1fae5; color:#065f46; font-weight:700; padding:2px 8px; border-radius:4px; font-size:0.75rem; margin-right:6px;">TOTAL (A, B, C)</div>
-                                <span>Menghitung apakah absen datang, istirahat, dan pulang terisi (H, S, I, A, T). Berfungsi sebagai kontrol kehadiran guru/pegawai 3x.</span>
+                        <div style="flex:1; min-width:360px; background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:12px 16px;">
+                            <div style="font-weight:700; color:#1e293b; margin-bottom:10px;">Ketentuan Perhitungan</div>
+                            <div style="display:flex; gap:12px; align-items:flex-start; margin-bottom:12px;">
+                                <table style="border-collapse:collapse; font-size:0.72rem; text-align:center; background:#d9ead3; border:1px solid #6aa84f; flex-shrink:0;">
+                                    <tr><th colspan="3" style="padding:2px 8px; border:1px solid #6aa84f;">TOTAL</th></tr>
+                                    <tr><th style="padding:2px 8px; border:1px solid #6aa84f;">A</th><th style="padding:2px 8px; border:1px solid #6aa84f;">B</th><th style="padding:2px 8px; border:1px solid #6aa84f;">C</th></tr>
+                                </table>
+                                <div style="font-size:0.8rem; line-height:1.45;">
+                                    Menghitung apakah absen datang, istirahat, dan pulang terisi<br>
+                                    Jika terisi dengan variabel apapun (H, S, I, A, T, DNS), maka akan terhitung<br>
+                                    Bagian ini berfungsi sebagai kontrol bahwa melakukan absensi 3x
+                                </div>
                             </div>
-                            <div style="display:grid; grid-template-columns:35px 12px 1fr; row-gap:3px; font-size:0.8rem;">
-                                <div><strong>WH</strong></div><div>:</div><div>Semua hari efektif pada rentang/bulan tersebut (tidak termasuk hari libur).</div>
-                                <div><strong>H</strong></div><div>:</div><div>Dihitung jika A dan C terisi Hadir / Terlambat.</div>
-                                <div><strong>T</strong></div><div>:</div><div>Dihitung jika A terisi Terlambat (T).</div>
-                                <div><strong>S</strong></div><div>:</div><div>Dihitung jika A terisi Sakit (S).</div>
-                                <div><strong>I</strong></div><div>:</div><div>Dihitung jika A terisi Izin (I).</div>
-                                <div><strong>A</strong></div><div>:</div><div>Dihitung jika A terisi Alpha (A).</div>
-                                <div><strong>TH</strong></div><div>:</div><div>Total Tidak Hadir (S + I + A).</div>
-                                <div><strong>%</strong></div><div>:</div><div>(Hadir / Wajib Hadir) &times; 100%</div>
+                            <div style="display:grid; grid-template-columns:52px 12px 1fr; row-gap:6px; align-items:center; font-size:0.8rem;">
+                                <div style="background:#fff2cc; border:1px solid #bf9000; text-align:center; font-weight:700; padding:1px 4px;">TA</div><div style="text-align:center;">:</div><div>Terisi otomatis sesuai dengan <strong>DISTRIBUSI</strong> yang telah di tentukan pada e-jadwal</div>
+                                <div style="background:#fff2cc; border:1px solid #bf9000; text-align:center; font-weight:700; padding:1px 4px;">WH</div><div style="text-align:center;">:</div><div>Semua hari efektif pada bulan tersebut dikurangi dengan yang ada status TA (selama tidak ditentukan libur, terhitung wajib hadir).</div>
+                                <div style="background:#fff2cc; border:1px solid #bf9000; text-align:center; font-weight:700; padding:1px 4px;">H</div><div style="text-align:center;">:</div><div>Dihitung jika A dan C terisi T, H, atau d</div>
+                                <div style="background:#fff2cc; border:1px solid #bf9000; text-align:center; font-weight:700; padding:1px 4px;">T</div><div style="text-align:center;">:</div><div>Dihitung jika A terisi T</div>
+                                <div style="background:#fff2cc; border:1px solid #bf9000; text-align:center; font-weight:700; padding:1px 4px;">S</div><div style="text-align:center;">:</div><div>Dihitung jika A terisi S, B dan C terisi otomatis sama</div>
+                                <div style="background:#fff2cc; border:1px solid #bf9000; text-align:center; font-weight:700; padding:1px 4px;">I</div><div style="text-align:center;">:</div><div>Dihitung jika A terisi I, B dan C terisi otomatis sama</div>
+                                <div style="background:#fff2cc; border:1px solid #bf9000; text-align:center; font-weight:700; padding:1px 4px;">A</div><div style="text-align:center;">:</div><div>Dihitung jika A terisi A, B dan C terisi otomatis sama</div>
+                                <div style="background:#fff2cc; border:1px solid #bf9000; text-align:center; font-weight:700; padding:1px 4px;">DNS</div><div style="text-align:center;">:</div><div>Dihitung jika A terisi D, B dan C terisi otomatis sama</div>
+                                <div style="background:#fff2cc; border:1px solid #bf9000; text-align:center; font-weight:700; padding:1px 4px;">TH</div><div style="text-align:center;">:</div><div>Total Tidak Hadir (S + I + A)</div>
+                                <div style="background:#fff2cc; border:1px solid #bf9000; text-align:center; font-weight:700; padding:1px 4px;">%</div><div style="text-align:center;">:</div><div>(Hadir / Wajib Hadir) &times; 100%</div>
                             </div>
                         </div>
                     </div>
@@ -4237,19 +4285,20 @@ const Curriculum = {
             return `
                 <tr>
                     <td style="text-align:center; padding:3px 2px;">${idx + 1}</td>
-                    <td style="text-align:center; padding:3px 2px; font-family:monospace; font-weight:600;">${this.escapeHtml(t.kode_guru)}</td>
                     <td style="text-align:left; padding:3px 5px; font-weight:600; white-space:nowrap;">${this.escapeHtml(t.nama)}</td>
-                    <td style="text-align:center; padding:3px 2px;">${this.escapeHtml(t.jenis_kelamin || '-')}</td>
+                    <td style="text-align:left; padding:3px 5px; white-space:nowrap;">${this.escapeHtml(t.tupoksi || '-')}</td>
                     ${dailyCells}
                     <td style="text-align:center; padding:3px 2px;">${t.tot_a ?? 0}</td>
                     <td style="text-align:center; padding:3px 2px;">${t.tot_b ?? 0}</td>
                     <td style="text-align:center; padding:3px 2px;">${t.tot_c ?? 0}</td>
+                    <td style="text-align:center; padding:3px 2px;">${t.ta ?? 0}</td>
                     <td style="text-align:center; padding:3px 2px; font-weight:bold;">${t.wh ?? 0}</td>
                     <td style="text-align:center; padding:3px 2px; font-weight:bold;">${t.hadir ?? 0}</td>
                     <td style="text-align:center; padding:3px 2px;">${valOrDash(t.terlambat)}</td>
                     <td style="text-align:center; padding:3px 2px;">${valOrDash(t.sakit)}</td>
                     <td style="text-align:center; padding:3px 2px;">${valOrDash(t.izin)}</td>
                     <td style="text-align:center; padding:3px 2px;">${valOrDash(t.alpha)}</td>
+                    <td style="text-align:center; padding:3px 2px;">${valOrDash(t.dns)}</td>
                     <td style="text-align:center; padding:3px 2px; font-weight:bold;">${t.th ?? 0}</td>
                     <td style="text-align:center; padding:3px 2px; font-weight:bold;">${t.persentase ?? 0}</td>
                 </tr>
@@ -4261,7 +4310,7 @@ const Curriculum = {
             <!DOCTYPE html>
             <html>
             <head>
-                <title>Rekapitulasi Kehadiran Guru - ${this.escapeHtml(meta.bulan || '')}</title>
+                <title>Rekapitulasi Kehadiran PTK - ${this.escapeHtml(meta.bulan || '')}</title>
                 <style>
                     @page { size: landscape; margin: 8mm 10mm; }
                     body { font-family: Arial, sans-serif; font-size: 10px; color: #000; background: #fff; margin: 0; padding: 5px; }
@@ -4277,14 +4326,14 @@ const Curriculum = {
                     .bg-date { background-color: #ffedd5 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
                     .bg-total { background-color: #d1fae5 !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
                     .bg-hadir { background-color: #fef08a !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-                    .legend-footer { display: flex; justify-content: space-between; align-items: flex-start; font-size: 9.5px; line-height: 1.4; margin-top: 6px; }
-                    .legend-table td { border: none; padding: 1px 4px 1px 0; }
+                    .legend-footer { display: flex; justify-content: space-between; align-items: flex-start; font-size: 9.5px; line-height: 1.4; margin-top: 8px; }
+                    .legend-table td { border: none; padding: 2px 6px 2px 0; }
                 </style>
             </head>
             <body>
                 <div class="header-container">
                     <div>
-                        <div class="header-title">REKAPITULASI KEHADIRAN GURU</div>
+                        <div class="header-title">REKAPITULASI KEHADIRAN PENDIDIK DAN TENAGA KEPENDIDIKAN</div>
                         <div class="header-school">${this.escapeHtml(meta.nama_sekolah || 'SMA WACHID HASYIM 1 SURABAYA')}</div>
                         <table class="meta-table">
                             <tr><td style="width:70px;">Bulan</td><td>: ${this.escapeHtml(meta.bulan || '-')}</td></tr>
@@ -4303,26 +4352,27 @@ const Curriculum = {
                     <thead>
                         <tr>
                             <th rowspan="2" style="width:24px; text-align:center;">NO</th>
-                            <th rowspan="2" style="width:65px; text-align:center;">KODE</th>
-                            <th rowspan="2" style="text-align:left; padding-left:6px;">NAMA GURU</th>
-                            <th rowspan="2" style="width:30px; text-align:center;">L/P</th>
+                            <th rowspan="2" style="text-align:left; padding-left:6px;">NAMA PTK</th>
+                            <th rowspan="2" style="text-align:left; padding-left:6px;">TUPOKSI</th>
                             ${datesThRow1}
                             <th colspan="3" class="bg-total" style="text-align:center;">TOTAL</th>
-                            <th colspan="8" class="bg-hadir" style="text-align:center;">KEHADIRAN</th>
+                            <th colspan="10" class="bg-hadir" style="text-align:center;">KEHADIRAN</th>
                         </tr>
                         <tr>
                             ${datesThRow2}
                             <th class="bg-total" style="width:24px; text-align:center;">A</th>
                             <th class="bg-total" style="width:24px; text-align:center;">B</th>
                             <th class="bg-total" style="width:24px; text-align:center;">C</th>
+                            <th class="bg-hadir" style="width:24px; text-align:center;">TA</th>
                             <th class="bg-hadir" style="width:26px; text-align:center;">WH</th>
-                            <th class="bg-hadir" style="width:26px; text-align:center;">H</th>
-                            <th class="bg-hadir" style="width:24px; text-align:center;">T</th>
-                            <th class="bg-hadir" style="width:24px; text-align:center;">S</th>
-                            <th class="bg-hadir" style="width:24px; text-align:center;">I</th>
-                            <th class="bg-hadir" style="width:24px; text-align:center;">A</th>
-                            <th class="bg-hadir" style="width:26px; text-align:center;">TH</th>
-                            <th class="bg-hadir" style="width:30px; text-align:center;">%</th>
+                            <th class="bg-hadir" style="width:24px; text-align:center;">H</th>
+                            <th class="bg-hadir" style="width:22px; text-align:center;">T</th>
+                            <th class="bg-hadir" style="width:22px; text-align:center;">S</th>
+                            <th class="bg-hadir" style="width:22px; text-align:center;">I</th>
+                            <th class="bg-hadir" style="width:22px; text-align:center;">A</th>
+                            <th class="bg-hadir" style="width:28px; text-align:center;">DNS</th>
+                            <th class="bg-hadir" style="width:24px; text-align:center;">TH</th>
+                            <th class="bg-hadir" style="width:28px; text-align:center;">%</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -4330,26 +4380,41 @@ const Curriculum = {
                     </tbody>
                 </table>
 
-                <div class="legend-footer">
-                    <div>
+                <div class="legend-footer" style="gap:24px;">
+                    <div style="min-width:150px;">
                         <strong>Keterangan Singkatan :</strong>
-                        <table class="legend-table">
-                            <tr><td style="width:16px;">1</td><td style="width:30px; font-weight:bold;">WH</td><td>WAJIB HADIR</td></tr>
-                            <tr><td>2</td><td style="font-weight:bold;">H</td><td>HADIR</td></tr>
-                            <tr><td>3</td><td style="font-weight:bold;">T</td><td>TERLAMBAT</td></tr>
-                            <tr><td>4</td><td style="font-weight:bold;">S</td><td>SAKIT</td></tr>
-                            <tr><td>5</td><td style="font-weight:bold;">I</td><td>IZIN</td></tr>
-                            <tr><td>6</td><td style="font-weight:bold;">A</td><td>ALPHA</td></tr>
-                            <tr><td>7</td><td style="font-weight:bold;">TOT</td><td>TOTAL (A: Datang, B: Istirahat, C: Pulang)</td></tr>
+                        <table class="legend-table" style="margin-top:4px;">
+                            <tr><td style="width:34px; font-weight:bold;">WH</td><td>WAJIB HADIR</td></tr>
+                            <tr><td style="font-weight:bold;">H</td><td>HADIR</td></tr>
+                            <tr><td style="font-weight:bold;">T</td><td>TERLAMBAT</td></tr>
+                            <tr><td style="font-weight:bold;">S</td><td>SAKIT</td></tr>
+                            <tr><td style="font-weight:bold;">I</td><td>IZIN</td></tr>
+                            <tr><td style="font-weight:bold;">A</td><td>ALPHA</td></tr>
+                            <tr><td style="font-weight:bold;">D</td><td>DNS</td></tr>
+                            <tr><td style="font-weight:bold;">TOT</td><td>TOTAL</td></tr>
                         </table>
                     </div>
-                    <div style="max-width:480px; font-size:9px; border-left:1px solid #ccc; padding-left:12px;">
-                        <strong>&gt;&gt; Ketentuan Perhitungan:</strong><br>
-                        <strong>TOTAL (A,B,C)</strong>: Menghitung apakah absen datang, istirahat, dan pulang terisi.<br>
-                        <strong>WH</strong>: Semua hari efektif pada bulan tersebut (selama tidak ditentukan libur).<br>
-                        <strong>H</strong>: Dihitung jika A dan C terisi T atau H.<br>
-                        <strong>T/S/I/A</strong>: Dihitung dari status absen datang.<br>
-                        <strong>TH</strong>: Total Tidak Hadir (S + I + A). | <strong>%</strong>: (Hadir / Wajib Hadir) &times; 100%
+                    <div style="flex:1; font-size:9px; border-left:1px solid #ccc; padding-left:14px;">
+                        <div style="font-weight:bold; margin-bottom:6px;">Ketentuan Perhitungan</div>
+                        <div style="display:flex; gap:10px; align-items:flex-start; margin-bottom:6px;">
+                            <table style="border-collapse:collapse; font-size:8px; text-align:center; background:#d9ead3; flex-shrink:0;">
+                                <tr><th colspan="3" style="border:1px solid #333; padding:1px 6px;">TOTAL</th></tr>
+                                <tr><th style="border:1px solid #333; padding:1px 6px;">A</th><th style="border:1px solid #333; padding:1px 6px;">B</th><th style="border:1px solid #333; padding:1px 6px;">C</th></tr>
+                            </table>
+                            <div>Menghitung apakah absen datang, istirahat, dan pulang terisi. Jika terisi dengan variabel apapun (H, S, I, A, T, DNS), maka akan terhitung. Bagian ini berfungsi sebagai kontrol bahwa melakukan absensi 3x.</div>
+                        </div>
+                        <table class="legend-table" style="font-size:9px;">
+                            <tr><td style="width:42px; font-weight:bold; border:1px solid #666; background:#fff2cc; text-align:center;">TA</td><td style="width:10px; text-align:center;">:</td><td>Terisi otomatis sesuai dengan <strong>DISTRIBUSI</strong> yang telah di tentukan pada e-jadwal</td></tr>
+                            <tr><td style="font-weight:bold; border:1px solid #666; background:#fff2cc; text-align:center;">WH</td><td style="text-align:center;">:</td><td>Semua hari efektif pada bulan tersebut dikurangi dengan yang ada status TA (selama tidak ditentukan libur, terhitung wajib hadir).</td></tr>
+                            <tr><td style="font-weight:bold; border:1px solid #666; background:#fff2cc; text-align:center;">H</td><td style="text-align:center;">:</td><td>Dihitung jika A dan C terisi T, H, atau d</td></tr>
+                            <tr><td style="font-weight:bold; border:1px solid #666; background:#fff2cc; text-align:center;">T</td><td style="text-align:center;">:</td><td>Dihitung jika A terisi T</td></tr>
+                            <tr><td style="font-weight:bold; border:1px solid #666; background:#fff2cc; text-align:center;">S</td><td style="text-align:center;">:</td><td>Dihitung jika A terisi S, B dan C terisi otomatis sama</td></tr>
+                            <tr><td style="font-weight:bold; border:1px solid #666; background:#fff2cc; text-align:center;">I</td><td style="text-align:center;">:</td><td>Dihitung jika A terisi I, B dan C terisi otomatis sama</td></tr>
+                            <tr><td style="font-weight:bold; border:1px solid #666; background:#fff2cc; text-align:center;">A</td><td style="text-align:center;">:</td><td>Dihitung jika A terisi A, B dan C terisi otomatis sama</td></tr>
+                            <tr><td style="font-weight:bold; border:1px solid #666; background:#fff2cc; text-align:center;">DNS</td><td style="text-align:center;">:</td><td>Dihitung jika A terisi D, B dan C terisi otomatis sama</td></tr>
+                            <tr><td style="font-weight:bold; border:1px solid #666; background:#fff2cc; text-align:center;">TH</td><td style="text-align:center;">:</td><td>Total Tidak Hadir (S + I + A)</td></tr>
+                            <tr><td style="font-weight:bold; border:1px solid #666; background:#fff2cc; text-align:center;">%</td><td style="text-align:center;">:</td><td>(Hadir / Wajib Hadir) &times; 100%</td></tr>
+                        </table>
                     </div>
                 </div>
 
@@ -4411,9 +4476,9 @@ const Curriculum = {
             try {
                 const valOrDash = (v) => (v && Number(v) > 0 ? Number(v) : '-');
 
-                // --- SHEET 1: REKAP DETAIL GURU ---
+                // --- SHEET 1: REKAP DETAIL PTK ---
                 const wsDataDetail = [
-                    ['REKAPITULASI KEHADIRAN GURU'],
+                    ['REKAPITULASI KEHADIRAN PENDIDIK DAN TENAGA KEPENDIDIKAN'],
                     [namaSekolah.toUpperCase()],
                     [],
                     ['Bulan', `: ${bulanText}`, '', '', '', '', '', '', '', 'A', ':', 'Absen datang'],
@@ -4422,26 +4487,25 @@ const Curriculum = {
                     []
                 ];
 
-                const hRow1 = ['NO', 'KODE', 'NIK', 'NAMA GURU'];
+                const hRow1 = ['NO', 'NAMA PTK', 'TUPOKSI'];
                 effectiveDates.forEach(ed => {
                     hRow1.push(String(ed.day), '', '');
                 });
-                hRow1.push('TOTAL', '', '', 'KEHADIRAN', '', '', '', '', '', '', '');
+                hRow1.push('TOTAL', '', '', 'KEHADIRAN', '', '', '', '', '', '', '', '', '');
                 wsDataDetail.push(hRow1);
 
-                const hRow2 = ['', '', '', ''];
+                const hRow2 = ['', '', ''];
                 effectiveDates.forEach(() => {
                     hRow2.push('A', 'B', 'C');
                 });
-                hRow2.push('A', 'B', 'C', 'WH', 'H', 'T', 'S', 'I', 'A', 'TH', '%');
+                hRow2.push('A', 'B', 'C', 'TA', 'WH', 'H', 'T', 'S', 'I', 'A', 'DNS', 'TH', '%');
                 wsDataDetail.push(hRow2);
 
                 data.forEach((t, idx) => {
                     const row = [
                         idx + 1,
-                        t.kode_guru || '',
-                        String(t.nik || ''),
-                        t.nama || ''
+                        t.nama || '',
+                        t.tupoksi || '-'
                     ];
 
                     effectiveDates.forEach(ed => {
@@ -4453,12 +4517,14 @@ const Curriculum = {
                         Number(t.tot_a ?? 0),
                         Number(t.tot_b ?? 0),
                         Number(t.tot_c ?? 0),
+                        Number(t.ta ?? 0),
                         Number(t.wh ?? 0),
                         Number(t.hadir ?? 0),
                         valOrDash(t.terlambat),
                         valOrDash(t.sakit),
                         valOrDash(t.izin),
                         valOrDash(t.alpha),
+                        valOrDash(t.dns),
                         Number(t.th ?? 0),
                         Number(t.persentase ?? 0)
                     );
@@ -4466,14 +4532,15 @@ const Curriculum = {
                 });
 
                 wsDataDetail.push([]);
-                wsDataDetail.push(['Keterangan Singkatan :']);
-                wsDataDetail.push(['1', 'WH', 'WAJIB HADIR', '', '>> Ketentuan Perhitungan']);
-                wsDataDetail.push(['2', 'H', 'HADIR', '', 'TOTAL (A,B,C) : Menghitung apakah absen datang, istirahat, dan pulang terisi (H, S, I, A, T)']);
-                wsDataDetail.push(['3', 'T', 'TERLAMBAT', '', 'WH : Semua hari efektif pada rentang tanggal (tidak termasuk libur)']);
-                wsDataDetail.push(['4', 'S', 'SAKIT', '', 'H : Dihitung jika A dan C terisi T atau H']);
-                wsDataDetail.push(['5', 'I', 'IZIN', '', 'T : Dihitung jika A terisi T']);
-                wsDataDetail.push(['6', 'A', 'ALPHA', '', 'S : Dihitung jika A terisi S | I : Dihitung jika A terisi I | A : Dihitung jika A terisi A']);
-                wsDataDetail.push(['7', 'TOT', 'TOTAL', '', 'TH : Total Tidak Hadir (S + I + A) | % : (Hadir / Wajib Hadir) * 100%']);
+                wsDataDetail.push(['Keterangan Singkatan :', '', '', 'Ketentuan Perhitungan']);
+                wsDataDetail.push(['WH', 'WAJIB HADIR', '', 'TOTAL (A, B, C)', 'Menghitung apakah absen datang, istirahat, dan pulang terisi (H, S, I, A, T, DNS)']);
+                wsDataDetail.push(['H', 'HADIR', '', 'TA', 'Terisi otomatis sesuai dengan DISTRIBUSI yang telah di tentukan pada e-jadwal']);
+                wsDataDetail.push(['T', 'TERLAMBAT', '', 'WH', 'Semua hari efektif pada bulan tersebut dikurangi dengan yang ada status TA (selama tidak libur)']);
+                wsDataDetail.push(['S', 'SAKIT', '', 'H', 'Dihitung jika A dan C terisi T, H, atau d']);
+                wsDataDetail.push(['I', 'IZIN', '', 'T', 'Dihitung jika A terisi T']);
+                wsDataDetail.push(['A', 'ALPHA', '', 'S / I / A / DNS', 'Dihitung jika A terisi S / I / A / D, B dan C terisi otomatis sama']);
+                wsDataDetail.push(['D', 'DNS', '', 'TH', 'Total Tidak Hadir (S + I + A)']);
+                wsDataDetail.push(['TOT', 'TOTAL', '', '%', '(Hadir / Wajib Hadir) * 100%']);
 
                 const wsDetail = XLSX.utils.aoa_to_sheet(wsDataDetail);
 
@@ -4481,35 +4548,33 @@ const Curriculum = {
                 const mergesDetail = [
                     { s: { r: 7, c: 0 }, e: { r: 8, c: 0 } },
                     { s: { r: 7, c: 1 }, e: { r: 8, c: 1 } },
-                    { s: { r: 7, c: 2 }, e: { r: 8, c: 2 } },
-                    { s: { r: 7, c: 3 }, e: { r: 8, c: 3 } }
+                    { s: { r: 7, c: 2 }, e: { r: 8, c: 2 } }
                 ];
                 for (let i = 0; i < numDates; i++) {
-                    const cStart = 4 + (i * 3);
+                    const cStart = 3 + (i * 3);
                     mergesDetail.push({ s: { r: 7, c: cStart }, e: { r: 7, c: cStart + 2 } });
                 }
-                const cTot = 4 + (numDates * 3);
+                const cTot = 3 + (numDates * 3);
                 mergesDetail.push({ s: { r: 7, c: cTot }, e: { r: 7, c: cTot + 2 } });
                 const cKeh = cTot + 3;
-                mergesDetail.push({ s: { r: 7, c: cKeh }, e: { r: 7, c: cKeh + 7 } });
+                mergesDetail.push({ s: { r: 7, c: cKeh }, e: { r: 7, c: cKeh + 9 } });
                 wsDetail['!merges'] = mergesDetail;
 
                 const colsDetail = [
                     { wch: 5 },  // NO
-                    { wch: 10 }, // KODE
-                    { wch: 16 }, // NIK
-                    { wch: 34 }  // NAMA GURU
+                    { wch: 34 }, // NAMA PTK
+                    { wch: 24 }  // TUPOKSI
                 ];
                 for (let i = 0; i < numDates; i++) {
                     colsDetail.push({ wch: 4 }, { wch: 4 }, { wch: 4 });
                 }
                 colsDetail.push({ wch: 5 }, { wch: 5 }, { wch: 5 }); // TOTAL
-                colsDetail.push({ wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 6 }); // KEHADIRAN
+                colsDetail.push({ wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 6 }, { wch: 5 }, { wch: 6 }); // KEHADIRAN
                 wsDetail['!cols'] = colsDetail;
 
-                // --- SHEET 2: REKAP RINGKASAN GURU ---
+                // --- SHEET 2: REKAP RINGKASAN PTK ---
                 const wsDataRingkasan = [
-                    ['REKAPITULASI KEHADIRAN GURU'],
+                    ['REKAPITULASI KEHADIRAN PENDIDIK DAN TENAGA KEPENDIDIKAN'],
                     [namaSekolah.toUpperCase()],
                     [],
                     ['Bulan', `: ${bulanText}`],
@@ -4517,32 +4582,33 @@ const Curriculum = {
                 ];
 
                 wsDataRingkasan.push([
-                    'NO', 'KODE', 'NIK', 'NAMA GURU',
+                    'NO', 'NAMA PTK', 'TUPOKSI',
                     'TOTAL', '', '',
-                    'KEHADIRAN', '', '', '', '', '', '', ''
+                    'KEHADIRAN', '', '', '', '', '', '', '', '', ''
                 ]);
 
                 wsDataRingkasan.push([
-                    '', '', '', '',
+                    '', '', '',
                     'A', 'B', 'C',
-                    'WH', 'H', 'T', 'S', 'I', 'A', 'TH', '%'
+                    'TA', 'WH', 'H', 'T', 'S', 'I', 'A', 'DNS', 'TH', '%'
                 ]);
 
                 data.forEach((t, idx) => {
                     wsDataRingkasan.push([
                         idx + 1,
-                        t.kode_guru || '',
-                        String(t.nik || ''),
                         t.nama || '',
+                        t.tupoksi || '-',
                         Number(t.tot_a ?? 0),
                         Number(t.tot_b ?? 0),
                         Number(t.tot_c ?? 0),
+                        Number(t.ta ?? 0),
                         Number(t.wh ?? 0),
                         Number(t.hadir ?? 0),
                         valOrDash(t.terlambat),
                         valOrDash(t.sakit),
                         valOrDash(t.izin),
                         valOrDash(t.alpha),
+                        valOrDash(t.dns),
                         Number(t.th ?? 0),
                         Number(t.persentase ?? 0)
                     ]);
@@ -4550,30 +4616,29 @@ const Curriculum = {
 
                 wsDataRingkasan.push([]);
                 wsDataRingkasan.push(['Keterangan Singkatan :']);
-                wsDataRingkasan.push(['1', 'WH', 'WAJIB HADIR']);
-                wsDataRingkasan.push(['2', 'H', 'HADIR']);
-                wsDataRingkasan.push(['3', 'T', 'TERLAMBAT']);
-                wsDataRingkasan.push(['4', 'S', 'SAKIT']);
-                wsDataRingkasan.push(['5', 'I', 'IZIN']);
-                wsDataRingkasan.push(['6', 'A', 'ALPHA']);
-                wsDataRingkasan.push(['7', 'TOT', 'TOTAL']);
+                wsDataRingkasan.push(['WH', 'WAJIB HADIR']);
+                wsDataRingkasan.push(['H', 'HADIR']);
+                wsDataRingkasan.push(['T', 'TERLAMBAT']);
+                wsDataRingkasan.push(['S', 'SAKIT']);
+                wsDataRingkasan.push(['I', 'IZIN']);
+                wsDataRingkasan.push(['A', 'ALPHA']);
+                wsDataRingkasan.push(['D', 'DNS']);
+                wsDataRingkasan.push(['TOT', 'TOTAL']);
 
                 const wsRingkasan = XLSX.utils.aoa_to_sheet(wsDataRingkasan);
                 wsRingkasan['!merges'] = [
                     { s: { r: 5, c: 0 }, e: { r: 6, c: 0 } },
                     { s: { r: 5, c: 1 }, e: { r: 6, c: 1 } },
                     { s: { r: 5, c: 2 }, e: { r: 6, c: 2 } },
-                    { s: { r: 5, c: 3 }, e: { r: 6, c: 3 } },
-                    { s: { r: 5, c: 4 }, e: { r: 5, c: 6 } },
-                    { s: { r: 5, c: 7 }, e: { r: 5, c: 14 } }
+                    { s: { r: 5, c: 3 }, e: { r: 5, c: 5 } },
+                    { s: { r: 5, c: 6 }, e: { r: 5, c: 15 } }
                 ];
                 wsRingkasan['!cols'] = [
                     { wch: 5 },  // NO
-                    { wch: 10 }, // KODE
-                    { wch: 16 }, // NIK
-                    { wch: 34 }, // NAMA GURU
+                    { wch: 34 }, // NAMA PTK
+                    { wch: 24 }, // TUPOKSI
                     { wch: 5 }, { wch: 5 }, { wch: 5 }, // TOTAL A, B, C
-                    { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 6 } // KEHADIRAN
+                    { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 5 }, { wch: 6 }, { wch: 5 }, { wch: 6 } // KEHADIRAN
                 ];
 
                 const wb = XLSX.utils.book_new();

@@ -8,33 +8,35 @@ require_once __DIR__ . '/../../../api/wa_gateway_client.php';
 require_once __DIR__ . '/wa_group_helper.php';
 require_once __DIR__ . '/hari_libur.php';
 
-$user = acad_auth();
-$action = isset($_GET['action']) ? $_GET['action'] : '';
+if (!defined('ACAD_LIB_ONLY')) {
+    $user = acad_auth();
+    $action = isset($_GET['action']) ? $_GET['action'] : '';
 
-switch ($action) {
-    case 'list':
-        listAbsensi($user);
-        break;
-    case 'save':
-        saveAbsensi($user);
-        break;
-    case 'students':
-        getStudentsByKelas($user);
-        break;
-    case 'rekap':
-        rekapAbsensi($user);
-        break;
-    case 'export_excel':
-        exportExcelAbsensi($user);
-        break;
-    case 'get_settings':
-        getSettings($user);
-        break;
-    case 'save_settings':
-        saveSettings($user);
-        break;
-    default:
-        json_response(400, false, 'Action tidak valid.');
+    switch ($action) {
+        case 'list':
+            listAbsensi($user);
+            break;
+        case 'save':
+            saveAbsensi($user);
+            break;
+        case 'students':
+            getStudentsByKelas($user);
+            break;
+        case 'rekap':
+            rekapAbsensi($user);
+            break;
+        case 'export_excel':
+            exportExcelAbsensi($user);
+            break;
+        case 'get_settings':
+            getSettings($user);
+            break;
+        case 'save_settings':
+            saveSettings($user);
+            break;
+        default:
+            json_response(400, false, 'Action tidak valid.');
+    }
 }
 
 /**
@@ -100,13 +102,13 @@ function listAbsensi($user) {
             }
         }
 
-        // Jika sesi 2 atau 3, cek apakah sesi 1 divalidasi Sakit (S) atau Izin (I) untuk auto-inheritance
+        // Jika sesi 2 atau 3, cek apakah sesi 1 divalidasi Sakit (S), Izin (I), atau Alpha (A) untuk auto-inheritance
         $sesi1SakitIzin = [];
         if ($jam_ke > 1) {
             $stmtSesi1 = db()->prepare("
                 SELECT student_id, status, keterangan 
                 FROM acad_absensi 
-                WHERE tanggal = ? AND kelas_id = ? AND jam_ke IN (0, 1) AND status IN ('S', 'I')
+                WHERE tanggal = ? AND kelas_id = ? AND jam_ke IN (0, 1) AND status IN ('S', 'I', 'A')
                 ORDER BY jam_ke DESC
             ");
             $stmtSesi1->execute([$tanggal, $kelas_id]);
@@ -184,8 +186,8 @@ function listAbsensi($user) {
             }
 
             // Manual override takes precedence if recorded in acad_absensi for this session
-            // Jika record manual berstatus 'H' dari auto-sync fingerprint (keterangan 'Hadir via Fingerprint' atau 'Fingerprint: ...') padahal hasil kalkulasi jam scan adalah 'T' (Terlambat), otomatis koreksi ke 'T'
-            $inherited = ($jam_ke > 1 && !isset($existingManual[$s['id']]) && isset($sesi1SakitIzin[$s['id']])) ? $sesi1SakitIzin[$s['id']] : null;
+            // Jika sesi 2/3 belum ada manual override dan tidak ada scan mesin, warisi S / I / A dari sesi masuk
+            $inherited = ($jam_ke > 1 && !isset($existingManual[$s['id']]) && $jamScanSesi === null && isset($sesi1SakitIzin[$s['id']])) ? $sesi1SakitIzin[$s['id']] : null;
             if (isset($existingManual[$s['id']])) {
                 $manRow = $existingManual[$s['id']];
                 $manKet = trim((string)($manRow['keterangan'] ?? ''));
@@ -272,7 +274,9 @@ function saveAbsensi($user) {
 
         foreach ($absensi as $a) {
             $student_id = (int)$a['student_id'];
-            $status = in_array($a['status'], ['H','S','I','A','T','TA','DNS']) ? $a['status'] : 'H';
+            $rawStatus = strtoupper(trim((string)($a['status'] ?? 'H')));
+            if ($rawStatus === 'D') $rawStatus = 'DNS';
+            $status = in_array($rawStatus, ['H','S','I','A','T','TA','DNS'], true) ? $rawStatus : 'H';
             $keterangan = isset($a['keterangan']) ? trim($a['keterangan']) : '';
 
             // Cek status lama untuk mencegah pengiriman pesan berulang
@@ -290,8 +294,8 @@ function saveAbsensi($user) {
             // Jika sesi 1 (Absen Masuk / Harian Utama), selaraskan juga ke jam_ke = 0 agar sistem legacy/rekap selalu sinkron
             if ($jam_ke == 1) {
                 $stmt->execute([$student_id, $kelas_id, $year_id, $tanggal, 0, $status, $keterangan, $user['user_id']]);
-                // Requirement 1: Jika sakit / izin pada absen kehadiran, maka di absen istirahat (2) dan pulang (3) otomatis terisi. Namun jika alpha, tetap alpha.
-                if ($status === 'S' || $status === 'I') {
+                // Jika sakit / izin / alpha pada absen kehadiran (sesi masuk), maka di absen istirahat (2) dan pulang (3) otomatis terisi sama.
+                if (in_array($status, ['S', 'I', 'A'], true)) {
                     $stmt->execute([$student_id, $kelas_id, $year_id, $tanggal, 2, $status, $keterangan, $user['user_id']]);
                     $stmt->execute([$student_id, $kelas_id, $year_id, $tanggal, 3, $status, $keterangan, $user['user_id']]);
                 }
@@ -593,6 +597,8 @@ function getRekapAbsensiData($kelas_id, $tanggal_awal, $tanggal_akhir) {
         $countS = 0; 
         $countI = 0; 
         $countA = 0;
+        $countTA = 0;
+        $countDNS = 0;
 
         foreach ($effectiveDates as $ed) {
             $d = $ed['date'];
@@ -613,20 +619,36 @@ function getRekapAbsensiData($kelas_id, $tanggal_awal, $tanggal_akhir) {
             if (!$stA) {
                 $man2St = is_array($manual[2] ?? null) ? $manual[2]['status'] : ($manual[2] ?? null);
                 $man3St = is_array($manual[3] ?? null) ? $manual[3]['status'] : ($manual[3] ?? null);
-                if ($man2St && in_array($man2St, ['S','I','A'])) $stA = $man2St;
-                elseif ($man3St && in_array($man3St, ['S','I','A'])) $stA = $man3St;
+                if ($man2St && in_array($man2St, ['S','I','A','D','DNS','TA'], true)) $stA = $man2St;
+                elseif ($man3St && in_array($man3St, ['S','I','A','D','DNS','TA'], true)) $stA = $man3St;
             }
+            if ($stA === 'DNS') $stA = 'D';
 
-            // Sesi 2 (B: Istirahat)
-            $stB = is_array($manual[2] ?? null) ? $manual[2]['status'] : ($manual[2] ?? null);
-            if (!$stB && $log && !empty($log['jam_istirahat'])) {
-                $stB = 'H';
-            }
+            if (in_array($stA, ['S', 'I', 'A', 'D', 'TA'], true)) {
+                $stB = $stA;
+                $stC = $stA;
+            } else {
+                // Sesi 2 (B: Istirahat)
+                $man2 = $manual[2] ?? null;
+                $stB = is_array($man2) ? $man2['status'] : $man2;
+                $ketB = is_array($man2) ? ($man2['keterangan'] ?? '') : '';
+                if ($stB === 'DNS') $stB = 'D';
+                if (in_array($stA, ['H', 'T'], true) && $stB === 'A' && $ketB === '' && empty($log['jam_istirahat'])) {
+                    $stB = '';
+                } elseif (!$stB && $log && !empty($log['jam_istirahat'])) {
+                    $stB = 'H';
+                }
 
-            // Sesi 3 (C: Pulang)
-            $stC = is_array($manual[3] ?? null) ? $manual[3]['status'] : ($manual[3] ?? null);
-            if (!$stC && $log && !empty($log['jam_pulang'])) {
-                $stC = 'H';
+                // Sesi 3 (C: Pulang)
+                $man3 = $manual[3] ?? null;
+                $stC = is_array($man3) ? $man3['status'] : $man3;
+                $ketC = is_array($man3) ? ($man3['keterangan'] ?? '') : '';
+                if ($stC === 'DNS') $stC = 'D';
+                if (in_array($stA, ['H', 'T'], true) && $stC === 'A' && $ketC === '' && empty($log['jam_pulang'])) {
+                    $stC = '';
+                } elseif (!$stC && $log && !empty($log['jam_pulang'])) {
+                    $stC = 'H';
+                }
             }
 
             $daily[$d] = [
@@ -635,34 +657,34 @@ function getRekapAbsensiData($kelas_id, $tanggal_awal, $tanggal_akhir) {
                 'c' => $stC ?: ''
             ];
 
-            // TOTAL (A, B, C): Jika terisi variabel apapun (H, S, I, A, T), maka akan terhitung
+            // TOTAL (A, B, C): Jika terisi variabel apapun (H, S, I, A, T, D/DNS, TA), maka akan terhitung
             if (!empty($daily[$d]['a'])) $totA++;
             if (!empty($daily[$d]['b'])) $totB++;
             if (!empty($daily[$d]['c'])) $totC++;
 
             // Kehadiran:
-            // T jika A terisi T
-            // S jika A terisi S
-            // I jika A terisi I
-            // A jika A terisi A
-            // H jika A dan C terisi T atau H
-            if ($stA === 'S') {
-                $countS++;
-            } elseif ($stA === 'I') {
-                $countI++;
-            } elseif ($stA === 'A') {
-                $countA++;
-            } elseif ($stA === 'T') {
-                $countH++;
-                $countT++;
-            } elseif ($stA === 'H' || $stC === 'H') {
-                $countH++;
+            if ($stA === 'TA') {
+                $countTA++;
             } else {
-                $countA++;
+                if ($stA === 'T') {
+                    $countT++;
+                }
+                if ($stA === 'S') {
+                    $countS++;
+                } elseif ($stA === 'I') {
+                    $countI++;
+                } elseif ($stA === 'A') {
+                    $countA++;
+                } elseif ($stA === 'D') {
+                    $countDNS++;
+                }
+                if (in_array($stA, ['H', 'T', 'D'], true) && in_array($stC, ['H', 'T', 'D'], true)) {
+                    $countH++;
+                }
             }
         }
 
-        $wh = $hari_efektif;
+        $wh = max(0, $hari_efektif - $countTA);
         $th = $countS + $countI + $countA;
         $persentase = $wh > 0 ? round(($countH / $wh) * 100) : 0;
         if ($persentase > 100) $persentase = 100;
@@ -678,12 +700,14 @@ function getRekapAbsensiData($kelas_id, $tanggal_awal, $tanggal_akhir) {
             'tot_a' => $totA,
             'tot_b' => $totB,
             'tot_c' => $totC,
+            'ta' => $countTA,
             'wh' => $wh,
             'hadir' => $countH,
             'terlambat' => $countT,
             'sakit' => $countS,
             'izin' => $countI,
             'alpha' => $countA,
+            'dns' => $countDNS,
             'th' => $th,
             'total_hadir' => $countH,
             'total_hari' => $wh,
@@ -852,15 +876,15 @@ function exportExcelAbsensi($user) {
 
             echo "<tr><td class='no-border' colspan='" . (6 + ($numDates * 3) + 11) . "'></td></tr>";
 
-            // Legend Footer (Gambar 2)
-            echo "<tr><td class='no-border legend-title' colspan='3'>Keterangan Singkatan :</td><td class='no-border' colspan='2'></td><td class='no-border legend-title' colspan='10'>&gt;&gt; Ketentuan Perhitungan</td></tr>";
-            echo "<tr><td class='no-border center'>1</td><td class='no-border bold'>WH</td><td class='no-border' colspan='3'>WAJIB HADIR</td><td class='no-border' colspan='1'></td><td class='no-border bold' colspan='3'>TOTAL (A, B, C)</td><td class='no-border' colspan='10'>: Menghitung apakah absen datang, istirahat, dan pulang terisi (H, S, I, A, T)</td></tr>";
-            echo "<tr><td class='no-border center'>2</td><td class='no-border bold'>H</td><td class='no-border' colspan='3'>HADIR</td><td class='no-border' colspan='4'></td><td class='no-border' colspan='10'>  Bagian ini berfungsi sebagai kontrol bahwa murid melakukan absensi 3x</td></tr>";
+            // Legend Footer
+            echo "<tr><td class='no-border legend-title' colspan='3'>Keterangan Singkatan :</td><td class='no-border' colspan='2'></td><td class='no-border legend-title' colspan='10'>Ketentuan Perhitungan</td></tr>";
+            echo "<tr><td class='no-border center'>1</td><td class='no-border bold'>WH</td><td class='no-border' colspan='3'>WAJIB HADIR</td><td class='no-border' colspan='1'></td><td class='no-border bold' colspan='3'>TOTAL (A, B, C)</td><td class='no-border' colspan='10'>: Menghitung apakah absen datang, istirahat, dan pulang terisi (H, S, I, A, T, DNS)</td></tr>";
+            echo "<tr><td class='no-border center'>2</td><td class='no-border bold'>H</td><td class='no-border' colspan='3'>HADIR</td><td class='no-border' colspan='4'></td><td class='no-border' colspan='10'>  Bagian ini berfungsi sebagai kontrol bahwa melakukan absensi 3x</td></tr>";
             echo "<tr><td class='no-border center'>3</td><td class='no-border bold'>T</td><td class='no-border' colspan='3'>TERLAMBAT</td><td class='no-border' colspan='1'></td><td class='no-border bold' colspan='3'>WH</td><td class='no-border' colspan='10'>: Semua hari efektif pada bulan tersebut (selama tidak ditentukan libur)</td></tr>";
-            echo "<tr><td class='no-border center'>4</td><td class='no-border bold'>S</td><td class='no-border' colspan='3'>SAKIT</td><td class='no-border' colspan='1'></td><td class='no-border bold' colspan='3'>H</td><td class='no-border' colspan='10'>: Dihitung jika A dan C terisi T atau H</td></tr>";
-            echo "<tr><td class='no-border center'>5</td><td class='no-border bold'>I</td><td class='no-border' colspan='3'>IZIN</td><td class='no-border' colspan='1'></td><td class='no-border bold' colspan='3'>T / S / I / A</td><td class='no-border' colspan='10'>: Dihitung jika A terisi status terkait</td></tr>";
-            echo "<tr><td class='no-border center'>6</td><td class='no-border bold'>A</td><td class='no-border' colspan='3'>ALPHA</td><td class='no-border' colspan='1'></td><td class='no-border bold' colspan='3'>TH</td><td class='no-border' colspan='10'>: Total Tidak Hadir (S + I + A)</td></tr>";
-            echo "<tr><td class='no-border center'>7</td><td class='no-border bold'>TOT</td><td class='no-border' colspan='3'>TOTAL</td><td class='no-border' colspan='1'></td><td class='no-border bold' colspan='3'>%</td><td class='no-border' colspan='10'>: (Hadir / Wajib Hadir) * 100%</td></tr>";
+            echo "<tr><td class='no-border center'>4</td><td class='no-border bold'>S</td><td class='no-border' colspan='3'>SAKIT</td><td class='no-border' colspan='1'></td><td class='no-border bold' colspan='3'>H</td><td class='no-border' colspan='10'>: Dihitung jika A dan C terisi T, H, atau d</td></tr>";
+            echo "<tr><td class='no-border center'>5</td><td class='no-border bold'>I</td><td class='no-border' colspan='3'>IZIN</td><td class='no-border' colspan='1'></td><td class='no-border bold' colspan='3'>T</td><td class='no-border' colspan='10'>: Dihitung jika A terisi T</td></tr>";
+            echo "<tr><td class='no-border center'>6</td><td class='no-border bold'>A</td><td class='no-border' colspan='3'>ALPHA</td><td class='no-border' colspan='1'></td><td class='no-border bold' colspan='3'>S / I / A</td><td class='no-border' colspan='10'>: Dihitung jika A terisi S / I / A, B dan C terisi otomatis sama</td></tr>";
+            echo "<tr><td class='no-border center'>7</td><td class='no-border bold'>TOT</td><td class='no-border' colspan='3'>TOTAL</td><td class='no-border' colspan='1'></td><td class='no-border bold' colspan='3'>TH / %</td><td class='no-border' colspan='10'>: Total Tidak Hadir (S + I + A) | % = (Hadir / Wajib Hadir) * 100%</td></tr>";
             echo "</table>";
         }
 

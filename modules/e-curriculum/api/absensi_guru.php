@@ -7,38 +7,134 @@ require_once __DIR__ . '/auth_helper.php';
 require_once __DIR__ . '/wa_group_helper.php';
 require_once __DIR__ . '/hari_libur.php';
 
-$user = acad_auth();
-$action = isset($_GET['action']) ? $_GET['action'] : '';
+if (!defined('ACAD_LIB_ONLY')) {
+    $user = acad_auth();
+    $action = isset($_GET['action']) ? $_GET['action'] : '';
 
-// Opportunistic auto-broadcast check (e.g. afternoon cutoff at 17:00)
-try {
-    checkAndSendWaGroupGuruAbsensiBatch();
-} catch (Exception $e) {}
+    // Opportunistic auto-broadcast check (e.g. afternoon cutoff at 17:00)
+    try {
+        checkAndSendWaGroupGuruAbsensiBatch();
+    } catch (Exception $e) {}
 
-switch ($action) {
-    case 'list':
-        listAbsensiGuru($user);
-        break;
-    case 'save':
-        saveAbsensiGuru($user);
-        break;
-    case 'rekap':
-        rekapAbsensiGuru($user);
-        break;
-    case 'export_excel':
-        exportExcelAbsensiGuru($user);
-        break;
-    case 'get_settings':
-        getSettingsGuru($user);
-        break;
-    case 'save_settings':
-        saveSettingsGuru($user);
-        break;
-    case 'send_wa_group':
-        sendWaGroupAbsensiGuru($user);
-        break;
-    default:
-        json_response(400, false, 'Action tidak valid.');
+    switch ($action) {
+        case 'list':
+            listAbsensiGuru($user);
+            break;
+        case 'save':
+            saveAbsensiGuru($user);
+            break;
+        case 'rekap':
+            rekapAbsensiGuru($user);
+            break;
+        case 'export_excel':
+            exportExcelAbsensiGuru($user);
+            break;
+        case 'get_settings':
+            getSettingsGuru($user);
+            break;
+        case 'save_settings':
+            saveSettingsGuru($user);
+            break;
+        case 'send_wa_group':
+            sendWaGroupAbsensiGuru($user);
+            break;
+        default:
+            json_response(400, false, 'Action tidak valid.');
+    }
+}
+
+/**
+ * Resolve scheduled teaching days per active PTK (users.id) from E-Jadwal (sch_distribusi + sch_jadwal / sch_kesediaan).
+ * Returns [user_id => ['Senin' => true, ...]] for PTK with teaching distribution, or null for non-teaching PTK (works all effective days).
+ */
+function getGuruScheduledDaysMap() {
+    $map = [];
+    try {
+        $users = db()->query("SELECT id, username, kode_guru, nama_lengkap FROM users WHERE role = 'guru' AND status = 1")->fetchAll(PDO::FETCH_ASSOC);
+        $schGurus = db()->query("SELECT id, kode_guru, singkatan, nama_guru FROM sch_guru")->fetchAll(PDO::FETCH_ASSOC);
+
+        $byKode = [];
+        $bySingkatan = [];
+        $byNama = [];
+        foreach ($schGurus as $sg) {
+            $sgId = (int)$sg['id'];
+            $k = strtolower(trim((string)($sg['kode_guru'] ?? '')));
+            $s = strtolower(trim((string)($sg['singkatan'] ?? '')));
+            $n = strtolower(trim((string)($sg['nama_guru'] ?? '')));
+            if ($k !== '') $byKode[$k] = $sgId;
+            if ($s !== '') $bySingkatan[$s] = $sgId;
+            if ($n !== '') $byNama[$n] = $sgId;
+        }
+
+        // Teachers who have active distribution in E-Jadwal
+        $distGurus = db()->query("SELECT DISTINCT guru_id FROM sch_distribusi WHERE jp > 0")->fetchAll(PDO::FETCH_COLUMN);
+        $hasDistSet = array_flip(array_map('intval', $distGurus));
+
+        // Actual timetable days from sch_jadwal
+        $jadwalDays = [];
+        $stmtJ = db()->query("
+            SELECT DISTINCT d.guru_id, jb.hari
+            FROM sch_jadwal j
+            JOIN sch_distribusi d ON j.distribusi_id = d.id
+            JOIN sch_jam_belajar jb ON j.jam_belajar_id = jb.id
+        ");
+        while ($row = $stmtJ->fetch(PDO::FETCH_ASSOC)) {
+            $gid = (int)$row['guru_id'];
+            $h = ucfirst(strtolower(trim((string)$row['hari'])));
+            if ($gid > 0 && $h !== '') {
+                $jadwalDays[$gid][$h] = true;
+            }
+        }
+
+        // Fallback days from sch_kesediaan if a teacher has distribution but not yet plotted in sch_jadwal
+        $kesediaanDays = [];
+        $stmtK = db()->query("
+            SELECT DISTINCT ks.guru_id, jb.hari
+            FROM sch_kesediaan ks
+            JOIN sch_jam_belajar jb ON ks.jam_belajar_id = jb.id
+        ");
+        while ($row = $stmtK->fetch(PDO::FETCH_ASSOC)) {
+            $gid = (int)$row['guru_id'];
+            $h = ucfirst(strtolower(trim((string)$row['hari'])));
+            if ($gid > 0 && $h !== '') {
+                $kesediaanDays[$gid][$h] = true;
+            }
+        }
+
+        foreach ($users as $u) {
+            $uid = (int)$u['id'];
+            $uName = strtolower(trim((string)($u['username'] ?? '')));
+            $uKode = strtolower(trim((string)($u['kode_guru'] ?? '')));
+            $uNama = strtolower(trim((string)($u['nama_lengkap'] ?? '')));
+
+            $schGuruId = null;
+            if ($uName !== '' && isset($byKode[$uName])) {
+                $schGuruId = $byKode[$uName];
+            } elseif ($uKode !== '' && isset($bySingkatan[$uKode])) {
+                $schGuruId = $bySingkatan[$uKode];
+            } elseif ($uKode !== '' && isset($byKode[$uKode])) {
+                $schGuruId = $byKode[$uKode];
+            } elseif ($uNama !== '' && isset($byNama[$uNama])) {
+                $schGuruId = $byNama[$uNama];
+            }
+
+            if ($schGuruId !== null && isset($hasDistSet[$schGuruId])) {
+                if (!empty($jadwalDays[$schGuruId])) {
+                    $map[$uid] = $jadwalDays[$schGuruId];
+                } elseif (!empty($kesediaanDays[$schGuruId])) {
+                    $map[$uid] = $kesediaanDays[$schGuruId];
+                } else {
+                    $map[$uid] = [];
+                }
+            } else {
+                // Non-teaching PTK (TU, BK, Kepala Sekolah, dsb.): wajib hadir semua hari efektif
+                $map[$uid] = null;
+            }
+        }
+    } catch (Exception $e) {
+        // Leave empty map on DB error so non-blocking
+    }
+    return $map;
 }
 
 /**
@@ -62,8 +158,12 @@ function listAbsensiGuru($user) {
         if (strlen($jam_mulai_pulang) === 5) $jam_mulai_pulang .= ':00';
 
         // Get all active teachers
-        $stmtG = db()->query("SELECT id, kode_guru, nama_lengkap as nama FROM users WHERE role = 'guru' AND status = 1 ORDER BY nama_lengkap");
+        $stmtG = db()->query("SELECT id, kode_guru, nama_lengkap as nama, COALESCE(NULLIF(TRIM(tupoksi), ''), '-') as tupoksi FROM users WHERE role = 'guru' AND status = 1 ORDER BY nama_lengkap");
         $teachers = $stmtG->fetchAll();
+
+        $scheduledDaysMap = getGuruScheduledDaysMap();
+        $dayMap = [1 => 'Senin', 2 => 'Selasa', 3 => 'Rabu', 4 => 'Kamis', 5 => 'Jumat', 6 => 'Sabtu', 7 => 'Minggu'];
+        $hariIndo = $dayMap[(int)date('N', strtotime($tanggal))] ?? '';
 
         // Get existing manual absensi from acad_absensi_guru for active session
         $stmtA = db()->prepare("
@@ -77,17 +177,17 @@ function listAbsensiGuru($user) {
             $existingManual[$row['guru_id']] = $row;
         }
 
-        // Jika sesi istirahat atau pulang, cek apakah sesi masuk berstatus S (Sakit) atau I (Izin) untuk auto-inheritance
-        $sesiMasukSakitIzin = [];
+        // Jika sesi istirahat atau pulang, cek apakah sesi masuk berstatus S, I, A, DNS, atau TA untuk auto-inheritance
+        $sesiMasukInherited = [];
         if ($sesi !== 'masuk') {
             $stmtSM = db()->prepare("
                 SELECT guru_id, status, keterangan 
                 FROM acad_absensi_guru 
-                WHERE tanggal = ? AND sesi = 'masuk' AND status IN ('S', 'I')
+                WHERE tanggal = ? AND sesi = 'masuk' AND status IN ('S', 'I', 'A', 'DNS', 'D', 'TA')
             ");
             $stmtSM->execute([$tanggal]);
             while ($sm = $stmtSM->fetch()) {
-                $sesiMasukSakitIzin[$sm['guru_id']] = $sm;
+                $sesiMasukInherited[$sm['guru_id']] = $sm;
             }
         }
 
@@ -125,7 +225,8 @@ function listAbsensiGuru($user) {
             $jamIstirahat = ($logData && !empty($logData['jam_istirahat'])) ? $logData['jam_istirahat'] : null;
             $jamPulang = ($logData && !empty($logData['jam_pulang'])) ? $logData['jam_pulang'] : null;
 
-            // Determine default status based on active session
+            // Determine default status based on active session & E-Jadwal distribution
+            $isAutoTA = isset($scheduledDaysMap[$tid]) && is_array($scheduledDaysMap[$tid]) && !isset($scheduledDaysMap[$tid][$hariIndo]);
             $calculatedStatus = 'A'; // Default jika belum scan adalah Alpha
             $scanInfo = 'Belum Scan Mesin';
             $jamScanSesi = null;
@@ -141,6 +242,9 @@ function listAbsensiGuru($user) {
                         $calculatedStatus = 'T';
                         $scanInfo = "Terlambat ({$masukFormatted})";
                     }
+                } elseif ($isAutoTA) {
+                    $calculatedStatus = 'TA';
+                    $scanInfo = 'Tidak Ada Jadwal (TA)';
                 } else {
                     $calculatedStatus = 'A';
                     $scanInfo = 'Belum Scan Mesin';
@@ -150,6 +254,9 @@ function listAbsensiGuru($user) {
                 if ($jamIstirahat !== null) {
                     $calculatedStatus = 'H';
                     $scanInfo = substr($jamIstirahat, 0, 5);
+                } elseif ($isAutoTA) {
+                    $calculatedStatus = 'TA';
+                    $scanInfo = 'TA';
                 } else {
                     $calculatedStatus = 'A';
                     $scanInfo = 'Belum Scan';
@@ -159,6 +266,9 @@ function listAbsensiGuru($user) {
                 if ($jamPulang !== null) {
                     $calculatedStatus = 'H';
                     $scanInfo = substr($jamPulang, 0, 5);
+                } elseif ($isAutoTA) {
+                    $calculatedStatus = 'TA';
+                    $scanInfo = 'TA';
                 } else {
                     $calculatedStatus = 'A';
                     $scanInfo = 'Belum Scan';
@@ -166,15 +276,30 @@ function listAbsensiGuru($user) {
             }
 
             // Manual override takes precedence if recorded in acad_absensi_guru
-            // Jika sesi istirahat atau pulang dan belum diset manual, mewarisi status Sakit / Izin dari sesi masuk
-            $inherited = ($sesi !== 'masuk' && !isset($existingManual[$tid]) && isset($sesiMasukSakitIzin[$tid])) ? $sesiMasukSakitIzin[$tid] : null;
-            $finalStatus = isset($existingManual[$tid]) ? $existingManual[$tid]['status'] : ($inherited ? $inherited['status'] : $calculatedStatus);
-            $keterangan = isset($existingManual[$tid]) ? $existingManual[$tid]['keterangan'] : ($inherited ? $inherited['keterangan'] : ($jamScanSesi !== null ? "Fingerprint: $jamScanSesi" : ''));
+            // Jika sesi istirahat atau pulang dan belum diset manual, mewarisi status S/I/A/DNS/TA dari sesi masuk
+            $inherited = ($sesi !== 'masuk' && !isset($existingManual[$tid]) && isset($sesiMasukInherited[$tid])) ? $sesiMasukInherited[$tid] : null;
+            if (isset($existingManual[$tid])) {
+                $manRow = $existingManual[$tid];
+                $manSt = ($manRow['status'] === 'D') ? 'DNS' : $manRow['status'];
+                $manKet = trim((string)($manRow['keterangan'] ?? ''));
+                if ($sesi === 'masuk' && $manSt === 'H' && $calculatedStatus === 'T' && ($manKet === '' || stripos($manKet, 'Fingerprint') !== false)) {
+                    $finalStatus = 'T';
+                } elseif ($isAutoTA && $jamScanSesi === null && $manSt === 'A' && $manKet === '') {
+                    $finalStatus = 'TA';
+                } else {
+                    $finalStatus = $manSt;
+                }
+                $keterangan = $manRow['keterangan'];
+            } else {
+                $finalStatus = $inherited ? (($inherited['status'] === 'D') ? 'DNS' : $inherited['status']) : $calculatedStatus;
+                $keterangan = $inherited ? $inherited['keterangan'] : ($jamScanSesi !== null ? "Fingerprint: $jamScanSesi" : '');
+            }
 
             $result[] = [
                 'guru_id' => $tid,
                 'kode_guru' => $t['kode_guru'],
                 'nama' => $t['nama'],
+                'tupoksi' => $t['tupoksi'],
                 'jam_scan' => $jamScanSesi,
                 'jam_masuk' => $jamMasuk,
                 'jam_istirahat' => $jamIstirahat,
@@ -276,13 +401,15 @@ function saveAbsensiGuru($user) {
 
         foreach ($absensi as $a) {
             $guru_id = (int)$a['guru_id'];
-            $status = in_array($a['status'], ['H','S','I','A','T','TA','DNS']) ? $a['status'] : 'H';
+            $rawStatus = strtoupper(trim((string)($a['status'] ?? 'H')));
+            if ($rawStatus === 'D') $rawStatus = 'DNS';
+            $status = in_array($rawStatus, ['H','S','I','A','T','TA','DNS'], true) ? $rawStatus : 'H';
             $keterangan = isset($a['keterangan']) ? trim($a['keterangan']) : '';
 
             $executeRow($guru_id, $sesi, $status, $keterangan);
 
-            // Requirement 1: Jika sakit / izin pada absen kehadiran (sesi masuk), maka di sesi istirahat dan pulang otomatis terisi. Namun jika alpha, tetap alpha.
-            if ($sesi === 'masuk' && ($status === 'S' || $status === 'I')) {
+            // Jika S / I / A / DNS / TA pada absen kehadiran (sesi masuk), maka sesi istirahat dan pulang otomatis terisi sama
+            if ($sesi === 'masuk' && in_array($status, ['S', 'I', 'A', 'DNS', 'TA'], true)) {
                 $executeRow($guru_id, 'istirahat', $status, $keterangan);
                 $executeRow($guru_id, 'pulang', $status, $keterangan);
             }
@@ -362,7 +489,7 @@ function getRekapAbsensiGuruData($tanggal_awal, $tanggal_akhir) {
     $hari_efektif = count($effectiveDates);
 
     // 1. Get all relevant teachers
-    $stmtG = db()->query("SELECT id, kode_guru, nama_lengkap as nama, nik FROM users WHERE role = 'guru' AND status = 1 ORDER BY nama_lengkap");
+    $stmtG = db()->query("SELECT id, kode_guru, nama_lengkap as nama, nik, COALESCE(NULLIF(TRIM(tupoksi), ''), '-') as tupoksi FROM users WHERE role = 'guru' AND status = 1 ORDER BY nama_lengkap");
     $teachers = $stmtG->fetchAll(PDO::FETCH_ASSOC);
 
     if (empty($teachers)) {
@@ -377,6 +504,9 @@ function getRekapAbsensiGuruData($tanggal_awal, $tanggal_akhir) {
             'rekap' => []
         ];
     }
+
+    $scheduledDaysMap = getGuruScheduledDaysMap();
+    $dayMapIndo = [1 => 'Senin', 2 => 'Selasa', 3 => 'Rabu', 4 => 'Kamis', 5 => 'Jumat', 6 => 'Sabtu', 7 => 'Minggu'];
 
     $teacherIds = array_column($teachers, 'id');
 
@@ -405,7 +535,7 @@ function getRekapAbsensiGuruData($tanggal_awal, $tanggal_akhir) {
     $manualMap = []; 
     try {
         $stmtA = db()->prepare("
-            SELECT guru_id, tanggal, sesi, status 
+            SELECT guru_id, tanggal, sesi, status, keterangan 
             FROM acad_absensi_guru 
             WHERE guru_id IN ($placeholdersT) 
               AND tanggal BETWEEN ? AND ? 
@@ -420,7 +550,10 @@ function getRekapAbsensiGuruData($tanggal_awal, $tanggal_akhir) {
             $tgl = $row['tanggal'];
             $sesiStr = strtolower(trim($row['sesi']));
             $sNum = $sesiMap[$sesiStr] ?? ((int)$row['sesi'] ?: 1);
-            $manualMap[$gid][$tgl][$sNum] = $row['status'];
+            $manualMap[$gid][$tgl][$sNum] = [
+                'status' => $row['status'],
+                'keterangan' => trim((string)($row['keterangan'] ?? ''))
+            ];
         }
     } catch (Exception $e) {}
 
@@ -474,70 +607,107 @@ function getRekapAbsensiGuruData($tanggal_awal, $tanggal_akhir) {
 
         foreach ($effectiveDates as $ed) {
             $d = $ed['date'];
+            $hariIndo = $dayMapIndo[(int)date('N', strtotime($d))] ?? '';
+            $isAutoTA = isset($scheduledDaysMap[$tid]) && is_array($scheduledDaysMap[$tid]) && !isset($scheduledDaysMap[$tid][$hariIndo]);
+
             $manual = $manualMap[$tid][$d] ?? [];
             $log = $logKey ? ($eAbsenMap[$logKey][$d] ?? null) : null;
+            $calcA = ($log && !empty($log['jam_masuk'])) ? ((substr($log['jam_masuk'], 0, 5) <= $waktu_terlambat_short) ? 'H' : 'T') : null;
 
             // Sesi 1 (A: Datang)
-            $stA = $manual[1] ?? null;
-            if (!$stA && $log && !empty($log['jam_masuk'])) {
-                $stA = (substr($log['jam_masuk'], 0, 5) <= $waktu_terlambat_short) ? 'H' : 'T';
-            }
-            if (!$stA) {
-                if (isset($manual[2]) && in_array($manual[2], ['S','I','A','TA','DNS'])) $stA = $manual[2];
-                elseif (isset($manual[3]) && in_array($manual[3], ['S','I','A','TA','DNS'])) $stA = $manual[3];
+            $stA = '';
+            if (isset($manual[1])) {
+                $m1St = $manual[1]['status'];
+                $m1Ket = $manual[1]['keterangan'] ?? '';
+                if ($m1St === 'H' && $calcA === 'T' && ($m1Ket === '' || stripos($m1Ket, 'Fingerprint') !== false)) {
+                    $stA = 'T';
+                } elseif ($isAutoTA && !$calcA && $m1St === 'A' && $m1Ket === '') {
+                    $stA = 'TA';
+                } else {
+                    $stA = $m1St;
+                }
+            } elseif ($calcA) {
+                $stA = $calcA;
+            } elseif ($isAutoTA) {
+                $stA = 'TA';
+            } else {
+                $m2St = isset($manual[2]) ? $manual[2]['status'] : null;
+                $m3St = isset($manual[3]) ? $manual[3]['status'] : null;
+                if ($m2St && in_array($m2St, ['S','I','A','TA','DNS','D'], true)) {
+                    $stA = $m2St;
+                } elseif ($m3St && in_array($m3St, ['S','I','A','TA','DNS','D'], true)) {
+                    $stA = $m3St;
+                }
             }
 
-            // Sesi 2 (B: Istirahat)
-            $stB = $manual[2] ?? null;
-            if (!$stB && in_array($stA, ['S', 'I'])) {
-                $stB = $stA; // Inherit S/I dari sesi masuk
-            }
-            if (!$stB && $log && !empty($log['jam_istirahat'])) {
-                $stB = 'H';
-            }
+            if ($stA === 'DNS') $stA = 'D';
 
-            // Sesi 3 (C: Pulang)
-            $stC = $manual[3] ?? null;
-            if (!$stC && in_array($stA, ['S', 'I'])) {
-                $stC = $stA; // Inherit S/I dari sesi masuk
-            }
-            if (!$stC && $log && !empty($log['jam_pulang'])) {
-                $stC = 'H';
+            // Sesi 2 (B: Istirahat) & Sesi 3 (C: Pulang)
+            if (in_array($stA, ['TA', 'S', 'I', 'A', 'D'], true)) {
+                $stB = $stA;
+                $stC = $stA;
+            } else {
+                // Sesi 2 (B: Istirahat)
+                $stB = '';
+                if (isset($manual[2])) {
+                    $m2St = ($manual[2]['status'] === 'DNS') ? 'D' : $manual[2]['status'];
+                    $m2Ket = $manual[2]['keterangan'] ?? '';
+                    if (in_array($stA, ['H', 'T'], true) && $m2St === 'A' && $m2Ket === '' && empty($log['jam_istirahat'])) {
+                        $stB = '';
+                    } else {
+                        $stB = $m2St;
+                    }
+                } elseif ($log && !empty($log['jam_istirahat'])) {
+                    $stB = 'H';
+                }
+
+                // Sesi 3 (C: Pulang)
+                $stC = '';
+                if (isset($manual[3])) {
+                    $m3St = ($manual[3]['status'] === 'DNS') ? 'D' : $manual[3]['status'];
+                    $m3Ket = $manual[3]['keterangan'] ?? '';
+                    if (in_array($stA, ['H', 'T'], true) && $m3St === 'A' && $m3Ket === '' && empty($log['jam_pulang'])) {
+                        $stC = '';
+                    } else {
+                        $stC = $m3St;
+                    }
+                } elseif ($log && !empty($log['jam_pulang'])) {
+                    $stC = 'H';
+                }
             }
 
             $daily[$d] = [
-                'a' => $stA ?: '',
-                'b' => $stB ?: '',
-                'c' => $stC ?: ''
+                'a' => $stA,
+                'b' => $stB,
+                'c' => $stC
             ];
 
-            if (!empty($daily[$d]['a'])) $totA++;
-            if (!empty($daily[$d]['b'])) $totB++;
-            if (!empty($daily[$d]['c'])) $totC++;
+            if ($stA !== '') $totA++;
+            if ($stB !== '') $totB++;
+            if ($stC !== '') $totC++;
 
-            if ($stA === 'S') {
-                $countS++;
-            } elseif ($stA === 'I') {
-                $countI++;
-            } elseif ($stA === 'DNS') {
-                $countDNS++;
-                $countH++; // Dinas Luar dihitung hadir
-            } elseif ($stA === 'TA') {
+            if ($stA === 'TA') {
                 $countTA++;
-                $countA++; // Tidak Absen dihitung alpa
-            } elseif ($stA === 'A') {
-                $countA++;
-            } elseif ($stA === 'T') {
-                $countH++;
-                $countT++;
-            } elseif ($stA === 'H' || $stC === 'H') {
-                $countH++;
             } else {
-                $countA++;
+                if ($stA === 'T') {
+                    $countT++;
+                }
+                if ($stA === 'S') {
+                    $countS++;
+                } elseif ($stA === 'I') {
+                    $countI++;
+                } elseif ($stA === 'A') {
+                    $countA++;
+                } elseif ($stA === 'D') {
+                    $countDNS++;
+                }
+                if (in_array($stA, ['H', 'T', 'D'], true) && in_array($stC, ['H', 'T', 'D'], true)) {
+                    $countH++;
+                }
             }
         }
 
-        $wh = $hari_efektif;
+        $wh = max(0, $hari_efektif - $countTA);
         $th = $countS + $countI + $countA;
         $persentase = $wh > 0 ? round(($countH / $wh) * 100) : 0;
         if ($persentase > 100) $persentase = 100;
@@ -547,18 +717,19 @@ function getRekapAbsensiGuruData($tanggal_awal, $tanggal_akhir) {
             'kode_guru' => $t['kode_guru'],
             'nik' => $t['nik'] ?: '-',
             'nama' => $t['nama'],
+            'tupoksi' => $t['tupoksi'],
             'jenis_kelamin' => '-',
             'daily' => $daily,
             'tot_a' => $totA,
             'tot_b' => $totB,
             'tot_c' => $totC,
+            'ta' => $countTA,
             'wh' => $wh,
             'hadir' => $countH,
             'terlambat' => $countT,
             'sakit' => $countS,
             'izin' => $countI,
             'alpha' => $countA,
-            'ta' => $countTA,
             'dns' => $countDNS,
             'th' => $th,
             'total_hadir' => $countH,
@@ -635,41 +806,39 @@ function exportExcelAbsensiGuru($user) {
         </style></head><body>";
 
         if ($mode === 'detail' || $mode === 'all') {
+            $totalCols = 3 + ($numDates * 3) + 13;
             echo "<table>";
-            echo "<tr><td class='title-h1' colspan='" . (4 + ($numDates * 3) + 11) . "'>REKAPITULASI KEHADIRAN GURU</td></tr>";
-            echo "<tr><td class='title-h2' colspan='" . (4 + ($numDates * 3) + 11) . "'>" . htmlspecialchars(strtoupper($data['nama_sekolah'])) . "</td></tr>";
-            echo "<tr><td class='no-border' colspan='" . (4 + ($numDates * 3) + 11) . "'></td></tr>";
+            echo "<tr><td class='title-h1' colspan='{$totalCols}'>REKAPITULASI KEHADIRAN PENDIDIK DAN TENAGA KEPENDIDIKAN</td></tr>";
+            echo "<tr><td class='title-h2' colspan='{$totalCols}'>" . htmlspecialchars(strtoupper($data['nama_sekolah'])) . "</td></tr>";
+            echo "<tr><td class='no-border' colspan='{$totalCols}'></td></tr>";
             
             echo "<tr>";
-            echo "<td class='no-border bold' colspan='2'>Bulan</td><td class='no-border' colspan='2'>: " . htmlspecialchars($data['bulan']) . "</td>";
-            echo "<td class='no-border' colspan='" . max(1, ($numDates * 3) - 2) . "'></td>";
+            echo "<td class='no-border bold' colspan='2'>Bulan : " . htmlspecialchars($data['bulan']) . "</td>";
+            echo "<td class='no-border' colspan='" . max(1, 1 + ($numDates * 3) + 4) . "'></td>";
             echo "<td class='no-border bold'>A</td><td class='no-border'>:</td><td class='no-border' colspan='6'>Absen datang</td>";
             echo "</tr>";
 
             echo "<tr>";
-            echo "<td class='no-border' colspan='4'></td>";
-            echo "<td class='no-border' colspan='" . max(1, ($numDates * 3) - 2) . "'></td>";
+            echo "<td class='no-border' colspan='" . (3 + ($numDates * 3) + 4) . "'></td>";
             echo "<td class='no-border bold'>B</td><td class='no-border'>:</td><td class='no-border' colspan='6'>Absen setelah istirahat</td>";
             echo "</tr>";
 
             echo "<tr>";
-            echo "<td class='no-border' colspan='4'></td>";
-            echo "<td class='no-border' colspan='" . max(1, ($numDates * 3) - 2) . "'></td>";
+            echo "<td class='no-border' colspan='" . (3 + ($numDates * 3) + 4) . "'></td>";
             echo "<td class='no-border bold'>C</td><td class='no-border'>:</td><td class='no-border' colspan='6'>Absen pulang</td>";
             echo "</tr>";
 
-            echo "<tr><td class='no-border' colspan='" . (4 + ($numDates * 3) + 11) . "'></td></tr>";
+            echo "<tr><td class='no-border' colspan='{$totalCols}'></td></tr>";
 
             echo "<tr>";
             echo "<th rowspan='2' style='width:35px;'>NO</th>";
-            echo "<th rowspan='2' style='width:70px;'>KODE</th>";
-            echo "<th rowspan='2' style='width:100px;'>NIK</th>";
-            echo "<th rowspan='2' style='width:240px;'>NAMA GURU</th>";
+            echo "<th rowspan='2' style='width:240px;'>NAMA PTK</th>";
+            echo "<th rowspan='2' style='width:140px;'>TUPOKSI</th>";
             foreach ($effectiveDates as $ed) {
                 echo "<th colspan='3' class='th-date'>" . $ed['day'] . "</th>";
             }
             echo "<th colspan='3' class='th-total'>TOTAL</th>";
-            echo "<th colspan='8' class='th-keh'>KEHADIRAN</th>";
+            echo "<th colspan='10' class='th-keh'>KEHADIRAN</th>";
             echo "</tr>";
 
             echo "<tr>";
@@ -677,15 +846,14 @@ function exportExcelAbsensiGuru($user) {
                 echo "<th class='th-sesi'>A</th><th class='th-sesi'>B</th><th class='th-sesi'>C</th>";
             }
             echo "<th class='th-total'>A</th><th class='th-total'>B</th><th class='th-total'>C</th>";
-            echo "<th class='th-keh'>WH</th><th class='th-keh'>H</th><th class='th-keh'>T</th><th class='th-keh'>S</th><th class='th-keh'>I</th><th class='th-keh'>A</th><th class='th-keh'>TH</th><th class='th-keh'>%</th>";
+            echo "<th class='th-keh'>TA</th><th class='th-keh'>WH</th><th class='th-keh'>H</th><th class='th-keh'>T</th><th class='th-keh'>S</th><th class='th-keh'>I</th><th class='th-keh'>A</th><th class='th-keh'>DNS</th><th class='th-keh'>TH</th><th class='th-keh'>%</th>";
             echo "</tr>";
 
             foreach ($rekap as $idx => $r) {
                 echo "<tr>";
                 echo "<td class='center'>" . ($idx + 1) . "</td>";
-                echo "<td class='center bold'>" . htmlspecialchars($r['kode_guru'] ?? '') . "</td>";
-                echo "<td class='center' style='mso-number-format:\\\"\\\\@\\\";'>" . htmlspecialchars($r['nik'] ?? '') . "</td>";
                 echo "<td>" . htmlspecialchars($r['nama'] ?? '') . "</td>";
+                echo "<td class='center'>" . htmlspecialchars($r['tupoksi'] ?? '-') . "</td>";
 
                 foreach ($effectiveDates as $ed) {
                     $d = $r['daily'][$ed['date']] ?? [];
@@ -697,26 +865,29 @@ function exportExcelAbsensiGuru($user) {
                 echo "<td class='center bold'>" . (int)($r['tot_a'] ?? 0) . "</td>";
                 echo "<td class='center bold'>" . (int)($r['tot_b'] ?? 0) . "</td>";
                 echo "<td class='center bold'>" . (int)($r['tot_c'] ?? 0) . "</td>";
+                echo "<td class='center'>" . (int)($r['ta'] ?? 0) . "</td>";
                 echo "<td class='center bold'>" . (int)($r['wh'] ?? 0) . "</td>";
                 echo "<td class='center bold'>" . (int)($r['hadir'] ?? 0) . "</td>";
                 echo "<td class='center'>" . (!empty($r['terlambat']) ? (int)$r['terlambat'] : '-') . "</td>";
                 echo "<td class='center'>" . (!empty($r['sakit']) ? (int)$r['sakit'] : '-') . "</td>";
                 echo "<td class='center'>" . (!empty($r['izin']) ? (int)$r['izin'] : '-') . "</td>";
                 echo "<td class='center'>" . (!empty($r['alpha']) ? (int)$r['alpha'] : '-') . "</td>";
+                echo "<td class='center'>" . (!empty($r['dns']) ? (int)$r['dns'] : '-') . "</td>";
                 echo "<td class='center bold'>" . (int)($r['th'] ?? 0) . "</td>";
                 echo "<td class='center bold'>" . (int)($r['persentase'] ?? 0) . "</td>";
                 echo "</tr>";
             }
 
-            echo "<tr><td class='no-border' colspan='" . (4 + ($numDates * 3) + 11) . "'></td></tr>";
-            echo "<tr><td class='no-border legend-title' colspan='3'>Keterangan Singkatan :</td><td class='no-border' colspan='1'></td><td class='no-border legend-title' colspan='10'>&gt;&gt; Ketentuan Perhitungan</td></tr>";
-            echo "<tr><td class='no-border center'>1</td><td class='no-border bold'>WH</td><td class='no-border' colspan='2'>WAJIB HADIR</td><td class='no-border' colspan='1'></td><td class='no-border bold' colspan='3'>TOTAL (A, B, C)</td><td class='no-border' colspan='10'>: Menghitung apakah absen datang, istirahat, dan pulang terisi</td></tr>";
-            echo "<tr><td class='no-border center'>2</td><td class='no-border bold'>H</td><td class='no-border' colspan='2'>HADIR</td><td class='no-border' colspan='3'></td><td class='no-border' colspan='10'>  Bagian ini berfungsi sebagai kontrol bahwa guru melakukan absensi 3x</td></tr>";
-            echo "<tr><td class='no-border center'>3</td><td class='no-border bold'>T</td><td class='no-border' colspan='2'>TERLAMBAT</td><td class='no-border' colspan='1'></td><td class='no-border bold' colspan='3'>WH</td><td class='no-border' colspan='10'>: Semua hari efektif pada rentang tanggal (tidak termasuk libur)</td></tr>";
-            echo "<tr><td class='no-border center'>4</td><td class='no-border bold'>S</td><td class='no-border' colspan='2'>SAKIT</td><td class='no-border' colspan='1'></td><td class='no-border bold' colspan='3'>H</td><td class='no-border' colspan='10'>: Dihitung jika A dan C terisi T atau H</td></tr>";
-            echo "<tr><td class='no-border center'>5</td><td class='no-border bold'>I</td><td class='no-border' colspan='2'>IZIN</td><td class='no-border' colspan='1'></td><td class='no-border bold' colspan='3'>T / S / I / A</td><td class='no-border' colspan='10'>: Dihitung jika A terisi status terkait</td></tr>";
-            echo "<tr><td class='no-border center'>6</td><td class='no-border bold'>A</td><td class='no-border' colspan='2'>ALPHA</td><td class='no-border' colspan='1'></td><td class='no-border bold' colspan='3'>TH</td><td class='no-border' colspan='10'>: Total Tidak Hadir (S + I + A)</td></tr>";
-            echo "<tr><td class='no-border center'>7</td><td class='no-border bold'>TOT</td><td class='no-border' colspan='2'>TOTAL</td><td class='no-border' colspan='1'></td><td class='no-border bold' colspan='3'>%</td><td class='no-border' colspan='10'>: (Hadir / Wajib Hadir) * 100%</td></tr>";
+            echo "<tr><td class='no-border' colspan='{$totalCols}'></td></tr>";
+            echo "<tr><td class='no-border legend-title' colspan='3'>Keterangan Singkatan :</td><td class='no-border legend-title' colspan='12'>Ketentuan Perhitungan</td></tr>";
+            echo "<tr><td class='no-border bold'>WH</td><td class='no-border' colspan='2'>WAJIB HADIR</td><td class='no-border bold' colspan='2'>TOTAL (A, B, C)</td><td class='no-border' colspan='10'>Menghitung apakah absen datang, istirahat, dan pulang terisi. Jika terisi dengan variabel apapun (H, S, I, A, T, DNS), maka akan terhitung.</td></tr>";
+            echo "<tr><td class='no-border bold'>H</td><td class='no-border' colspan='2'>HADIR</td><td class='no-border bold' colspan='2'>TA</td><td class='no-border' colspan='10'>Terisi otomatis sesuai dengan DISTRIBUSI yang telah di tentukan pada e-jadwal</td></tr>";
+            echo "<tr><td class='no-border bold'>T</td><td class='no-border' colspan='2'>TERLAMBAT</td><td class='no-border bold' colspan='2'>WH</td><td class='no-border' colspan='10'>Semua hari efektif pada bulan tersebut dikurangi dengan yang ada status TA (selama tidak ditentukan libur).</td></tr>";
+            echo "<tr><td class='no-border bold'>S</td><td class='no-border' colspan='2'>SAKIT</td><td class='no-border bold' colspan='2'>H</td><td class='no-border' colspan='10'>Dihitung jika A dan C terisi T, H, atau d</td></tr>";
+            echo "<tr><td class='no-border bold'>I</td><td class='no-border' colspan='2'>IZIN</td><td class='no-border bold' colspan='2'>T</td><td class='no-border' colspan='10'>Dihitung jika A terisi T</td></tr>";
+            echo "<tr><td class='no-border bold'>A</td><td class='no-border' colspan='2'>ALPHA</td><td class='no-border bold' colspan='2'>S / I / A / DNS</td><td class='no-border' colspan='10'>Dihitung jika A terisi S / I / A / D, B dan C terisi otomatis sama</td></tr>";
+            echo "<tr><td class='no-border bold'>D</td><td class='no-border' colspan='2'>DNS</td><td class='no-border bold' colspan='2'>TH</td><td class='no-border' colspan='10'>Total Tidak Hadir (S + I + A)</td></tr>";
+            echo "<tr><td class='no-border bold'>TOT</td><td class='no-border' colspan='2'>TOTAL</td><td class='no-border bold' colspan='2'>%</td><td class='no-border' colspan='10'>(Hadir / Wajib Hadir) * 100%</td></tr>";
             echo "</table>";
         }
 
@@ -725,55 +896,56 @@ function exportExcelAbsensiGuru($user) {
                 echo "<br><br><hr style='border:1px dashed #ccc;'><br><br>";
             }
             echo "<table>";
-            echo "<tr><td class='title-h1' colspan='15'>REKAPITULASI KEHADIRAN GURU (RINGKASAN)</td></tr>";
-            echo "<tr><td class='title-h2' colspan='15'>" . htmlspecialchars(strtoupper($data['nama_sekolah'])) . "</td></tr>";
-            echo "<tr><td class='no-border' colspan='15'></td></tr>";
-            echo "<tr><td class='no-border bold' colspan='2'>Bulan</td><td class='no-border' colspan='13'>: " . htmlspecialchars($data['bulan']) . "</td></tr>";
-            echo "<tr><td class='no-border' colspan='15'></td></tr>";
+            echo "<tr><td class='title-h1' colspan='16'>REKAPITULASI KEHADIRAN PENDIDIK DAN TENAGA KEPENDIDIKAN (RINGKASAN)</td></tr>";
+            echo "<tr><td class='title-h2' colspan='16'>" . htmlspecialchars(strtoupper($data['nama_sekolah'])) . "</td></tr>";
+            echo "<tr><td class='no-border' colspan='16'></td></tr>";
+            echo "<tr><td class='no-border bold' colspan='16'>Bulan : " . htmlspecialchars($data['bulan']) . "</td></tr>";
+            echo "<tr><td class='no-border' colspan='16'></td></tr>";
 
             echo "<tr>";
             echo "<th rowspan='2' style='width:35px;'>NO</th>";
-            echo "<th rowspan='2' style='width:70px;'>KODE</th>";
-            echo "<th rowspan='2' style='width:100px;'>NIK</th>";
-            echo "<th rowspan='2' style='width:240px;'>NAMA GURU</th>";
+            echo "<th rowspan='2' style='width:240px;'>NAMA PTK</th>";
+            echo "<th rowspan='2' style='width:140px;'>TUPOKSI</th>";
             echo "<th colspan='3' class='th-total'>TOTAL</th>";
-            echo "<th colspan='8' class='th-keh'>KEHADIRAN</th>";
+            echo "<th colspan='10' class='th-keh'>KEHADIRAN</th>";
             echo "</tr>";
 
             echo "<tr>";
             echo "<th class='th-total'>A</th><th class='th-total'>B</th><th class='th-total'>C</th>";
-            echo "<th class='th-keh'>WH</th><th class='th-keh'>H</th><th class='th-keh'>T</th><th class='th-keh'>S</th><th class='th-keh'>I</th><th class='th-keh'>A</th><th class='th-keh'>TH</th><th class='th-keh'>%</th>";
+            echo "<th class='th-keh'>TA</th><th class='th-keh'>WH</th><th class='th-keh'>H</th><th class='th-keh'>T</th><th class='th-keh'>S</th><th class='th-keh'>I</th><th class='th-keh'>A</th><th class='th-keh'>DNS</th><th class='th-keh'>TH</th><th class='th-keh'>%</th>";
             echo "</tr>";
 
             foreach ($rekap as $idx => $r) {
                 echo "<tr>";
                 echo "<td class='center'>" . ($idx + 1) . "</td>";
-                echo "<td class='center bold'>" . htmlspecialchars($r['kode_guru'] ?? '') . "</td>";
-                echo "<td class='center' style='mso-number-format:\\\"\\\\@\\\";'>" . htmlspecialchars($r['nik'] ?? '') . "</td>";
                 echo "<td>" . htmlspecialchars($r['nama'] ?? '') . "</td>";
+                echo "<td class='center'>" . htmlspecialchars($r['tupoksi'] ?? '-') . "</td>";
                 echo "<td class='center bold'>" . (int)($r['tot_a'] ?? 0) . "</td>";
                 echo "<td class='center bold'>" . (int)($r['tot_b'] ?? 0) . "</td>";
                 echo "<td class='center bold'>" . (int)($r['tot_c'] ?? 0) . "</td>";
+                echo "<td class='center'>" . (int)($r['ta'] ?? 0) . "</td>";
                 echo "<td class='center bold'>" . (int)($r['wh'] ?? 0) . "</td>";
                 echo "<td class='center bold'>" . (int)($r['hadir'] ?? 0) . "</td>";
                 echo "<td class='center'>" . (!empty($r['terlambat']) ? (int)$r['terlambat'] : '-') . "</td>";
                 echo "<td class='center'>" . (!empty($r['sakit']) ? (int)$r['sakit'] : '-') . "</td>";
                 echo "<td class='center'>" . (!empty($r['izin']) ? (int)$r['izin'] : '-') . "</td>";
                 echo "<td class='center'>" . (!empty($r['alpha']) ? (int)$r['alpha'] : '-') . "</td>";
+                echo "<td class='center'>" . (!empty($r['dns']) ? (int)$r['dns'] : '-') . "</td>";
                 echo "<td class='center bold'>" . (int)($r['th'] ?? 0) . "</td>";
                 echo "<td class='center bold'>" . (int)($r['persentase'] ?? 0) . "</td>";
                 echo "</tr>";
             }
 
-            echo "<tr><td class='no-border' colspan='15'></td></tr>";
-            echo "<tr><td class='no-border legend-title' colspan='15'>Keterangan Singkatan :</td></tr>";
-            echo "<tr><td class='no-border center'>1</td><td class='no-border bold'>WH</td><td class='no-border' colspan='13'>WAJIB HADIR</td></tr>";
-            echo "<tr><td class='no-border center'>2</td><td class='no-border bold'>H</td><td class='no-border' colspan='13'>HADIR</td></tr>";
-            echo "<tr><td class='no-border center'>3</td><td class='no-border bold'>T</td><td class='no-border' colspan='13'>TERLAMBAT</td></tr>";
-            echo "<tr><td class='no-border center'>4</td><td class='no-border bold'>S</td><td class='no-border' colspan='13'>SAKIT</td></tr>";
-            echo "<tr><td class='no-border center'>5</td><td class='no-border bold'>I</td><td class='no-border' colspan='13'>IZIN</td></tr>";
-            echo "<tr><td class='no-border center'>6</td><td class='no-border bold'>A</td><td class='no-border' colspan='13'>ALPHA</td></tr>";
-            echo "<tr><td class='no-border center'>7</td><td class='no-border bold'>TOT</td><td class='no-border' colspan='13'>TOTAL</td></tr>";
+            echo "<tr><td class='no-border' colspan='16'></td></tr>";
+            echo "<tr><td class='no-border legend-title' colspan='16'>Keterangan Singkatan :</td></tr>";
+            echo "<tr><td class='no-border bold'>WH</td><td class='no-border' colspan='15'>WAJIB HADIR</td></tr>";
+            echo "<tr><td class='no-border bold'>H</td><td class='no-border' colspan='15'>HADIR</td></tr>";
+            echo "<tr><td class='no-border bold'>T</td><td class='no-border' colspan='15'>TERLAMBAT</td></tr>";
+            echo "<tr><td class='no-border bold'>S</td><td class='no-border' colspan='15'>SAKIT</td></tr>";
+            echo "<tr><td class='no-border bold'>I</td><td class='no-border' colspan='15'>IZIN</td></tr>";
+            echo "<tr><td class='no-border bold'>A</td><td class='no-border' colspan='15'>ALPHA</td></tr>";
+            echo "<tr><td class='no-border bold'>D</td><td class='no-border' colspan='15'>DNS</td></tr>";
+            echo "<tr><td class='no-border bold'>TOT</td><td class='no-border' colspan='15'>TOTAL</td></tr>";
             echo "</table>";
         }
 
