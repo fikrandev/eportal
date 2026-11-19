@@ -152,12 +152,6 @@ function uploadDocument($user, $academic_year_id) {
     if (is_uploaded_file($file['tmp_name'])) {
         $moved = @move_uploaded_file($file['tmp_name'], $destination);
     }
-    if (!$moved) {
-        $moved = @copy($file['tmp_name'], $destination);
-        if ($moved && file_exists($file['tmp_name'])) {
-            @unlink($file['tmp_name']);
-        }
-    }
 
     if ($moved) {
         @chmod($destination, 0664);
@@ -243,10 +237,9 @@ function deleteDocument($user, $isAdmin) {
             }
         }
         
-        // Delete file
-        $filePath = __DIR__ . '/../../../' . $doc['file_path'];
-        if (file_exists($filePath)) {
-            unlink($filePath);
+        // Delete file safely inside uploads
+        if (!empty($doc['file_path'])) {
+            safe_unlink_in_dir($doc['file_path'], 'uploads');
         }
         
         // Delete row

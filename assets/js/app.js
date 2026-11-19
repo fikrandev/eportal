@@ -188,11 +188,44 @@ const App = {
                 break;
             case 'admin':
                 const subPage = hash.split('/')[1] || 'dashboard';
-                Admin.render(app, subPage);
+                this.loadAdminScript(() => Admin.render(app, subPage));
                 break;
             default:
                 this.navigate('dashboard');
         }
+    },
+
+    /**
+     * Dynamically load admin.js on demand
+     */
+    _adminLoading: false,
+    _adminCallbacks: [],
+    loadAdminScript(callback) {
+        if (typeof window.Admin !== 'undefined' && window.Admin) {
+            if (typeof callback === 'function') callback();
+            return;
+        }
+        if (typeof callback === 'function') {
+            this._adminCallbacks.push(callback);
+        }
+        if (this._adminLoading) return;
+        this._adminLoading = true;
+
+        const script = document.createElement('script');
+        script.src = (window.APP_CONFIG && window.APP_CONFIG.adminJsUrl)
+            ? window.APP_CONFIG.adminJsUrl
+            : (this.baseUrl + 'assets/js/admin.js');
+        script.onload = () => {
+            this._adminLoading = false;
+            const cbs = this._adminCallbacks.splice(0);
+            cbs.forEach(fn => { try { fn(); } catch (e) { console.error(e); } });
+        };
+        script.onerror = () => {
+            this._adminLoading = false;
+            this._adminCallbacks = [];
+            EModal.toast({ type: 'error', title: 'Gagal', message: 'Gagal memuat modul Admin Panel.' });
+        };
+        document.body.appendChild(script);
     },
 
     /**
@@ -251,22 +284,13 @@ const App = {
      * Get user initials
      */
     getInitials(name) {
-        return name
+        return String(name || '')
             .split(' ')
+            .filter(Boolean)
             .map(w => w[0])
             .join('')
             .substring(0, 2)
             .toUpperCase();
-    },
-
-    /**
-     * Check if current user has permission
-     */
-    hasPermission(permKey) {
-        if (!this.state.user) return false;
-        if (this.state.user.role === 'superadmin') return true;
-        const perms = this.state.user.permissions || [];
-        return perms.includes('*') || perms.includes(permKey);
     },
 
     /**
@@ -288,8 +312,12 @@ const App = {
      * Escape HTML
      */
     escapeHtml(text) {
+        if (window.EPortalUtils && typeof window.EPortalUtils.escapeHtml === 'function') {
+            return window.EPortalUtils.escapeHtml(text);
+        }
+        if (text === null || text === undefined) return '';
         const div = document.createElement('div');
-        div.textContent = text;
+        div.textContent = String(text);
         return div.innerHTML;
     }
 };

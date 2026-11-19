@@ -33,10 +33,18 @@ SetEnvIf Authorization "(.*)" HTTP_AUTHORIZATION=$1
 # ADMS ZKTeco / Interactive Routes
 RewriteRule ^iclock/([a-zA-Z0-9_-]+)/?$ modules/e-absen/api/adms.php [L,QSA]
 
-# Security: Deny access to sensitive files
-<FilesMatch "\.(sql|md|env|log)$">
-    Order Allow,Deny
-    Deny from all
+# Block direct HTTP access to internal/dev/CLI directories and dotfiles
+RewriteRule ^(scratch|wa-server|cron|database|\.git|\.vscode|\.sixth)(/|$) - [F,L,NC]
+
+# Security: Deny access to sensitive files and archives
+<FilesMatch "\.(sql|md|env|log|zip|bat|ini|bak|sh)$">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+    <IfModule !mod_authz_core.c>
+        Order Allow,Deny
+        Deny from all
+    </IfModule>
 </FilesMatch>
 
 # Security: Protect config files

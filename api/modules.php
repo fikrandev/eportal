@@ -11,6 +11,9 @@ switch ($action) {
     case 'list':
         listModules();
         break;
+    case 'list_all':
+        listAllModules();
+        break;
     case 'get':
         getModule();
         break;
@@ -60,10 +63,23 @@ function listModules() {
 }
 
 /**
+ * List ALL modules including inactive ones (for Admin Panel)
+ */
+function listAllModules() {
+    portal_require_permission('modules_manage');
+    try {
+        $stmt = db()->query("SELECT * FROM modules ORDER BY urutan ASC, nama_modul ASC");
+        json_response(200, true, 'Data semua modul berhasil dimuat.', $stmt->fetchAll());
+    } catch (PDOException $e) {
+        json_response(500, false, 'Server error: ' . $e->getMessage());
+    }
+}
+
+/**
  * Get single module
  */
 function getModule() {
-    require_superadmin();
+    portal_require_permission('modules_manage');
 
     $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
     if ($id <= 0) {
@@ -89,7 +105,7 @@ function getModule() {
  * Create new module
  */
 function createModule() {
-    require_superadmin();
+    portal_require_permission('modules_manage');
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
@@ -99,7 +115,7 @@ function createModule() {
     $nama = isset($input['nama_modul']) ? sanitize($input['nama_modul']) : '';
     $slug = isset($input['slug']) ? sanitize($input['slug']) : '';
     $deskripsi = isset($input['deskripsi']) ? sanitize($input['deskripsi']) : '';
-    $iconSvg = isset($input['icon_svg']) ? $input['icon_svg'] : '';
+    $iconSvg = isset($input['icon_svg']) ? sanitize_module_svg($input['icon_svg']) : '';
     $urlPath = isset($input['url_path']) ? sanitize($input['url_path']) : '';
     $color = isset($input['color']) ? sanitize($input['color']) : '#1565C0';
 
@@ -142,7 +158,7 @@ function createModule() {
  * Update module
  */
 function updateModule() {
-    require_superadmin();
+    portal_require_permission('modules_manage');
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
@@ -157,7 +173,7 @@ function updateModule() {
 
     $nama = isset($input['nama_modul']) ? sanitize($input['nama_modul']) : '';
     $deskripsi = isset($input['deskripsi']) ? sanitize($input['deskripsi']) : '';
-    $iconSvg = isset($input['icon_svg']) ? $input['icon_svg'] : '';
+    $iconSvg = isset($input['icon_svg']) ? sanitize_module_svg($input['icon_svg']) : '';
     $urlPath = isset($input['url_path']) ? sanitize($input['url_path']) : '';
     $color = isset($input['color']) ? sanitize($input['color']) : '#1565C0';
     $status = isset($input['status']) ? (int)$input['status'] : 1;
@@ -183,7 +199,7 @@ function updateModule() {
  * Delete module
  */
 function deleteModule() {
-    require_superadmin();
+    portal_require_permission('modules_manage');
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
@@ -210,7 +226,7 @@ function deleteModule() {
  * Reorder modules
  */
 function reorderModules() {
-    require_superadmin();
+    portal_require_permission('modules_manage');
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
@@ -226,11 +242,19 @@ function reorderModules() {
     try {
         $stmt = db()->prepare("UPDATE modules SET urutan = ? WHERE id = ?");
         foreach ($orders as $order) {
-            $stmt->execute([$order['urutan'], $order['id']]);
+            $stmt->execute([(int)$order['urutan'], (int)$order['id']]);
         }
 
         json_response(200, true, 'Urutan modul berhasil diperbarui.');
     } catch (PDOException $e) {
         json_response(500, false, 'Server error: ' . $e->getMessage());
     }
+}
+
+function sanitize_module_svg($svg) {
+    $svg = (string)$svg;
+    $svg = preg_replace('/<script\b[^>]*>.*?<\/script>/is', '', $svg);
+    $svg = preg_replace('/\son\w+\s*=\s*(?:"[^"]*"|\'[^\']*\'|[^\s>]+)/i', '', $svg);
+    $svg = preg_replace('/javascript\s*:/i', '', $svg);
+    return trim($svg);
 }

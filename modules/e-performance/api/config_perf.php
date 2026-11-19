@@ -14,27 +14,7 @@ define('PERF_SESSION_DURATION', 86400); // 24 hours
  * Returns: ['type' => 'eportal'|'perf', 'user' => [...], 'role' => '...']
  */
 function perf_auth_check() {
-    $token = '';
-    
-    // Check via $_SERVER first (most reliable for CGI/FastCGI hosting)
-    if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
-        $token = str_replace('Bearer ', '', $_SERVER['HTTP_AUTHORIZATION']);
-    } elseif (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
-        $token = str_replace('Bearer ', '', $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
-    }
-    // Fallback: getallheaders (works on Apache mod_php)
-    elseif (function_exists('getallheaders')) {
-        $headers = getallheaders();
-        if (isset($headers['Authorization'])) {
-            $token = str_replace('Bearer ', '', $headers['Authorization']);
-        } elseif (isset($headers['authorization'])) {
-            $token = str_replace('Bearer ', '', $headers['authorization']);
-        }
-    }
-    // Final fallback: query param
-    if (empty($token) && isset($_GET['token'])) {
-        $token = $_GET['token'];
-    }
+    $token = get_bearer_token(true);
 
     if (empty($token)) {
         json_response(401, false, 'Token tidak ditemukan.');
@@ -43,10 +23,16 @@ function perf_auth_check() {
     // Try eportal session first
     try {
         $stmt = db()->prepare("
-            SELECT s.*, u.id as user_id, u.username, u.nama_lengkap, u.role, u.tupoksi, u.avatar, u.status, r.permissions
+            SELECT s.*, u.id as user_id, u.username, u.nama_lengkap, u.role, u.tupoksi, u.avatar, u.status,
+                   pu.id as perf_user_id, pu.role as pu_role, pu.perf_ptk_id,
+                   COALESCE(r_pu.permissions, r_u.permissions) as permissions,
+                   pp.id as resolved_ptk_id
             FROM sessions s 
             JOIN users u ON s.user_id = u.id 
-            LEFT JOIN perf_roles r ON u.role COLLATE utf8mb4_unicode_ci = r.role_slug COLLATE utf8mb4_unicode_ci
+            LEFT JOIN perf_users pu ON pu.username COLLATE utf8mb4_unicode_ci = u.username COLLATE utf8mb4_unicode_ci AND pu.status = 1
+            LEFT JOIN perf_roles r_pu ON pu.role COLLATE utf8mb4_unicode_ci = r_pu.role_slug COLLATE utf8mb4_unicode_ci
+            LEFT JOIN perf_roles r_u ON u.role COLLATE utf8mb4_unicode_ci = r_u.role_slug COLLATE utf8mb4_unicode_ci
+            LEFT JOIN perf_ptk pp ON pp.niy COLLATE utf8mb4_unicode_ci = u.username COLLATE utf8mb4_unicode_ci AND pp.status = 1
             WHERE s.token = ? AND s.expired_at > NOW() AND u.status = 1
         ");
         $stmt->execute([$token]);
@@ -54,13 +40,27 @@ function perf_auth_check() {
 
         if ($session) {
             $permissions = json_decode($session['permissions'] ?: '[]', true);
-            $perfRole = $session['role'];
-            if ($session['role'] === 'superadmin' || !empty($permissions)) {
+            if (!is_array($permissions)) $permissions = [];
+            $effectiveRole = !empty($session['pu_role']) ? $session['pu_role'] : $session['role'];
+            $perfRole = $effectiveRole;
+
+            if ($session['role'] === 'superadmin' || $effectiveRole === 'admin' || in_array('akses_modul', $permissions, true)) {
                 $perfRole = 'admin';
+            } elseif ($session['role'] === 'user' && empty($session['pu_role'])) {
+                if (portal_has_permission($session, 'module_e-performance') || portal_has_permission($session, '*')) {
+                    $perfRole = 'admin';
+                } else {
+                    json_response(403, false, 'Anda tidak memiliki izin akses modul E-Performance.');
+                }
             }
+
+            $ptkId = !empty($session['perf_ptk_id']) ? (int)$session['perf_ptk_id'] : (!empty($session['resolved_ptk_id']) ? (int)$session['resolved_ptk_id'] : null);
+
             return [
                 'type' => 'eportal',
                 'user_id' => $session['user_id'],
+                'perf_user_id' => !empty($session['perf_user_id']) ? (int)$session['perf_user_id'] : null,
+                'ptk_id' => $ptkId,
                 'username' => $session['username'],
                 'nama_lengkap' => $session['nama_lengkap'],
                 'role' => $perfRole,
@@ -154,27 +154,3 @@ function perf_generate_token($perf_user_id) {
     return $token;
 }
 
-// Auto-migrate: Add tipe_jawaban, skor_ya, skor_tidak column to perf_instrumen if they don't exist
-try {
-    $stmt = db()->query("SHOW COLUMNS FROM perf_instrumen LIKE 'tipe_jawaban'");
-    if ($stmt->rowCount() == 0) {
-        db()->query("ALTER TABLE perf_instrumen ADD COLUMN tipe_jawaban VARCHAR(20) DEFAULT 'angka' AFTER is_manual");
-        db()->query("ALTER TABLE perf_instrumen ADD COLUMN skor_ya DECIMAL(5,2) DEFAULT 100 AFTER tipe_jawaban");
-        db()->query("ALTER TABLE perf_instrumen ADD COLUMN skor_tidak DECIMAL(5,2) DEFAULT 0 AFTER skor_ya");
-    } else {
-        // Also check if skor_ya exists independently in case they ran partial migration
-        $stmtYa = db()->query("SHOW COLUMNS FROM perf_instrumen LIKE 'skor_ya'");
-        if ($stmtYa->rowCount() == 0) {
-            db()->query("ALTER TABLE perf_instrumen ADD COLUMN skor_ya DECIMAL(5,2) DEFAULT 100 AFTER tipe_jawaban");
-            db()->query("ALTER TABLE perf_instrumen ADD COLUMN skor_tidak DECIMAL(5,2) DEFAULT 0 AFTER skor_ya");
-        }
-    }
-    
-    // Auto-migrate: Add is_released to perf_periode
-    $stmtPeriode = db()->query("SHOW COLUMNS FROM perf_periode LIKE 'is_released'");
-    if ($stmtPeriode->rowCount() == 0) {
-        db()->query("ALTER TABLE perf_periode ADD COLUMN is_released TINYINT(1) DEFAULT 0 AFTER status");
-    }
-} catch (PDOException $e) {
-    // Ignore, table might not exist yet during fresh install
-}

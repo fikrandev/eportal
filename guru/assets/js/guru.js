@@ -214,6 +214,26 @@
                 toast.classList.add('removing');
                 setTimeout(() => toast.remove(), 300);
             }, 3500);
+            return toast;
+        },
+        loading(message = 'Memproses...') {
+            const container = $('#toastContainer');
+            if (!container) return null;
+            const toast = document.createElement('div');
+            toast.className = 'toast info';
+            toast.innerHTML = `
+                <div class="toast-icon info"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+                <div class="toast-body">${escapeHtml(message)}</div>
+            `;
+            container.appendChild(toast);
+            return toast;
+        },
+        close(toastEl) {
+            if (!toastEl) return;
+            try {
+                toastEl.classList.add('removing');
+                setTimeout(() => toastEl.remove(), 200);
+            } catch (e) {}
         }
     };
 
@@ -866,8 +886,10 @@
             // Await schedules
             let schedules = [];
             try {
-                const res = await API.get(`api/jadwal.php?action=daily&tanggal=${tanggalIni}`);
-                if (res.success) schedules = res.data || [];
+                const res = await API.get(`api/jadwal.php?action=today&tanggal=${tanggalIni}`);
+                if (res.success) {
+                    schedules = Array.isArray(res.data) ? res.data : (res.data?.jadwal || []);
+                }
             } catch(e) {}
 
             const isMapel = !!Auth.user?.is_guru_mapel || !!Auth.user?.has_mapel;

@@ -216,6 +216,9 @@ try {
 
         case 'list_progress':
             if ($method !== 'GET') throw new Exception('Method not allowed', 405);
+            if ($role !== 'admin' && $role !== 'superadmin' && !in_array('instrumen', $auth['permissions'] ?? [], true) && !in_array('pengaturan', $auth['permissions'] ?? [], true) && !in_array('hasil', $auth['permissions'] ?? [], true)) {
+                throw new Exception('Akses ditolak', 403);
+            }
             $periode_id = (int)($_GET['periode_id'] ?? 0);
             
             // 1. Get all assigned penilai roles for this period

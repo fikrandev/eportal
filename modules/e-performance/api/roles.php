@@ -35,7 +35,7 @@ function saveRole() {
     }
 
     if ($id > 0) {
-        $stmt = db()->prepare("UPDATE perf_roles SET role_name=?, permissions=? WHERE id=?");
+        $stmt = db()->prepare("UPDATE perf_roles SET role_name=?, permissions=? WHERE id=? AND is_system = 0");
         $stmt->execute([$name, $perms, $id]);
         json_response(200, true, 'Role berhasil diupdate');
     } else {

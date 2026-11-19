@@ -102,6 +102,9 @@ function saveRole() {
     if (!portal_has_permission($user, 'roles_manage')) {
         json_response(403, false, 'Akses ditolak.');
     }
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        json_response(405, false, 'Method not allowed.');
+    }
 
     $d = get_input();
     $id = (int)($d['id'] ?? 0);
@@ -112,10 +115,14 @@ function saveRole() {
     if (!is_array($permissions)) {
         $permissions = explode(',', (string)$permissions);
     }
-    $permissions = array_values(array_filter(array_map('trim', $permissions)));
+    $permissions = array_values(array_unique(array_filter(array_map('trim', $permissions))));
 
     if (empty($nama)) {
         json_response(400, false, 'Nama role wajib diisi.');
+    }
+
+    if (in_array('*', $permissions, true) && ($user['role'] ?? '') !== 'superadmin') {
+        json_response(403, false, 'Hanya Super Administrator yang dapat memberikan hak akses penuh (*).');
     }
 
     try {
@@ -124,10 +131,19 @@ function saveRole() {
         if ($id > 0) {
             $stmtChk = db()->prepare("SELECT is_locked FROM portal_roles_def WHERE id = ?");
             $stmtChk->execute([$id]);
-            $isLocked = (int)$stmtChk->fetchColumn();
+            $roleRow = $stmtChk->fetch(PDO::FETCH_ASSOC);
+            if (!$roleRow) {
+                db()->rollBack();
+                json_response(404, false, 'Role tidak ditemukan.');
+            }
+            $isLocked = (int)$roleRow['is_locked'];
+
+            if ($isLocked && ($user['role'] ?? '') !== 'superadmin') {
+                db()->rollBack();
+                json_response(403, false, 'Hanya Super Administrator yang dapat mengubah role sistem.');
+            }
 
             if ($isLocked) {
-                // If locked, update description only (or keep locked name)
                 $stmt = db()->prepare("UPDATE portal_roles_def SET deskripsi = ? WHERE id = ?");
                 $stmt->execute([$deskripsi, $id]);
             } else {
@@ -168,6 +184,9 @@ function deleteRole() {
     $user = auth_check();
     if (!portal_has_permission($user, 'roles_manage')) {
         json_response(403, false, 'Akses ditolak.');
+    }
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        json_response(405, false, 'Method not allowed.');
     }
 
     $d = get_input();
@@ -234,6 +253,9 @@ function assignAccount() {
     if (!portal_has_permission($user, 'roles_manage')) {
         json_response(403, false, 'Akses ditolak.');
     }
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        json_response(405, false, 'Method not allowed.');
+    }
 
     $d = get_input();
     $userId = (int)($d['user_id'] ?? 0);
@@ -244,19 +266,35 @@ function assignAccount() {
     }
 
     try {
+        $stmtU = db()->prepare("SELECT role FROM users WHERE id = ?");
+        $stmtU->execute([$userId]);
+        $targetSysRole = $stmtU->fetchColumn();
+        if (!$targetSysRole) {
+            json_response(404, false, 'User tidak ditemukan.');
+        }
+        if ($targetSysRole === 'superadmin' && ($user['role'] ?? '') !== 'superadmin') {
+            json_response(403, false, 'Hanya Super Administrator yang dapat mengubah akses akun Super Administrator.');
+        }
+
         if ($roleId <= 0) {
             db()->prepare("DELETE FROM portal_user_roles WHERE user_id = ?")->execute([$userId]);
             json_response(200, true, 'Role akses pengguna berhasil dicabut.');
         }
 
-        // Verify role exists
-        $stmtChk = db()->prepare("SELECT nama FROM portal_roles_def WHERE id = ?");
+        // Verify role exists & check wildcard privilege
+        $stmtChk = db()->prepare("SELECT nama, is_locked FROM portal_roles_def WHERE id = ?");
         $stmtChk->execute([$roleId]);
-        $roleName = $stmtChk->fetchColumn();
+        $roleInfo = $stmtChk->fetch(PDO::FETCH_ASSOC);
 
-        if (!$roleName) {
+        if (!$roleInfo) {
             json_response(404, false, 'Role tujuan tidak ditemukan.');
         }
+        $stmtWild = db()->prepare("SELECT COUNT(*) FROM portal_role_permissions WHERE role_id = ? AND permission_key = '*'");
+        $stmtWild->execute([$roleId]);
+        if ((int)$stmtWild->fetchColumn() > 0 && ($user['role'] ?? '') !== 'superadmin') {
+            json_response(403, false, 'Hanya Super Administrator yang dapat menetapkan role Super Administrator.');
+        }
+        $roleName = $roleInfo['nama'];
 
         $stmt = db()->prepare("
             INSERT INTO portal_user_roles (user_id, role_id)

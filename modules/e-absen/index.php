@@ -31,19 +31,19 @@ $config = [
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>E-Absen | <?php echo htmlspecialchars($config['school']['nama']); ?></title>
+    <title>E-Absen | <?php echo htmlspecialchars($config['school']['nama'], ENT_QUOTES, 'UTF-8'); ?></title>
     
 <?php if($config['school']['icon']): ?>
-    <link rel="icon" href="<?php echo BASE_URL . $config['school']['icon']; ?>">
+    <link rel="icon" href="<?php echo htmlspecialchars(BASE_URL . ltrim(str_replace('\\', '/', $config['school']['icon']), '/'), ENT_QUOTES, 'UTF-8'); ?>">
     <?php endif; ?>
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@500;600;700;800;900&display=swap" rel="stylesheet">
     
     <!-- Core Design System -->
-    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css?v=<?php echo time(); ?>">
+    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css?v=<?php echo asset_ver('assets/css/app.css'); ?>">
     
     <!-- Absen Module Styles -->
-    <link rel="stylesheet" href="assets/css/absen.css?v=<?php echo time(); ?>">
+    <link rel="stylesheet" href="assets/css/absen.css?v=<?php echo asset_ver('modules/e-absen/assets/css/absen.css'); ?>">
     <?php echo get_module_theme_css('e-absen'); ?>
 </head>
 <body>
@@ -121,15 +121,15 @@ $config = [
     <div id="toastContainer" class="toast-container"></div>
 
     <!-- Scripts -->
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="<?php echo BASE_URL; ?>assets/vendor/xlsx.full.min.js?v=<?php echo time(); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/vendor/jquery-3.7.1.min.js"></script>
+    <script src="<?php echo BASE_URL; ?>assets/vendor/xlsx.full.min.js?v=<?php echo asset_ver('assets/vendor/xlsx.full.min.js'); ?>"></script>
     <script>if(!window.XLSX){document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"><\/script>');}</script>
-    <script src="<?php echo BASE_URL; ?>assets/js/modal.js"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/core-utils.js?v=<?php echo asset_ver('assets/js/core-utils.js'); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=<?php echo asset_ver('assets/js/modal.js'); ?>"></script>
     <script>
-        window.ABSEN_CONFIG = <?php echo json_encode($config); ?>;
+        window.ABSEN_CONFIG = <?php echo json_encode($config, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
     </script>
-    <script src="<?php echo BASE_URL; ?>assets/js/pagination.js?v=<?php echo time(); ?>"></script>
-    <script src="assets/js/absen.js?v=<?php echo time(); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/pagination.js?v=<?php echo asset_ver('assets/js/pagination.js'); ?>"></script>
+    <script src="assets/js/absen.js?v=<?php echo asset_ver('modules/e-absen/assets/js/absen.js'); ?>"></script>
 </body>
 </html>

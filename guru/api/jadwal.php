@@ -3,32 +3,8 @@
  * Guru App — Jadwal Mengajar API
  * Returns schedule filtered by logged-in teacher
  */
-require_once __DIR__ . '/../../api/config.php';
-
-// Auth check
-$token = '';
-if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
-    $token = str_replace('Bearer ', '', $_SERVER['HTTP_AUTHORIZATION']);
-} elseif (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
-    $token = str_replace('Bearer ', '', $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
-} elseif (function_exists('getallheaders')) {
-    $headers = getallheaders();
-    if (isset($headers['Authorization'])) $token = str_replace('Bearer ', '', $headers['Authorization']);
-    elseif (isset($headers['authorization'])) $token = str_replace('Bearer ', '', $headers['authorization']);
-}
-if (empty($token) && isset($_GET['token'])) $token = $_GET['token'];
-
-if (empty($token)) json_response(401, false, 'Token tidak ditemukan.');
-
-$stmt = db()->prepare("
-    SELECT u.id as user_id, u.username, u.nama_lengkap, u.role
-    FROM sessions s
-    JOIN users u ON s.user_id = u.id
-    WHERE s.token = ? AND s.expired_at > NOW() AND u.status = 1 AND u.role = 'guru'
-");
-$stmt->execute([trim($token)]);
-$user = $stmt->fetch();
-if (!$user) json_response(401, false, 'Sesi tidak valid.');
+require_once __DIR__ . '/auth_helper.php';
+$user = guru_auth();
 
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 

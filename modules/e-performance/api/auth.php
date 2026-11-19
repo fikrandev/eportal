@@ -106,26 +106,12 @@ function handleCheck() {
 }
 
 function handleLogout() {
-    $token = '';
-    $headers = getallheaders();
-    if (isset($headers['Authorization'])) {
-        $token = str_replace('Bearer ', '', $headers['Authorization']);
-    }
-    // Also check query parameter (sent by doLogout as fallback)
-    if (empty($token) && isset($_GET['token'])) {
-        $token = $_GET['token'];
-    }
+    $token = get_bearer_token(true);
 
     if (!empty($token)) {
         try {
-            // Delete from perf_sessions (for PTK/siswa login)
+            // Delete from perf_sessions (do not destroy active core eportal session)
             $stmt = db()->prepare("DELETE FROM perf_sessions WHERE token = ?");
-            $stmt->execute([$token]);
-        } catch (PDOException $e) {}
-
-        try {
-            // Also delete from eportal sessions (for admin login)
-            $stmt = db()->prepare("DELETE FROM sessions WHERE token = ?");
             $stmt->execute([$token]);
         } catch (PDOException $e) {}
     }
@@ -190,9 +176,11 @@ function handleChangePassword() {
         $stmtUpdatePerf = db()->prepare("UPDATE perf_users SET password = ? WHERE id = ?");
         $stmtUpdatePerf->execute([$new_hash, $user_id]);
 
-        // Update eportal users if exists
-        $stmtUpdatePortal = db()->prepare("UPDATE users SET password = ? WHERE username = ?");
-        $stmtUpdatePortal->execute([$new_hash, $user['username']]);
+        // Update eportal users if linked to PTK and not superadmin
+        if (!empty($user['perf_ptk_id'])) {
+            $stmtUpdatePortal = db()->prepare("UPDATE users SET password = ? WHERE username = ? AND role != 'superadmin'");
+            $stmtUpdatePortal->execute([$new_hash, $user['username']]);
+        }
 
         // Update perf_siswa if role siswa
         if ($user['role'] === 'siswa') {

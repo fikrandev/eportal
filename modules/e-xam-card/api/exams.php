@@ -33,7 +33,7 @@ switch ($action) {
 
 function uploadTemplate()
 {
-    xam_require_manage();
+    xam_require_admin();
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
         json_response(405, false, 'Method not allowed.');
     }
@@ -94,12 +94,7 @@ function uploadTemplate()
             $oldTemplate = $stmt->fetchColumn();
             
             if ($oldTemplate) {
-                // Root directory is 3 levels up from this API file
-                $rootDir = dirname(dirname(dirname(__DIR__)));
-                $oldFile = $rootDir . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $oldTemplate);
-                if (file_exists($oldFile)) {
-                    @unlink($oldFile);
-                }
+                safe_unlink_in_dir($oldTemplate, 'modules/e-xam-card/uploads');
             }
 
             $stmt = $pdo->prepare("UPDATE xam_exams SET card_template = ? WHERE id = ?");
@@ -171,7 +166,7 @@ function getExam()
 
 function saveExam()
 {
-    xam_require_manage();
+    xam_require_admin();
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
         json_response(405, false, 'Method not allowed.');
     }
@@ -212,7 +207,7 @@ function saveExam()
 
 function deleteExam()
 {
-    xam_require_manage();
+    xam_require_admin();
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
         json_response(405, false, 'Method not allowed.');
     }

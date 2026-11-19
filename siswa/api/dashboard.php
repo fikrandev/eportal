@@ -18,7 +18,7 @@ try {
     $stmtCal = db()->prepare("
         SELECT tanggal, status 
         FROM acad_absensi 
-        WHERE (student_id = ? OR student_id = ?) 
+        WHERE (student_id = ? OR student_id IN (SELECT id FROM students WHERE nis = ?)) 
         AND MONTH(tanggal) = ? AND YEAR(tanggal) = ?
     ");
     $stmtCal->execute([$studentId, $studentNis, $month, $year]);
@@ -53,7 +53,7 @@ try {
         $stmtIzinCal = db()->prepare("
             SELECT tanggal, jenis 
             FROM acad_izin_siswa 
-            WHERE (student_id = ? OR student_id = ?) 
+            WHERE (student_id = ? OR student_id IN (SELECT id FROM students WHERE nis = ?)) 
             AND MONTH(tanggal) = ? AND YEAR(tanggal) = ? AND (status = 'Disetujui' OR status = 'Approved')
         ");
         $stmtIzinCal->execute([$studentId, $studentNis, $month, $year]);

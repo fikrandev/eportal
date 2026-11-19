@@ -32,7 +32,7 @@ switch ($action) {
 }
 
 function listSiswa() {
-    perf_auth_check();
+    perf_require_admin();
     try {
         $periodeId = isset($_GET['periode_id']) ? (int)$_GET['periode_id'] : 0;
         
@@ -238,7 +238,7 @@ function generateSampling() {
 }
 
 function samplingList() {
-    perf_auth_check();
+    perf_require_admin();
     $periodeId = isset($_GET['periode_id']) ? (int)$_GET['periode_id'] : 0;
     try {
         $stmt = db()->prepare("

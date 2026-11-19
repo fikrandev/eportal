@@ -6,45 +6,14 @@
 require_once __DIR__ . '/../../api/config.php';
 
 function get_current_siswa() {
-    $token = null;
+    $token = get_bearer_token(true);
 
-    // 1. Check direct server variables first (Apache RewriteRule, FastCGI, Nginx)
-    if (!empty($_SERVER['HTTP_AUTHORIZATION'])) {
-        if (preg_match('/Bearer\s(\S+)/i', $_SERVER['HTTP_AUTHORIZATION'], $matches)) {
-            $token = $matches[1];
-        }
-    } elseif (!empty($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
-        if (preg_match('/Bearer\s(\S+)/i', $_SERVER['REDIRECT_HTTP_AUTHORIZATION'], $matches)) {
-            $token = $matches[1];
-        }
-    }
-
-    // 2. Check getallheaders / apache_request_headers (case-insensitive)
-    if (!$token) {
-        $headers = [];
-        if (function_exists('getallheaders')) {
-            $headers = getallheaders();
-        } elseif (function_exists('apache_request_headers')) {
-            $headers = apache_request_headers();
-        }
-        if (is_array($headers)) {
-            foreach ($headers as $key => $val) {
-                if (strtolower($key) === 'authorization') {
-                    if (preg_match('/Bearer\s(\S+)/i', $val, $matches)) {
-                        $token = $matches[1];
-                        break;
-                    }
-                }
-            }
-        }
-    }
-
-    // 3. Fallback to cookie
+    // Fallback to cookie
     if (!$token && !empty($_COOKIE['siswa_token'])) {
-        $token = $_COOKIE['siswa_token'];
+        $token = trim($_COOKIE['siswa_token']);
     }
 
-    // 4. Fallback to query / post parameter
+    // Fallback to query / post parameter
     if (!$token && !empty($_REQUEST['token'])) {
         $token = trim($_REQUEST['token']);
     }
@@ -53,17 +22,17 @@ function get_current_siswa() {
         return null;
     }
 
-    // Token logic (Stateless NIS:Hash)
-    $decoded = base64_decode($token);
+    // Token logic (Stateless NIS:Sig or student_sessions)
+    $decoded = base64_decode($token, true);
     if (!$decoded || strpos($decoded, ':') === false) return null;
-    
+
     list($nis, $hash) = explode(':', $decoded, 2);
-    
+
     try {
         $activeYear = get_active_academic_year();
         $activeYearId = (int)($activeYear['id'] ?? 0);
 
-        $sql = "SELECT * FROM students WHERE nis = ? AND status = 1";
+        $sql = "SELECT * FROM students WHERE nis = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '')";
         $params = [$nis];
         if ($activeYearId > 0) {
             $sql .= " ORDER BY (academic_year_id = ?) DESC, academic_year_id DESC, id DESC LIMIT 1";
@@ -74,11 +43,15 @@ function get_current_siswa() {
         $stmt = db()->prepare($sql);
         $stmt->execute($params);
         $student = $stmt->fetch();
-        
+
         if ($student) {
-            $secret = 'SISWA_APP_SECRET_2026';
-            $expectedHash = md5($student['nis'] . $student['tanggal_lahir'] . $secret);
-            if ($hash === $expectedHash) {
+            $expectedHmac = hash_hmac('sha256', $student['nis'] . '|' . $student['tanggal_lahir'], app_secret('siswa_auth'));
+            if (hash_equals($expectedHmac, (string)$hash)) {
+                return $student;
+            }
+            // Legacy MD5 fallback for existing logged-in PWAs (only when student record is active & valid)
+            $legacyHash = md5($student['nis'] . $student['tanggal_lahir'] . 'SISWA_APP_SECRET_2026');
+            if (hash_equals($legacyHash, (string)$hash)) {
                 return $student;
             }
         }

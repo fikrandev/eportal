@@ -28,7 +28,7 @@ $activeExams = $stmt->fetchAll();
 
 // Get past/finished exams
 $stmtPast = db()->prepare("
-    SELECT s.*, u.judul as nama_ujian, b.judul as nama_bank_soal, b.jenis, b.id as bank_soal_id
+    SELECT s.*, u.judul as nama_ujian, u.tampil_nilai, b.judul as nama_bank_soal, b.jenis, b.id as bank_soal_id
     FROM exam_sesi s
     JOIN exam_ujian u ON s.ujian_id = u.id
     JOIN exam_bank_soal b ON u.bank_soal_id = b.id
@@ -210,24 +210,26 @@ $pastExams = $stmtPast->fetchAll();
                                 <?php endif; ?>
                             </td>
                             <td>
-                                <?php if ($p['status_koreksi'] === 'belum_dikoreksi'): ?>
+                                <?php if (isset($p['tampil_nilai']) && (int)$p['tampil_nilai'] === 0): ?>
+                                    <span style="color:#64748b;font-size:12px;">Disembunyikan</span>
+                                <?php elseif ($p['status_koreksi'] === 'belum_dikoreksi'): ?>
                                     <span style="display:inline-flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:600;background:#fef3c7;color:#92400e;">
                                         <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
                                         Menunggu Koreksi Guru
                                     </span>
-                                <?php elseif ($p['skor'] !== null): ?>
+                                <?php elseif ($p['nilai_akhir'] !== null): ?>
                                     <?php if ($p['jenis'] === 'psikologi'): 
                                         $stmtH = db()->prepare("
                                             SELECT kode_hasil FROM exam_psikologi_hasil 
                                             WHERE bank_soal_id = ? AND ? >= rentang_min AND ? <= rentang_max 
                                             LIMIT 1
                                         ");
-                                        $stmtH->execute([$p['bank_soal_id'], $p['skor'], $p['skor']]);
+                                        $stmtH->execute([$p['bank_soal_id'], $p['nilai_akhir'], $p['nilai_akhir']]);
                                         $outcome = $stmtH->fetchColumn() ?: 'Tidak terdefinisi';
                                     ?>
                                         <span class="score-badge" style="background:#f3e8ff;color:#6b21a8;"><?php echo htmlspecialchars($outcome); ?></span>
                                     <?php else: ?>
-                                        <span class="score-badge"><?php echo round($p['skor'], 0); ?></span>
+                                        <span class="score-badge"><?php echo round((float)$p['nilai_akhir'], 0); ?></span>
                                     <?php endif; ?>
                                 <?php else: ?>
                                     <span style="color:#94a3b8;font-size:12px;">Belum Dinilai</span>
@@ -249,7 +251,8 @@ $pastExams = $stmtPast->fetchAll();
     <div id="toastContainer" class="toast-container"></div>
 
     <script src="<?php echo BASE_URL; ?>assets/vendor/jquery-3.7.1.min.js"></script>
-    <script src="<?php echo BASE_URL; ?>assets/js/modal.js"></script>
+    <script src="<?php echo BASE_URL . asset_ver('assets/js/core-utils.js'); ?>"></script>
+    <script src="<?php echo BASE_URL . asset_ver('assets/js/modal.js'); ?>"></script>
     <script>
         function logout() {
             EModal.confirm({
@@ -265,6 +268,7 @@ $pastExams = $stmtPast->fetchAll();
         }
 
         function showTokenModal(ujianId, defaultToken = '') {
+            const safeToken = (window.EPortalUtils ? EPortalUtils.escapeHtml(defaultToken) : String(defaultToken || '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])));
             EModal.form({
                 title: 'Konfirmasi Mulai Ujian',
                 form: `
@@ -273,7 +277,7 @@ $pastExams = $stmtPast->fetchAll();
                     </p>
                     <div class="form-group" style="text-align:center;">
                         <label class="form-label" style="text-align:center; font-weight:700; color:#1e293b;">TOKEN UJIAN</label>
-                        <input type="text" id="fToken" class="form-input" style="font-family:monospace;font-size:22px;text-align:center;letter-spacing:6px;text-transform:uppercase;font-weight:700;color:#2563EB;max-width:240px;margin:0 auto;display:block;" maxlength="6" autofocus placeholder="------" value="${defaultToken}">
+                        <input type="text" id="fToken" class="form-input" style="font-family:monospace;font-size:22px;text-align:center;letter-spacing:6px;text-transform:uppercase;font-weight:700;color:#2563EB;max-width:240px;margin:0 auto;display:block;" maxlength="6" autofocus placeholder="------" value="${safeToken}">
                     </div>
                 `,
                 confirmText: '🚀 Mulai Kerjakan',

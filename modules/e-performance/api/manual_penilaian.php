@@ -1,8 +1,12 @@
 <?php
 require_once __DIR__ . '/config_perf.php';
 
-// Auth check
+// Auth & permission check
 $auth = perf_auth_check();
+$perms = $auth['permissions'] ?? [];
+if (!in_array($auth['role'], ['admin', 'superadmin'], true) && !in_array('penilaian', $perms, true) && !in_array('hasil', $perms, true)) {
+    json_response(403, false, 'Akses ditolak.');
+}
 
 $action = $_GET['action'] ?? '';
 $periode_id = $_REQUEST['periode_id'] ?? null;
@@ -271,7 +275,7 @@ if ($action === 'load') {
         db()->commit();
         json_response(200, true, 'Terapkan semua sukses.');
     } catch (PDOException $e) {
-        db()->rollBack();
+        if (db()->inTransaction()) db()->rollBack();
         json_response(500, false, 'Database error: ' . $e->getMessage());
     }
 } else {

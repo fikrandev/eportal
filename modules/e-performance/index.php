@@ -11,7 +11,8 @@ require_once __DIR__ . '/../../api/theme_helper.php';
 // AUTH: Validate token
 // ============================================
 $token = isset($_GET['token']) ? $_GET['token'] : '';
-$mode = isset($_GET['mode']) ? $_GET['mode'] : 'eportal';
+$rawMode = isset($_GET['mode']) ? $_GET['mode'] : 'eportal';
+$mode = ($rawMode === 'perf') ? 'perf' : 'eportal';
 $user = null;
 $perfRole = 'viewer';
 
@@ -33,7 +34,8 @@ if (!empty($token)) {
 
             if ($session) {
                 $user = [
-                    'user_id' => $session['perf_user_id'],
+                    'user_id' => (int)$session['perf_user_id'],
+                    'ptk_id' => !empty($session['perf_ptk_id']) ? (int)$session['perf_ptk_id'] : null,
                     'username' => $session['username'],
                     'nama_lengkap' => $session['nama_lengkap'],
                     'role' => $session['role'],
@@ -45,14 +47,14 @@ if (!empty($token)) {
             }
         } catch (PDOException $e) { $user = null; }
     } else {
-        // Eportal session token (admin/superadmin)
+        // Eportal session token (admin/superadmin/guru)
         try {
             $stmt = db()->prepare("
                 SELECT u.id as user_id, u.username, u.nama_lengkap, u.role, u.avatar, u.tupoksi, r.permissions
                 FROM sessions s 
                 JOIN users u ON s.user_id = u.id 
                 LEFT JOIN perf_roles r ON u.role COLLATE utf8mb4_unicode_ci = r.role_slug COLLATE utf8mb4_unicode_ci
-                WHERE s.token = ? AND s.expired_at > NOW()
+                WHERE s.token = ? AND s.expired_at > NOW() AND u.status = 1
             ");
             $stmt->execute([$token]);
             $user = $stmt->fetch();
@@ -60,6 +62,19 @@ if (!empty($token)) {
                 $perfRole = ($user['role'] === 'superadmin') ? 'admin' : $user['role'];
                 if (empty($user['tupoksi'])) $user['tupoksi'] = '';
                 $user['permissions'] = json_decode($user['permissions'] ?: '[]');
+                // Resolve ptk_id via perf_users or perf_ptk so 'Hasil Saya' works in eportal mode
+                $ptkId = null;
+                try {
+                    $stmtPu = db()->prepare("SELECT perf_ptk_id FROM perf_users WHERE username = ? AND perf_ptk_id IS NOT NULL LIMIT 1");
+                    $stmtPu->execute([$user['username']]);
+                    $ptkId = $stmtPu->fetchColumn() ?: null;
+                    if (!$ptkId) {
+                        $stmtPt = db()->prepare("SELECT id FROM perf_ptk WHERE status = 1 AND (niy = ? OR nama = ?) LIMIT 1");
+                        $stmtPt->execute([$user['username'], $user['nama_lengkap']]);
+                        $ptkId = $stmtPt->fetchColumn() ?: null;
+                    }
+                } catch (Exception $ex) {}
+                $user['ptk_id'] = $ptkId ? (int)$ptkId : null;
             }
         } catch (PDOException $e) { $user = null; }
     }
@@ -79,43 +94,44 @@ $active_academic_year = get_active_academic_year();
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="E-Performance — Sistem Penilaian Kinerja PTK">
     
     <title>E-Performance — Penilaian Kinerja</title>
 
     <?php if($school_icon): ?>
-    <link rel="icon" href="<?php echo BASE_URL . $school_icon; ?>">
+    <link rel="icon" href="<?php echo htmlspecialchars(BASE_URL . ltrim(str_replace('\\', '/', $school_icon), '/'), ENT_QUOTES, 'UTF-8'); ?>">
     <?php endif; ?>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 
-    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css?v=<?php echo time(); ?>">
-    <link rel="stylesheet" href="assets/css/performance.css?v=<?php echo time(); ?>">
+    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css?v=<?php echo asset_ver('assets/css/app.css'); ?>">
+    <link rel="stylesheet" href="assets/css/performance.css?v=<?php echo asset_ver('modules/e-performance/assets/css/performance.css'); ?>">
 
     <script>
-        window.PERF_CONFIG = {
-            baseUrl: '<?php echo BASE_URL; ?>',
-            moduleUrl: '<?php echo BASE_URL; ?>modules/e-performance/',
-            token: '<?php echo addslashes($token); ?>',
-            mode: '<?php echo $mode; ?>',
-            user: {
-                id: <?php echo $user['user_id']; ?>,
-                username: '<?php echo addslashes($user['username']); ?>',
-                nama_lengkap: '<?php echo addslashes($user['nama_lengkap']); ?>',
-                role: '<?php echo $perfRole; ?>',
-                tupoksi: '<?php echo addslashes($user['tupoksi'] ?? ''); ?>',
-                avatar: '<?php echo addslashes($user['avatar'] ?? ''); ?>',
-                permissions: <?php echo isset($user['permissions']) ? json_encode($user['permissions']) : '[]'; ?>
-            },
-            school: {
-                nama: '<?php echo addslashes($school_name); ?>',
-                icon: '<?php echo addslashes($school_icon); ?>'
-            },
-            academicYear: <?php echo json_encode($active_academic_year, JSON_UNESCAPED_UNICODE); ?>
-        };
+        window.PERF_CONFIG = <?php echo json_encode([
+            'baseUrl' => BASE_URL,
+            'moduleUrl' => BASE_URL . 'modules/e-performance/',
+            'token' => $token,
+            'mode' => $mode,
+            'user' => [
+                'id' => (int)$user['user_id'],
+                'ptk_id' => $user['ptk_id'] ?? null,
+                'username' => $user['username'],
+                'nama_lengkap' => $user['nama_lengkap'],
+                'role' => $perfRole,
+                'tupoksi' => $user['tupoksi'] ?? '',
+                'avatar' => $user['avatar'] ?? '',
+                'permissions' => $user['permissions'] ?? [],
+            ],
+            'school' => [
+                'nama' => $school_name,
+                'icon' => $school_icon,
+            ],
+            'academicYear' => $active_academic_year,
+        ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
     </script>
     <?php echo get_module_theme_css('e-performance'); ?>
 </head>
@@ -203,19 +219,9 @@ $active_academic_year = get_active_academic_year();
 
     <!-- Vendor Scripts -->
     <script src="<?php echo BASE_URL; ?>assets/vendor/jquery-3.7.1.min.js"></script>
-    <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=<?php echo time(); ?>"></script>
-    <script src="<?php echo BASE_URL; ?>assets/js/pagination.js?v=<?php echo time(); ?>"></script>
-    <script src="assets/js/performance.js?v=<?php echo time(); ?>"></script>
-    <script>
-        window.addEventListener('load', function() {
-            setTimeout(function() {
-                var loader = document.getElementById('globalLoader');
-                if (loader) {
-                    loader.classList.add('hidden');
-                    setTimeout(function() { if(loader.parentNode) loader.parentNode.removeChild(loader); }, 500);
-                }
-            }, 3000);
-        });
-    </script>
+    <script src="<?php echo BASE_URL; ?>assets/js/core-utils.js?v=<?php echo asset_ver('assets/js/core-utils.js'); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=<?php echo asset_ver('assets/js/modal.js'); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/pagination.js?v=<?php echo asset_ver('assets/js/pagination.js'); ?>"></script>
+    <script src="assets/js/performance.js?v=<?php echo asset_ver('modules/e-performance/assets/js/performance.js'); ?>"></script>
 </body>
 </html>

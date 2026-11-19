@@ -56,8 +56,7 @@ if ($studentId > 0 && $examId > 0 && $sig !== '') {
             }
 
             $letterNo = xam_compose_letter_number($data['letter_manual_no'], $data['letter_code'], $data['letter_date']);
-            $expected = xam_verify_signature($studentId, $examId, $letterNo);
-            $valid = hash_equals($expected, $sig);
+            $valid = xam_verify_signature_matches($studentId, $examId, $letterNo, $sig);
         }
     } catch (PDOException $e) {
         $data = null;

@@ -4,33 +4,12 @@
  * Manages student attendance integrated with E-Absen logs & manual overrides
  */
 require_once __DIR__ . '/auth_helper.php';
+require_once __DIR__ . '/../../../api/wa_gateway_client.php';
 require_once __DIR__ . '/wa_group_helper.php';
 require_once __DIR__ . '/hari_libur.php';
 
 $user = acad_auth();
 $action = isset($_GET['action']) ? $_GET['action'] : '';
-
-// Helper untuk menembak API lokal WhatsApp Server (fire-and-forget dengan timeout singkat)
-function triggerWAGateway($phone, $message) {
-    $stmt = db()->query("SELECT setting_value FROM settings WHERE setting_key = 'wa_gateway_url'");
-    $url = $stmt->fetchColumn();
-    if (!$url) return;
-
-    $data = json_encode(['number' => $phone, 'message' => $message]);
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Content-Length: ' . strlen($data)]);
-    curl_setopt($ch, CURLOPT_TIMEOUT_MS, 500); 
-    curl_exec($ch);
-    curl_close($ch);
-}
-
-// Ensure database schema supports 'T' (Terlambat) status
-try {
-    db()->exec("ALTER TABLE acad_absensi MODIFY COLUMN status ENUM('H','S','I','A','T') NOT NULL DEFAULT 'H'");
-} catch (Exception $e) {}
 
 switch ($action) {
     case 'list':

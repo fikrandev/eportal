@@ -40,7 +40,7 @@ function activeAcademicYear()
 
 function listAcademicYears()
 {
-    require_superadmin();
+    portal_require_permission('academic_years_manage');
 
     try {
         $stmt = db()->query("SELECT * FROM academic_years ORDER BY is_active DESC, tahun_ajaran DESC, semester DESC");
@@ -52,7 +52,7 @@ function listAcademicYears()
 
 function getAcademicYear()
 {
-    require_superadmin();
+    portal_require_permission('academic_years_manage');
 
     $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
     if ($id <= 0) {
@@ -74,7 +74,7 @@ function getAcademicYear()
 
 function saveAcademicYear($isUpdate)
 {
-    require_superadmin();
+    portal_require_permission('academic_years_manage');
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
@@ -143,7 +143,7 @@ function saveAcademicYear($isUpdate)
 
 function activateAcademicYear()
 {
-    require_superadmin();
+    portal_require_permission('academic_years_manage');
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
@@ -169,11 +169,13 @@ function activateAcademicYear()
         $stmt->execute([$id]);
         syncActiveAcademicYearSettings($year['tahun_ajaran'], $year['semester'], $id);
 
-        // Keep active students synchronized with the newly activated academic year
+        // Hanya isi academic_year_id untuk siswa aktif yang belum punya tahun ajaran (jangan timpa tahun ajaran historis siswa lain)
         $stmtSync = db()->prepare("
             UPDATE students 
             SET academic_year_id = ? 
-            WHERE status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '')
+            WHERE status = 1
+              AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '')
+              AND (academic_year_id IS NULL OR academic_year_id = 0)
         ");
         $stmtSync->execute([$id]);
 
@@ -190,7 +192,7 @@ function activateAcademicYear()
 
 function deleteAcademicYear()
 {
-    require_superadmin();
+    portal_require_permission('academic_years_manage');
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
@@ -232,4 +234,5 @@ function syncActiveAcademicYearSettings($tahun, $semester, $id)
     upsert_setting('tahun_ajaran_aktif', $tahun, 'text', 'Tahun ajaran aktif global');
     upsert_setting('semester_aktif', $semester, 'text', 'Semester aktif global');
     upsert_setting('academic_year_id_aktif', (string) $id, 'number', 'ID tahun ajaran aktif global');
+    reset_active_academic_year_cache();
 }

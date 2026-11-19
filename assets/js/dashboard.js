@@ -38,8 +38,8 @@ const Dashboard = {
             </div>
         </div>`;
 
-        // Close dropdown on outside click
-        $(document).on('click', (e) => {
+        // Close dropdown on outside click (namespaced to avoid duplicate bindings)
+        $(document).off('click.dashboardUserMenu').on('click.dashboardUserMenu', (e) => {
             if (!$(e.target).closest('#userAvatar, #userDropdown').length) {
                 $('#userDropdown').removeClass('show');
             }

@@ -3,47 +3,10 @@
  * Guru App — Jurnal Mengajar API
  * CRUD operations for teaching journal
  */
-require_once __DIR__ . '/../../api/config.php';
-
-// Auth check
-$token = '';
-if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
-    $token = str_replace('Bearer ', '', $_SERVER['HTTP_AUTHORIZATION']);
-} elseif (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
-    $token = str_replace('Bearer ', '', $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
-} elseif (function_exists('getallheaders')) {
-    $headers = getallheaders();
-    if (isset($headers['Authorization'])) $token = str_replace('Bearer ', '', $headers['Authorization']);
-    elseif (isset($headers['authorization'])) $token = str_replace('Bearer ', '', $headers['authorization']);
-}
-if (empty($token) && isset($_GET['token'])) $token = $_GET['token'];
-
-if (empty($token)) json_response(401, false, 'Token tidak ditemukan.');
-
-$stmt = db()->prepare("
-    SELECT u.id as user_id, u.username, u.nama_lengkap, u.role
-    FROM sessions s
-    JOIN users u ON s.user_id = u.id
-    WHERE s.token = ? AND s.expired_at > NOW() AND u.status = 1 AND u.role = 'guru'
-");
-$stmt->execute([trim($token)]);
-$user = $stmt->fetch();
-if (!$user) json_response(401, false, 'Sesi tidak valid.');
+require_once __DIR__ . '/auth_helper.php';
+$user = guru_auth();
 
 $action = isset($_GET['action']) ? $_GET['action'] : '';
-
-// Ensure foto_kegiatan and student_id columns exist
-try {
-    $cols = db()->query("SHOW COLUMNS FROM acad_jurnal LIKE 'foto_kegiatan'")->fetchAll();
-    if (empty($cols)) {
-        db()->exec("ALTER TABLE acad_jurnal ADD COLUMN foto_kegiatan text DEFAULT NULL AFTER catatan");
-    }
-    $colsSid = db()->query("SHOW COLUMNS FROM acad_jurnal LIKE 'student_id'")->fetchAll();
-    if (empty($colsSid)) {
-        db()->exec("ALTER TABLE acad_jurnal ADD COLUMN student_id INT(11) UNSIGNED DEFAULT NULL AFTER guru_id");
-        db()->exec("ALTER TABLE acad_jurnal ADD INDEX idx_jurnal_student (student_id)");
-    }
-} catch (Exception $ex) {}
 
 switch ($action) {
     case 'list':
@@ -651,8 +614,7 @@ function deleteJurnal($user) {
             $photos = json_decode($existingJurnal['foto_kegiatan'], true);
             if (is_array($photos)) {
                 foreach ($photos as $p) {
-                    $fPath = realpath(__DIR__ . '/../../' . $p);
-                    if ($fPath && file_exists($fPath)) @unlink($fPath);
+                    safe_unlink_in_dir($p, 'uploads/jurnal');
                 }
             }
         }

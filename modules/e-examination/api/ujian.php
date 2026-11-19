@@ -47,9 +47,10 @@ try {
             break;
 
         case 'get':
-            exam_require_admin_or_guru();
+            $user = exam_require_admin_or_guru();
             $id = (int)($_GET['id'] ?? 0);
             if (!$id) throw new Exception('ID tidak valid', 400);
+            exam_require_ujian_access($id, $user);
 
             $stmt = db()->prepare("
                 SELECT u.*, b.judul as nama_bank_soal
@@ -90,6 +91,7 @@ try {
             }
 
             $metode_login = in_array(($data['metode_login'] ?? ''), ['nis_dob', 'examcard']) ? $data['metode_login'] : 'nis_dob';
+            exam_require_bank_access($bank_id, $user);
 
             // Get bank jenis
             $stmtBank = db()->prepare("SELECT jenis FROM exam_bank_soal WHERE id = ?");
@@ -147,9 +149,12 @@ try {
             if (empty($kelasArr) || !is_array($kelasArr)) {
                 throw new Exception('Pilih minimal satu kelas peserta', 400);
             }
+            exam_require_ujian_access($id, $user);
 
             // Cek status
-            $status = db()->query("SELECT status FROM exam_ujian WHERE id = $id")->fetchColumn();
+            $stmtStatus = db()->prepare("SELECT status FROM exam_ujian WHERE id = ?");
+            $stmtStatus->execute([$id]);
+            $status = $stmtStatus->fetchColumn();
             if ($status === 'aktif') {
                 throw new Exception('Tidak bisa mengedit ujian yang sedang aktif. Nonaktifkan terlebih dahulu.', 400);
             }
@@ -188,11 +193,12 @@ try {
             break;
 
         case 'delete':
-            exam_require_admin_or_guru();
+            $user = exam_require_admin_or_guru();
             if ($method !== 'POST') throw new Exception('Method not allowed', 405);
             $data = get_input();
             $id = (int)($data['id'] ?? 0);
             if (!$id) throw new Exception('ID tidak valid', 400);
+            exam_require_ujian_access($id, $user);
 
             // Check ujian status
             $stmtStatus = db()->prepare("SELECT status FROM exam_ujian WHERE id = ?");
@@ -240,7 +246,7 @@ try {
         // AKTIFASI & TOKEN
         // ==========================================
         case 'set_status':
-            exam_require_admin_or_guru();
+            $user = exam_require_admin_or_guru();
             if ($method !== 'POST') throw new Exception('Method not allowed', 405);
             $data = get_input();
             
@@ -250,6 +256,7 @@ try {
             if (!$id || !in_array($status, ['aktif', 'selesai', 'draft'])) {
                 throw new Exception('Status tidak valid', 400);
             }
+            exam_require_ujian_access($id, $user);
 
             $updateData = [$status];
             $sql = "UPDATE exam_ujian SET status = ?";
@@ -275,11 +282,12 @@ try {
             break;
 
         case 'refresh_token':
-            exam_require_admin_or_guru();
+            $user = exam_require_admin_or_guru();
             if ($method !== 'POST') throw new Exception('Method not allowed', 405);
             $data = get_input();
             $id = (int)($data['id'] ?? 0);
             if (!$id) throw new Exception('ID tidak valid', 400);
+            exam_require_ujian_access($id, $user);
 
             $token = exam_generate_token(6);
             $stmt = db()->prepare("UPDATE exam_ujian SET token = ? WHERE id = ? AND status = 'aktif'");

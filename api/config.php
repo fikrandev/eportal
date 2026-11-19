@@ -4,24 +4,21 @@
  * Database connection, helpers, and security
  */
 
-// --- MANUAL CONFIGURATION (ONLY CHANGE THIS) ---
-define('DB_HOST', 'localhost');
-define('DB_NAME', 'eportal_db');
-define('DB_USER', 'root');
-define('DB_PASS', '');
-define('DB_CHARSET', 'utf8mb4');
+// Load optional environment-specific overrides (never tracked in git)
+if (file_exists(__DIR__ . '/config.local.php')) {
+    require_once __DIR__ . '/config.local.php';
+}
 
-// --- Online---
-
-// define('DB_HOST', 'localhost');
-// define('DB_NAME', 'db_eportal');
-// define('DB_USER', 'db_eportal');
-// define('DB_PASS', 'F55117002@akun');
-// define('DB_CHARSET', 'utf8mb4');
+// --- DEFAULT LOCAL CONFIGURATION (OVERRIDE VIA api/config.local.php) ---
+if (!defined('DB_HOST')) define('DB_HOST', 'localhost');
+if (!defined('DB_NAME')) define('DB_NAME', 'eportal_db');
+if (!defined('DB_USER')) define('DB_USER', 'root');
+if (!defined('DB_PASS')) define('DB_PASS', '');
+if (!defined('DB_CHARSET')) define('DB_CHARSET', 'utf8mb4');
 
 // Set to your full URL if automatic detection fails (e.g., 'https://myschool.com/')
 // Leave empty for automatic detection
-define('BASE_URL_OVERRIDE', ''); 
+if (!defined('BASE_URL_OVERRIDE')) define('BASE_URL_OVERRIDE', '');
 // ------------------------------------------------
 
 // Error reporting (optimized for production)
@@ -63,10 +60,12 @@ define('UPLOAD_DIR', __DIR__ . '/../uploads/');
 define('SESSION_DURATION', 43200); // 12 hours in seconds
 define('MAX_UPLOAD_SIZE', 5 * 1024 * 1024); // 5MB
 
-// CORS Headers
-header('Access-Control-Allow-Origin: *');
-header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
-header('Access-Control-Allow-Headers: Content-Type, Authorization');
+// CORS Headers (only for HTTP requests)
+if (PHP_SAPI !== 'cli' && !headers_sent()) {
+    header('Access-Control-Allow-Origin: *');
+    header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
+    header('Access-Control-Allow-Headers: Content-Type, Authorization, X-WA-Secret');
+}
 
 // Handle preflight
 if (($_SERVER['REQUEST_METHOD'] ?? '') === 'OPTIONS') {
@@ -90,11 +89,12 @@ class Database
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES => false,
-                PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES " . DB_CHARSET
+                PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES " . DB_CHARSET . " COLLATE utf8mb4_unicode_ci, time_zone = '+07:00'"
             ];
             $this->pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
         } catch (PDOException $e) {
-            json_response(500, false, 'Database connection failed: ' . $e->getMessage());
+            error_log('DB connection error: ' . $e->getMessage());
+            json_response(500, false, 'Koneksi database gagal.');
             exit;
         }
     }
@@ -144,10 +144,13 @@ function json_response($code = 200, $success = true, $message = '', $data = null
  */
 function sanitize($input)
 {
+    if ($input === null) {
+        return '';
+    }
     if (is_array($input)) {
         return array_map('sanitize', $input);
     }
-    return htmlspecialchars(strip_tags(trim($input)), ENT_QUOTES, 'UTF-8');
+    return htmlspecialchars(strip_tags(trim((string)$input)), ENT_QUOTES, 'UTF-8');
 }
 
 /**
@@ -160,10 +163,115 @@ function get_input()
     if (strpos($contentType, 'application/json') !== false) {
         $raw = file_get_contents('php://input');
         $data = json_decode($raw, true);
-        return $data ?: [];
+        return is_array($data) ? $data : [];
     }
 
     return $_POST;
+}
+
+/**
+ * Unified Bearer token extractor for Apache mod_php, CGI/FastCGI, and optional query param
+ */
+function get_bearer_token($allowQueryParam = true)
+{
+    $token = '';
+
+    if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
+        $token = str_ireplace('Bearer ', '', $_SERVER['HTTP_AUTHORIZATION']);
+    } elseif (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
+        $token = str_ireplace('Bearer ', '', $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
+    } elseif (function_exists('getallheaders')) {
+        $headers = getallheaders();
+        if (isset($headers['Authorization'])) {
+            $token = str_ireplace('Bearer ', '', $headers['Authorization']);
+        } elseif (isset($headers['authorization'])) {
+            $token = str_ireplace('Bearer ', '', $headers['authorization']);
+        }
+    }
+
+    if (trim($token) === '' && $allowQueryParam && isset($_GET['token'])) {
+        $token = (string)$_GET['token'];
+    }
+
+    return trim((string)$token);
+}
+
+/**
+ * Resolve project asset cache-buster using file modification timestamp
+ */
+function asset_ver($relativePath)
+{
+    static $verCache = [];
+    if (isset($verCache[$relativePath])) {
+        return $verCache[$relativePath];
+    }
+    $full = dirname(__DIR__) . '/' . ltrim(str_replace('\\', '/', $relativePath), '/');
+    $ver = @is_file($full) ? (string)@filemtime($full) : APP_VERSION;
+    $verCache[$relativePath] = $ver;
+    return $ver;
+}
+
+/**
+ * Get derived HMAC application secret backed by persisted random master key
+ */
+function app_secret($purpose = 'default')
+{
+    static $masterKey = null;
+    if ($masterKey === null) {
+        $masterKey = (string)get_setting('app_secret_key', '');
+        if (strlen($masterKey) < 32) {
+            $masterKey = bin2hex(random_bytes(32));
+            upsert_setting('app_secret_key', $masterKey, 'text', 'Server signing secret');
+        }
+    }
+    return hash_hmac('sha256', (string)$purpose, $masterKey);
+}
+
+/**
+ * Safely delete an uploaded file confined strictly inside $allowedSubdir
+ */
+function safe_unlink_in_dir($relativePath, $allowedSubdir = 'uploads')
+{
+    $relativePath = str_replace("\0", '', trim((string)$relativePath));
+    if ($relativePath === '' || strpos($relativePath, '..') !== false) {
+        return false;
+    }
+
+    $rootDir = realpath(dirname(__DIR__));
+    $allowedDir = realpath($rootDir . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, trim($allowedSubdir, '/\\')));
+    if (!$rootDir || !$allowedDir) {
+        return false;
+    }
+
+    $candidate = $rootDir . DIRECTORY_SEPARATOR . ltrim(str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $relativePath), DIRECTORY_SEPARATOR);
+    $realTarget = realpath($candidate);
+    if (!$realTarget || !is_file($realTarget)) {
+        return false;
+    }
+
+    $prefix = rtrim($allowedDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR;
+    if (strpos($realTarget, $prefix) !== 0) {
+        return false;
+    }
+
+    return @unlink($realTarget);
+}
+
+/**
+ * Neutralize CSV / Spreadsheet formula injection
+ */
+function csv_safe_cell($value)
+{
+    if ($value === null) return '';
+    if (is_int($value) || is_float($value)) return $value;
+    $str = (string)$value;
+    if ($str === '') return '';
+    // Preserve genuine numeric strings (e.g., "-5" or "+10" or "08123")
+    if (is_numeric($str)) return $str;
+    if (in_array($str[0], ['=', '+', '-', '@', "\t", "\r"], true)) {
+        return "'" . $str;
+    }
+    return $str;
 }
 
 /**
@@ -171,27 +279,7 @@ function get_input()
  */
 function auth_check()
 {
-    $token = '';
-
-    // Check via $_SERVER first (most reliable for CGI/FastCGI hosting)
-    if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
-        $token = str_replace('Bearer ', '', $_SERVER['HTTP_AUTHORIZATION']);
-    } elseif (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
-        $token = str_replace('Bearer ', '', $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
-    }
-    // Fallback: getallheaders (works on Apache mod_php)
-    elseif (function_exists('getallheaders')) {
-        $headers = getallheaders();
-        if (isset($headers['Authorization'])) {
-            $token = str_replace('Bearer ', '', $headers['Authorization']);
-        } elseif (isset($headers['authorization'])) {
-            $token = str_replace('Bearer ', '', $headers['authorization']);
-        }
-    }
-    // Final fallback: query param
-    if (empty($token) && isset($_GET['token'])) {
-        $token = $_GET['token'];
-    }
+    $token = get_bearer_token(true);
 
     if (empty($token)) {
         json_response(401, false, 'Token tidak ditemukan. Silakan login kembali.');
@@ -199,13 +287,13 @@ function auth_check()
 
     try {
         $stmt = db()->prepare("
-            SELECT s.*, u.id as user_id, u.username, u.nama_lengkap, u.role, u.avatar,
+            SELECT s.*, u.id as user_id, u.username, u.nama_lengkap, u.role, u.avatar, u.status,
                    pur.role_id as portal_role_id, prd.nama as portal_role_nama
             FROM sessions s 
             JOIN users u ON s.user_id = u.id 
             LEFT JOIN portal_user_roles pur ON pur.user_id = u.id
             LEFT JOIN portal_roles_def prd ON prd.id = pur.role_id
-            WHERE s.token = ? AND s.expired_at > NOW()
+            WHERE s.token = ? AND s.expired_at > NOW() AND u.status = 1
         ");
         $stmt->execute([$token]);
         $session = $stmt->fetch();
@@ -231,7 +319,8 @@ function auth_check()
             'permissions' => array_values(array_unique($permissions))
         ];
     } catch (PDOException $e) {
-        json_response(500, false, 'Server error: ' . $e->getMessage());
+        error_log('auth_check error: ' . $e->getMessage());
+        json_response(500, false, 'Terjadi kesalahan pada server.');
     }
 }
 
@@ -239,30 +328,19 @@ function auth_check()
  * Get current user if token exists and is valid, without failing or exiting if no token
  */
 function auth_get_optional_user() {
-    $token = '';
-    if (function_exists('getallheaders')) {
-        $headers = getallheaders();
-        if (isset($headers['Authorization'])) {
-            $token = str_replace('Bearer ', '', $headers['Authorization']);
-        } elseif (isset($headers['authorization'])) {
-            $token = str_replace('Bearer ', '', $headers['authorization']);
-        }
-    }
-    if (empty($token) && isset($_GET['token'])) {
-        $token = $_GET['token'];
-    }
+    $token = get_bearer_token(true);
     if (empty($token)) {
         return null;
     }
     try {
         $stmt = db()->prepare("
-            SELECT s.*, u.id as user_id, u.username, u.nama_lengkap, u.role, u.avatar,
+            SELECT s.*, u.id as user_id, u.username, u.nama_lengkap, u.role, u.avatar, u.status,
                    pur.role_id as portal_role_id, prd.nama as portal_role_nama
             FROM sessions s 
             JOIN users u ON s.user_id = u.id 
             LEFT JOIN portal_user_roles pur ON pur.user_id = u.id
             LEFT JOIN portal_roles_def prd ON prd.id = pur.role_id
-            WHERE s.token = ? AND s.expired_at > NOW()
+            WHERE s.token = ? AND s.expired_at > NOW() AND u.status = 1
         ");
         $stmt->execute([$token]);
         $session = $stmt->fetch();
@@ -290,10 +368,13 @@ function auth_get_optional_user() {
 }
 
 /**
- * Get user permissions array
+ * Get user permissions array (cached per-request)
  */
 function portal_get_user_permissions($userId) {
-    if (!$userId) return [];
+    static $permCache = [];
+    $uid = (int)$userId;
+    if ($uid <= 0) return [];
+    if (isset($permCache[$uid])) return $permCache[$uid];
     try {
         $stmt = db()->prepare("
             SELECT prp.permission_key 
@@ -301,8 +382,9 @@ function portal_get_user_permissions($userId) {
             JOIN portal_role_permissions prp ON prp.role_id = pur.role_id
             WHERE pur.user_id = ?
         ");
-        $stmt->execute([(int)$userId]);
-        return $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        $stmt->execute([$uid]);
+        $permCache[$uid] = $stmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        return $permCache[$uid];
     } catch (Exception $e) {
         return [];
     }
@@ -337,12 +419,36 @@ function portal_require_permission($permissionKey) {
 }
 
 /**
- * Check if user is superadmin
+ * Require any of the given permissions or 403
+ */
+function portal_require_any_permission(array $permissionKeys) {
+    $user = auth_check();
+    foreach ($permissionKeys as $pk) {
+        if (portal_has_permission($user, $pk)) {
+            return $user;
+        }
+    }
+    json_response(403, false, 'Akses ditolak. Anda tidak memiliki izin untuk fitur ini.');
+}
+
+/**
+ * Check strict superadmin role
+ */
+function require_strict_superadmin() {
+    $user = auth_check();
+    if (($user['role'] ?? '') !== 'superadmin') {
+        json_response(403, false, 'Akses ditolak. Hanya Super Administrator yang dapat mengakses.');
+    }
+    return $user;
+}
+
+/**
+ * Check if user is superadmin (or explicitly holds wildcard '*')
  */
 function require_superadmin()
 {
     $user = auth_check();
-    if ($user['role'] !== 'superadmin' && !portal_has_permission($user, 'admin_panel')) {
+    if (($user['role'] ?? '') !== 'superadmin' && !portal_has_permission($user, '*')) {
         json_response(403, false, 'Akses ditolak. Hanya administrator yang dapat mengakses.');
     }
     return $user;
@@ -357,18 +463,35 @@ function generate_token($length = 64)
 }
 
 /**
- * Get a specific setting value
+ * Load settings cache once per request
+ */
+function &_portal_settings_cache()
+{
+    static $cache = null;
+    if ($cache === null) {
+        $cache = [];
+        try {
+            $stmt = db()->query("SELECT setting_key, setting_value FROM settings");
+            while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+                $cache[$row['setting_key']] = $row['setting_value'];
+            }
+        } catch (PDOException $e) {
+            $cache = [];
+        }
+    }
+    return $cache;
+}
+
+/**
+ * Get a specific setting value (cached per-request)
  */
 function get_setting($key, $default = null)
 {
-    try {
-        $stmt = db()->prepare("SELECT setting_value FROM settings WHERE setting_key = ?");
-        $stmt->execute([$key]);
-        $result = $stmt->fetch();
-        return $result ? $result['setting_value'] : $default;
-    } catch (PDOException $e) {
-        return $default;
+    $cache = &_portal_settings_cache();
+    if (array_key_exists($key, $cache)) {
+        return $cache[$key];
     }
+    return $default;
 }
 
 /**
@@ -400,6 +523,8 @@ function update_setting($key, $value)
     try {
         $stmt = db()->prepare("UPDATE settings SET setting_value = ? WHERE setting_key = ?");
         $stmt->execute([$value, $key]);
+        $cache = &_portal_settings_cache();
+        $cache[$key] = $value;
         return true;
     } catch (PDOException $e) {
         return false;
@@ -421,43 +546,67 @@ function upsert_setting($key, $value, $type = 'text', $keterangan = '')
                 keterangan = VALUES(keterangan)
         ");
         $stmt->execute([$key, $value, $type, $keterangan]);
+        $cache = &_portal_settings_cache();
+        $cache[$key] = $value;
         return true;
     } catch (PDOException $e) {
         return false;
     }
 }
 
+function &_portal_active_year_cache()
+{
+    static $cached = false;
+    return $cached;
+}
+
+function reset_active_academic_year_cache()
+{
+    $cached = &_portal_active_year_cache();
+    $cached = false;
+}
+
 /**
- * Get active academic year shared by all modules
+ * Get active academic year shared by all modules (cached per-request)
  */
 function get_active_academic_year()
 {
+    $cached = &_portal_active_year_cache();
+    if ($cached !== false) {
+        return $cached;
+    }
     try {
         $stmt = db()->query("SELECT * FROM academic_years WHERE is_active = 1 LIMIT 1");
         $active = $stmt->fetch();
         if ($active) {
-            return $active;
+            $cached = $active;
+            return $cached;
         }
     } catch (PDOException $e) {
         // Fallback to settings below for old installations.
     }
 
     $label = get_setting('tahun_ajaran_aktif', '');
-    return [
+    $cached = [
         'id' => null,
         'tahun_ajaran' => $label,
         'semester' => get_setting('semester_aktif', ''),
         'is_active' => !empty($label) ? 1 : 0
     ];
+    return $cached;
 }
 
 /**
- * Handle file upload
+ * Handle file upload (strictly raster/document allowlists, MIME & content verified)
  */
-function handle_upload($file, $directory, $allowed_types = ['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'])
+function handle_upload($file, $directory, $allowed_types = ['jpg', 'jpeg', 'png', 'gif', 'webp'])
 {
     if (!isset($file) || $file['error'] !== UPLOAD_ERR_OK) {
         return ['success' => false, 'message' => 'File upload gagal.'];
+    }
+
+    if (!is_uploaded_file($file['tmp_name'])) {
+        return ['success' => false, 'message' => 'Sumber upload tidak valid.'];
     }
 
     if ($file['size'] > MAX_UPLOAD_SIZE) {
@@ -465,10 +614,41 @@ function handle_upload($file, $directory, $allowed_types = ['jpg', 'jpeg', 'png'
     }
 
     $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-    if (!in_array($ext, $allowed_types)) {
+    // Never allow executable or SVG uploads through generic upload helper
+    $blocked = ['php', 'phtml', 'php3', 'php4', 'php5', 'php7', 'php8', 'phar', 'pl', 'py', 'cgi', 'sh', 'exe', 'js', 'html', 'htm', 'svg'];
+    if (in_array($ext, $blocked, true) || !in_array($ext, $allowed_types, true)) {
         return ['success' => false, 'message' => 'Tipe file tidak diizinkan. Gunakan: ' . implode(', ', $allowed_types)];
     }
 
+    $mimeMap = [
+        'jpg'  => ['image/jpeg', 'image/pjpeg'],
+        'jpeg' => ['image/jpeg', 'image/pjpeg'],
+        'png'  => ['image/png'],
+        'gif'  => ['image/gif'],
+        'webp' => ['image/webp'],
+        'pdf'  => ['application/pdf'],
+        'doc'  => ['application/msword', 'application/octet-stream'],
+        'docx' => ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'application/zip'],
+        'xls'  => ['application/vnd.ms-excel', 'application/octet-stream'],
+        'xlsx' => ['application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'application/zip'],
+        'ppt'  => ['application/vnd.ms-powerpoint'],
+        'pptx' => ['application/vnd.openxmlformats-officedocument.presentationml.presentation', 'application/zip'],
+    ];
+
+    if (function_exists('finfo_open')) {
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $detectedMime = $finfo ? finfo_file($finfo, $file['tmp_name']) : '';
+        if ($finfo) finfo_close($finfo);
+        if (isset($mimeMap[$ext]) && $detectedMime && !in_array($detectedMime, $mimeMap[$ext], true)) {
+            return ['success' => false, 'message' => 'Isi file tidak sesuai dengan ekstensi (.' . $ext . ').'];
+        }
+    }
+
+    if (in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true) && @getimagesize($file['tmp_name']) === false) {
+        return ['success' => false, 'message' => 'File gambar rusak atau tidak valid.'];
+    }
+
+    $directory = trim(str_replace(['..', '\\'], ['', '/'], $directory), '/') . '/';
     $uploadPath = UPLOAD_DIR . $directory;
     if (!is_dir($uploadPath)) {
         mkdir($uploadPath, 0755, true);
@@ -478,6 +658,7 @@ function handle_upload($file, $directory, $allowed_types = ['jpg', 'jpeg', 'png'
     $filepath = $uploadPath . $filename;
 
     if (move_uploaded_file($file['tmp_name'], $filepath)) {
+        @chmod($filepath, 0644);
         return [
             'success' => true,
             'filename' => $filename,
@@ -495,24 +676,26 @@ function handle_upload($file, $directory, $allowed_types = ['jpg', 'jpeg', 'png'
  */
 function compress_image($source, $destination, $target_size_kb = 500)
 {
-    $info = getimagesize($source);
+    $info = @getimagesize($source);
     if (!$info)
         return false;
 
     $mime = $info['mime'];
-    $width = $info[0];
-    $height = $info[1];
+    $width = (int)$info[0];
+    $height = (int)$info[1];
+    if ($width <= 0 || $height <= 0)
+        return false;
 
     // Create image from source
     switch ($mime) {
         case 'image/jpeg':
-            $image = imagecreatefromjpeg($source);
+            $image = @imagecreatefromjpeg($source);
             break;
         case 'image/png':
-            $image = imagecreatefrompng($source);
+            $image = @imagecreatefrompng($source);
             break;
         case 'image/webp':
-            $image = imagecreatefromwebp($source);
+            $image = @imagecreatefromwebp($source);
             break;
         default:
             return false;
@@ -527,15 +710,18 @@ function compress_image($source, $destination, $target_size_kb = 500)
         imagesavealpha($image, true);
     }
 
-    // Initial quality
     $quality = 90;
-    $step = 5;
+    $step = 10;
+    $iterations = 0;
+    $maxIterations = 15;
+    $size = 0;
 
-    // Loop to reach target size
     do {
+        $iterations++;
         ob_start();
         if ($mime == 'image/png') {
-            imagepng($image, null, round(9 - ($quality / 10))); // png quality 0-9
+            $pngComp = min(9, max(0, (int)round((100 - $quality) / 10)));
+            imagepng($image, null, $pngComp);
         } elseif ($mime == 'image/webp') {
             imagewebp($image, null, $quality);
         } else {
@@ -544,15 +730,19 @@ function compress_image($source, $destination, $target_size_kb = 500)
         $data = ob_get_clean();
         $size = strlen($data) / 1024;
 
-        if ($size <= $target_size_kb)
+        if ($size <= $target_size_kb || $iterations >= $maxIterations)
             break;
 
         $quality -= $step;
 
-        // If quality is too low and still too big, resize
+        // If quality is too low and still too big, resize down (keeping minimum dimension >= 200px)
         if ($quality < 30) {
-            $new_width = round($width * 0.8);
-            $new_height = round($height * 0.8);
+            $new_width = max(1, (int)round($width * 0.8));
+            $new_height = max(1, (int)round($height * 0.8));
+            if (min($new_width, $new_height) < 200) {
+                $quality = 30;
+                break;
+            }
             $new_image = imagecreatetruecolor($new_width, $new_height);
 
             if ($mime == 'image/png') {
@@ -565,14 +755,15 @@ function compress_image($source, $destination, $target_size_kb = 500)
             $image = $new_image;
             $width = $new_width;
             $height = $new_height;
-            $quality = 80; // Reset quality for new size
+            $quality = 80;
         }
 
-    } while ($quality > 10 && $size > $target_size_kb);
+    } while ($quality >= 10 && $size > $target_size_kb);
 
     // Save final image
     if ($mime == 'image/png') {
-        $result = imagepng($image, $destination, round(9 - ($quality / 10)));
+        $pngComp = min(9, max(0, (int)round((100 - $quality) / 10)));
+        $result = imagepng($image, $destination, $pngComp);
     } elseif ($mime == 'image/webp') {
         $result = imagewebp($image, $destination, $quality);
     } else {
@@ -586,17 +777,18 @@ function compress_image($source, $destination, $target_size_kb = 500)
 /**
  * Paginate query results
  */
-function paginate($query, $params = [], $page = 1, $perPage = 10)
+function paginate($query, $params = [], $page = 1, $perPage = 10, $maxPerPage = 100)
 {
     $page = max(1, (int) $page);
-    $perPage = max(1, min(100, (int) $perPage));
+    $maxLimit = max(1, (int) $maxPerPage);
+    $perPage = max(1, min($maxLimit, (int) $perPage));
     $offset = ($page - 1) * $perPage;
 
     // Count total
     $countQuery = "SELECT COUNT(*) as total FROM (" . $query . ") as counted";
     $stmt = db()->prepare($countQuery);
     $stmt->execute($params);
-    $total = $stmt->fetch()['total'];
+    $total = (int)($stmt->fetch()['total'] ?? 0);
 
     // Get paginated data
     $dataQuery = $query . " LIMIT {$perPage} OFFSET {$offset}";
@@ -606,15 +798,18 @@ function paginate($query, $params = [], $page = 1, $perPage = 10)
 
     return [
         'data' => $data,
-        'total' => (int) $total,
+        'total' => $total,
         'page' => $page,
         'per_page' => $perPage,
-        'total_pages' => ceil($total / $perPage)
+        'total_pages' => (int)ceil($total / $perPage)
     ];
 }
 
-// Auto-run database migrations on config load
-require_once __DIR__ . '/migration_helper.php';
-run_auto_migrations();
+// Only load & run migrations when DB version is behind target
+define('EPORTAL_TARGET_DB_VERSION', 26);
+if ((int)get_setting('db_migration_version', 0) < EPORTAL_TARGET_DB_VERSION) {
+    require_once __DIR__ . '/migration_helper.php';
+    run_auto_migrations();
+}
 require_once __DIR__ . '/theme_helper.php';
 

@@ -1028,8 +1028,7 @@ function qrRemotePngData($url)
 
 function graduationVerifySignature($studentId, $yearId, $letterNumber)
 {
-    $secret = DB_NAME . '|' . DB_USER . '|' . DB_PASS;
-    return substr(hash_hmac('sha256', (int) $studentId . '|' . (int) $yearId . '|' . (string) $letterNumber, $secret), 0, 24);
+    return substr(hash_hmac('sha256', (int) $studentId . '|' . (int) $yearId . '|' . (string) $letterNumber, app_secret('qr')), 0, 24);
 }
 
 function absoluteBaseUrl()

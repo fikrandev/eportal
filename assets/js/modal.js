@@ -13,9 +13,16 @@ const EModal = {
             message: '',
             buttonText: 'OK',
             onClose: null,
+            onConfirm: null,
             duration: 2000
         };
         const opt = { ...defaults, ...options };
+        if (!opt.onClose && typeof opt.onConfirm === 'function') {
+            opt.onClose = opt.onConfirm;
+        }
+        if (options.buttonText && options.duration === undefined && typeof opt.onClose === 'function') {
+            opt.duration = 0;
+        }
         
         const icons = {
             success: `<svg class="modal-status-icon success" viewBox="0 0 80 80">
@@ -77,12 +84,17 @@ const EModal = {
     /**
      * Show Alert Modal (Alias for info error/warning)
      */
-    alert(title, message, type = 'error') {
+    alert(title, message, type = 'error', onClose = null) {
+        if (typeof type === 'function') {
+            onClose = type;
+            type = 'error';
+        }
         return this.info({
-            type: type,
+            type: type || 'error',
             title: title,
             message: message,
-            duration: 0
+            duration: 0,
+            onClose: onClose
         });
     },
 
@@ -169,8 +181,9 @@ const EModal = {
      * Close a modal
      */
     close(btnOrOverlay) {
-        const overlay = btnOrOverlay.closest ? btnOrOverlay.closest('.emodal-overlay') : btnOrOverlay;
-        if (!overlay) return;
+        const overlay = btnOrOverlay && btnOrOverlay.closest ? btnOrOverlay.closest('.emodal-overlay') : btnOrOverlay;
+        if (!overlay || overlay._isClosing) return;
+        overlay._isClosing = true;
 
         overlay.classList.remove('show');
         overlay.classList.add('hiding');

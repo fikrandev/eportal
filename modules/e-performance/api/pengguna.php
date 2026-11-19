@@ -39,8 +39,15 @@ function saveUser() {
         json_response(400, false, 'Data wajib tidak boleh kosong');
     }
 
+    // Cegah pembuatan akun manual yang bentrok dengan username superadmin eportal
+    $stmtSa = db()->prepare("SELECT id FROM users WHERE username = ? AND role = 'superadmin' LIMIT 1");
+    $stmtSa->execute([$username]);
+    if ($stmtSa->fetch()) {
+        json_response(403, false, 'Username tidak dapat digunakan karena merupakan akun Super Administrator.');
+    }
+
     if ($id > 0) {
-        $stmt = db()->prepare("UPDATE perf_users SET username=?, nama_lengkap=?, role=? WHERE id=?");
+        $stmt = db()->prepare("UPDATE perf_users SET username=?, nama_lengkap=?, role=? WHERE id=? AND perf_ptk_id IS NULL");
         $stmt->execute([$username, $nama, $role, $id]);
         json_response(200, true, 'Pengguna berhasil diupdate');
     } else {
@@ -68,16 +75,20 @@ function changePassword() {
         json_response(400, false, 'Password baru tidak boleh kosong');
     }
     
+    $stmtUser = db()->prepare("SELECT username, perf_ptk_id, role FROM perf_users WHERE id = ?");
+    $stmtUser->execute([$id]);
+    $u = $stmtUser->fetch(PDO::FETCH_ASSOC);
+    if (!$u) {
+        json_response(404, false, 'Pengguna tidak ditemukan');
+    }
+
     $hash = password_hash($password, PASSWORD_BCRYPT);
     $stmt = db()->prepare("UPDATE perf_users SET password=? WHERE id=?");
     $stmt->execute([$hash, $id]);
     
-    // Sinkronisasi dengan tabel users (eportal) jika ada
-    $stmtUser = db()->prepare("SELECT username FROM perf_users WHERE id = ?");
-    $stmtUser->execute([$id]);
-    $u = $stmtUser->fetch();
-    if ($u) {
-        $stmtUpdatePortal = db()->prepare("UPDATE users SET password = ? WHERE username = ?");
+    // Hanya sinkronkan ke tabel users eportal jika akun terkait PTK dan target bukan superadmin
+    if (!empty($u['perf_ptk_id'])) {
+        $stmtUpdatePortal = db()->prepare("UPDATE users SET password = ? WHERE username = ? AND role != 'superadmin'");
         $stmtUpdatePortal->execute([$hash, $u['username']]);
     }
     

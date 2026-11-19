@@ -1,6 +1,22 @@
-# Override PHP upload limits for photo management (large ZIP batch uploads)
-php_value upload_max_filesize 200M
-php_value post_max_size 210M
-php_value max_execution_time 300
-php_value max_input_time 300
-php_value memory_limit 512M
+# Override PHP upload limits for photo management (Apache mod_php only; CGI/FPM uses .user.ini)
+<IfModule mod_php.c>
+    php_value upload_max_filesize 200M
+    php_value post_max_size 210M
+    php_value max_execution_time 300
+    php_value max_input_time 300
+    php_value memory_limit 512M
+</IfModule>
+<IfModule mod_php7.c>
+    php_value upload_max_filesize 200M
+    php_value post_max_size 210M
+    php_value max_execution_time 300
+    php_value max_input_time 300
+    php_value memory_limit 512M
+</IfModule>
+<IfModule mod_php8.c>
+    php_value upload_max_filesize 200M
+    php_value post_max_size 210M
+    php_value max_execution_time 300
+    php_value max_input_time 300
+    php_value memory_limit 512M
+</IfModule>

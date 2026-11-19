@@ -102,7 +102,7 @@ function consolidateDuplicateSarpras($grup = null) {
 
 function syncWarehouseRecords($grup) {
     if (!$grup) return;
-    db()->exec("
+    $stmt = db()->prepare("
         INSERT INTO sarpras (
             ruang_id, kategori_id, nama, kode_inventaris, merk, spesifikasi, jumlah,
             kondisi_baik, kondisi_rusak_ringan, kondisi_rusak_berat, tanggal_perolehan,
@@ -119,16 +119,17 @@ function syncWarehouseRecords($grup) {
         INNER JOIN (
             SELECT MIN(id) AS id, kode_inventaris
             FROM sarpras
-            WHERE is_hapus = 0 AND grup_pintasan = '$grup' AND ruang_id IS NOT NULL
+            WHERE is_hapus = 0 AND grup_pintasan = ? AND ruang_id IS NOT NULL
             GROUP BY kode_inventaris
         ) sample ON sample.id = src.id
         LEFT JOIN sarpras warehouse
             ON warehouse.kode_inventaris = src.kode_inventaris
-            AND warehouse.grup_pintasan = '$grup'
+            AND warehouse.grup_pintasan = ?
             AND warehouse.is_hapus = 0
             AND warehouse.ruang_id IS NULL
         WHERE warehouse.id IS NULL
     ");
+    $stmt->execute([$grup, $grup]);
 }
 
 function listSarpras() {
@@ -249,7 +250,7 @@ function getSarpras() {
     if (!$data) json_response(404, false, 'Tidak ditemukan');
 
     // Scoping check for PJ
-    if (!empty($user['scoped_ruang_ids']) && !in_array($data['ruang_id'], $user['scoped_ruang_ids'])) {
+    if (!sp_can_access_ruang($user, $data['ruang_id'])) {
         json_response(403, false, 'Anda tidak memiliki akses ke aset di ruangan ini');
     }
     
@@ -328,8 +329,8 @@ function createSarpras() {
     $ruang_id = (!empty($d['ruang_id']) && (int)$d['ruang_id'] > 0) ? (int)$d['ruang_id'] : null;
 
     // Enforcement for PJ
-    if (!empty($user['scoped_ruang_ids'])) {
-        if ($ruang_id > 0 && !in_array($ruang_id, $user['scoped_ruang_ids'])) {
+    if (!empty($user['is_room_scoped'])) {
+        if (!$ruang_id || !sp_can_access_ruang($user, $ruang_id)) {
             json_response(403, false, 'Anda hanya diperbolehkan menambah aset ke ruangan yang Anda kelola');
         }
     }
@@ -566,15 +567,14 @@ function updateSarpras() {
     if ($id <= 0) json_response(400, false, 'ID tidak valid');
 
     // Scoping check for PJ (check existing record)
-    if (!empty($user['scoped_ruang_ids'])) {
+    if (!empty($user['is_room_scoped'])) {
         $check = db()->prepare("SELECT ruang_id FROM sarpras WHERE id=?");
         $check->execute([$id]);
         $existing = $check->fetch();
-        if ($existing && !in_array($existing['ruang_id'], $user['scoped_ruang_ids'])) {
+        if ($existing && !sp_can_access_ruang($user, $existing['ruang_id'])) {
             json_response(403, false, 'Anda tidak memiliki akses untuk mengubah aset ini');
         }
-        // Also check new room if changed
-        if ($ruang_id > 0 && !in_array($ruang_id, $user['scoped_ruang_ids'])) {
+        if ($ruang_id > 0 && !sp_can_access_ruang($user, $ruang_id)) {
             json_response(403, false, 'Anda hanya boleh memindahkan aset ke ruangan yang Anda kelola');
         }
     }
@@ -619,11 +619,11 @@ function deleteSarpras() {
     $d = get_input(); $id = (int)($d['id'] ?? 0);
 
     // Scoping check for PJ
-    if (!empty($user['scoped_ruang_ids'])) {
+    if (!empty($user['is_room_scoped'])) {
         $check = db()->prepare("SELECT ruang_id FROM sarpras WHERE id=?");
         $check->execute([$id]);
         $existing = $check->fetch();
-        if ($existing && !in_array($existing['ruang_id'], $user['scoped_ruang_ids'])) {
+        if ($existing && !sp_can_access_ruang($user, $existing['ruang_id'])) {
             json_response(403, false, 'Anda tidak memiliki akses untuk menghapus aset ini');
         }
     }
@@ -649,7 +649,7 @@ function deleteFoto() {
     $user = sp_auth(); sp_require_any($user, ['sarpras_manage'], 'Akses ditolak');
     $d = get_input(); $fid = (int)($d['foto_id'] ?? 0);
     $f = db()->prepare("SELECT foto_path FROM sarpras_foto WHERE id=?"); $f->execute([$fid]); $fd=$f->fetch();
-    if ($fd) { $p=UPLOAD_DIR.'../'.$fd['foto_path']; if(file_exists($p)) unlink($p); }
+    if ($fd && !empty($fd['foto_path'])) { safe_unlink_in_dir($fd['foto_path'], 'uploads'); }
     db()->prepare("DELETE FROM sarpras_foto WHERE id=?")->execute([$fid]);
     json_response(200, true, 'Foto dihapus');
 }
@@ -684,13 +684,14 @@ function copyToRuang() {
     $d = get_input();
     $source_ruang = (int)($d['source_ruang_id'] ?? 0);
     $target_ruang = (int)($d['target_ruang_id'] ?? 0);
-    $item_ids = $d['item_ids'] ?? [];
+    $rawItemIds = is_array($d['item_ids'] ?? null) ? $d['item_ids'] : [];
+    $item_ids = array_values(array_unique(array_filter(array_map('intval', $rawItemIds), function($v) { return $v > 0; })));
     
     if (!$source_ruang || !$target_ruang || empty($item_ids)) json_response(400, false, 'Data tidak lengkap');
     
     // Scoping check for PJ
-    if (!empty($user['scoped_ruang_ids'])) {
-        if (!in_array($target_ruang, $user['scoped_ruang_ids'])) {
+    if (!empty($user['is_room_scoped'])) {
+        if (!sp_can_access_ruang($user, $target_ruang)) {
             json_response(403, false, 'Anda hanya boleh menyalin aset ke ruangan yang Anda kelola');
         }
     }
@@ -759,8 +760,8 @@ function distribusiAhp() {
     if ($jumlah <= 0) json_response(400, false, 'Jumlah penggunaan minimal 1');
     
     // Enforcement for PJ
-    if (!empty($user['scoped_ruang_ids']) && $ruang_id > 0) {
-        if (!in_array($ruang_id, $user['scoped_ruang_ids'])) {
+    if (!empty($user['is_room_scoped'])) {
+        if (!$ruang_id || !sp_can_access_ruang($user, $ruang_id)) {
             json_response(403, false, 'Anda hanya dapat mendistribusikan aset ke ruangan yang Anda kelola');
         }
     }
@@ -840,7 +841,7 @@ function importKoleksiBuku() {
     if ($ruangId <= 0) json_response(400, false, 'Ruang tujuan tidak valid');
     
     // Scoping check for PJ
-    if (!empty($user['scoped_ruang_ids']) && !in_array($ruangId, $user['scoped_ruang_ids'])) {
+    if (!empty($user['is_room_scoped']) && !sp_can_access_ruang($user, $ruangId)) {
         json_response(403, false, 'Anda hanya boleh mengimport ke ruangan yang Anda kelola');
     }
     if (!$itemIds) json_response(400, false, 'Pilih minimal satu buku');
@@ -941,8 +942,8 @@ function importBuku() {
     $ruang_id = (int)($_POST['ruang_id'] ?? 0);
     
     // Enforcement for PJ
-    if (!empty($user['scoped_ruang_ids'])) {
-        if ($ruang_id > 0 && !in_array($ruang_id, $user['scoped_ruang_ids'])) {
+    if (!empty($user['is_room_scoped'])) {
+        if (!$ruang_id || !sp_can_access_ruang($user, $ruang_id)) {
             json_response(403, false, 'Anda hanya diperbolehkan mengimport aset ke ruangan yang Anda kelola');
         }
     }

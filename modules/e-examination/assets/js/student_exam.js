@@ -87,7 +87,23 @@ const ExamApp = {
                     url: '../api/pengerjaan.php?action=heartbeat',
                     method: 'POST',
                     data: JSON.stringify({ session_id: this.sessionId, remaining_seconds: this.remainingSeconds }),
-                    contentType: 'application/json'
+                    contentType: 'application/json',
+                    success: (r) => {
+                        if (r && r.success && r.data) {
+                            if (r.data.session_status === 'selesai') {
+                                this._examStopped = true;
+                                window.location.href = 'dashboard.php';
+                                return;
+                            }
+                            if (r.data.is_locked == 1) {
+                                window.location.reload();
+                                return;
+                            }
+                            if (typeof r.data.remaining_seconds === 'number' && Math.abs(this.remainingSeconds - r.data.remaining_seconds) > 5) {
+                                this.remainingSeconds = r.data.remaining_seconds;
+                            }
+                        }
+                    }
                 });
             }
         }, 10000);
@@ -896,7 +912,7 @@ const ExamApp = {
                 if (v) newAns[k] = v;
             });
         }
-        else if (s.tipe_soal === 'jawaban_singkat' || s.tipe_soal === 'essai') {
+        else if (s.tipe_soal === 'jawaban_singkat' || s.tipe_soal === 'esai' || s.tipe_soal === 'essai') {
             newAns = $(`#ans_${s.id}`).val().trim();
         }
 
@@ -976,7 +992,8 @@ const ExamApp = {
             title: 'Waktu Habis',
             message: 'Waktu pengerjaan ujian telah habis. Jawaban Anda akan disimpan secara otomatis.',
             type: 'warning',
-            onConfirm: () => {
+            duration: 2000,
+            onClose: () => {
                 this.doSubmit();
             }
         });

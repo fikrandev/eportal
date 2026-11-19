@@ -7,3 +7,4 @@ wa-server/.wwebjs_cache/
 *.zip
 .zip
 scratch/
+api/config.local.php

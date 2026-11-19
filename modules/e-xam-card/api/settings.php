@@ -80,7 +80,7 @@ function getSettings()
 
 function saveSettings()
 {
-    xam_require_manage();
+    xam_require_admin();
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
         json_response(405, false, 'Method not allowed.');
     }

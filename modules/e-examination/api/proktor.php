@@ -3,6 +3,7 @@
  * E-Examination — API Proktor (Live Monitoring, Reset Login, Generate Link)
  */
 require_once __DIR__ . '/config_exam.php';
+require_once __DIR__ . '/grading_service.php';
 
 header('Content-Type: application/json; charset=UTF-8');
 
@@ -193,7 +194,9 @@ try {
                 $studentIds = [$studentId];
             }
 
-            if (empty($studentIds) || !is_array($studentIds)) {
+            if (!is_array($studentIds)) $studentIds = [];
+            $studentIds = array_values(array_unique(array_filter(array_map('intval', $studentIds), function($id) { return $id > 0; })));
+            if (empty($studentIds)) {
                 throw new Exception('Pilih siswa yang ingin di-reset loginnya.', 400);
             }
 
@@ -210,11 +213,12 @@ try {
             ");
             $stmt->execute($studentIds);
 
-            // Jika sebelumnya ujian dihentikan karena pelanggaran, ubah statusnya kembali agar siswa bisa melanjutkan
+            // Hanya aktifkan kembali sesi pada ujian yang sedang aktif
             $stmtUnterminate = db()->prepare("
-                UPDATE exam_sesi 
-                SET status = 'mengerjakan' 
-                WHERE student_id IN ($placeholders) AND status = 'dihentikan'
+                UPDATE exam_sesi es
+                JOIN exam_ujian u ON u.id = es.ujian_id
+                SET es.status = 'mengerjakan' 
+                WHERE es.student_id IN ($placeholders) AND es.status = 'dihentikan' AND u.status = 'aktif'
             ");
             $stmtUnterminate->execute($studentIds);
 
@@ -274,12 +278,14 @@ try {
             ");
             $stmtReset->execute($targetIds);
 
-            // Re-activate terminated sessions so they can continue
-            db()->prepare("
-                UPDATE exam_sesi 
-                SET status = 'mengerjakan' 
-                WHERE student_id IN ($placeholders) AND status = 'dihentikan'
-            ")->execute($targetIds);
+            // Re-activate terminated sessions on active exams only so they can continue
+            $sqlU = "UPDATE exam_sesi es JOIN exam_ujian u ON u.id = es.ujian_id SET es.status = 'mengerjakan' WHERE es.student_id IN ($placeholders) AND es.status = 'dihentikan' AND u.status = 'aktif'";
+            $paramsU = $targetIds;
+            if ($ujian_id > 0) {
+                $sqlU .= " AND es.ujian_id = ?";
+                $paramsU[] = $ujian_id;
+            }
+            db()->prepare($sqlU)->execute($paramsU);
 
             json_response(200, true, 'Berhasil mereset ' . count($targetIds) . ' akun siswa yang terkunci.');
             break;
@@ -330,12 +336,14 @@ try {
             ");
             $stmtReset->execute($targetIds);
 
-            // Re-activate terminated sessions so they can continue
-            db()->prepare("
-                UPDATE exam_sesi 
-                SET status = 'mengerjakan' 
-                WHERE student_id IN ($placeholders) AND status = 'dihentikan'
-            ")->execute($targetIds);
+            // Re-activate terminated sessions on active exams only so they can continue
+            $sqlU2 = "UPDATE exam_sesi es JOIN exam_ujian u ON u.id = es.ujian_id SET es.status = 'mengerjakan' WHERE es.student_id IN ($placeholders) AND es.status = 'dihentikan' AND u.status = 'aktif'";
+            $paramsU2 = $targetIds;
+            if ($ujian_id > 0) {
+                $sqlU2 .= " AND es.ujian_id = ?";
+                $paramsU2[] = $ujian_id;
+            }
+            db()->prepare($sqlU2)->execute($paramsU2);
 
             json_response(200, true, 'Berhasil mereset ' . count($targetIds) . ' akun siswa.');
             break;
@@ -411,6 +419,10 @@ try {
             $stmtUpLog = db()->prepare("UPDATE exam_student_login SET status = 'selesai', is_locked = 0 WHERE student_id = ?");
             $stmtUpLog->execute([$sesi['student_id']]);
             db()->commit();
+
+            try {
+                processGrading($sesi_id);
+            } catch (Exception $e) {}
 
             json_response(200, true, 'Sesi ujian berhasil diselesaikan secara paksa.');
             break;

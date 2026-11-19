@@ -12,10 +12,20 @@ app.use(express.json({ limit: '10mb' }));
 app.use((req, res, next) => {
     res.header('Access-Control-Allow-Origin', '*');
     res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-WA-Secret');
     if (req.method === 'OPTIONS') return res.sendStatus(200);
     next();
 });
+
+const WA_SECRET = (process.env.WA_SECRET || '').trim();
+function requireWaSecret(req, res, next) {
+    if (!WA_SECRET) return next();
+    const provided = String(req.headers['x-wa-secret'] || req.query.secret || '').trim();
+    if (provided !== WA_SECRET) {
+        return res.status(401).json({ success: false, message: 'Unauthorized WA Gateway request.' });
+    }
+    return next();
+}
 
 const AUTH_DIR = path.join(__dirname, '.wwebjs_auth');
 let client = null;
@@ -377,12 +387,14 @@ async function resetAndReinit(deleteSession = false) {
     console.log(`[WA] Mereset client WhatsApp (deleteSession: ${deleteSession})...`);
 
     if (client) {
-        try {
-            await Promise.race([
-                client.logout().catch(() => {}),
-                new Promise(res => setTimeout(res, 3000))
-            ]);
-        } catch (e) {}
+        if (deleteSession) {
+            try {
+                await Promise.race([
+                    client.logout().catch(() => {}),
+                    new Promise(res => setTimeout(res, 3000))
+                ]);
+            } catch (e) {}
+        }
 
         try {
             await client.destroy().catch(() => {});
@@ -451,7 +463,7 @@ app.get('/status', (req, res) => {
 });
 
 // Endpoint to trigger manual memory cleanup
-app.post('/clean-memory', async (req, res) => {
+app.post('/clean-memory', requireWaSecret, async (req, res) => {
     await cleanBrowserMemory();
     const mem = process.memoryUsage();
     res.json({
@@ -465,7 +477,7 @@ app.post('/clean-memory', async (req, res) => {
 });
 
 // Endpoint to disconnect / logout device session
-app.post('/logout', async (req, res) => {
+app.post('/logout', requireWaSecret, async (req, res) => {
     try {
         console.log('[WA] Memutuskan koneksi WhatsApp...');
         res.json({
@@ -483,7 +495,7 @@ app.post('/logout', async (req, res) => {
 });
 
 // Endpoint to list WhatsApp Groups (Fast & Pure Local - Zero Network Blocking)
-app.get('/groups', async (req, res) => {
+app.get('/groups', requireWaSecret, async (req, res) => {
     if (!isReady || !client) {
         return res.status(503).json({ success: false, message: 'WhatsApp Client belum terhubung. Silakan lakukan scan QR Code terlebih dahulu.' });
     }
@@ -557,7 +569,7 @@ app.get('/groups', async (req, res) => {
 });
 
 // Endpoint to send message (Supports individual numbers & group IDs)
-app.post('/send', async (req, res) => {
+app.post('/send', requireWaSecret, async (req, res) => {
     if (!isReady || !client) {
         return res.status(503).json({ success: false, message: 'WhatsApp Client belum terhubung. Harap scan QR Code terlebih dahulu.' });
     }
@@ -666,49 +678,56 @@ setInterval(async () => {
 // Mendukung VPS (/modules/...) dan Localhost (/eportal/modules/...)
 // ==========================================
 let resolvedAutoSyncUrl = null;
+let isAutoSyncPolling = false;
 
 setInterval(async () => {
-    const urls = [
-        'http://localhost/modules/e-absen/api/auto_sync.php?cron_token=eportal_auto_sync_secret',
-        'http://localhost/eportal/modules/e-absen/api/auto_sync.php?cron_token=eportal_auto_sync_secret',
-        'http://127.0.0.1/modules/e-absen/api/auto_sync.php?cron_token=eportal_auto_sync_secret',
-        'http://127.0.0.1/eportal/modules/e-absen/api/auto_sync.php?cron_token=eportal_auto_sync_secret'
-    ];
+    if (isAutoSyncPolling) return;
+    isAutoSyncPolling = true;
+    try {
+        const urls = [
+            'http://localhost/modules/e-absen/api/auto_sync.php?cron_token=eportal_auto_sync_secret',
+            'http://localhost/eportal/modules/e-absen/api/auto_sync.php?cron_token=eportal_auto_sync_secret',
+            'http://127.0.0.1/modules/e-absen/api/auto_sync.php?cron_token=eportal_auto_sync_secret',
+            'http://127.0.0.1/eportal/modules/e-absen/api/auto_sync.php?cron_token=eportal_auto_sync_secret'
+        ];
 
-    if (resolvedAutoSyncUrl) {
-        try {
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), 8000);
-            const res = await fetch(resolvedAutoSyncUrl, { signal: controller.signal });
-            clearTimeout(timer);
-            if (res.status === 200 || res.status === 400) {
-                const data = await res.json().catch(() => null);
-                if (data && data.message && data.message.includes('baru') && !data.message.includes('0 log baru')) {
-                    console.log('[Auto-Sync]', data.message);
+        if (resolvedAutoSyncUrl) {
+            try {
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), 8000);
+                const res = await fetch(resolvedAutoSyncUrl, { signal: controller.signal });
+                clearTimeout(timer);
+                if (res.status === 200 || res.status === 400) {
+                    const data = await res.json().catch(() => null);
+                    if (data && data.message && data.message.includes('baru') && !data.message.includes('0 log baru')) {
+                        console.log('[Auto-Sync]', data.message);
+                    }
+                    return;
+                } else {
+                    resolvedAutoSyncUrl = null;
                 }
-                return;
-            } else {
+            } catch (err) {
                 resolvedAutoSyncUrl = null;
             }
-        } catch (err) {
-            resolvedAutoSyncUrl = null;
         }
-    }
 
-    for (const testUrl of urls) {
-        try {
-            const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), 4000);
-            const res = await fetch(testUrl, { signal: controller.signal });
-            clearTimeout(timer);
-            if (res.status === 200 || res.status === 400) {
-                resolvedAutoSyncUrl = testUrl;
-                const data = await res.json().catch(() => null);
-                if (data && data.message && data.message.includes('baru') && !data.message.includes('0 log baru')) {
-                    console.log('[Auto-Sync]', data.message);
+        for (const testUrl of urls) {
+            try {
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), 4000);
+                const res = await fetch(testUrl, { signal: controller.signal });
+                clearTimeout(timer);
+                if (res.status === 200 || res.status === 400) {
+                    resolvedAutoSyncUrl = testUrl;
+                    const data = await res.json().catch(() => null);
+                    if (data && data.message && data.message.includes('baru') && !data.message.includes('0 log baru')) {
+                        console.log('[Auto-Sync]', data.message);
+                    }
+                    break;
                 }
-                break;
-            }
-        } catch (e) {}
+            } catch (e) {}
+        }
+    } finally {
+        isAutoSyncPolling = false;
     }
 }, 15000);

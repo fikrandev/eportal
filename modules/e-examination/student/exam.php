@@ -31,8 +31,8 @@ if (!$session_id) {
     <meta name="apple-mobile-web-app-capable" content="yes">
     
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css">
-    <link rel="stylesheet" href="../assets/css/examination.css?v=<?php echo time(); ?>">
+    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css?v=<?php echo asset_ver('assets/css/app.css'); ?>">
+    <link rel="stylesheet" href="../assets/css/examination.css?v=<?php echo asset_ver('modules/e-examination/assets/css/examination.css'); ?>">
     
     <!-- KaTeX for Math Equations -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
@@ -741,10 +741,11 @@ if (!$session_id) {
     <div id="toastContainer" class="toast-container"></div>
 
     <script src="<?php echo BASE_URL; ?>assets/vendor/jquery-3.7.1.min.js"></script>
-    <script src="<?php echo BASE_URL; ?>assets/js/modal.js"></script>
-    <!-- KaTeX -->
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/core-utils.js?v=<?php echo asset_ver('assets/js/core-utils.js'); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=<?php echo asset_ver('assets/js/modal.js'); ?>"></script>
+    <!-- KaTeX (load synchronously before student_exam.js so Q1 math renders immediately) -->
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
     
     <!-- Mobile Sidebar Helpers -->
     <script>
@@ -764,10 +765,10 @@ if (!$session_id) {
 
     <!-- Core App Logic -->
     <script>
-        const EXAM_SESSION_ID = <?php echo $session_id; ?>;
-        const EXAM_BASE_URL = '<?php echo BASE_URL; ?>';
+        const EXAM_SESSION_ID = <?php echo (int)$session_id; ?>;
+        const EXAM_BASE_URL = <?php echo json_encode(BASE_URL, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     </script>
-    <script src="../assets/js/student_exam.js?v=<?php echo time(); ?>"></script>
+    <script src="../assets/js/student_exam.js?v=<?php echo asset_ver('modules/e-examination/assets/js/student_exam.js'); ?>"></script>
     <script>
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));

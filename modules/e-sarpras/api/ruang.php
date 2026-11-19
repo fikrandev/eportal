@@ -60,7 +60,7 @@ function getRuang() {
     if ($id <= 0) json_response(400, false, 'ID tidak valid');
     
     // Scoping check for PJ
-    if (!empty($user['scoped_ruang_ids']) && !in_array($id, $user['scoped_ruang_ids'])) {
+    if (!sp_can_access_ruang($user, $id)) {
         json_response(403, false, 'Anda tidak memiliki akses ke ruangan ini');
     }
 
@@ -149,7 +149,7 @@ function deleteFoto() {
     $user = sp_auth(); sp_require_any($user, ['ruang_manage'], 'Akses ditolak');
     $d = get_input(); $fid = (int)($d['foto_id'] ?? 0);
     $f = db()->prepare("SELECT foto_path FROM ruang_foto WHERE id=?"); $f->execute([$fid]); $fd=$f->fetch();
-    if ($fd) { $p=UPLOAD_DIR.'../'.$fd['foto_path']; if(file_exists($p)) unlink($p); }
+    if ($fd && !empty($fd['foto_path'])) { safe_unlink_in_dir($fd['foto_path'], 'uploads'); }
     db()->prepare("DELETE FROM ruang_foto WHERE id=?")->execute([$fid]);
     json_response(200, true, 'Foto dihapus');
 }

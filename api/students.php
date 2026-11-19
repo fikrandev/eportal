@@ -62,7 +62,7 @@ switch ($action) {
 
 function listStudents()
 {
-    require_superadmin();
+    portal_require_any_permission(['students_manage', 'siswa_lulus_manage']);
 
     $page = isset($_GET['page']) ? (int) $_GET['page'] : 1;
     $perPage = isset($_GET['per_page']) ? (int) $_GET['per_page'] : 10;
@@ -119,7 +119,7 @@ function listStudents()
             {$where}
             ORDER BY s.no_urut ASC, s.nama ASC
         ";
-        $result = paginate($query, $params, $page, $perPage);
+        $result = paginate($query, $params, $page, $perPage, 5000);
         json_response(200, true, 'Data siswa berhasil dimuat.', $result);
     } catch (PDOException $e) {
         json_response(500, false, 'Server error: ' . $e->getMessage());
@@ -128,7 +128,7 @@ function listStudents()
 
 function getStudent()
 {
-    require_superadmin();
+    portal_require_any_permission(['students_manage', 'siswa_lulus_manage']);
 
     $id = isset($_GET['id']) ? (int) $_GET['id'] : 0;
     if ($id <= 0) {
@@ -155,7 +155,7 @@ function getStudent()
 
 function saveStudent($isUpdate)
 {
-    require_superadmin();
+    portal_require_permission('students_manage');
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
@@ -194,8 +194,8 @@ function saveStudent($isUpdate)
                 $old = db()->prepare("SELECT foto_path FROM students WHERE id = ?");
                 $old->execute([$id]);
                 $oldPath = $old->fetchColumn();
-                if ($oldPath && file_exists(__DIR__ . '/../' . $oldPath)) {
-                    unlink(__DIR__ . '/../' . $oldPath);
+                if ($oldPath) {
+                    safe_unlink_in_dir($oldPath, 'uploads');
                 }
 
                 $stmt = db()->prepare("
@@ -232,7 +232,7 @@ function saveStudent($isUpdate)
 
 function deleteStudent()
 {
-    require_superadmin();
+    portal_require_permission('students_manage');
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
@@ -252,8 +252,8 @@ function deleteStudent()
         $stmt = db()->prepare("DELETE FROM students WHERE id = ?");
         $stmt->execute([$id]);
 
-        if ($photo && file_exists(__DIR__ . '/../' . $photo)) {
-            unlink(__DIR__ . '/../' . $photo);
+        if ($photo) {
+            safe_unlink_in_dir($photo, 'uploads');
         }
 
         json_response(200, true, 'Data siswa berhasil dihapus.');
@@ -264,14 +264,15 @@ function deleteStudent()
 
 function deleteBulkStudents()
 {
-    require_superadmin();
+    portal_require_permission('students_manage');
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
     }
 
     $input = get_input();
-    $ids = isset($input['ids']) && is_array($input['ids']) ? $input['ids'] : [];
+    $rawIds = isset($input['ids']) && is_array($input['ids']) ? $input['ids'] : [];
+    $ids = array_values(array_unique(array_filter(array_map('intval', $rawIds), function($v) { return $v > 0; })));
     if (empty($ids)) {
         json_response(400, false, 'Tidak ada data siswa yang dipilih.');
     }
@@ -287,8 +288,8 @@ function deleteBulkStudents()
         $stmtDelete->execute($ids);
 
         foreach ($photos as $photo) {
-            if ($photo && file_exists(__DIR__ . '/../' . $photo)) {
-                unlink(__DIR__ . '/../' . $photo);
+            if ($photo) {
+                safe_unlink_in_dir($photo, 'uploads');
             }
         }
 
@@ -300,7 +301,7 @@ function deleteBulkStudents()
 
 function importCsv()
 {
-    require_superadmin();
+    portal_require_permission('students_manage');
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
@@ -400,7 +401,7 @@ function importCsv()
 
 function importRows()
 {
-    require_superadmin();
+    portal_require_permission('students_manage');
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
@@ -499,7 +500,7 @@ function importRows()
 
 function templateCsv()
 {
-    require_superadmin();
+    portal_require_permission('students_manage');
 
     header('Content-Type: text/csv');
     header('Content-Disposition: attachment; filename="template_import_siswa.csv"');
@@ -512,7 +513,7 @@ function templateCsv()
 
 function getClasses()
 {
-    require_superadmin();
+    portal_require_any_permission(['students_manage', 'siswa_lulus_manage']);
     $academicYearId = isset($_GET['academic_year_id']) ? (int) $_GET['academic_year_id'] : 0;
     
     if ($academicYearId <= 0) {
@@ -532,7 +533,7 @@ function getClasses()
 
 function setGuruWaliBulk()
 {
-    require_superadmin();
+    portal_require_permission('students_manage');
     
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
@@ -540,7 +541,8 @@ function setGuruWaliBulk()
     
     $input = $_POST ?: get_input();
     $guruWali = isset($input['guru_wali']) ? sanitize($input['guru_wali']) : '';
-    $studentIds = isset($input['ids']) && is_array($input['ids']) ? $input['ids'] : [];
+    $rawIds = isset($input['ids']) && is_array($input['ids']) ? $input['ids'] : [];
+    $studentIds = array_values(array_unique(array_filter(array_map('intval', $rawIds), function($v) { return $v > 0; })));
 
     if (empty($guruWali)) {
         json_response(400, false, 'Nama Guru Wali harus diisi.');
@@ -691,14 +693,15 @@ function readCsvRows($path)
 
 function promoteStudents()
 {
-    require_superadmin();
+    portal_require_permission('students_manage');
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
     }
 
     $input = get_input();
-    $sourceStudentIds = isset($input['source_student_ids']) && is_array($input['source_student_ids']) ? $input['source_student_ids'] : [];
+    $rawIds = isset($input['source_student_ids']) && is_array($input['source_student_ids']) ? $input['source_student_ids'] : [];
+    $sourceStudentIds = array_values(array_unique(array_filter(array_map('intval', $rawIds), function($v) { return $v > 0; })));
     $targetAcademicYearId = isset($input['target_academic_year_id']) ? (int) $input['target_academic_year_id'] : 0;
     $targetKelas = isset($input['target_kelas']) ? sanitize($input['target_kelas']) : '';
 
@@ -784,16 +787,18 @@ function promoteStudents()
 
 function graduateStudents()
 {
-    require_superadmin();
+    portal_require_permission('siswa_lulus_manage');
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
     }
 
     $input = get_input();
-    $studentIds = isset($input['student_ids']) && is_array($input['student_ids']) ? $input['student_ids'] : [];
+    $rawIds = isset($input['student_ids']) && is_array($input['student_ids']) ? $input['student_ids'] : [];
+    $studentIds = array_values(array_unique(array_filter(array_map('intval', $rawIds), function($v) { return $v > 0; })));
     $kelas = isset($input['kelas']) ? sanitize($input['kelas']) : '';
     $academicYearIdLulus = isset($input['academic_year_id_lulus']) ? (int) $input['academic_year_id_lulus'] : 0;
+    $academicYearIdFrom = isset($input['academic_year_id']) ? (int) $input['academic_year_id'] : 0;
     $tanggalLulus = isset($input['tanggal_lulus']) ? sanitize($input['tanggal_lulus']) : date('Y-m-d');
 
     if ($academicYearIdLulus <= 0) {
@@ -802,6 +807,14 @@ function graduateStudents()
     }
     if ($academicYearIdLulus <= 0) {
         json_response(400, false, 'Pilih Tahun Ajaran Kelulusan.');
+    }
+    if (empty($studentIds) && empty($kelas)) {
+        json_response(400, false, 'Pilih kelas atau siswa yang akan diluluskan.');
+    }
+
+    if ($academicYearIdFrom <= 0) {
+        $active = get_active_academic_year();
+        $academicYearIdFrom = (int) ($active['id'] ?? 0);
     }
 
     try {
@@ -817,16 +830,17 @@ function graduateStudents()
             $params = array_merge([$academicYearIdLulus, $tanggalLulus], $studentIds);
             $stmt->execute($params);
             $updated = $stmt->rowCount();
-        } elseif (!empty($kelas)) {
+        } else {
+            $whereYear = $academicYearIdFrom > 0 ? " AND academic_year_id = ?" : "";
             $stmt = db()->prepare("
                 UPDATE students 
                 SET status_siswa = 'Lulus', academic_year_id_lulus = ?, tanggal_lulus = ?
-                WHERE kelas = ? AND status_siswa = 'Aktif'
+                WHERE kelas = ? AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = ''){$whereYear}
             ");
-            $stmt->execute([$academicYearIdLulus, $tanggalLulus, $kelas]);
+            $params = [$academicYearIdLulus, $tanggalLulus, $kelas];
+            if ($academicYearIdFrom > 0) $params[] = $academicYearIdFrom;
+            $stmt->execute($params);
             $updated = $stmt->rowCount();
-        } else {
-            json_response(400, false, 'Pilih kelas atau siswa yang akan diluluskan.');
         }
 
         db()->commit();
@@ -841,14 +855,15 @@ function graduateStudents()
 
 function cancelGraduation()
 {
-    require_superadmin();
+    portal_require_permission('siswa_lulus_manage');
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
     }
 
     $input = get_input();
-    $studentIds = isset($input['student_ids']) && is_array($input['student_ids']) ? $input['student_ids'] : [];
+    $rawIds = isset($input['student_ids']) && is_array($input['student_ids']) ? $input['student_ids'] : [];
+    $studentIds = array_values(array_unique(array_filter(array_map('intval', $rawIds), function($v) { return $v > 0; })));
 
     if (empty($studentIds)) {
         json_response(400, false, 'Pilih setidaknya satu siswa.');
@@ -872,7 +887,7 @@ function cancelGraduation()
 
 function getGraduationYears()
 {
-    require_superadmin();
+    portal_require_permission('siswa_lulus_manage');
 
     try {
         $stmt = db()->query("
@@ -902,7 +917,7 @@ function getGraduationYears()
 }
 
 function rekapWali() {
-    require_superadmin();
+    portal_require_permission('students_manage');
 
     $academicYearId = isset($_GET['academic_year_id']) ? (int)$_GET['academic_year_id'] : 0;
     if ($academicYearId <= 0) {

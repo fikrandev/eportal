@@ -4,7 +4,11 @@
  */
 
 require_once __DIR__ . '/config_perf.php';
-perf_auth_check();
+require_once __DIR__ . '/scoring_helper.php';
+$auth = perf_auth_check();
+if (!in_array($auth['role'], ['admin', 'superadmin'], true) && !in_array('hasil', $auth['permissions'] ?? [], true)) {
+    die("Akses ditolak.");
+}
 
 $db = db();
 $periode_id = isset($_GET['periode_id']) ? (int)$_GET['periode_id'] : 0;

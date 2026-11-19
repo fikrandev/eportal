@@ -16,7 +16,7 @@ if (!empty($token)) {
             SELECT u.id as user_id, u.username, u.nama_lengkap, u.role, u.avatar
             FROM sessions s 
             JOIN users u ON s.user_id = u.id 
-            WHERE s.token = ? AND s.expired_at > NOW()
+            WHERE s.token = ? AND s.expired_at > NOW() AND u.status = 1
         ");
         $stmt->execute([$token]);
         $user = $stmt->fetch();
@@ -39,13 +39,13 @@ $active_academic_year = get_active_academic_year();
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="E-Schedule — Sistem Manajemen Jadwal Pelajaran">
     
     <title>E-Schedule — Jadwal Pelajaran</title>
 
     <?php if($school_icon): ?>
-    <link rel="icon" href="<?php echo BASE_URL . $school_icon; ?>">
+    <link rel="icon" href="<?php echo htmlspecialchars(BASE_URL . ltrim(str_replace('\\', '/', $school_icon), '/'), ENT_QUOTES, 'UTF-8'); ?>">
     <?php endif; ?>
 
     <!-- Google Fonts -->
@@ -54,28 +54,28 @@ $active_academic_year = get_active_academic_year();
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 
     <!-- Core Design System -->
-    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css?v=<?php echo time(); ?>">
+    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css?v=<?php echo asset_ver('assets/css/app.css'); ?>">
     <!-- Schedule Module Styles -->
-    <link rel="stylesheet" href="<?php echo BASE_URL; ?>modules/e-schedule/assets/css/schedule.css?v=<?php echo time(); ?>">
+    <link rel="stylesheet" href="<?php echo BASE_URL; ?>modules/e-schedule/assets/css/schedule.css?v=<?php echo asset_ver('modules/e-schedule/assets/css/schedule.css'); ?>">
 
     <script>
-        window.SCHEDULE_CONFIG = {
-            baseUrl: '<?php echo BASE_URL; ?>',
-            moduleUrl: '<?php echo BASE_URL; ?>modules/e-schedule/',
-            token: '<?php echo addslashes($token); ?>',
-            user: {
-                id: <?php echo $user['user_id']; ?>,
-                username: <?php echo json_encode($user['username']); ?>,
-                nama_lengkap: <?php echo json_encode($user['nama_lengkap']); ?>,
-                role: <?php echo json_encode($user['role']); ?>,
-                avatar: <?php echo json_encode($user['avatar'] ?? ''); ?>
-            },
-            school: {
-                nama: <?php echo json_encode($school_name); ?>,
-                icon: <?php echo json_encode($school_icon); ?>
-            },
-            academicYear: <?php echo json_encode($active_academic_year, JSON_UNESCAPED_UNICODE); ?>
-        };
+        window.SCHEDULE_CONFIG = <?php echo json_encode([
+            'baseUrl' => BASE_URL,
+            'moduleUrl' => BASE_URL . 'modules/e-schedule/',
+            'token' => $token,
+            'user' => [
+                'id' => (int)$user['user_id'],
+                'username' => $user['username'],
+                'nama_lengkap' => $user['nama_lengkap'],
+                'role' => $user['role'],
+                'avatar' => $user['avatar'] ?? '',
+            ],
+            'school' => [
+                'nama' => $school_name,
+                'icon' => $school_icon,
+            ],
+            'academicYear' => $active_academic_year,
+        ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
     </script>
     <?php echo get_module_theme_css('e-schedule'); ?>
 </head>
@@ -155,14 +155,15 @@ $active_academic_year = get_active_academic_year();
 
     <!-- Vendor Scripts -->
     <script src="<?php echo BASE_URL; ?>assets/vendor/jquery-3.7.1.min.js"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/core-utils.js?v=<?php echo asset_ver('assets/js/core-utils.js'); ?>"></script>
     <!-- SheetJS Excel Library -->
-    <script src="<?php echo BASE_URL; ?>assets/vendor/xlsx.full.min.js"></script>
+    <script src="<?php echo BASE_URL; ?>assets/vendor/xlsx.full.min.js?v=<?php echo asset_ver('assets/vendor/xlsx.full.min.js'); ?>"></script>
     <!-- Modal System -->
-    <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=2.0.0"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=<?php echo asset_ver('assets/js/modal.js'); ?>"></script>
 
     <!-- Schedule SPA -->
-    <script src="<?php echo BASE_URL; ?>assets/js/pagination.js?v=<?php echo time(); ?>"></script>
-    <script src="<?php echo BASE_URL; ?>modules/e-schedule/assets/js/schedule.js?v=<?php echo time(); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/pagination.js?v=<?php echo asset_ver('assets/js/pagination.js'); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>modules/e-schedule/assets/js/schedule.js?v=<?php echo asset_ver('modules/e-schedule/assets/js/schedule.js'); ?>"></script>
     <script>
         // Fallback: Force remove loader if JS initialization fails or takes too long
         window.addEventListener('load', function() {

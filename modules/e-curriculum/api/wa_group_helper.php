@@ -4,6 +4,7 @@
  */
 
 require_once __DIR__ . '/../../../api/config.php';
+require_once __DIR__ . '/../../../api/wa_gateway_client.php';
 
 /**
  * Direct function to generate & send Teacher Attendance Report to configured WA Group
@@ -11,13 +12,7 @@ require_once __DIR__ . '/../../../api/config.php';
 function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
     if (!$tanggal) $tanggal = date('Y-m-d');
 
-    // Get WA Gateway URL and WA Group Target ID
-    $waUrl = get_setting('wa_gateway_url', 'http://localhost:3000/send');
-    $waUrl = trim($waUrl);
-    $baseUrl = preg_replace('#/(send|status|groups|logout)/?$#', '', $waUrl);
-    $baseUrl = rtrim($baseUrl, '/');
-    if (empty($baseUrl)) $baseUrl = 'http://localhost:3000';
-    $sendUrl = $baseUrl . '/send';
+    $sendUrl = wa_gateway_endpoint_url('send');
 
     $groupId = get_setting('wa_group_guru_id');
     if (empty($groupId)) {
@@ -272,7 +267,7 @@ function sendWaGroupAbsensiGuruDirect($tanggal = null, $tipe = 'masuk') {
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
     curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Content-Length: ' . strlen($postData)]);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, wa_gateway_headers($postData));
     curl_setopt($ch, CURLOPT_TIMEOUT, 70);
     $response = curl_exec($ch);
     curl_close($ch);
@@ -350,15 +345,16 @@ function checkAndSendWaGroupGuruAbsensiBatch($tanggal = null) {
     }
 
     try {
+        $stmtFresh = db()->prepare("SELECT setting_value FROM settings WHERE setting_key = ? LIMIT 1");
         if ($isPagi) {
-            // Double-checked locking setelah lock diperoleh
-            $lastDateMasuk = get_setting('wa_guru_last_sent_date_masuk');
+            // Double-checked locking setelah lock diperoleh (query langsung ke DB, bukan cache in-memory)
+            $stmtFresh->execute(['wa_guru_last_sent_date_masuk']);
+            $lastDateMasuk = $stmtFresh->fetchColumn();
             if ($lastDateMasuk === $tanggal) {
                 return false;
             }
 
             // KUNCI TANGGAL SEKARANG: Tandai langsung sebagai sudah diproses untuk tanggal ini!
-            // PENTING: JANGAN PERNAH me-revert flag ini menjadi kosong agar tidak memicu badai broadcast berulang.
             upsert_setting('wa_guru_last_sent_date_masuk', $tanggal, 'text', 'Tanggal terakhir WA absen masuk guru dikirim');
             upsert_setting('wa_guru_last_sent_time_masuk', date('Y-m-d H:i:s'), 'text', 'Waktu pengiriman WA absen masuk guru');
 
@@ -366,8 +362,9 @@ function checkAndSendWaGroupGuruAbsensiBatch($tanggal = null) {
             $result = sendWaGroupAbsensiGuruDirect($tanggal, 'masuk');
             return !empty($result['success']);
         } else if ($isSore) {
-            // Double-checked locking setelah lock diperoleh
-            $lastDatePulang = get_setting('wa_guru_last_sent_date_pulang');
+            // Double-checked locking setelah lock diperoleh (query langsung ke DB, bukan cache in-memory)
+            $stmtFresh->execute(['wa_guru_last_sent_date_pulang']);
+            $lastDatePulang = $stmtFresh->fetchColumn();
             if ($lastDatePulang === $tanggal) {
                 return false;
             }

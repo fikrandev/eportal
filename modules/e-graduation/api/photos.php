@@ -126,24 +126,54 @@ function uploadZip()
         mkdir($tempDir, 0755, true);
     }
 
-    $zip->extractTo($tempDir);
-    $zip->close();
-
     $results = ['success' => 0, 'failed' => 0, 'skipped' => 0, 'details' => []];
     $allowedExt = ['jpg', 'jpeg', 'png'];
 
-    // Scan all files including subdirectories
-    $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($tempDir, RecursiveDirectoryIterator::SKIP_DOTS));
-    foreach ($iterator as $fileInfo) {
-        if ($fileInfo->isDir()) continue;
-        $fileName = $fileInfo->getBasename();
+    // Extract entries safely one-by-one (prevents Zip-Slip path traversal)
+    for ($i = 0; $i < $zip->numFiles; $i++) {
+        $entryName = $zip->getNameIndex($i);
+        if ($entryName === false || substr($entryName, -1) === '/' || substr($entryName, -1) === '\\') {
+            continue;
+        }
+        $fileName = basename(str_replace('\\', '/', $entryName));
+        if ($fileName === '' || $fileName[0] === '.') {
+            $results['skipped']++;
+            continue;
+        }
         $fileExt = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
-        if (!in_array($fileExt, $allowedExt)) {
+        if (!in_array($fileExt, $allowedExt, true)) {
             $results['skipped']++;
             continue;
         }
 
-        $result = processPhotoFile($fileName, $fileInfo->getPathname());
+        $stream = $zip->getStream($entryName);
+        if (!$stream) {
+            $results['failed']++;
+            $results['details'][] = "✗ {$fileName}: Gagal membaca entry ZIP.";
+            continue;
+        }
+
+        $tmpFile = $tempDir . DIRECTORY_SEPARATOR . $i . '_' . preg_replace('/[^A-Za-z0-9._-]/', '_', $fileName);
+        $out = @fopen($tmpFile, 'wb');
+        if (!$out) {
+            fclose($stream);
+            $results['failed']++;
+            $results['details'][] = "✗ {$fileName}: Gagal membuat file sementara.";
+            continue;
+        }
+        $written = stream_copy_to_stream($stream, $out, 10 * 1024 * 1024);
+        fclose($out);
+        fclose($stream);
+
+        if ($written === false || $written <= 0 || !@getimagesize($tmpFile)) {
+            @unlink($tmpFile);
+            $results['failed']++;
+            $results['details'][] = "✗ {$fileName}: File gambar tidak valid.";
+            continue;
+        }
+
+        $result = processPhotoFile($fileName, $tmpFile);
+        @unlink($tmpFile);
         if ($result['success']) {
             $results['success']++;
             $results['details'][] = "✓ {$result['nis']} - {$result['nama']}";
@@ -152,6 +182,8 @@ function uploadZip()
             $results['details'][] = "✗ {$fileName}: {$result['message']}";
         }
     }
+
+    $zip->close();
 
     // Clean up temp directory
     deleteDirectory($tempDir);
@@ -184,11 +216,7 @@ function deletePhoto()
 
     // Delete physical file
     if (!empty($student['foto_path'])) {
-        $root = realpath(__DIR__ . '/../../../');
-        $fullPath = $root . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, ltrim($student['foto_path'], '/\\'));
-        if (file_exists($fullPath)) {
-            unlink($fullPath);
-        }
+        safe_unlink_in_dir($student['foto_path'], 'uploads/students');
     }
 
     // Clear database
@@ -246,10 +274,7 @@ function processPhotoFile($originalName, $tmpPath)
 
     // Delete old photo if exists (REPLACE behavior)
     if (!empty($student['foto_path'])) {
-        $oldPath = $root . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, ltrim($student['foto_path'], '/\\'));
-        if (file_exists($oldPath)) {
-            unlink($oldPath);
-        }
+        safe_unlink_in_dir($student['foto_path'], 'uploads/students');
     }
 
     // Save new photo — always save as jpg for consistency

@@ -165,15 +165,13 @@ function executeReset()
                     break;
 
                 case 'photos':
-                    $root = realpath(__DIR__ . '/../../../');
                     $grade12Sql = grad_grade12_sql_condition();
                     $stmtFoto = db()->prepare("SELECT id, foto_path FROM students WHERE academic_year_id = ? AND foto_path <> '' AND foto_path IS NOT NULL AND {$grade12Sql}");
                     $stmtFoto->execute([$yearId]);
                     $photos = $stmtFoto->fetchAll();
                     foreach ($photos as $photo) {
-                        $fullPath = $root . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, ltrim($photo['foto_path'], '/\\'));
-                        if (file_exists($fullPath)) {
-                            @unlink($fullPath);
+                        if (!empty($photo['foto_path'])) {
+                            safe_unlink_in_dir($photo['foto_path'], 'uploads/students');
                         }
                     }
                     $stmtUpdate = db()->prepare("UPDATE students SET foto_path = '' WHERE academic_year_id = ? AND foto_path <> '' AND {$grade12Sql}");

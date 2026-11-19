@@ -49,7 +49,7 @@ switch ($action) {
  * List users with pagination and search
  */
 function listUsers() {
-    require_superadmin();
+    portal_require_any_permission(['users_manage', 'gurus_manage']);
 
     $page = isset($_GET['page']) ? (int)$_GET['page'] : 1;
     $perPage = isset($_GET['per_page']) ? (int)$_GET['per_page'] : 10;
@@ -77,7 +77,7 @@ function listUsers() {
         }
 
         $query = "SELECT id, username, kode_guru, nama_lengkap, nik, email, no_hp, tempat_lahir, tgl_lahir, tupoksi, jabatan, mapel, status_guru, tpg, tmt, role, avatar, status, last_login, created_at FROM users {$where} ORDER BY created_at DESC";
-        $result = paginate($query, $params, $page, $perPage);
+        $result = paginate($query, $params, $page, $perPage, 5000);
 
         json_response(200, true, 'Data user berhasil dimuat.', $result);
     } catch (PDOException $e) {
@@ -89,7 +89,7 @@ function listUsers() {
  * Update kode guru
  */
 function updateKodeGuru() {
-    require_superadmin();
+    portal_require_any_permission(['gurus_manage', 'users_manage']);
     
     $input = get_input();
     $id = isset($input['id']) ? (int)$input['id'] : 0;
@@ -112,7 +112,7 @@ function updateKodeGuru() {
  * Get single user
  */
 function getUser() {
-    require_superadmin();
+    portal_require_any_permission(['users_manage', 'gurus_manage']);
 
     $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
     if ($id <= 0) {
@@ -138,7 +138,7 @@ function getUser() {
  * Create new user
  */
 function createUser() {
-    require_superadmin();
+    $actor = portal_require_any_permission(['users_manage', 'gurus_manage']);
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
@@ -161,8 +161,11 @@ function createUser() {
     $tmt = normalize_user_date($input['tmt'] ?? null);
     $role = isset($input['role']) ? sanitize($input['role']) : 'user';
 
-    if (!in_array($role, ['superadmin', 'user', 'guru'])) {
+    if (!in_array($role, ['superadmin', 'user', 'guru'], true)) {
         $role = 'user';
+    }
+    if ($role === 'superadmin' && ($actor['role'] ?? '') !== 'superadmin') {
+        json_response(403, false, 'Hanya Super Administrator yang dapat membuat akun Super Administrator.');
     }
 
     $kode_guru = null;
@@ -234,7 +237,7 @@ function createUser() {
  * Update user
  */
 function updateUser() {
-    require_superadmin();
+    $actor = portal_require_any_permission(['users_manage', 'gurus_manage']);
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
@@ -245,6 +248,13 @@ function updateUser() {
     
     if ($id <= 0) {
         json_response(400, false, 'ID user tidak valid.');
+    }
+
+    $stmtTarget = db()->prepare("SELECT role, avatar FROM users WHERE id = ?");
+    $stmtTarget->execute([$id]);
+    $targetUser = $stmtTarget->fetch(PDO::FETCH_ASSOC);
+    if (!$targetUser) {
+        json_response(404, false, 'User tidak ditemukan.');
     }
 
     $namaLengkap = isset($input['nama_lengkap']) ? sanitize($input['nama_lengkap']) : '';
@@ -259,8 +269,15 @@ function updateUser() {
     $statusGuru = isset($input['status_guru']) ? sanitize($input['status_guru']) : '';
     $tpg = normalize_tpg($input['tpg'] ?? 'Tidak');
     $tmt = normalize_user_date($input['tmt'] ?? null);
-    $role = isset($input['role']) ? sanitize($input['role']) : 'user';
+    $role = isset($input['role']) ? sanitize($input['role']) : $targetUser['role'];
     $status = isset($input['status']) ? (int)$input['status'] : 1;
+
+    if (!in_array($role, ['superadmin', 'user', 'guru'], true)) {
+        json_response(400, false, 'Role tidak valid.');
+    }
+    if (($targetUser['role'] === 'superadmin' || $role === 'superadmin') && ($actor['role'] ?? '') !== 'superadmin') {
+        json_response(403, false, 'Hanya Super Administrator yang dapat mengubah atau menetapkan role Super Administrator.');
+    }
 
     if (empty($namaLengkap)) {
         json_response(400, false, 'Nama lengkap harus diisi.');
@@ -271,10 +288,10 @@ function updateUser() {
     }
 
     if (!empty($input['password'])) {
+        if (strlen((string)$input['password']) < 5) {
+            json_response(400, false, 'Password minimal 5 karakter.');
+        }
         $hashedPassword = password_hash($input['password'], PASSWORD_DEFAULT);
-    } elseif ($role === 'guru' && !isset($input['password'])) {
-        // If password is not sent or explicitly ignored in guru form, we preserve the existing one.
-        // We do nothing here so the existing hash stays.
     }
 
     try {
@@ -286,12 +303,8 @@ function updateUser() {
             }
             $avatarPath = $upload['path'];
             
-            // Delete old avatar
-            $old = db()->prepare("SELECT avatar FROM users WHERE id = ?");
-            $old->execute([$id]);
-            $oldPath = $old->fetchColumn();
-            if ($oldPath && file_exists(__DIR__ . '/../' . $oldPath)) {
-                unlink(__DIR__ . '/../' . $oldPath);
+            if (!empty($targetUser['avatar'])) {
+                safe_unlink_in_dir($targetUser['avatar'], 'uploads');
             }
         }
 
@@ -360,7 +373,7 @@ function normalize_tpg($value) {
  * Delete user
  */
 function deleteUser() {
-    require_superadmin();
+    $currentUser = portal_require_any_permission(['users_manage', 'gurus_manage']);
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
@@ -374,14 +387,26 @@ function deleteUser() {
     }
 
     // Prevent deleting self
-    $currentUser = auth_check();
     if ($currentUser['user_id'] == $id) {
         json_response(400, false, 'Tidak dapat menghapus akun sendiri.');
     }
 
     try {
+        $stmtChk = db()->prepare("SELECT role, avatar FROM users WHERE id = ?");
+        $stmtChk->execute([$id]);
+        $target = $stmtChk->fetch(PDO::FETCH_ASSOC);
+        if (!$target) {
+            json_response(404, false, 'User tidak ditemukan.');
+        }
+        if ($target['role'] === 'superadmin' && ($currentUser['role'] ?? '') !== 'superadmin') {
+            json_response(403, false, 'Hanya Super Administrator yang dapat menghapus akun Super Administrator.');
+        }
+
         $stmt = db()->prepare("DELETE FROM users WHERE id = ?");
         $stmt->execute([$id]);
+        if (!empty($target['avatar'])) {
+            safe_unlink_in_dir($target['avatar'], 'uploads');
+        }
 
         json_response(200, true, 'User berhasil dihapus.');
     } catch (PDOException $e) {
@@ -393,29 +418,43 @@ function deleteUser() {
  * Bulk delete users
  */
 function deleteBulkUsers() {
-    require_superadmin();
+    $currentUser = portal_require_any_permission(['users_manage', 'gurus_manage']);
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
     }
 
     $input = get_input();
-    $ids = isset($input['ids']) && is_array($input['ids']) ? $input['ids'] : [];
+    $rawIds = isset($input['ids']) && is_array($input['ids']) ? $input['ids'] : [];
+    $ids = array_values(array_unique(array_filter(array_map('intval', $rawIds), function($v) { return $v > 0; })));
 
     if (empty($ids)) {
         json_response(400, false, 'Tidak ada user yang dipilih.');
     }
 
     // Prevent deleting self
-    $currentUser = auth_check();
-    if (in_array($currentUser['user_id'], $ids)) {
+    if (in_array((int)$currentUser['user_id'], $ids, true)) {
         json_response(400, false, 'Tidak dapat menghapus akun sendiri.');
     }
 
     try {
         $placeholders = implode(',', array_fill(0, count($ids), '?'));
+        $stmtChk = db()->prepare("SELECT id, role, avatar FROM users WHERE id IN ($placeholders)");
+        $stmtChk->execute($ids);
+        $targets = $stmtChk->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($targets as $t) {
+            if ($t['role'] === 'superadmin' && ($currentUser['role'] ?? '') !== 'superadmin') {
+                json_response(403, false, 'Hanya Super Administrator yang dapat menghapus akun Super Administrator.');
+            }
+        }
+
         $stmt = db()->prepare("DELETE FROM users WHERE id IN ($placeholders)");
         $stmt->execute($ids);
+        foreach ($targets as $t) {
+            if (!empty($t['avatar'])) {
+                safe_unlink_in_dir($t['avatar'], 'uploads');
+            }
+        }
 
         json_response(200, true, count($ids) . ' user berhasil dihapus.');
     } catch (PDOException $e) {
@@ -427,7 +466,7 @@ function deleteBulkUsers() {
  * Reset user password
  */
 function resetPassword() {
-    require_superadmin();
+    $currentUser = portal_require_any_permission(['users_manage', 'gurus_manage']);
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
@@ -446,6 +485,16 @@ function resetPassword() {
     }
 
     try {
+        $stmtChk = db()->prepare("SELECT role FROM users WHERE id = ?");
+        $stmtChk->execute([$id]);
+        $targetRole = $stmtChk->fetchColumn();
+        if (!$targetRole) {
+            json_response(404, false, 'User tidak ditemukan.');
+        }
+        if ($targetRole === 'superadmin' && ($currentUser['role'] ?? '') !== 'superadmin') {
+            json_response(403, false, 'Hanya Super Administrator yang dapat mereset password Super Administrator.');
+        }
+
         $hashedPassword = password_hash($newPassword, PASSWORD_DEFAULT);
         $stmt = db()->prepare("UPDATE users SET password = ? WHERE id = ?");
         $stmt->execute([$hashedPassword, $id]);
@@ -460,7 +509,7 @@ function resetPassword() {
  * Get stats for admin dashboard
  */
 function getStats() {
-    require_superadmin();
+    portal_require_any_permission(['admin_dashboard', 'users_manage', 'gurus_manage', 'students_manage']);
 
     try {
         $stats = [];
@@ -512,9 +561,13 @@ function getStats() {
         }
 
         // Total journals today
-        $stmt = db()->prepare("SELECT COUNT(*) as total FROM acad_jurnal WHERE tanggal = ?");
-        $stmt->execute([date('Y-m-d')]);
-        $stats['total_journals_today'] = (int)$stmt->fetch()['total'];
+        try {
+            $stmt = db()->prepare("SELECT COUNT(*) as total FROM acad_jurnal WHERE tanggal = ?");
+            $stmt->execute([date('Y-m-d')]);
+            $stats['total_journals_today'] = (int)$stmt->fetch()['total'];
+        } catch (Exception $e) {
+            $stats['total_journals_today'] = 0;
+        }
 
         // Recent journals list
         try {
@@ -545,7 +598,7 @@ function getStats() {
  * Update Superadmin password
  */
 function updateSuperadminPassword() {
-    $user = require_superadmin();
+    $user = require_strict_superadmin();
     $input = get_input();
     
     $oldPass = isset($input['old_password']) ? $input['old_password'] : '';

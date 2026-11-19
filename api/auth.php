@@ -43,12 +43,16 @@ function handleLogin() {
         $stmt->execute([$username]);
         $user = $stmt->fetch();
 
-        if (!$user || !password_verify($password, $user['password'])) {
+        if ($user && password_verify($password, $user['password'])) {
+            if ((int)$user['status'] !== 1) {
+                json_response(403, false, 'Akun Anda sedang dinonaktifkan. Hubungi administrator.');
+            }
+        } else {
             // Check Student Login (fallback)
             $stmtSiswa = db()->prepare("
                 SELECT id, nama, kelas, academic_year_id, tanggal_lahir 
                 FROM students 
-                WHERE nis = ? AND status = 1
+                WHERE nis = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '')
                 LIMIT 1
             ");
             $stmtSiswa->execute([$username]);
@@ -56,9 +60,10 @@ function handleLogin() {
 
             if ($student) {
                 $dbDob = $student['tanggal_lahir'] ?? '';
-                $expectedPassword = $dbDob ? date('dmY', strtotime($dbDob)) : '';
+                $tsDob = ($dbDob && $dbDob !== '0000-00-00') ? strtotime($dbDob) : false;
+                $expectedPassword = $tsDob ? date('dmY', $tsDob) : '';
                 
-                if ($password === $expectedPassword) {
+                if ($expectedPassword !== '' && $password === $expectedPassword) {
                     // Check if intended module is e-performance
                     if (strpos($intended_module, 'e-performance') !== false) {
                         require_once __DIR__ . '/../modules/e-performance/api/config_perf.php';
@@ -95,13 +100,14 @@ function handleLogin() {
                         json_response(404, false, 'Belum ada jadwal ujian aktif untuk kelas Anda.');
                     }
 
-                    // Generate temporary token for card viewing
+                    // Generate temporary signed token for card viewing
                     $tokenData = [
                         'student_id' => $student['id'],
                         'exam_id' => $examInfo['exam_id'],
                         'exp' => time() + 3600 // 1 hour
                     ];
-                    $token = base64_encode(json_encode($tokenData)) . '.' . hash_hmac('sha256', json_encode($tokenData), DB_NAME);
+                    $payloadJson = json_encode($tokenData);
+                    $token = base64_encode($payloadJson) . '.' . hash_hmac('sha256', $payloadJson, app_secret('xam_card'));
 
                     json_response(200, true, 'Login Siswa Berhasil', [
                         'is_student' => true,
@@ -209,13 +215,7 @@ function handleLogin() {
  * Handle Logout
  */
 function handleLogout() {
-    $token = '';
-    $headers = getallheaders();
-    if (isset($headers['Authorization'])) {
-        $token = str_replace('Bearer ', '', $headers['Authorization']);
-    } elseif (isset($_GET['token'])) {
-        $token = $_GET['token'];
-    }
+    $token = get_bearer_token(true);
 
     if (!empty($token)) {
         try {

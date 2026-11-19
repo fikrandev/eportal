@@ -13,6 +13,8 @@ class GraduationSimplePdf
     private $commands = '';
     private $images = [];
     private $imageSeq = 0;
+    private $jpegCache = [];
+    private $sharedImageEntries = [];
 
     public function width()
     {
@@ -119,7 +121,8 @@ class GraduationSimplePdf
 
     public function image($path, $x, $y, $w, $h = 0)
     {
-        $jpeg = $this->imageToJpeg($path);
+        $cacheKey = $this->imageCacheKey($path);
+        $jpeg = $this->imageToJpeg($path, $cacheKey);
         if (!$jpeg) return false;
         if ($w <= 0 && $h <= 0) {
             return false;
@@ -129,7 +132,14 @@ class GraduationSimplePdf
         } elseif ($w <= 0) {
             $w = $h * $jpeg['width'] / max(1, $jpeg['height']);
         }
-        $name = 'Im' . (++$this->imageSeq);
+        if ($cacheKey !== '' && isset($this->sharedImageEntries[$cacheKey])) {
+            $name = $this->sharedImageEntries[$cacheKey]['name'];
+        } else {
+            $name = 'Im' . (++$this->imageSeq);
+            if ($cacheKey !== '') {
+                $this->sharedImageEntries[$cacheKey] = ['name' => $name, 'img' => $jpeg];
+            }
+        }
         $this->images[$name] = $jpeg;
         $yPos = $this->height - $y - $h;
         $this->commands .= sprintf("q %s 0 0 %s %s %s cm /%s Do Q\n", 
@@ -144,7 +154,7 @@ class GraduationSimplePdf
 
     public function imageDimensions($path)
     {
-        $jpeg = $this->imageToJpeg($path);
+        $jpeg = $this->imageToJpeg($path, $this->imageCacheKey($path));
         if (!$jpeg) {
             return null;
         }
@@ -160,12 +170,16 @@ class GraduationSimplePdf
         $fontBold = $this->addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Times-Bold /Encoding /WinAnsiEncoding >>");
         $fontItalic = $this->addObject("<< /Type /Font /Subtype /Type1 /BaseFont /Times-Italic /Encoding /WinAnsiEncoding >>");
 
+        $imageObjIdByName = [];
         $pageObjectIds = [];
         foreach ($this->pages as $page) {
             $imageIds = [];
             foreach ($page['images'] as $name => $img) {
-                $stream = "<< /Type /XObject /Subtype /Image /Width {$img['width']} /Height {$img['height']} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length " . strlen($img['data']) . " >>\nstream\n" . $img['data'] . "\nendstream";
-                $imageIds[$name] = $this->addObject($stream);
+                if (!isset($imageObjIdByName[$name])) {
+                    $stream = "<< /Type /XObject /Subtype /Image /Width {$img['width']} /Height {$img['height']} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length " . strlen($img['data']) . " >>\nstream\n" . $img['data'] . "\nendstream";
+                    $imageObjIdByName[$name] = $this->addObject($stream);
+                }
+                $imageIds[$name] = $imageObjIdByName[$name];
             }
 
             $contentId = $this->addObject("<< /Length " . strlen($page['content']) . " >>\nstream\n" . $page['content'] . "endstream");
@@ -320,16 +334,34 @@ class GraduationSimplePdf
         return preg_replace('/[^\x20-\x7E]/', '', $text);
     }
 
-    private function imageToJpeg($path)
+    private function imageCacheKey($path)
+    {
+        if (!is_string($path) || $path === '' || !is_file($path)) {
+            return '';
+        }
+        $real = @realpath($path) ?: $path;
+        $mtime = @filemtime($real) ?: 0;
+        $size = @filesize($real) ?: 0;
+        return $real . '|' . $mtime . '|' . $size;
+    }
+
+    private function imageToJpeg($path, $cacheKey = '')
     {
         if (!is_file($path)) return null;
+        if ($cacheKey !== '' && isset($this->jpegCache[$cacheKey])) {
+            return $this->jpegCache[$cacheKey];
+        }
         $info = @getimagesize($path);
         if (!$info) return null;
 
         switch ($info[2]) {
             case IMAGETYPE_JPEG:
                 $data = file_get_contents($path);
-                return ['data' => $data, 'width' => $info[0], 'height' => $info[1]];
+                $res = ['data' => $data, 'width' => $info[0], 'height' => $info[1]];
+                if ($cacheKey !== '' && count($this->jpegCache) < 64) {
+                    $this->jpegCache[$cacheKey] = $res;
+                }
+                return $res;
             case IMAGETYPE_PNG:
                 $src = @imagecreatefrompng($path);
                 break;
@@ -349,10 +381,14 @@ class GraduationSimplePdf
         imagefilledrectangle($canvas, 0, 0, imagesx($src), imagesy($src), $white);
         imagecopy($canvas, $src, 0, 0, 0, 0, imagesx($src), imagesy($src));
         ob_start();
-        imagejpeg($canvas, null, 100);
+        imagejpeg($canvas, null, 92);
         $data = ob_get_clean();
         imagedestroy($src);
         imagedestroy($canvas);
-        return ['data' => $data, 'width' => $info[0], 'height' => $info[1]];
+        $res = ['data' => $data, 'width' => $info[0], 'height' => $info[1]];
+        if ($cacheKey !== '' && count($this->jpegCache) < 64) {
+            $this->jpegCache[$cacheKey] = $res;
+        }
+        return $res;
     }
 }

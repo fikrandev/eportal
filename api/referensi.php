@@ -17,6 +17,7 @@ switch ($action) {
 }
 
 function listRef() {
+    auth_check();
     $kategori = isset($_GET['kategori']) ? sanitize($_GET['kategori']) : '';
     $where = "WHERE 1=1";
     $params = [];
@@ -30,6 +31,7 @@ function listRef() {
 }
 
 function getRef() {
+    auth_check();
     $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
     $stmt = db()->prepare("SELECT * FROM sarpras_referensi WHERE id = ?");
     $stmt->execute([$id]);
@@ -37,7 +39,7 @@ function getRef() {
 }
 
 function createRef() {
-    require_superadmin();
+    portal_require_permission('referensi_manage');
     $input = get_input();
     $kategori = sanitize($input['kategori'] ?? '');
     $nama = sanitize($input['nama'] ?? '');
@@ -49,7 +51,7 @@ function createRef() {
 }
 
 function updateRef() {
-    require_superadmin();
+    portal_require_permission('referensi_manage');
     $input = get_input();
     $id = (int)($input['id'] ?? 0);
     $kategori = sanitize($input['kategori'] ?? '');
@@ -62,7 +64,7 @@ function updateRef() {
 }
 
 function deleteRef() {
-    require_superadmin();
+    portal_require_permission('referensi_manage');
     $input = get_input();
     $id = (int)($input['id'] ?? 0);
     if ($id <= 0) json_response(400, false, 'ID tidak valid.');

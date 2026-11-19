@@ -5,50 +5,6 @@
 require_once __DIR__ . '/auth_helper.php';
 $siswa = siswa_auth();
 
-// Ensure acad_izin_siswa table and its columns exist
-function ensure_izin_table() {
-    try {
-        db()->exec("CREATE TABLE IF NOT EXISTS `acad_izin_siswa` (
-            `id` int(10) unsigned NOT NULL AUTO_INCREMENT,
-            `student_id` int(11) unsigned NOT NULL,
-            `academic_year_id` int(11) unsigned DEFAULT NULL,
-            `tanggal` date NOT NULL,
-            `jenis` enum('Sakit','Izin','Lainnya') NOT NULL DEFAULT 'Izin',
-            `keterangan` text DEFAULT NULL,
-            `lampiran` varchar(255) DEFAULT NULL,
-            `status` enum('Pending','Disetujui','Ditolak','Approved','Rejected') NOT NULL DEFAULT 'Pending',
-            `disetujui_oleh` int(11) unsigned DEFAULT NULL,
-            `alasan_tolak` text DEFAULT NULL,
-            `created_at` timestamp NOT NULL DEFAULT current_timestamp(),
-            `updated_at` timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-            PRIMARY KEY (`id`),
-            KEY `idx_izin_siswa_tanggal` (`tanggal`),
-            KEY `idx_izin_siswa_student` (`student_id`)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
-
-        $cols = db()->query("SHOW COLUMNS FROM acad_izin_siswa")->fetchAll(PDO::FETCH_COLUMN);
-        if (!in_array('academic_year_id', $cols)) {
-            db()->exec("ALTER TABLE `acad_izin_siswa` ADD COLUMN `academic_year_id` INT(11) UNSIGNED DEFAULT NULL AFTER `student_id`");
-        }
-        if (!in_array('lampiran', $cols)) {
-            db()->exec("ALTER TABLE `acad_izin_siswa` ADD COLUMN `lampiran` VARCHAR(255) DEFAULT NULL AFTER `keterangan`");
-        }
-        if (!in_array('disetujui_oleh', $cols)) {
-            db()->exec("ALTER TABLE `acad_izin_siswa` ADD COLUMN `disetujui_oleh` INT(11) UNSIGNED DEFAULT NULL AFTER `status`");
-        }
-        if (!in_array('alasan_tolak', $cols)) {
-            db()->exec("ALTER TABLE `acad_izin_siswa` ADD COLUMN `alasan_tolak` TEXT DEFAULT NULL AFTER `disetujui_oleh`");
-        }
-        
-        // Also ensure ENUM includes Disetujui/Ditolak
-        db()->exec("ALTER TABLE `acad_izin_siswa` MODIFY COLUMN `status` ENUM('Pending','Disetujui','Ditolak','Approved','Rejected') NOT NULL DEFAULT 'Pending'");
-    } catch (Exception $e) {
-        // Continue
-    }
-}
-
-ensure_izin_table();
-
 $action = isset($_GET['action']) ? trim($_GET['action']) : '';
 
 if ($action === 'rekap') {
@@ -155,18 +111,19 @@ if ($action === 'rekap') {
         $stmtManual = db()->prepare("
             SELECT jam_ke, status, keterangan 
             FROM acad_absensi 
-            WHERE (student_id = ? OR student_id = ?) AND tanggal = ? AND jam_ke IN (0, 1, 2, 3)
+            WHERE (student_id = ? OR student_id IN (SELECT id FROM students WHERE nis = ?)) AND tanggal = ? AND jam_ke IN (0, 1, 2, 3)
             ORDER BY jam_ke ASC
         ");
-        $stmtManual->execute([$siswa['id'], $siswa['nis'], $today]);
+        $stmtManual->execute([(int)$siswa['id'], (string)$siswa['nis'], $today]);
         while ($row = $stmtManual->fetch(PDO::FETCH_ASSOC)) {
             $jk = (int)$row['jam_ke'];
+            $isT = ($row['status'] === 'T');
+            $stLabel = ($row['status'] === 'H' ? 'Hadir' : ($isT ? 'Terlambat' : ($row['status'] === 'S' ? 'Sakit' : ($row['status'] === 'I' ? 'Izin' : 'Alpha'))));
             if ($jk === 0 || $jk === 1) {
                 if (!$sesiSummary['masuk']) {
-                    $isT = ($row['status'] === 'T');
                     $sesiSummary['masuk'] = [
                         'waktu' => $row['keterangan'] ?: '-',
-                        'status' => ($row['status'] === 'H' ? 'Hadir' : ($isT ? 'Terlambat' : ($row['status'] === 'S' ? 'Sakit' : ($row['status'] === 'I' ? 'Izin' : 'Alpha')))),
+                        'status' => $stLabel,
                         'is_terlambat' => $isT,
                         'is_manual' => true
                     ];
@@ -175,7 +132,7 @@ if ($action === 'rekap') {
                 if (!$sesiSummary['istirahat']) {
                     $sesiSummary['istirahat'] = [
                         'waktu' => $row['keterangan'] ?: '-',
-                        'status' => 'Istirahat',
+                        'status' => ($row['status'] === 'H') ? 'Istirahat' : $stLabel,
                         'is_terlambat' => false,
                         'is_manual' => true
                     ];
@@ -184,7 +141,7 @@ if ($action === 'rekap') {
                 if (!$sesiSummary['pulang']) {
                     $sesiSummary['pulang'] = [
                         'waktu' => $row['keterangan'] ?: '-',
-                        'status' => 'Pulang',
+                        'status' => ($row['status'] === 'H') ? 'Pulang' : $stLabel,
                         'is_terlambat' => false,
                         'is_manual' => true
                     ];
@@ -202,10 +159,10 @@ if ($action === 'rekap') {
         $stmtKelas = db()->prepare("
             SELECT jam_ke, status
             FROM acad_absensi
-            WHERE (student_id = ? OR student_id = ?) AND tanggal = ? AND jam_ke > 0
+            WHERE (student_id = ? OR student_id IN (SELECT id FROM students WHERE nis = ?)) AND tanggal = ? AND jam_ke > 0
             ORDER BY jam_ke ASC
         ");
-        $stmtKelas->execute([$siswa['id'], $siswa['nis'], $today]);
+        $stmtKelas->execute([(int)$siswa['id'], (string)$siswa['nis'], $today]);
         $kelas = $stmtKelas->fetchAll(PDO::FETCH_ASSOC);
     } catch (Exception $e) {
         $kelas = [];
@@ -227,10 +184,10 @@ if ($action === 'rekap') {
     try {
         $stmt = db()->prepare("
             SELECT * FROM acad_izin_siswa 
-            WHERE student_id = ? OR student_id = ? OR student_id IN (SELECT id FROM students WHERE nis = ?)
+            WHERE student_id = ? OR student_id IN (SELECT id FROM students WHERE nis = ?)
             ORDER BY tanggal DESC, id DESC LIMIT 50
         ");
-        $stmt->execute([$siswa['id'], $siswa['nis'], $siswa['nis']]);
+        $stmt->execute([(int)$siswa['id'], (string)$siswa['nis']]);
         $izinList = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         // Format tanggal indonesia & normalize status text
@@ -278,9 +235,9 @@ if ($action === 'rekap') {
     try {
         $stmtCheck = db()->prepare("
             SELECT id FROM acad_izin_siswa 
-            WHERE (student_id = ? OR student_id = ?) AND tanggal = ? LIMIT 1
+            WHERE (student_id = ? OR student_id IN (SELECT id FROM students WHERE nis = ?)) AND tanggal = ? LIMIT 1
         ");
-        $stmtCheck->execute([$siswa['id'], $siswa['nis'], $tanggal]);
+        $stmtCheck->execute([(int)$siswa['id'], (string)$siswa['nis'], $tanggal]);
         if ($stmtCheck->fetch()) {
             json_response(400, false, 'Anda sudah pernah mengajukan permohonan izin untuk tanggal tersebut.');
         }

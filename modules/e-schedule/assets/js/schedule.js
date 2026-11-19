@@ -26,6 +26,16 @@ const Schedule = {
     formatNumber(num) {
         return new Intl.NumberFormat('id-ID').format(num || 0);
     },
+    escapeHtml(str) {
+        if (window.EPortalUtils && window.EPortalUtils.escapeHtml) {
+            return window.EPortalUtils.escapeHtml(str);
+        }
+        if (str === null || str === undefined) return '';
+        return String(str).replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' }[m]));
+    },
+    reloadCurrentPage() {
+        this.loadRouteFromHash();
+    },
 
 
     init() {

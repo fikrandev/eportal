@@ -5,29 +5,16 @@
  */
 
 require_once __DIR__ . '/../../../api/config.php';
+require_once __DIR__ . '/../../../api/wa_gateway_client.php';
 
-// DEBUG LOG — Catat semua request dari mesin absen
+// Bounded debug log (auto-rotates at 1MB so disk never fills up)
 $RAW_BODY = file_get_contents("php://input");
 $debugLog = __DIR__ . '/adms_debug.log';
-$logEntry = date('Y-m-d H:i:s') . " | " . $_SERVER['REQUEST_METHOD'] . " | " . $_SERVER['REQUEST_URI'] . " | GET: " . json_encode($_GET) . " | BODY: " . substr($RAW_BODY, 0, 500) . "\n";
-file_put_contents($debugLog, $logEntry, FILE_APPEND);
-
-// Fungsi helper untuk WA Gateway asinkron
-function triggerWAGateway($phone, $message) {
-    $stmt = db()->query("SELECT setting_value FROM settings WHERE setting_key = 'wa_gateway_url'");
-    $url = $stmt->fetchColumn();
-    if (!$url) return;
-
-    $data = json_encode(['number' => $phone, 'message' => $message]);
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Content-Length: ' . strlen($data)]);
-    curl_setopt($ch, CURLOPT_TIMEOUT_MS, 500); 
-    curl_exec($ch);
-    curl_close($ch);
+if (file_exists($debugLog) && @filesize($debugLog) > 1024 * 1024) {
+    @file_put_contents($debugLog, '');
 }
+$logEntry = date('Y-m-d H:i:s') . " | " . ($_SERVER['REQUEST_METHOD'] ?? '') . " | " . ($_SERVER['REQUEST_URI'] ?? '') . " | GET: " . json_encode($_GET) . " | BODY: " . substr((string)$RAW_BODY, 0, 500) . "\n";
+@file_put_contents($debugLog, $logEntry, FILE_APPEND);
 
 // Detect route — support both .htaccess rewrite and direct folder access
 $requestUri = $_SERVER['REQUEST_URI'];
@@ -231,7 +218,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isCdata) {
                         VALUES (?, ?, ?, ?, ?)
                     ");
                     $stmtInsert->execute([$mesinId, $pin, $timestamp, $state, $verifyType]);
-                    if ($stmtInsert->rowCount() > 0) $insertedCount++;
+                    $isNewLog = ($stmtInsert->rowCount() > 0);
+                    if ($isNewLog) $insertedCount++;
                     
                     // Look up student by NIS, stripping leading zeros for robust matching
                     $stmtSiswa = db()->prepare("
@@ -265,7 +253,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $isCdata) {
                         }
                         
                         // 2. Trigger WA Gateway for parents if new log & parents phone number is set
-                        if ($stmtInsert->rowCount() > 0 && $waTemplate && !empty($siswa['no_hp_ortu'])) {
+                        if ($isNewLog && $waTemplate && !empty($siswa['no_hp_ortu'])) {
                             $statusText = $state == 0 ? 'Hadir (Masuk)' : 'Pulang';
                             $msg = str_replace(
                                 ['{nama}', '{status_absen}', '{waktu}'], 

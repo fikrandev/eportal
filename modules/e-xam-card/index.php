@@ -32,7 +32,11 @@ function xam_auth_from_token($token)
     $user = $stmt->fetch();
     if (!$user) return null;
 
-    $user['is_admin'] = in_array($user['role'], ['superadmin', 'user'], true);
+    $user['is_admin'] = ($user['role'] === 'superadmin');
+    if ($user['role'] === 'user') {
+        $perms = portal_get_user_permissions($user['user_id']);
+        $user['is_admin'] = in_array('*', $perms, true) || in_array('module_e-xam-card', $perms, true);
+    }
     $user['is_teacher'] = ($user['role'] === 'guru');
     $user['managed_class'] = null;
     $user['has_access'] = $user['is_admin'];
@@ -82,22 +86,22 @@ $shades = getThemeShades($module_color);
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="E-Xam Card - Manajemen Kartu Ujian Sekolah">
-    <meta name="theme-color" content="<?php echo $shades['base']; ?>">
+    <meta name="theme-color" content="<?php echo htmlspecialchars($shades['base'], ENT_QUOTES, 'UTF-8'); ?>">
     <title>E-Xam Card - Kartu Ujian</title>
 
     <?php if ($school_icon): ?>
-    <link rel="icon" href="<?php echo BASE_URL . $school_icon; ?>">
+    <link rel="icon" href="<?php echo htmlspecialchars(BASE_URL . ltrim(str_replace('\\', '/', $school_icon), '/'), ENT_QUOTES, 'UTF-8'); ?>">
     <?php endif; ?>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 
-    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css?v=<?php echo time(); ?>">
-    <link rel="stylesheet" href="<?php echo BASE_URL; ?>modules/e-sarpras/assets/css/sarpras.css?v=<?php echo time(); ?>">
-    <link rel="stylesheet" href="assets/css/examcard.css?v=<?php echo time(); ?>">
+    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css?v=<?php echo asset_ver('assets/css/app.css'); ?>">
+    <link rel="stylesheet" href="<?php echo BASE_URL; ?>modules/e-sarpras/assets/css/sarpras.css?v=<?php echo asset_ver('modules/e-sarpras/assets/css/sarpras.css'); ?>">
+    <link rel="stylesheet" href="assets/css/examcard.css?v=<?php echo asset_ver('modules/e-xam-card/assets/css/examcard.css'); ?>">
 
     <style>
         :root {
@@ -121,25 +125,26 @@ $shades = getThemeShades($module_color);
     </style>
 
     <script>
-        window.EXAMCARD_CONFIG = {
-            baseUrl: '<?php echo BASE_URL; ?>',
-            moduleUrl: '<?php echo BASE_URL; ?>modules/e-xam-card/',
-            token: '<?php echo addslashes($token); ?>',
-            user: {
-                id: <?php echo (int) $user['user_id']; ?>,
-                username: <?php echo json_encode($user['username']); ?>,
-                nama_lengkap: <?php echo json_encode($user['nama_lengkap']); ?>,
-                role: <?php echo json_encode($user['role']); ?>,
-                avatar: <?php echo json_encode($user['avatar'] ?? ''); ?>,
-                is_teacher: <?php echo json_encode($user['is_teacher']); ?>,
-                managed_class: <?php echo json_encode($user['managed_class']); ?>
-            },
-            school: {
-                nama: <?php echo json_encode($school_name); ?>,
-                icon: <?php echo json_encode($school_icon); ?>
-            },
-            academicYear: <?php echo json_encode($active_academic_year, JSON_UNESCAPED_UNICODE); ?>
-        };
+        window.EXAMCARD_CONFIG = <?php echo json_encode([
+            'baseUrl' => BASE_URL,
+            'moduleUrl' => BASE_URL . 'modules/e-xam-card/',
+            'token' => $token,
+            'user' => [
+                'id' => (int)$user['user_id'],
+                'username' => $user['username'],
+                'nama_lengkap' => $user['nama_lengkap'],
+                'role' => $user['role'],
+                'avatar' => $user['avatar'] ?? '',
+                'is_admin' => (bool)$user['is_admin'],
+                'is_teacher' => (bool)$user['is_teacher'],
+                'managed_class' => $user['managed_class'],
+            ],
+            'school' => [
+                'nama' => $school_name,
+                'icon' => $school_icon,
+            ],
+            'academicYear' => $active_academic_year,
+        ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
     </script>
     <?php echo get_module_theme_css('e-xam-card'); ?>
 </head>
@@ -199,8 +204,9 @@ $shades = getThemeShades($module_color);
     <div id="toastContainer" class="toast-container"></div>
 
     <script src="<?php echo BASE_URL; ?>assets/vendor/jquery-3.7.1.min.js"></script>
-    <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=<?php echo time(); ?>"></script>
-    <script src="<?php echo BASE_URL; ?>assets/js/pagination.js?v=<?php echo time(); ?>"></script>
-    <script src="assets/js/examcard.js?v=<?php echo time(); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/core-utils.js?v=<?php echo asset_ver('assets/js/core-utils.js'); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=<?php echo asset_ver('assets/js/modal.js'); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/pagination.js?v=<?php echo asset_ver('assets/js/pagination.js'); ?>"></script>
+    <script src="assets/js/examcard.js?v=<?php echo asset_ver('modules/e-xam-card/assets/js/examcard.js'); ?>"></script>
 </body>
 </html>

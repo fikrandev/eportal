@@ -10,8 +10,6 @@ $action = $_GET['action'] ?? '';
 $method = $_SERVER['REQUEST_METHOD'];
 
 try {
-    exam_ensure_tables();
-
     switch ($action) {
 
         // ==========================================

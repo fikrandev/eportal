@@ -80,7 +80,7 @@ if ($show_diri) {
         $no = 1;
         foreach ($grouped_diri as $kat => $data) {
             $rt2 = $data['count'] > 0 ? round($data['total_skor'] / $data['count'], 2) : 0;
-            $konversi = round(($rt2 / 4) * 100);
+            $konversi = round(($rt2 / 5) * 100);
             
             $isFirst = true;
             $rowSpan = count($data['pertanyaan']);

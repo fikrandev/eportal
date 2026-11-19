@@ -4,12 +4,11 @@
  * Mengelola konfigurasi & proxy status WhatsApp Gateway
  */
 require_once __DIR__ . '/../../../api/config.php';
+require_once __DIR__ . '/../../../api/wa_gateway_client.php';
 require_once __DIR__ . '/auth_helper.php';
 
 $user = acad_auth();
-if ($user['role'] !== 'superadmin') {
-    json_response(403, false, 'Akses ditolak.');
-}
+acad_require_admin($user);
 
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
@@ -46,20 +45,7 @@ switch ($action) {
  * Normalizes and builds WhatsApp Gateway API endpoint URL
  */
 function getWaEndpointUrl($endpoint = 'send') {
-    $stmt = db()->query("SELECT setting_value FROM settings WHERE setting_key = 'wa_gateway_url'");
-    $url = $stmt ? $stmt->fetchColumn() : null;
-    if (!$url) $url = 'http://localhost:3000/send';
-    
-    $url = trim($url);
-    // Strip trailing endpoints if already present in base URL
-    $baseUrl = preg_replace('#/(send|status|groups|logout)/?$#', '', $url);
-    $baseUrl = rtrim($baseUrl, '/');
-    
-    if (empty($baseUrl)) {
-        $baseUrl = 'http://localhost:3000';
-    }
-    
-    return $baseUrl . '/' . ltrim($endpoint, '/');
+    return wa_gateway_endpoint_url($endpoint);
 }
 
 function getWaSettings() {
@@ -210,6 +196,7 @@ function getWaGroupsProxy() {
     
     $ch = curl_init($groupsUrl);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, wa_gateway_headers());
     curl_setopt($ch, CURLOPT_TIMEOUT, 60); // 60s timeout
     $response = curl_exec($ch);
     $err = curl_error($ch);
@@ -273,7 +260,7 @@ function testWaMessageProxy() {
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
     curl_setopt($ch, CURLOPT_POSTFIELDS, $postData);
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Content-Length: ' . strlen($postData)]);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, wa_gateway_headers($postData));
     curl_setopt($ch, CURLOPT_TIMEOUT, 65);
     $response = curl_exec($ch);
     $err = curl_error($ch);
@@ -301,7 +288,7 @@ function disconnectWaProxy() {
     $ch = curl_init($logoutUrl);
     curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
     curl_setopt($ch, CURLOPT_POSTFIELDS, '{}');
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Content-Length: 2']);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, wa_gateway_headers('{}'));
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 15);
     $response = curl_exec($ch);

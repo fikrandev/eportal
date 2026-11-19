@@ -6,7 +6,6 @@
 require_once __DIR__ . '/../../../api/config.php';
 
 require_once __DIR__ . '/auth_helper.php';
-$user = sp_auth();
 
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
@@ -23,9 +22,21 @@ function getStats() {
         $scopeRuang = sp_scope_where($user, 'r', 'id');
         $scopeSarpras = sp_scope_where($user, 's', 'ruang_id');
 
-        // If PJ, Tanah and Bangunan stats are based on their rooms' locations
-        $scopeTanah = !empty($user['scoped_ruang_ids']) ? " AND id IN (SELECT tanah_id FROM bangunan WHERE id IN (SELECT bangunan_id FROM ruang WHERE id IN (".implode(',', array_map('intval', $user['scoped_ruang_ids']))."))) " : "";
-        $scopeBangunan = !empty($user['scoped_ruang_ids']) ? " AND id IN (SELECT bangunan_id FROM ruang WHERE id IN (".implode(',', array_map('intval', $user['scoped_ruang_ids'])).")) " : "";
+        // Fail closed for room-scoped PJ even with 0 rooms assigned
+        if (!empty($user['is_room_scoped']) || !empty($user['scoped_ruang_ids'])) {
+            $scopedIds = array_values(array_filter(array_map('intval', $user['scoped_ruang_ids'] ?? []), function($v) { return $v > 0; }));
+            if (empty($scopedIds)) {
+                $scopeTanah = " AND 1=0 ";
+                $scopeBangunan = " AND 1=0 ";
+            } else {
+                $idList = implode(',', $scopedIds);
+                $scopeTanah = " AND id IN (SELECT tanah_id FROM bangunan WHERE id IN (SELECT bangunan_id FROM ruang WHERE id IN ($idList))) ";
+                $scopeBangunan = " AND id IN (SELECT bangunan_id FROM ruang WHERE id IN ($idList)) ";
+            }
+        } else {
+            $scopeTanah = "";
+            $scopeBangunan = "";
+        }
 
         // Total tanah
         $s = db()->query("SELECT COUNT(*) as total, COALESCE(SUM(luas_m2),0) as total_luas, COALESCE(SUM(harga_perolehan),0) as total_nilai FROM tanah WHERE 1=1 $scopeTanah");

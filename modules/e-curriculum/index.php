@@ -28,14 +28,14 @@ $active_academic_year = get_active_academic_year();
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="E-Curriculum — Sistem Informasi Kurikulum Sekolah">
     
     <title>E-Curriculum — Sistem Informasi Kurikulum</title>
 
     <?php if($school_icon): ?>
-    <link rel="icon" href="<?php echo BASE_URL . $school_icon; ?>">
-    <link rel="apple-touch-icon" href="<?php echo BASE_URL . $school_icon; ?>">
+    <link rel="icon" href="<?php echo htmlspecialchars(BASE_URL . ltrim(str_replace('\\', '/', $school_icon), '/'), ENT_QUOTES, 'UTF-8'); ?>">
+    <link rel="apple-touch-icon" href="<?php echo htmlspecialchars(BASE_URL . ltrim(str_replace('\\', '/', $school_icon), '/'), ENT_QUOTES, 'UTF-8'); ?>">
     <?php endif; ?>
 
     <!-- PWA Manifest & Service Worker -->
@@ -54,32 +54,32 @@ $active_academic_year = get_active_academic_year();
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 
     <!-- Core Design System -->
-    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css?v=<?php echo time(); ?>">
+    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css?v=<?php echo asset_ver('assets/css/app.css'); ?>">
     <!-- Curriculum Module Styles -->
-    <link rel="stylesheet" href="assets/css/curriculum.css?v=<?php echo time(); ?>">
+    <link rel="stylesheet" href="assets/css/curriculum.css?v=<?php echo asset_ver('modules/e-curriculum/assets/css/curriculum.css'); ?>">
 
     <script>
         // Inject server data into JS
-        window.CURRICULUM_CONFIG = {
-            baseUrl: '<?php echo BASE_URL; ?>',
-            moduleUrl: '<?php echo BASE_URL; ?>modules/e-curriculum/',
-            token: '<?php echo addslashes($token); ?>',
-            user: {
-                id: <?php echo $user['user_id']; ?>,
-                username: '<?php echo addslashes($user['username']); ?>',
-                nama_lengkap: '<?php echo addslashes($user['nama_lengkap']); ?>',
-                role: '<?php echo $user['role']; ?>',
-                acad_role: '<?php echo $user['acad_role'] ?? ''; ?>',
-                custom_role_nama: '<?php echo addslashes($user['custom_role_nama'] ?? ''); ?>',
-                permissions: <?php echo json_encode(array_values($user['permissions'] ?? []), JSON_UNESCAPED_UNICODE); ?>,
-                avatar: '<?php echo addslashes($user['avatar'] ?? ''); ?>'
-            },
-            school: {
-                nama: '<?php echo addslashes($school_name); ?>',
-                icon: '<?php echo addslashes($school_icon); ?>'
-            },
-            academicYear: <?php echo json_encode($active_academic_year, JSON_UNESCAPED_UNICODE); ?>
-        };
+        window.CURRICULUM_CONFIG = <?php echo json_encode([
+            'baseUrl' => BASE_URL,
+            'moduleUrl' => BASE_URL . 'modules/e-curriculum/',
+            'token' => $token,
+            'user' => [
+                'id' => (int)$user['user_id'],
+                'username' => $user['username'],
+                'nama_lengkap' => $user['nama_lengkap'],
+                'role' => $user['role'],
+                'acad_role' => $user['acad_role'] ?? '',
+                'custom_role_nama' => $user['custom_role_nama'] ?? '',
+                'permissions' => array_values($user['permissions'] ?? []),
+                'avatar' => $user['avatar'] ?? '',
+            ],
+            'school' => [
+                'nama' => $school_name,
+                'icon' => $school_icon,
+            ],
+            'academicYear' => $active_academic_year,
+        ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
     </script>
     <?php echo get_module_theme_css('e-curriculum'); ?>
 </head>
@@ -159,15 +159,16 @@ $active_academic_year = get_active_academic_year();
 
     <!-- Vendor Scripts -->
     <script src="<?php echo BASE_URL; ?>assets/vendor/jquery-3.7.1.min.js"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/core-utils.js?v=<?php echo asset_ver('assets/js/core-utils.js'); ?>"></script>
     <!-- SheetJS Excel Library -->
-    <script src="<?php echo BASE_URL; ?>assets/vendor/xlsx.full.min.js?v=<?php echo time(); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/vendor/xlsx.full.min.js?v=<?php echo asset_ver('assets/vendor/xlsx.full.min.js'); ?>"></script>
     <script>if(!window.XLSX){document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"><\/script>');}</script>
     <!-- Modal System -->
-    <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=<?php echo time(); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=<?php echo asset_ver('assets/js/modal.js'); ?>"></script>
     <!-- Chart Library -->
     <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
     <!-- Curriculum SPA JS -->
-    <script src="<?php echo BASE_URL; ?>assets/js/pagination.js?v=<?php echo time(); ?>"></script>
-    <script src="assets/js/curriculum.js?v=<?php echo time(); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/pagination.js?v=<?php echo asset_ver('assets/js/pagination.js'); ?>"></script>
+    <script src="assets/js/curriculum.js?v=<?php echo asset_ver('modules/e-curriculum/assets/js/curriculum.js'); ?>"></script>
 </body>
 </html>

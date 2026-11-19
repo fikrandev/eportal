@@ -4,33 +4,14 @@
  * Menarik data dari semua mesin fingerprint dan memicu WA Gateway
  */
 require_once __DIR__ . '/../../../api/config.php';
+require_once __DIR__ . '/../../../api/wa_gateway_client.php';
 require_once __DIR__ . '/auth_helper.php';
 require_once __DIR__ . '/../../../api/ZKLibrary.php';
 
 $user = acad_auth();
-if ($user['role'] !== 'superadmin') {
-    json_response(403, false, 'Akses ditolak.');
-}
+acad_require_admin($user);
 
 $action = isset($_GET['action']) ? $_GET['action'] : '';
-
-function triggerWAGateway($phone, $message) {
-    $stmt = db()->query("SELECT setting_value FROM settings WHERE setting_key = 'wa_gateway_url'");
-    $url = $stmt->fetchColumn();
-    if (!$url) return;
-
-    $data = json_encode(['number' => $phone, 'message' => $message]);
-    
-    // Fire and forget using cURL with short timeout
-    $ch = curl_init($url);
-    curl_setopt($ch, CURLOPT_CUSTOMREQUEST, "POST");
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    curl_setopt($ch, CURLOPT_HTTPHEADER, ['Content-Type: application/json', 'Content-Length: ' . strlen($data)]);
-    curl_setopt($ch, CURLOPT_TIMEOUT_MS, 500); // 500ms timeout
-    curl_exec($ch);
-    curl_close($ch);
-}
 
 if ($action === 'pull') {
     try {
@@ -41,23 +22,17 @@ if ($action === 'pull') {
             json_response(400, false, 'Tidak ada mesin aktif yang dikonfigurasi.');
         }
 
-        $waTemplateStmt = db()->query("SELECT setting_value FROM settings WHERE setting_key = 'wa_message_template'");
-        $waTemplate = $waTemplateStmt->fetchColumn();
+        $waTemplate = get_setting('wa_message_template', '');
 
         $active_year = get_active_academic_year();
         $year_id = $active_year['id'] ?? 0;
 
         $newLogsCount = 0;
         $mesinErrors = [];
-        
-        // Auto-add force_sync column if missing
-        try {
-            db()->exec("ALTER TABLE absen_mesin ADD COLUMN force_sync TINYINT(1) DEFAULT 0");
-        } catch (Exception $e) {}
-
         $admsCount = 0;
+        $pendingWa = [];
+
         foreach ($mesins as $mesin) {
-            // Untuk mesin ADMS (Push), set force_sync = 1 agar saat getrequest berikutnya dipaksa kirim ulang semua log
             if (empty($mesin['ip_address']) || trim($mesin['ip_address']) === '') {
                 try {
                     db()->prepare("UPDATE absen_mesin SET force_sync = 1 WHERE id = ?")->execute([$mesin['id']]);
@@ -90,16 +65,15 @@ if ($action === 'pull') {
             foreach ($attendance as $log) {
                 $stmtInsert->execute([
                     $mesin['id'],
-                    $log['uid'], // PIN / UID
+                    $log['uid'],
                     $log['timestamp'],
-                    $log['state'], // 0=In, 1=Out
-                    $log['type'] // 1=Finger, 0=Password
+                    $log['state'],
+                    $log['type']
                 ]);
                 
                 if ($stmtInsert->rowCount() > 0) {
                     $newLogsCount++;
 
-                    // Cek apakah ini milik siswa (PIN = NIS)
                     $stmtSiswa = db()->prepare("
                         SELECT id, nama, no_hp_ortu, kelas 
                         FROM students 
@@ -110,7 +84,6 @@ if ($action === 'pull') {
                     $siswa = $stmtSiswa->fetch();
 
                     if ($siswa) {
-                        // 1. Automatically register student attendance in acad_absensi (jam_ke = 0 for daily attendance)
                         try {
                             $stmtKelas = db()->prepare("SELECT id FROM sch_kelas WHERE nama_kelas = ? LIMIT 1");
                             $stmtKelas->execute([$siswa['kelas']]);
@@ -126,30 +99,27 @@ if ($action === 'pull') {
                                 ");
                                 $stmtAbsensi->execute([$siswa['id'], $kelasId, $year_id, $tanggal_absen]);
                             }
-                        } catch (Exception $ex) {
-                            // Ignore
-                        }
-                    }
+                        } catch (Exception $ex) {}
 
-                    if ($stmtInsert->rowCount() > 0) {
-                        $newLogsCount++;
-
-                        // 2. Trigger WA Gateway for parents if new log & parents phone number is set
-                        if ($siswa && $waTemplate && !empty($siswa['no_hp_ortu'])) {
+                        if ($waTemplate && !empty($siswa['no_hp_ortu'])) {
                             $statusText = $log['state'] == 0 ? 'Hadir (Masuk)' : 'Pulang';
                             $msg = str_replace(
                                 ['{nama}', '{status_absen}', '{waktu}'], 
                                 [$siswa['nama'], $statusText, $log['timestamp']], 
                                 $waTemplate
                             );
-                            triggerWAGateway($siswa['no_hp_ortu'], $msg);
+                            $pendingWa[] = ['phone' => $siswa['no_hp_ortu'], 'msg' => $msg];
                         }
                     }
                 }
             }
             
-            db()->query("UPDATE absen_mesin SET last_sync = NOW() WHERE id = " . $mesin['id']);
+            db()->prepare("UPDATE absen_mesin SET last_sync = NOW() WHERE id = ?")->execute([$mesin['id']]);
             db()->commit();
+        }
+
+        foreach ($pendingWa as $item) {
+            triggerWAGateway($item['phone'], $item['msg']);
         }
 
         // Check if 10 teachers threshold reached for WA Group auto notification

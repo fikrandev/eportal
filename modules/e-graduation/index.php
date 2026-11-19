@@ -84,22 +84,22 @@ $shades = getThemeShades($module_color);
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="E-Graduation - Sistem Manajemen Kelulusan Sekolah">
-    <meta name="theme-color" content="<?php echo $shades['base']; ?>">
+    <meta name="theme-color" content="<?php echo htmlspecialchars($shades['base'], ENT_QUOTES, 'UTF-8'); ?>">
     <title>E-Graduation - Kelulusan</title>
 
     <?php if ($school_icon): ?>
-    <link rel="icon" href="<?php echo BASE_URL . $school_icon; ?>">
+    <link rel="icon" href="<?php echo htmlspecialchars(BASE_URL . ltrim(str_replace('\\', '/', $school_icon), '/'), ENT_QUOTES, 'UTF-8'); ?>">
     <?php endif; ?>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 
-    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css?v=<?php echo time(); ?>">
-    <link rel="stylesheet" href="../e-sarpras/assets/css/sarpras.css?v=<?php echo time(); ?>">
-    <link rel="stylesheet" href="assets/css/graduation.css?v=<?php echo time(); ?>">
+    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css?v=<?php echo asset_ver('assets/css/app.css'); ?>">
+    <link rel="stylesheet" href="../e-sarpras/assets/css/sarpras.css?v=<?php echo asset_ver('modules/e-sarpras/assets/css/sarpras.css'); ?>">
+    <link rel="stylesheet" href="assets/css/graduation.css?v=<?php echo asset_ver('modules/e-graduation/assets/css/graduation.css'); ?>">
 
     <style>
         :root {
@@ -131,26 +131,26 @@ $shades = getThemeShades($module_color);
     </style>
 
     <script>
-        window.GRADUATION_CONFIG = {
-            baseUrl: '<?php echo BASE_URL; ?>',
-            moduleUrl: '<?php echo BASE_URL; ?>modules/e-graduation/',
-            token: '<?php echo addslashes($token); ?>',
-            user: {
-                id: <?php echo (int) $user['user_id']; ?>,
-                username: '<?php echo addslashes($user['username']); ?>',
-                nama_lengkap: '<?php echo addslashes($user['nama_lengkap']); ?>',
-                role: '<?php echo $user['role']; ?>',
-                avatar: '<?php echo addslashes($user['avatar'] ?? ''); ?>',
-                can_manage_graduation: <?php echo $user['role'] === 'superadmin' ? 'true' : 'false'; ?>,
-                graduation_role: '<?php echo addslashes($graduation_role); ?>',
-                scoped_classes: <?php echo json_encode($scoped_classes, JSON_UNESCAPED_UNICODE); ?>
-            },
-            school: {
-                nama: '<?php echo addslashes($school_name); ?>',
-                icon: '<?php echo addslashes($school_icon); ?>'
-            },
-            academicYear: <?php echo json_encode($active_academic_year, JSON_UNESCAPED_UNICODE); ?>
-        };
+        window.GRADUATION_CONFIG = <?php echo json_encode([
+            'baseUrl' => BASE_URL,
+            'moduleUrl' => BASE_URL . 'modules/e-graduation/',
+            'token' => $token,
+            'user' => [
+                'id' => (int)$user['user_id'],
+                'username' => $user['username'],
+                'nama_lengkap' => $user['nama_lengkap'],
+                'role' => $user['role'],
+                'avatar' => $user['avatar'] ?? '',
+                'can_manage_graduation' => ($user['role'] === 'superadmin'),
+                'graduation_role' => $graduation_role,
+                'scoped_classes' => $scoped_classes,
+            ],
+            'school' => [
+                'nama' => $school_name,
+                'icon' => $school_icon,
+            ],
+            'academicYear' => $active_academic_year,
+        ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
     </script>
     <?php echo get_module_theme_css('e-graduation'); ?>
 </head>
@@ -219,8 +219,9 @@ $shades = getThemeShades($module_color);
     <div id="toastContainer" class="toast-container"></div>
 
     <script src="<?php echo BASE_URL; ?>assets/vendor/jquery-3.7.1.min.js"></script>
-    <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=<?php echo time(); ?>"></script>
-    <script src="<?php echo BASE_URL; ?>assets/js/pagination.js?v=<?php echo time(); ?>"></script>
-    <script src="assets/js/graduation.js?v=<?php echo time(); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/core-utils.js?v=<?php echo asset_ver('assets/js/core-utils.js'); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=<?php echo asset_ver('assets/js/modal.js'); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/pagination.js?v=<?php echo asset_ver('assets/js/pagination.js'); ?>"></script>
+    <script src="assets/js/graduation.js?v=<?php echo asset_ver('modules/e-graduation/assets/js/graduation.js'); ?>"></script>
 </body>
 </html>

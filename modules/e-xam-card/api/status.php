@@ -129,7 +129,7 @@ function classStudents()
 
 function saveStudentStatus()
 {
-    xam_require_manage();
+    $user = xam_require_manage();
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
         json_response(405, false, 'Method not allowed.');
     }
@@ -138,6 +138,18 @@ function saveStudentStatus()
     $id = (int) ($input['exam_student_id'] ?? 0);
     if ($id <= 0) {
         json_response(400, false, 'Data siswa ujian tidak valid.');
+    }
+
+    if ($user['is_teacher']) {
+        if (!$user['managed_class']) {
+            json_response(403, false, 'Akses ditolak. Anda tidak memiliki kelas yang dikelola.');
+        }
+        $stmtChk = db()->prepare("SELECT s.kelas FROM xam_exam_students xs JOIN students s ON s.id = xs.student_id WHERE xs.id = ?");
+        $stmtChk->execute([$id]);
+        $rowKelas = $stmtChk->fetchColumn();
+        if ($rowKelas !== $user['managed_class']) {
+            json_response(403, false, 'Akses ditolak. Siswa ini bukan dari kelas yang Anda kelola.');
+        }
     }
 
     $status = strtoupper(trim((string) ($input['status'] ?? 'DITANGGUHKAN')));
@@ -181,7 +193,7 @@ function saveStudentStatus()
 
 function bulkGenerate()
 {
-    xam_require_manage();
+    $user = xam_require_manage();
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
         json_response(405, false, 'Method not allowed.');
     }
@@ -192,6 +204,12 @@ function bulkGenerate()
     $input = get_input();
     $examId = (int) ($input['exam_id'] ?? 0);
     $kelas = sanitize($input['kelas'] ?? '');
+    if ($user['is_teacher']) {
+        if (!$user['managed_class']) {
+            json_response(403, false, 'Akses ditolak. Anda tidak memiliki kelas yang dikelola.');
+        }
+        $kelas = $user['managed_class'];
+    }
     if ($examId <= 0 || $kelas === '') {
         json_response(400, false, 'Exam dan kelas wajib dipilih.');
     }
@@ -233,7 +251,7 @@ function bulkGenerate()
 
 function bulkStatus()
 {
-    xam_require_manage();
+    $user = xam_require_manage();
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
         json_response(405, false, 'Method not allowed.');
     }
@@ -241,6 +259,12 @@ function bulkStatus()
     $input = get_input();
     $examId = (int) ($input['exam_id'] ?? 0);
     $kelas = sanitize($input['kelas'] ?? '');
+    if ($user['is_teacher']) {
+        if (!$user['managed_class']) {
+            json_response(403, false, 'Akses ditolak. Anda tidak memiliki kelas yang dikelola.');
+        }
+        $kelas = $user['managed_class'];
+    }
     $status = strtoupper(sanitize($input['status'] ?? ''));
     
     if ($examId <= 0 || $kelas === '') {
@@ -276,7 +300,7 @@ function bulkStatus()
 
 function importAccounts()
 {
-    xam_require_manage();
+    $user = xam_require_manage();
     if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'POST') {
         json_response(405, false, 'Method not allowed.');
     }
@@ -292,12 +316,16 @@ function importAccounts()
         json_response(400, false, 'Data import tidak lengkap.');
     }
 
+    if ($user['is_teacher'] && !$user['managed_class']) {
+        json_response(403, false, 'Akses ditolak. Anda tidak memiliki kelas yang dikelola.');
+    }
+
     $pdo = db();
     $pdo->beginTransaction();
 
     try {
         $count = 0;
-        $stmt = $pdo->prepare("
+        $sqlUpd = "
             UPDATE xam_exam_students xs
             JOIN students s ON s.id = xs.student_id
             SET xs.ruang_ujian = ?, 
@@ -306,7 +334,11 @@ function importAccounts()
                 xs.password_hash = ?, 
                 xs.updated_at = NOW()
             WHERE xs.exam_id = ? AND s.nis = ?
-        ");
+        ";
+        if ($user['is_teacher'] && $user['managed_class']) {
+            $sqlUpd .= " AND s.kelas = ?";
+        }
+        $stmt = $pdo->prepare($sqlUpd);
 
         foreach ($data as $row) {
             $nis = trim((string) ($row['nis'] ?? ''));
@@ -317,15 +349,18 @@ function importAccounts()
             if ($nis === '' || $username === '') continue;
 
             $passHash = null; // Do not hash to speed up import
-            
-            $stmt->execute([
+            $execParams = [
                 $ruang,
                 $username,
                 $password,
                 $passHash,
                 $examId,
                 $nis
-            ]);
+            ];
+            if ($user['is_teacher'] && $user['managed_class']) {
+                $execParams[] = $user['managed_class'];
+            }
+            $stmt->execute($execParams);
             
             if ($stmt->rowCount() > 0) {
                 $count++;

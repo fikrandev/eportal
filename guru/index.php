@@ -5,10 +5,6 @@
  * Schedule viewing & journal management
  */
 require_once __DIR__ . '/../api/config.php';
-require_once __DIR__ . '/../api/migration_helper.php';
-
-// Jalankan auto-migration jika ada versi baru
-run_auto_migrations();
 
 $school_name = get_setting('nama_sekolah', 'E-Portal');
 $school_icon = get_setting('icon_sekolah', '');
@@ -19,18 +15,18 @@ $app_icon = get_setting('app_icon_guru', $school_icon);
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="description" content="<?php echo htmlspecialchars($app_name); ?>">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="description" content="<?php echo htmlspecialchars($app_name, ENT_QUOTES, 'UTF-8'); ?>">
     <meta name="theme-color" content="#1565C0">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="<?php echo htmlspecialchars($app_name); ?>">
+    <meta name="apple-mobile-web-app-title" content="<?php echo htmlspecialchars($app_name, ENT_QUOTES, 'UTF-8'); ?>">
 
-    <title><?php echo htmlspecialchars($app_name); ?></title>
+    <title><?php echo htmlspecialchars($app_name, ENT_QUOTES, 'UTF-8'); ?></title>
 
     <?php if($app_icon): ?>
-    <link rel="icon" href="<?php echo BASE_URL . $app_icon; ?>">
-    <link rel="apple-touch-icon" href="<?php echo BASE_URL . $app_icon; ?>">
+    <link rel="icon" href="<?php echo htmlspecialchars(BASE_URL . ltrim(str_replace('\\', '/', $app_icon), '/'), ENT_QUOTES, 'UTF-8'); ?>">
+    <link rel="apple-touch-icon" href="<?php echo htmlspecialchars(BASE_URL . ltrim(str_replace('\\', '/', $app_icon), '/'), ENT_QUOTES, 'UTF-8'); ?>">
     <?php else: ?>
     <link rel="icon" href="<?php echo BASE_URL; ?>assets/icons/icon-192.png">
     <link rel="apple-touch-icon" href="<?php echo BASE_URL; ?>assets/icons/icon-192.png">
@@ -45,17 +41,14 @@ $app_icon = get_setting('app_icon_guru', $school_icon);
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 
     <!-- Guru App Styles -->
-    <link rel="stylesheet" href="assets/css/guru.css?v=<?php echo time(); ?>">
+    <link rel="stylesheet" href="assets/css/guru.css?v=<?php echo asset_ver('guru/assets/css/guru.css'); ?>">
 
     <script>
-        window.GURU_CONFIG = {
-            baseUrl: '<?php echo BASE_URL; ?>',
-            moduleUrl: '<?php echo BASE_URL; ?>guru/',
-            school: {
-                nama: '<?php echo addslashes($school_name); ?>',
-                icon: '<?php echo addslashes($school_icon); ?>'
-            }
-        };
+        window.GURU_CONFIG = <?php echo json_encode([
+            'baseUrl' => BASE_URL,
+            'moduleUrl' => BASE_URL . 'guru/',
+            'school' => ['nama' => $school_name, 'icon' => $school_icon]
+        ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
     </script>
     
     <!-- OneSignal Web Push -->
@@ -63,7 +56,7 @@ $app_icon = get_setting('app_icon_guru', $school_icon);
     <script>
       window.OneSignalDeferred = window.OneSignalDeferred || [];
       OneSignalDeferred.push(function(OneSignal) {
-        let appId = "<?php echo get_setting('onesignal_app_id', ''); ?>";
+        let appId = <?php echo json_encode((string)get_setting('onesignal_app_id', ''), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
         if (appId) {
             OneSignal.init({
               appId: appId,
@@ -193,6 +186,7 @@ $app_icon = get_setting('app_icon_guru', $school_icon);
     <div id="toastContainer" class="toast-container"></div>
 
     <!-- Guru App Script -->
-    <script src="assets/js/guru.js?v=<?php echo time(); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/core-utils.js?v=<?php echo asset_ver('assets/js/core-utils.js'); ?>"></script>
+    <script src="assets/js/guru.js?v=<?php echo asset_ver('guru/assets/js/guru.js'); ?>"></script>
 </body>
 </html>

@@ -9,15 +9,15 @@ $action = isset($_GET['action']) ? $_GET['action'] : '';
 
 switch ($action) {
     case 'list':
-        xam_require_manage();
+        xam_require_admin();
         listAccess();
         break;
     case 'save':
-        xam_require_manage();
+        xam_require_admin();
         saveAccess();
         break;
     case 'delete':
-        xam_require_manage();
+        xam_require_admin();
         deleteAccess();
         break;
     default:

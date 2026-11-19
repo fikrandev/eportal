@@ -1,7 +1,7 @@
-const CACHE_NAME = 'cbt-student-v1';
+const CACHE_NAME = 'cbt-student-v2';
 const ASSETS = [
-    './login.php',
-    '../assets/css/examination.css'
+    '../assets/css/examination.css',
+    '../assets/js/student_exam.js'
 ];
 
 self.addEventListener('install', event => {
@@ -19,14 +19,24 @@ self.addEventListener('activate', event => {
 });
 
 self.addEventListener('fetch', event => {
-    if (event.request.method !== 'GET' || event.request.url.includes('/api/')) return;
+    if (event.request.method !== 'GET') return;
+    const url = new URL(event.request.url);
+    // Never cache API calls or authenticated PHP pages
+    if (url.pathname.includes('/api/') || url.pathname.endsWith('.php')) return;
+
+    const dest = event.request.destination;
+    if (!['style', 'script', 'font', 'image'].includes(dest)) return;
+
     event.respondWith(
-        fetch(event.request).then(res => {
-            if (res.ok) {
-                const clone = res.clone();
-                caches.open(CACHE_NAME).then(c => c.put(event.request, clone));
-            }
-            return res;
-        }).catch(() => caches.match(event.request))
+        caches.match(event.request).then(cached => {
+            if (cached && url.searchParams.has('v')) return cached;
+            return fetch(event.request).then(res => {
+                if (res && res.ok && url.origin === self.location.origin) {
+                    const clone = res.clone();
+                    caches.open(CACHE_NAME).then(c => c.put(event.request, clone));
+                }
+                return res;
+            }).catch(() => cached);
+        })
     );
 });

@@ -4,37 +4,8 @@
  * Upload & list teaching documents (RPP, Modul Ajar, Silabus, dll)
  * Integrated with E-Curriculum verification & approval
  */
-require_once __DIR__ . '/../../api/config.php';
-
-// Auth check
-$token = '';
-if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
-    $token = str_replace('Bearer ', '', $_SERVER['HTTP_AUTHORIZATION']);
-} elseif (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
-    $token = str_replace('Bearer ', '', $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
-} elseif (function_exists('getallheaders')) {
-    $headers = getallheaders();
-    if (isset($headers['Authorization'])) $token = str_replace('Bearer ', '', $headers['Authorization']);
-    elseif (isset($headers['authorization'])) $token = str_replace('Bearer ', '', $headers['authorization']);
-}
-if (empty($token) && isset($_GET['token'])) $token = $_GET['token'];
-
-if (empty($token)) {
-    json_response(401, false, 'Token tidak ditemukan.');
-}
-
-$stmt = db()->prepare("
-    SELECT u.id as user_id, u.username, u.nama_lengkap, u.role
-    FROM sessions s
-    JOIN users u ON s.user_id = u.id
-    WHERE s.token = ? AND s.expired_at > NOW() AND u.status = 1 AND u.role = 'guru'
-");
-$stmt->execute([trim($token)]);
-$user = $stmt->fetch(PDO::FETCH_ASSOC);
-
-if (!$user) {
-    json_response(401, false, 'Sesi tidak valid atau telah berakhir.');
-}
+require_once __DIR__ . '/auth_helper.php';
+$user = guru_auth();
 
 $action = isset($_GET['action']) ? trim($_GET['action']) : '';
 
@@ -187,12 +158,6 @@ function uploadTeacherDocument($user) {
     if (is_uploaded_file($file['tmp_name'])) {
         $moved = @move_uploaded_file($file['tmp_name'], $destination);
     }
-    if (!$moved) {
-        $moved = @copy($file['tmp_name'], $destination);
-        if ($moved && file_exists($file['tmp_name'])) {
-            @unlink($file['tmp_name']);
-        }
-    }
 
     if ($moved) {
         @chmod($destination, 0664);
@@ -268,9 +233,8 @@ function deleteTeacherDocument($user) {
         }
 
         // Delete local file if exists
-        $filePath = __DIR__ . '/../../' . $doc['file_path'];
-        if (file_exists($filePath) && is_file($filePath)) {
-            unlink($filePath);
+        if (!empty($doc['file_path'])) {
+            safe_unlink_in_dir($doc['file_path'], 'uploads/curriculum');
         }
 
         // Delete from database

@@ -34,24 +34,25 @@ switch ($action) {
  * Get all settings
  */
 function getSettings() {
-    require_superadmin();
+    portal_require_permission('settings_manage');
 
     try {
-        upsert_setting('nama_sekolah', get_setting('nama_sekolah', 'E-Portal Sekolah'), 'text', 'Nama sekolah yang ditampilkan');
-        upsert_setting('icon_sekolah', get_setting('icon_sekolah', ''), 'file', 'Path icon/logo sekolah');
-        upsert_setting('kepala_sekolah', get_setting('kepala_sekolah', get_setting('sarpras_kepala_sekolah', '')), 'text', 'Nama kepala sekolah untuk surat');
-        upsert_setting('kop_surat', get_setting('kop_surat', ''), 'file', 'Path kop surat global untuk semua modul');
-        
-        upsert_setting('app_name_siswa', get_setting('app_name_siswa', 'Portal Murid E-Portal'), 'text', 'Nama Aplikasi Portal Siswa');
-        upsert_setting('app_name_guru', get_setting('app_name_guru', 'Portal Guru E-Portal'), 'text', 'Nama Aplikasi Portal Guru');
-        upsert_setting('app_icon_siswa', get_setting('app_icon_siswa', ''), 'file', 'Icon/Logo Portal Siswa');
-        upsert_setting('app_icon_guru', get_setting('app_icon_guru', ''), 'file', 'Icon/Logo Portal Guru');
+        $defaults = [
+            'nama_sekolah'    => ['value' => 'E-Portal Sekolah', 'type' => 'text', 'keterangan' => 'Nama sekolah yang ditampilkan'],
+            'icon_sekolah'    => ['value' => '', 'type' => 'file', 'keterangan' => 'Path icon/logo sekolah'],
+            'kepala_sekolah'  => ['value' => get_setting('sarpras_kepala_sekolah', ''), 'type' => 'text', 'keterangan' => 'Nama kepala sekolah untuk surat'],
+            'kop_surat'       => ['value' => '', 'type' => 'file', 'keterangan' => 'Path kop surat global untuk semua modul'],
+            'app_name_siswa'  => ['value' => 'Portal Murid E-Portal', 'type' => 'text', 'keterangan' => 'Nama Aplikasi Portal Siswa'],
+            'app_name_guru'   => ['value' => 'Portal Guru E-Portal', 'type' => 'text', 'keterangan' => 'Nama Aplikasi Portal Guru'],
+            'app_icon_siswa'  => ['value' => '', 'type' => 'file', 'keterangan' => 'Icon/Logo Portal Siswa'],
+            'app_icon_guru'   => ['value' => '', 'type' => 'file', 'keterangan' => 'Icon/Logo Portal Guru'],
+        ];
 
         $stmt = db()->query("SELECT * FROM settings ORDER BY id ASC");
         $settings = $stmt->fetchAll();
 
         // Convert to key-value format
-        $result = [];
+        $result = $defaults;
         foreach ($settings as $s) {
             $result[$s['setting_key']] = [
                 'value' => $s['setting_value'],
@@ -70,7 +71,7 @@ function getSettings() {
  * Update settings
  */
 function updateSettings() {
-    require_superadmin();
+    portal_require_permission('settings_manage');
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
@@ -105,7 +106,7 @@ function updateSettings() {
  * Upload global letterhead.
  */
 function uploadLetterhead() {
-    require_superadmin();
+    portal_require_permission('settings_manage');
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
@@ -125,8 +126,8 @@ function uploadLetterhead() {
     }
 
     $old = get_setting('kop_surat', '');
-    if (!empty($old) && file_exists(__DIR__ . '/../' . $old)) {
-        unlink(__DIR__ . '/../' . $old);
+    if (!empty($old)) {
+        safe_unlink_in_dir($old, 'uploads');
     }
 
     upsert_setting('kop_surat', $upload['path'], 'file', 'Path kop surat global untuk semua modul');
@@ -140,7 +141,7 @@ function uploadLetterhead() {
  * Upload school icon
  */
 function uploadSchoolIcon() {
-    require_superadmin();
+    portal_require_permission('settings_manage');
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
@@ -150,7 +151,7 @@ function uploadSchoolIcon() {
         json_response(400, false, 'File icon harus diupload.');
     }
 
-    $upload = handle_upload($_FILES['icon'], 'icons/', ['jpg', 'jpeg', 'png', 'svg', 'webp']);
+    $upload = handle_upload($_FILES['icon'], 'icons/', ['jpg', 'jpeg', 'png', 'webp']);
     if (!$upload['success']) {
         json_response(400, false, $upload['message']);
     }
@@ -162,8 +163,8 @@ function uploadSchoolIcon() {
 
     // Delete old icon if exists
     $oldIcon = get_setting('icon_sekolah', '');
-    if (!empty($oldIcon) && file_exists(__DIR__ . '/../' . $oldIcon)) {
-        unlink(__DIR__ . '/../' . $oldIcon);
+    if (!empty($oldIcon)) {
+        safe_unlink_in_dir($oldIcon, 'uploads');
     }
 
     // Update setting
@@ -178,7 +179,7 @@ function uploadSchoolIcon() {
  * Upload portal siswa icon
  */
 function uploadIconSiswa() {
-    require_superadmin();
+    portal_require_permission('settings_manage');
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
@@ -188,7 +189,7 @@ function uploadIconSiswa() {
         json_response(400, false, 'File icon harus diupload.');
     }
 
-    $upload = handle_upload($_FILES['icon'], 'icons/', ['jpg', 'jpeg', 'png', 'svg', 'webp']);
+    $upload = handle_upload($_FILES['icon'], 'icons/', ['jpg', 'jpeg', 'png', 'webp']);
     if (!$upload['success']) {
         json_response(400, false, $upload['message']);
     }
@@ -198,8 +199,8 @@ function uploadIconSiswa() {
     }
 
     $oldIcon = get_setting('app_icon_siswa', '');
-    if (!empty($oldIcon) && file_exists(__DIR__ . '/../' . $oldIcon)) {
-        unlink(__DIR__ . '/../' . $oldIcon);
+    if (!empty($oldIcon)) {
+        safe_unlink_in_dir($oldIcon, 'uploads');
     }
 
     upsert_setting('app_icon_siswa', $upload['path'], 'file', 'Icon/Logo Portal Siswa');
@@ -213,7 +214,7 @@ function uploadIconSiswa() {
  * Upload portal guru icon
  */
 function uploadIconGuru() {
-    require_superadmin();
+    portal_require_permission('settings_manage');
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
@@ -223,7 +224,7 @@ function uploadIconGuru() {
         json_response(400, false, 'File icon harus diupload.');
     }
 
-    $upload = handle_upload($_FILES['icon'], 'icons/', ['jpg', 'jpeg', 'png', 'svg', 'webp']);
+    $upload = handle_upload($_FILES['icon'], 'icons/', ['jpg', 'jpeg', 'png', 'webp']);
     if (!$upload['success']) {
         json_response(400, false, $upload['message']);
     }
@@ -233,8 +234,8 @@ function uploadIconGuru() {
     }
 
     $oldIcon = get_setting('app_icon_guru', '');
-    if (!empty($oldIcon) && file_exists(__DIR__ . '/../' . $oldIcon)) {
-        unlink(__DIR__ . '/../' . $oldIcon);
+    if (!empty($oldIcon)) {
+        safe_unlink_in_dir($oldIcon, 'uploads');
     }
 
     upsert_setting('app_icon_guru', $upload['path'], 'file', 'Icon/Logo Portal Guru');

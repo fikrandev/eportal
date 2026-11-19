@@ -2970,12 +2970,15 @@ const Perf = {
             $('#hasilSayaPeriodeSelector').on('change', function() {
                 const pid = $(this).val();
                 if(pid) {
+                    const ptkId = Perf.state.user.ptk_id || Perf.state.user.id || '';
+                    const tokenParam = encodeURIComponent((window.PERF_CONFIG && window.PERF_CONFIG.token) || Perf.state.token || '');
+                    const lampiranUrl = `api/cetak_lampiran.php?periode_id=${encodeURIComponent(pid)}&ptk_id=${encodeURIComponent(ptkId)}&token=${tokenParam}`;
                     $('#hasilSayaContainer').show();
                     $('#btnDownloadHasilSaya').show().off('click').on('click', function() {
-                        window.open(`api/cetak_lampiran.php?periode_id=${pid}&ptk_id=${Perf.state.user.ptk_id}`, '_blank');
+                        window.open(lampiranUrl, '_blank');
                     });
                     // Use iframe to show result directly in the app
-                    $('#iframeHasilSaya').attr('src', `api/cetak_lampiran.php?periode_id=${pid}&ptk_id=${Perf.state.user.ptk_id}`);
+                    $('#iframeHasilSaya').attr('src', lampiranUrl);
                 } else {
                     $('#hasilSayaContainer').hide();
                     $('#btnDownloadHasilSaya').hide();

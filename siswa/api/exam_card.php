@@ -131,7 +131,7 @@ try {
         'exam_id' => (int) $examInfo['exam_id'],
         'exp' => time() + 7200
     ];
-    $token = base64_encode(json_encode($tokenData)) . '.' . hash_hmac('sha256', json_encode($tokenData), DB_NAME);
+    $token = base64_encode(json_encode($tokenData)) . '.' . hash_hmac('sha256', json_encode($tokenData), app_secret('xam_card'));
 
     $previewUrl = BASE_URL . 'modules/e-xam-card/student/view.php?token=' . urlencode($token);
     $downloadUrl = BASE_URL . 'modules/e-xam-card/api/reports.php?action=download-card&exam_id=' . (int)$examInfo['exam_id'] . '&scope=student&student_id=' . $finalStudentId . '&token=' . urlencode($token);

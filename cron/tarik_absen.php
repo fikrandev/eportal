@@ -5,6 +5,11 @@
  * Command: e:\xampp\php\php.exe e:\xampp\htdocs\eportal\cron\tarik_absen.php
  */
 
+if (PHP_SAPI !== 'cli') {
+    http_response_code(403);
+    exit('CLI only');
+}
+
 require_once __DIR__ . '/../api/config.php';
 require_once __DIR__ . '/../api/ZKLibrary.php';
 

@@ -185,11 +185,11 @@ if ($action === 'stats') {
         // 8. NEW: Jadwal KBM Hari Ini (Live Schedule Slots)
         $stmtJadwalToday = $pdo->prepare("
             SELECT j.id, jb.hari, jb.jam_ke, jb.nama_jam, jb.tipe,
-                   k.nama_kelas, m.nama_mapel, u.nama_lengkap as guru_nama
+                   k.nama_kelas, m.nama_mapel, g.nama_guru as guru_nama
             FROM sch_jadwal j
             JOIN sch_jam_belajar jb ON j.jam_belajar_id = jb.id
             JOIN sch_distribusi d ON j.distribusi_id = d.id
-            JOIN users u ON d.guru_id = u.id
+            JOIN sch_guru g ON d.guru_id = g.id
             JOIN sch_mapel m ON d.mapel_id = m.id
             JOIN sch_kelas k ON j.kelas_id = k.id
             WHERE jb.hari = ?
@@ -203,11 +203,11 @@ if ($action === 'stats') {
         if (empty($jadwal_today)) {
             $stmtSampleJadwal = $pdo->query("
                 SELECT j.id, jb.hari, jb.jam_ke, jb.nama_jam, jb.tipe,
-                       k.nama_kelas, m.nama_mapel, u.nama_lengkap as guru_nama
+                       k.nama_kelas, m.nama_mapel, g.nama_guru as guru_nama
                 FROM sch_jadwal j
                 JOIN sch_jam_belajar jb ON j.jam_belajar_id = jb.id
                 JOIN sch_distribusi d ON j.distribusi_id = d.id
-                JOIN users u ON d.guru_id = u.id
+                JOIN sch_guru g ON d.guru_id = g.id
                 JOIN sch_mapel m ON d.mapel_id = m.id
                 JOIN sch_kelas k ON j.kelas_id = k.id
                 ORDER BY jb.hari ASC, jb.jam_ke ASC
@@ -220,8 +220,8 @@ if ($action === 'stats') {
         // 9. NEW: Top 5 Active Teachers (Leaderboard KBM)
         $top_teachers = $pdo->query("
             SELECT u.id, u.nama_lengkap, u.avatar, COUNT(j.id) as total_jurnal,
-                   (SELECT COUNT(*) FROM sch_distribusi WHERE guru_id = u.id) as total_kelas_ajar,
-                   COALESCE((SELECT SUM(jp) FROM sch_distribusi WHERE guru_id = u.id), 0) as total_jp
+                   (SELECT COUNT(*) FROM sch_distribusi sd JOIN sch_guru sg ON sd.guru_id = sg.id WHERE sg.nama_guru COLLATE utf8mb4_unicode_ci = u.nama_lengkap COLLATE utf8mb4_unicode_ci OR (u.kode_guru IS NOT NULL AND u.kode_guru != '' AND sg.kode_guru COLLATE utf8mb4_unicode_ci = u.kode_guru COLLATE utf8mb4_unicode_ci)) as total_kelas_ajar,
+                   COALESCE((SELECT SUM(sd.jp) FROM sch_distribusi sd JOIN sch_guru sg ON sd.guru_id = sg.id WHERE sg.nama_guru COLLATE utf8mb4_unicode_ci = u.nama_lengkap COLLATE utf8mb4_unicode_ci OR (u.kode_guru IS NOT NULL AND u.kode_guru != '' AND sg.kode_guru COLLATE utf8mb4_unicode_ci = u.kode_guru COLLATE utf8mb4_unicode_ci)), 0) as total_jp
             FROM users u
             LEFT JOIN acad_jurnal j ON u.id = j.guru_id
             WHERE u.role = 'guru' AND u.status = 1

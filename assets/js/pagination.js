@@ -16,7 +16,9 @@
         const $table = $(table);
 
         // Exclude special tables that shouldn't be paginated (e.g. calendar, print views, explicitly disabled)
-        if ($table.hasClass('no-pagination') || 
+        if ($table.hasClass('no-pagination') ||
+            $table.hasClass('no-paginate') ||
+            $table.attr('data-no-paginate') === 'true' ||
             $table.parents('.calendar, .no-pagination-container, .print-only, .ttd-wrapper, .kop-wrapper').length > 0) {
             return;
         }
@@ -45,9 +47,14 @@
         }
 
         // Find existing wrapper associated with this table
-        let $wrapper = $targetInsert.next(`.table-pagination-wrapper[data-for="${tableId}"]`);
+        let $wrapper = $targetInsert.parent().children(`.table-pagination-wrapper[data-for="${tableId}"]`);
         if ($wrapper.length === 0) {
             $wrapper = $targetInsert.next('.table-pagination-wrapper');
+        }
+        // Remove any duplicate wrappers for this table
+        if ($wrapper.length > 1) {
+            $wrapper.slice(1).remove();
+            $wrapper = $wrapper.first();
         }
 
         // If no rows, clean up pagination controls
@@ -204,7 +211,7 @@
     function scanAndPaginateAllTables() {
         if (_scanTimeout) clearTimeout(_scanTimeout);
         _scanTimeout = setTimeout(function() {
-            $('table:not(.no-pagination)').each(function() {
+            $('table:not(.no-pagination):not(.no-paginate):not([data-no-paginate="true"])').each(function() {
                 const $tbl = $(this);
                 if ($tbl.parents('.calendar, .no-pagination-container, .print-only, .ttd-wrapper, .kop-wrapper').length > 0) {
                     return;
@@ -212,7 +219,9 @@
                 const $tbody = $tbl.find('tbody');
                 if ($tbody.length === 0) return;
 
-                const currentCount = $tbody.find('> tr').not('.no-row-data, .empty-row, .no-paginate, .pf-empty, .sp-empty').length;
+                const currentCount = $tbody.find('> tr').not('.no-row-data, .empty-row, .no-paginate, .pf-empty, .sp-empty').filter(function() {
+                    return $(this).attr('data-search-hidden') !== 'true';
+                }).length;
                 const lastCount = parseInt($tbl.attr('data-row-count')) || 0;
                 const isPaginated = $tbl.attr('data-paginated') === 'true';
 

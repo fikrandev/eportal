@@ -7,9 +7,6 @@ require_once __DIR__ . '/auth_helper.php';
 $user = acad_auth();
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
-// Ensure tables exist before executing any action
-ensure_buku_tables();
-
 switch ($action) {
     case 'list':
         listBuku($user);
@@ -39,56 +36,7 @@ switch ($action) {
         json_response(400, false, 'Action tidak valid.');
 }
 
-function ensure_buku_tables() {
-    try {
-        db()->exec("CREATE TABLE IF NOT EXISTS acad_buku_types (
-            id int(11) unsigned NOT NULL AUTO_INCREMENT,
-            nama_jenis varchar(100) NOT NULL,
-            deskripsi varchar(255) DEFAULT NULL,
-            warna_badge varchar(50) NOT NULL DEFAULT 'badge-info',
-            urutan int(11) NOT NULL DEFAULT 0,
-            created_at timestamp NOT NULL DEFAULT current_timestamp(),
-            PRIMARY KEY (id),
-            UNIQUE KEY nama_jenis (nama_jenis)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
-
-        $count = (int)db()->query("SELECT COUNT(*) FROM acad_buku_types")->fetchColumn();
-        if ($count === 0) {
-            $defaultBukuTypes = [
-                ['Keterlambatan', 'Catatan siswa terlambat masuk sekolah', 'badge-warning', 1],
-                ['Pelanggaran', 'Catatan pelanggaran tata tertib sekolah', 'badge-danger', 2],
-                ['Prestasi', 'Penghargaan / prestasi akademik & non-akademik', 'badge-success', 3],
-                ['Screening', 'Catatan screening kesehatan / perilaku siswa', 'badge-info', 4],
-                ['Konsultasi', 'Bimbingan dan konseling siswa', 'badge-primary', 5]
-            ];
-            $stmtBT = db()->prepare("INSERT IGNORE INTO acad_buku_types (nama_jenis, deskripsi, warna_badge, urutan) VALUES (?,?,?,?)");
-            foreach ($defaultBukuTypes as $dbt) {
-                $stmtBT->execute($dbt);
-            }
-        }
-
-        db()->exec("CREATE TABLE IF NOT EXISTS acad_buku_penghubung (
-            id int(10) unsigned NOT NULL AUTO_INCREMENT,
-            student_id int(11) unsigned NOT NULL,
-            kelas_id int(10) unsigned NOT NULL,
-            academic_year_id int(11) unsigned NOT NULL,
-            jenis varchar(100) NOT NULL DEFAULT 'Konsultasi',
-            tanggal date NOT NULL,
-            catatan text NOT NULL,
-            dicatat_oleh int(11) unsigned DEFAULT NULL,
-            created_at timestamp NOT NULL DEFAULT current_timestamp(),
-            updated_at timestamp NOT NULL DEFAULT current_timestamp() ON UPDATE current_timestamp(),
-            PRIMARY KEY (id),
-            KEY idx_student (student_id),
-            KEY idx_kelas (kelas_id),
-            KEY idx_tanggal (tanggal)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;");
-
-        try {
-            db()->exec("ALTER TABLE acad_buku_penghubung ADD COLUMN foto text DEFAULT NULL AFTER catatan");
-        } catch (Exception $ex) {}
-    } catch (Exception $e) {}
-}
+function ensure_buku_tables() {}
 
 function helper_save_base64_photo($base64Data, $subfolder = 'bk') {
     if (empty($base64Data)) return null;
@@ -97,19 +45,16 @@ function helper_save_base64_photo($base64Data, $subfolder = 'bk') {
         return $base64Data;
     }
 
-    if (!preg_match('/^data:image\/(\w+);base64,/', $base64Data, $typeMatch)) {
+    if (!preg_match('/^data:image\/(jpeg|jpg|png|webp|gif);base64,/i', $base64Data, $typeMatch)) {
         return null;
     }
 
     $ext = strtolower($typeMatch[1]);
-    if (!in_array($ext, ['jpg', 'jpeg', 'png', 'webp'])) {
-        $ext = 'jpg';
-    }
     if ($ext === 'jpeg') $ext = 'jpg';
 
     $base64Body = substr($base64Data, strpos($base64Data, ',') + 1);
-    $binary = base64_decode($base64Body);
-    if ($binary === false || strlen($binary) === 0) return null;
+    $binary = base64_decode($base64Body, true);
+    if ($binary === false || strlen($binary) === 0 || strlen($binary) > 10 * 1024 * 1024) return null;
 
     $uploadRoot = realpath(__DIR__ . '/../../../uploads') ?: (__DIR__ . '/../../../uploads');
     $targetDir = $uploadRoot . '/' . trim($subfolder, '/');

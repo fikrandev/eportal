@@ -25,7 +25,7 @@ function sp_all_permissions() {
     return array_keys(sp_permission_aliases());
 }
 
-function sp_normalize_permissions($permissions) {
+function sp_normalize_permissions($permissions, $ensureDashboard = true) {
     $normalized = [];
     $aliases = sp_permission_aliases();
 
@@ -48,7 +48,7 @@ function sp_normalize_permissions($permissions) {
     }
 
     $normalized = array_values(array_unique($normalized));
-    if (!in_array('dashboard_view', $normalized, true)) {
+    if ($ensureDashboard && !in_array('dashboard_view', $normalized, true)) {
         $normalized[] = 'dashboard_view';
     }
 
@@ -77,23 +77,7 @@ function sp_default_permissions_for_role($sarprasRole) {
 }
 
 function sp_extract_token() {
-    $token = '';
-    if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
-        $token = str_replace('Bearer ', '', $_SERVER['HTTP_AUTHORIZATION']);
-    } elseif (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
-        $token = str_replace('Bearer ', '', $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
-    } elseif (function_exists('getallheaders')) {
-        $headers = getallheaders();
-        if (isset($headers['Authorization'])) {
-            $token = str_replace('Bearer ', '', $headers['Authorization']);
-        } elseif (isset($headers['authorization'])) {
-            $token = str_replace('Bearer ', '', $headers['authorization']);
-        }
-    }
-    if ($token === '' && isset($_GET['token'])) {
-        $token = (string) $_GET['token'];
-    }
-    return trim($token);
+    return get_bearer_token(true);
 }
 
 function sp_resolve_user_by_token($token, $jsonOnFail = true) {
@@ -115,6 +99,7 @@ function sp_resolve_user_by_token($token, $jsonOnFail = true) {
     $user['sarpras_role'] = 'viewer_sarpras';
     $user['permissions'] = ['dashboard_view'];
     $user['scoped_ruang_ids'] = [];
+    $user['is_room_scoped'] = false;
     $user['custom_role_id'] = null;
     $user['custom_role_name'] = '';
 
@@ -150,6 +135,7 @@ function sp_resolve_user_by_token($token, $jsonOnFail = true) {
         $user['permissions'] = sp_normalize_permissions($stmtPerm->fetchAll(PDO::FETCH_COLUMN));
 
         if ($user['custom_role_name'] === 'Penanggung Jawab Ruangan') {
+            $user['is_room_scoped'] = true;
             // Find PJ by user_id OR nip (matching username)
             $pjStmt = db()->prepare("SELECT id FROM sarpras_pj WHERE user_id = ? OR nip = ? LIMIT 1");
             $pjStmt->execute([$user['user_id'], $user['username']]);
@@ -158,7 +144,7 @@ function sp_resolve_user_by_token($token, $jsonOnFail = true) {
             if ($pjId) {
                 $ruangStmt = db()->prepare("SELECT id FROM ruang WHERE pj_id = ?");
                 $ruangStmt->execute([$pjId]);
-                $user['scoped_ruang_ids'] = $ruangStmt->fetchAll(PDO::FETCH_COLUMN);
+                $user['scoped_ruang_ids'] = array_map('intval', $ruangStmt->fetchAll(PDO::FETCH_COLUMN));
             }
         }
     } else {
@@ -209,12 +195,12 @@ function sp_has($user, $permission) {
     $permission = trim((string) $permission);
     if ($permission === '') return false;
 
-    $owned = sp_normalize_permissions($user['permissions'] ?? []);
+    $owned = sp_normalize_permissions($user['permissions'] ?? [], false);
     $aliases = sp_permission_aliases();
     $candidates = $aliases[$permission] ?? [$permission];
 
     foreach ($candidates as $candidate) {
-        $canonical = sp_normalize_permissions([$candidate]);
+        $canonical = sp_normalize_permissions([$candidate], false);
         if (array_intersect($owned, $canonical)) {
             return true;
         }
@@ -254,9 +240,21 @@ function sp_require_any($user, $permissions, $message = 'Akses ditolak') {
     }
 }
 
+function sp_can_access_ruang($user, $ruangId) {
+    if (empty($user['is_room_scoped'])) return true;
+    $ruangId = (int)$ruangId;
+    if ($ruangId <= 0) return false;
+    $allowed = array_map('intval', $user['scoped_ruang_ids'] ?? []);
+    return in_array($ruangId, $allowed, true);
+}
+
 function sp_scope_where($user, $table_alias = 's', $column = 'ruang_id', $allow_null = false) {
-    if (!empty($user['scoped_ruang_ids'])) {
-        $ids = implode(',', array_map('intval', $user['scoped_ruang_ids']));
+    if (!empty($user['is_room_scoped']) || !empty($user['scoped_ruang_ids'])) {
+        $scoped = array_values(array_filter(array_map('intval', $user['scoped_ruang_ids'] ?? []), function($v) { return $v > 0; }));
+        if (empty($scoped)) {
+            return $allow_null ? " AND ($table_alias.$column IS NULL) " : " AND 1=0 ";
+        }
+        $ids = implode(',', $scoped);
         if ($allow_null) {
             return " AND ($table_alias.$column IN ($ids) OR $table_alias.$column IS NULL) ";
         }

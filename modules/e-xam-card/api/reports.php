@@ -13,8 +13,9 @@ if ($studentToken !== '') {
     $parts = explode('.', $studentToken);
     if (count($parts) === 2) {
         $payloadJson = base64_decode($parts[0]);
-        $expectedSig = hash_hmac('sha256', $payloadJson, DB_NAME);
-        if (hash_equals($expectedSig, $parts[1])) {
+        $expectedSig = hash_hmac('sha256', $payloadJson, app_secret('xam_card'));
+        $legacySig = hash_hmac('sha256', $payloadJson, DB_NAME);
+        if (hash_equals($expectedSig, $parts[1]) || hash_equals($legacySig, $parts[1])) {
             $payload = json_decode($payloadJson, true);
             if ($payload && $payload['exp'] > time()) {
                 $isStudent = true;

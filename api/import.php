@@ -23,7 +23,7 @@ switch ($action) {
  * Client sends JSON array of user data (parsed by SheetJS)
  */
 function importUsers() {
-    require_superadmin();
+    $actor = portal_require_any_permission(['users_manage', 'gurus_manage']);
 
     if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
         json_response(405, false, 'Method not allowed.');
@@ -112,6 +112,11 @@ function importUsers() {
             if (!in_array($role, ['superadmin', 'user', 'guru'])) {
                 $role = 'user';
             }
+            if ($role === 'superadmin' && ($actor['role'] ?? '') !== 'superadmin') {
+                $errors[] = "Baris {$row}: Hanya Super Administrator yang dapat mengimpor akun superadmin.";
+                $failed++;
+                continue;
+            }
 
             // Check duplicate
             $stmtCheck->execute([$username]);
@@ -137,7 +142,7 @@ function importUsers() {
         ]);
 
     } catch (PDOException $e) {
-        db()->rollBack();
+        if (db()->inTransaction()) db()->rollBack();
         json_response(500, false, 'Server error: ' . $e->getMessage());
     }
 }
@@ -180,7 +185,7 @@ function normalize_import_tpg($value) {
  * Return template format info
  */
 function downloadTemplate() {
-    require_superadmin();
+    portal_require_any_permission(['users_manage', 'gurus_manage']);
 
     json_response(200, true, 'Template format.', [
         'columns' => [

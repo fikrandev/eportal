@@ -59,7 +59,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $activeYearId = (int)($activeYear['id'] ?? 0);
 
         foreach ($possible_dates as $tgl) {
-            $sql = "SELECT * FROM students WHERE nis = ? AND tanggal_lahir = ? AND status = 1";
+            if ($tgl === '0000-00-00' || $tgl === '') continue;
+            $sql = "SELECT * FROM students WHERE nis = ? AND tanggal_lahir = ? AND status = 1 AND (status_siswa = 'Aktif' OR status_siswa IS NULL OR status_siswa = '')";
             $params = [$nis, $tgl];
             if ($activeYearId > 0) {
                 $sql .= " ORDER BY (academic_year_id = ?) DESC, academic_year_id DESC, id DESC LIMIT 1";
@@ -78,13 +79,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($student) {
-            // Generate a persistent stateless token
-            $secret = 'SISWA_APP_SECRET_2026';
-            $hash = md5($student['nis'] . $student['tanggal_lahir'] . $secret);
-            $token = base64_encode($student['nis'] . ':' . $hash);
-            
-            // Set cookie for 10 years (Persistent session)
-            setcookie('siswa_token', $token, time() + (86400 * 365 * 10), "/", "", false, false);
+            // Generate a cryptographic HMAC token and store in student_sessions
+            $sig = hash_hmac('sha256', $student['nis'] . '|' . $student['tanggal_lahir'], app_secret('siswa_auth'));
+            $token = base64_encode($student['nis'] . ':' . $sig);
+
+            try {
+                $stmtSess = db()->prepare("
+                    INSERT INTO student_sessions (token, student_id, nis, expired_at)
+                    VALUES (?, ?, ?, DATE_ADD(NOW(), INTERVAL 365 DAY))
+                    ON DUPLICATE KEY UPDATE student_id = VALUES(student_id), expired_at = VALUES(expired_at)
+                ");
+                $stmtSess->execute([substr($token, 0, 128), (int)$student['id'], $student['nis']]);
+            } catch (Exception $e) {}
+
+            // Set cookie with HttpOnly + SameSite=Lax
+            $isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') || (($_SERVER['SERVER_PORT'] ?? 0) == 443);
+            setcookie('siswa_token', $token, [
+                'expires'  => time() + (86400 * 365),
+                'path'     => '/',
+                'secure'   => $isHttps,
+                'httponly' => true,
+                'samesite' => 'Lax'
+            ]);
 
             $photoInfo = siswa_resolve_photo($student);
 

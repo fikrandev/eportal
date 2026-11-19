@@ -3,32 +3,8 @@
  * Guru App — Absensi API
  * Fetch attendance data for teachers
  */
-require_once __DIR__ . '/../../api/config.php';
-
-// Auth check
-$token = '';
-if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
-    $token = str_replace('Bearer ', '', $_SERVER['HTTP_AUTHORIZATION']);
-} elseif (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
-    $token = str_replace('Bearer ', '', $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
-} elseif (function_exists('getallheaders')) {
-    $headers = getallheaders();
-    if (isset($headers['Authorization'])) $token = str_replace('Bearer ', '', $headers['Authorization']);
-    elseif (isset($headers['authorization'])) $token = str_replace('Bearer ', '', $headers['authorization']);
-}
-if (empty($token) && isset($_GET['token'])) $token = $_GET['token'];
-
-if (empty($token)) json_response(401, false, 'Token tidak ditemukan.');
-
-$stmt = db()->prepare("
-    SELECT u.id as user_id, u.username, u.nama_lengkap, u.role
-    FROM sessions s
-    JOIN users u ON s.user_id = u.id
-    WHERE s.token = ? AND s.expired_at > NOW() AND u.status = 1 AND u.role = 'guru'
-");
-$stmt->execute([trim($token)]);
-$user = $stmt->fetch();
-if (!$user) json_response(401, false, 'Sesi tidak valid.');
+require_once __DIR__ . '/auth_helper.php';
+$user = guru_auth();
 
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
@@ -55,8 +31,74 @@ function getRekapBulanan($user) {
         $stmtMap = db()->prepare("SELECT mesin_pin FROM absen_user_map WHERE user_id = ? LIMIT 1");
         $stmtMap->execute([$user['user_id']]);
         $pin = $stmtMap->fetchColumn();
+        $cleanPin = $pin ? ltrim((string)$pin, '0') : '';
 
-        if (!$pin) {
+        $startDate = $bulan . '-01 00:00:00';
+        $endDate = date('Y-m-t 23:59:59', strtotime($startDate));
+        $startDateOnly = $bulan . '-01';
+        $endDateOnly = date('Y-m-t', strtotime($startDate));
+
+        $byDate = [];
+
+        if ($pin) {
+            $stmtLogs = db()->prepare("
+                SELECT 
+                    DATE(waktu_absen) as tanggal,
+                    MIN(TIME(waktu_absen)) as jam_masuk,
+                    MAX(TIME(waktu_absen)) as jam_pulang,
+                    COUNT(id) as total_scan
+                FROM absen_logs 
+                WHERE (mesin_pin = ? OR mesin_pin = ?) AND waktu_absen BETWEEN ? AND ?
+                GROUP BY DATE(waktu_absen)
+                ORDER BY tanggal DESC
+            ");
+            $stmtLogs->execute([$pin, $cleanPin !== '' ? $cleanPin : $pin, $startDate, $endDate]);
+            $rawLogs = $stmtLogs->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($rawLogs as $row) {
+                $masuk = date('H:i', strtotime($row['jam_masuk']));
+                $pulang = ($row['total_scan'] > 1) ? date('H:i', strtotime($row['jam_pulang'])) : '-';
+                $byDate[$row['tanggal']] = [
+                    'tanggal' => $row['tanggal'],
+                    'jam_masuk' => $masuk,
+                    'jam_pulang' => $pulang,
+                    'status' => 'H'
+                ];
+            }
+        }
+
+        // Also merge manual PTK attendance from acad_absensi_guru
+        try {
+            $stmtManual = db()->prepare("
+                SELECT tanggal, jam_ke, status, keterangan
+                FROM acad_absensi_guru
+                WHERE user_id = ? AND tanggal BETWEEN ? AND ?
+                ORDER BY tanggal DESC, jam_ke ASC
+            ");
+            $stmtManual->execute([$user['user_id'], $startDateOnly, $endDateOnly]);
+            foreach ($stmtManual->fetchAll(PDO::FETCH_ASSOC) as $m) {
+                $tgl = $m['tanggal'];
+                if (!isset($byDate[$tgl])) {
+                    $byDate[$tgl] = [
+                        'tanggal' => $tgl,
+                        'jam_masuk' => '-',
+                        'jam_pulang' => '-',
+                        'status' => $m['status'] ?: 'H'
+                    ];
+                }
+                $jk = (int)$m['jam_ke'];
+                $st = $m['status'] ?: 'H';
+                $label = ($st === 'H') ? ($m['keterangan'] ?: 'Hadir') : $st;
+                if (($jk === 0 || $jk === 1) && $byDate[$tgl]['jam_masuk'] === '-') {
+                    $byDate[$tgl]['jam_masuk'] = $label;
+                    $byDate[$tgl]['status'] = $st;
+                } elseif ($jk === 3 && $byDate[$tgl]['jam_pulang'] === '-') {
+                    $byDate[$tgl]['jam_pulang'] = $label;
+                }
+            }
+        } catch (Exception $e) {}
+
+        if (!$pin && empty($byDate)) {
             json_response(200, true, 'Rekapitulasi Absensi', [
                 'mapped' => false,
                 'logs' => [],
@@ -65,42 +107,18 @@ function getRekapBulanan($user) {
             return;
         }
 
-        // Fetch logs for the specified month
-        $startDate = $bulan . '-01 00:00:00';
-        $endDate = date('Y-m-t 23:59:59', strtotime($startDate));
-
-        $stmtLogs = db()->prepare("
-            SELECT 
-                DATE(waktu_absen) as tanggal,
-                MIN(TIME(waktu_absen)) as jam_masuk,
-                MAX(TIME(waktu_absen)) as jam_pulang,
-                COUNT(id) as total_scan
-            FROM absen_logs 
-            WHERE mesin_pin = ? AND waktu_absen BETWEEN ? AND ?
-            GROUP BY DATE(waktu_absen)
-            ORDER BY tanggal DESC
-        ");
-        
-        $stmtLogs->execute([$pin, $startDate, $endDate]);
-        $rawLogs = $stmtLogs->fetchAll(PDO::FETCH_ASSOC);
-
-        $logs = [];
-        $totalHadir = count($rawLogs);
-
-        foreach ($rawLogs as $row) {
-            $masuk = date('H:i', strtotime($row['jam_masuk']));
-            $pulang = ($row['total_scan'] > 1) ? date('H:i', strtotime($row['jam_pulang'])) : '-';
-
-            $logs[] = [
-                'tanggal' => $row['tanggal'],
-                'jam_masuk' => $masuk,
-                'jam_pulang' => $pulang
-            ];
+        krsort($byDate);
+        $logs = array_values($byDate);
+        $totalHadir = 0;
+        foreach ($logs as $item) {
+            if (($item['status'] ?? 'H') === 'H' || ($item['status'] ?? '') === 'DNS') {
+                $totalHadir++;
+            }
         }
 
         json_response(200, true, 'Rekapitulasi Absensi', [
-            'mapped' => true,
-            'pin' => $pin,
+            'mapped' => (bool)$pin || !empty($logs),
+            'pin' => $pin ?: '-',
             'logs' => $logs,
             'stats' => ['hadir' => $totalHadir]
         ]);

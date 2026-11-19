@@ -4,86 +4,18 @@
  * Reuses eportal core config, adds examination-specific auth
  */
 require_once __DIR__ . '/../../../api/config.php';
-require_once __DIR__ . '/../../../api/migration_helper.php';
-
-// Auto-run global and module migrations
-run_auto_migrations();
 
 /**
- * Auto-ensure E-Examination tables exist in database
+ * Legacy no-op hook (schema managed centrally in migration_helper.php v26+)
  */
-function exam_ensure_tables() {
-    try {
-        $pdo = db();
-        $checkTable = $pdo->query("SHOW TABLES LIKE 'exam_ujian'")->fetch();
-        if ($checkTable) {
-            $cols = $pdo->query("SHOW COLUMNS FROM `exam_ujian` LIKE 'metode_login'")->fetchAll();
-            if (empty($cols)) {
-                $pdo->exec("ALTER TABLE `exam_ujian` ADD COLUMN `metode_login` ENUM('nis_dob','examcard') NOT NULL DEFAULT 'nis_dob' AFTER `jenis`");
-            }
-        }
-        $checkSoal = $pdo->query("SHOW TABLES LIKE 'exam_soal'")->fetch();
-        if ($checkSoal) {
-            $colsAudio = $pdo->query("SHOW COLUMNS FROM `exam_soal` LIKE 'audio_play_limit'")->fetchAll();
-            if (empty($colsAudio)) {
-                $pdo->exec("ALTER TABLE `exam_soal` ADD COLUMN `audio_play_limit` INT NOT NULL DEFAULT 0 AFTER `audio`");
-            }
-        }
-        $checkSesi = $pdo->query("SHOW TABLES LIKE 'exam_sesi'")->fetch();
-        if ($checkSesi) {
-            $colsSesi = $pdo->query("SHOW COLUMNS FROM `exam_sesi` LIKE 'status_koreksi'")->fetchAll();
-            if (empty($colsSesi)) {
-                $pdo->exec("ALTER TABLE `exam_sesi` ADD COLUMN `status_koreksi` ENUM('belum_dikoreksi', 'sudah_dikoreksi') NOT NULL DEFAULT 'belum_dikoreksi' AFTER `nilai_akhir`");
-            }
-            $colsOleh = $pdo->query("SHOW COLUMNS FROM `exam_sesi` LIKE 'dikoreksi_oleh'")->fetchAll();
-            if (empty($colsOleh)) {
-                $pdo->exec("ALTER TABLE `exam_sesi` ADD COLUMN `dikoreksi_oleh` INT(10) UNSIGNED DEFAULT NULL AFTER `status_koreksi`");
-            }
-            $colsPada = $pdo->query("SHOW COLUMNS FROM `exam_sesi` LIKE 'dikoreksi_pada'")->fetchAll();
-            if (empty($colsPada)) {
-                $pdo->exec("ALTER TABLE `exam_sesi` ADD COLUMN `dikoreksi_pada` DATETIME DEFAULT NULL AFTER `dikoreksi_oleh`");
-            }
-        }
-        $checkJawaban = $pdo->query("SHOW TABLES LIKE 'exam_jawaban'")->fetch();
-        if ($checkJawaban) {
-            $colsCatatan = $pdo->query("SHOW COLUMNS FROM `exam_jawaban` LIKE 'catatan_guru'")->fetchAll();
-            if (empty($colsCatatan)) {
-                $pdo->exec("ALTER TABLE `exam_jawaban` ADD COLUMN `catatan_guru` TEXT DEFAULT NULL AFTER `ai_feedback`");
-            }
-            $colsManual = $pdo->query("SHOW COLUMNS FROM `exam_jawaban` LIKE 'is_koreksi_manual'")->fetchAll();
-            if (empty($colsManual)) {
-                $pdo->exec("ALTER TABLE `exam_jawaban` ADD COLUMN `is_koreksi_manual` TINYINT(1) NOT NULL DEFAULT 0 AFTER `catatan_guru`");
-            }
-        }
-    } catch (Throwable $e) {}
-    run_auto_migrations();
-}
-
-// Ensure tables exist on boot
-exam_ensure_tables();
+function exam_ensure_tables() {}
 
 /**
  * Authenticate request for E-Examination (Admin/Guru)
  * Uses eportal session token
  */
 function exam_auth() {
-    $token = '';
-
-    if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
-        $token = str_replace('Bearer ', '', $_SERVER['HTTP_AUTHORIZATION']);
-    } elseif (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
-        $token = str_replace('Bearer ', '', $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
-    } elseif (function_exists('getallheaders')) {
-        $headers = getallheaders();
-        if (isset($headers['Authorization'])) {
-            $token = str_replace('Bearer ', '', $headers['Authorization']);
-        } elseif (isset($headers['authorization'])) {
-            $token = str_replace('Bearer ', '', $headers['authorization']);
-        }
-    }
-    if (empty($token) && isset($_GET['token'])) {
-        $token = $_GET['token'];
-    }
+    $token = get_bearer_token(true);
 
     if (empty($token)) {
         json_response(401, false, 'Token tidak ditemukan.');
@@ -109,18 +41,27 @@ function exam_auth() {
             $stmtRole = db()->prepare("SELECT role, status FROM exam_roles WHERE user_id = ?");
             $stmtRole->execute([$session['user_id']]);
             $rRow = $stmtRole->fetch();
-            if ($rRow && (int)$rRow['status'] === 1) {
-                $examRole = $rRow['role'];
+            if ($rRow) {
+                if ((int)$rRow['status'] === 0 && $session['role'] !== 'superadmin') {
+                    json_response(403, false, 'Akses modul E-Examination Anda sedang dinonaktifkan.');
+                }
+                if ((int)$rRow['status'] === 1) {
+                    $examRole = $rRow['role'];
+                }
             }
         } catch (PDOException $e) {
-            // Table might not exist yet before migration
             $examRole = null;
         }
 
         $isSuperAdmin = ($session['role'] === 'superadmin');
-        $isExamAdmin = $isSuperAdmin || ($examRole === 'admin') || (!$examRole && $session['role'] === 'user');
+        $hasModulePerm = $isSuperAdmin || portal_has_permission($session, 'module_e-examination') || portal_has_permission($session, '*');
+        $isExamAdmin = $isSuperAdmin || ($examRole === 'admin') || (!$examRole && $session['role'] === 'user' && $hasModulePerm);
         $isProktor = $isExamAdmin || ($examRole === 'proktor');
         $isGuru = $isExamAdmin || ($examRole === 'guru') || (!$examRole && $session['role'] === 'guru');
+
+        if (!$isExamAdmin && !$isProktor && !$isGuru) {
+            json_response(403, false, 'Anda tidak memiliki akses ke modul E-Examination.');
+        }
 
         // Determine primary effective exam role
         $effectiveRole = 'guru';
@@ -188,6 +129,57 @@ function exam_require_guru() {
  */
 function exam_require_admin_or_guru() {
     return exam_require_guru();
+}
+
+/**
+ * Enforce ownership check on exam_ujian for non-admin/non-proktor gurus
+ */
+function exam_require_ujian_access($ujian_id, $user = null) {
+    if (!$user) $user = exam_require_admin_or_guru();
+    $stmt = db()->prepare("SELECT id, created_by FROM exam_ujian WHERE id = ?");
+    $stmt->execute([(int)$ujian_id]);
+    $ujian = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$ujian) {
+        json_response(404, false, 'Ujian tidak ditemukan.');
+    }
+    if (!$user['is_admin'] && !$user['is_proktor'] && (int)$ujian['created_by'] !== (int)$user['user_id']) {
+        json_response(403, false, 'Akses ditolak. Anda bukan pembuat ujian ini.');
+    }
+    return $user;
+}
+
+/**
+ * Enforce ownership check on exam_sesi for non-admin/non-proktor gurus
+ */
+function exam_require_sesi_access($session_id, $user = null) {
+    if (!$user) $user = exam_require_admin_or_guru();
+    $stmt = db()->prepare("SELECT s.id, u.created_by FROM exam_sesi s JOIN exam_ujian u ON s.ujian_id = u.id WHERE s.id = ?");
+    $stmt->execute([(int)$session_id]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$row) {
+        json_response(404, false, 'Sesi ujian tidak ditemukan.');
+    }
+    if (!$user['is_admin'] && !$user['is_proktor'] && (int)$row['created_by'] !== (int)$user['user_id']) {
+        json_response(403, false, 'Akses ditolak. Anda tidak memiliki akses ke sesi ujian ini.');
+    }
+    return $user;
+}
+
+/**
+ * Enforce ownership check on exam_bank_soal for non-admin gurus
+ */
+function exam_require_bank_access($bank_id, $user = null) {
+    if (!$user) $user = exam_require_admin_or_guru();
+    $stmt = db()->prepare("SELECT id, created_by FROM exam_bank_soal WHERE id = ?");
+    $stmt->execute([(int)$bank_id]);
+    $bank = $stmt->fetch(PDO::FETCH_ASSOC);
+    if (!$bank) {
+        json_response(404, false, 'Bank soal tidak ditemukan.');
+    }
+    if (!$user['is_admin'] && (int)$bank['created_by'] !== (int)$user['user_id']) {
+        json_response(403, false, 'Akses ditolak. Anda bukan pemilik bank soal ini.');
+    }
+    return $user;
 }
 
 /**

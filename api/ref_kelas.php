@@ -59,6 +59,7 @@ function syncRefKelasFromStudents() {
 }
 
 function listRefKelas() {
+    auth_check();
     // Auto-sync classes from students table
     syncRefKelasFromStudents();
 
@@ -73,6 +74,7 @@ function listRefKelas() {
 }
 
 function getRefKelas() {
+    auth_check();
     $id = isset($_GET['id']) ? (int)$_GET['id'] : 0;
     $stmt = db()->prepare("SELECT * FROM ref_kelas WHERE id = ?");
     $stmt->execute([$id]);
@@ -80,7 +82,7 @@ function getRefKelas() {
 }
 
 function createRefKelas() {
-    require_superadmin();
+    portal_require_permission('referensi_manage');
     $input = get_input();
     $tingkat = sanitize($input['tingkat'] ?? '');
     $nama_kelas = sanitize($input['nama_kelas'] ?? '');
@@ -104,7 +106,7 @@ function createRefKelas() {
 }
 
 function updateRefKelas() {
-    require_superadmin();
+    portal_require_permission('referensi_manage');
     $input = get_input();
     $id = isset($input['id']) ? (int)$input['id'] : 0;
     $tingkat = sanitize($input['tingkat'] ?? '');
@@ -129,7 +131,7 @@ function updateRefKelas() {
 }
 
 function deleteRefKelas() {
-    require_superadmin();
+    portal_require_permission('referensi_manage');
     $input = get_input();
     $id = isset($input['id']) ? (int)$input['id'] : 0;
     if (!$id) json_response(400, false, 'ID tidak valid.');
@@ -163,7 +165,7 @@ function deleteRefKelas() {
 }
 
 function listTeachers() {
-    require_superadmin();
+    portal_require_any_permission(['referensi_manage', 'students_manage', 'gurus_manage']);
     $stmt = db()->prepare("SELECT id, username, nama_lengkap FROM users WHERE role = 'guru' AND status = 1 ORDER BY nama_lengkap ASC");
     $stmt->execute();
     json_response(200, true, 'Daftar guru.', $stmt->fetchAll(PDO::FETCH_ASSOC));

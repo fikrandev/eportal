@@ -30,25 +30,32 @@ if (!empty($token)) {
         }
 
         if ($user) {
-            // Check exam_roles table
-            $examRole = null;
+            $examRoleRow = null;
             try {
-                $stmtRole = db()->prepare("SELECT role, status FROM exam_roles WHERE user_id = ?");
+                $stmtRole = db()->prepare("SELECT role, status FROM exam_roles WHERE user_id = ? LIMIT 1");
                 $stmtRole->execute([$user['user_id']]);
-                $r = $stmtRole->fetch();
-                if ($r && (int)$r['status'] === 1) {
-                    $examRole = $r['role'];
-                }
-            } catch (Exception $e) { $examRole = null; }
+                $examRoleRow = $stmtRole->fetch();
+            } catch (Exception $e) { $examRoleRow = null; }
 
-            if ($user['role'] === 'superadmin' || ($examRole === 'admin') || (!$examRole && $user['role'] === 'user')) {
-                $effectiveExamRole = 'admin';
-            } elseif ($examRole === 'proktor') {
-                $effectiveExamRole = 'proktor';
+            // Explicit disable in exam_roles denies module access immediately
+            if ($examRoleRow && (int)$examRoleRow['status'] === 0 && $user['role'] !== 'superadmin') {
+                $user = null;
+            } elseif ($user['role'] === 'superadmin' || ($examRoleRow && $examRoleRow['role'] === 'admin')) {
+                $user['exam_role'] = 'admin';
+            } elseif (!$examRoleRow && $user['role'] === 'user') {
+                $perms = portal_get_user_permissions($user['user_id']);
+                if (in_array('*', $perms, true) || in_array('module_e-examination', $perms, true)) {
+                    $user['exam_role'] = 'admin';
+                } else {
+                    $user = null;
+                }
+            } elseif ($examRoleRow && $examRoleRow['role'] === 'proktor') {
+                $user['exam_role'] = 'proktor';
+            } elseif (($examRoleRow && $examRoleRow['role'] === 'guru') || (!$examRoleRow && $user['role'] === 'guru')) {
+                $user['exam_role'] = 'guru';
             } else {
-                $effectiveExamRole = 'guru';
+                $user = null;
             }
-            $user['exam_role'] = $effectiveExamRole;
         }
     } catch (PDOException $e) { $user = null; }
 }
@@ -66,13 +73,13 @@ $school_icon = get_setting('icon_sekolah', '');
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="E-Examination — Sistem Ujian Digital CBT">
     
     <title>E-Examination — CBT</title>
 
     <?php if($school_icon): ?>
-    <link rel="icon" href="<?php echo BASE_URL . $school_icon; ?>">
+    <link rel="icon" href="<?php echo htmlspecialchars(BASE_URL . ltrim(str_replace('\\', '/', $school_icon), '/'), ENT_QUOTES, 'UTF-8'); ?>">
     <?php endif; ?>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -80,9 +87,9 @@ $school_icon = get_setting('icon_sekolah', '');
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 
     <!-- Eportal Global CSS (reuse for some utilities) -->
-    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css?v=<?php echo time(); ?>">
+    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css?v=<?php echo asset_ver('assets/css/app.css'); ?>">
     <!-- Examination Custom CSS -->
-    <link rel="stylesheet" href="assets/css/examination.css?v=<?php echo time(); ?>">
+    <link rel="stylesheet" href="assets/css/examination.css?v=<?php echo asset_ver('modules/e-examination/assets/css/examination.css'); ?>">
     
     <!-- KaTeX for Math Equations -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
@@ -94,23 +101,23 @@ $school_icon = get_setting('icon_sekolah', '');
     <script src="https://cdn.jsdelivr.net/npm/quill@1.3.7/dist/quill.min.js"></script>
 
     <script>
-        window.EXAM_CONFIG = {
-            baseUrl: '<?php echo BASE_URL; ?>',
-            moduleUrl: '<?php echo BASE_URL; ?>modules/e-examination/',
-            token: '<?php echo addslashes($token); ?>',
-            user: {
-                id: <?php echo (int)$user['user_id']; ?>,
-                username: '<?php echo addslashes($user['username']); ?>',
-                nama_lengkap: '<?php echo addslashes($user['nama_lengkap']); ?>',
-                role: '<?php echo $user['role']; ?>',
-                exam_role: '<?php echo $user['exam_role']; ?>',
-                avatar: '<?php echo addslashes($user['avatar'] ?? ''); ?>'
-            },
-            school: {
-                nama: '<?php echo addslashes($school_name); ?>',
-                icon: '<?php echo addslashes($school_icon); ?>'
-            }
-        };
+        window.EXAM_CONFIG = <?php echo json_encode([
+            'baseUrl' => BASE_URL,
+            'moduleUrl' => BASE_URL . 'modules/e-examination/',
+            'token' => $token,
+            'user' => [
+                'id' => (int)$user['user_id'],
+                'username' => $user['username'],
+                'nama_lengkap' => $user['nama_lengkap'],
+                'role' => $user['role'],
+                'exam_role' => $user['exam_role'],
+                'avatar' => $user['avatar'] ?? '',
+            ],
+            'school' => [
+                'nama' => $school_name,
+                'icon' => $school_icon,
+            ],
+        ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
     </script>
     <?php echo get_module_theme_css('e-examination'); ?>
 </head>
@@ -198,10 +205,11 @@ $school_icon = get_setting('icon_sekolah', '');
     <!-- Vendor Scripts -->
     <script src="<?php echo BASE_URL; ?>assets/vendor/jquery-3.7.1.min.js"></script>
     <script src="<?php echo BASE_URL; ?>assets/vendor/qrcode.min.js"></script>
-    <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=<?php echo time(); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/core-utils.js?v=<?php echo asset_ver('assets/js/core-utils.js'); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=<?php echo asset_ver('assets/js/modal.js'); ?>"></script>
     
     <!-- Module Script -->
-    <script src="<?php echo BASE_URL; ?>assets/js/pagination.js?v=<?php echo time(); ?>"></script>
-    <script src="assets/js/examination.js?v=<?php echo time(); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/pagination.js?v=<?php echo asset_ver('assets/js/pagination.js'); ?>"></script>
+    <script src="assets/js/examination.js?v=<?php echo asset_ver('modules/e-examination/assets/js/examination.js'); ?>"></script>
 </body>
 </html>

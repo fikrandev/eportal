@@ -47,8 +47,7 @@ if ($studentId > 0 && $yearId > 0 && $sig !== '') {
         $stmt->execute([$studentId, $yearId]);
         $row = $stmt->fetch();
         if ($row) {
-            $expected = graduation_verify_signature($studentId, $yearId, $row['letter_number'] ?? '');
-            $valid = hash_equals($expected, $sig);
+            $valid = graduation_verify_signature_matches($studentId, $yearId, $row['letter_number'] ?? '', $sig);
         }
     } catch (PDOException $e) {
         $row = null;
@@ -57,8 +56,21 @@ if ($studentId > 0 && $yearId > 0 && $sig !== '') {
 
 function graduation_verify_signature($studentId, $yearId, $letterNumber)
 {
-    $secret = DB_NAME . '|' . DB_USER . '|' . DB_PASS;
-    return substr(hash_hmac('sha256', (int) $studentId . '|' . (int) $yearId . '|' . (string) $letterNumber, $secret), 0, 24);
+    return substr(hash_hmac('sha256', (int) $studentId . '|' . (int) $yearId . '|' . (string) $letterNumber, app_secret('qr')), 0, 24);
+}
+
+function graduation_verify_signature_matches($studentId, $yearId, $letterNumber, $sig)
+{
+    $sig = (string) $sig;
+    if ($sig === '') return false;
+    $expected = graduation_verify_signature($studentId, $yearId, $letterNumber);
+    if (hash_equals($expected, $sig)) {
+        return true;
+    }
+    // Legacy fallback for previously printed SKLs (accepted only when DB record exists)
+    $legacySecret = DB_NAME . '|' . DB_USER . '|' . DB_PASS;
+    $legacyExpected = substr(hash_hmac('sha256', (int) $studentId . '|' . (int) $yearId . '|' . (string) $letterNumber, $legacySecret), 0, 24);
+    return hash_equals($legacyExpected, $sig);
 }
 
 function h($value)

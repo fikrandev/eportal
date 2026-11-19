@@ -14,7 +14,7 @@
 
 require_once __DIR__ . '/config.php';
 
-require_superadmin();
+portal_require_permission('foto_siswa_manage');
 
 $action = $_GET['action'] ?? '';
 
@@ -197,38 +197,73 @@ function uploadZip()
     }
 
     $root = realpath(__DIR__ . '/../');
-    $tempDir = $root . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'temp_zip_' . uniqid();
+    $tempDir = $root . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . 'temp_zip_' . bin2hex(random_bytes(6));
     if (!is_dir($tempDir)) {
         mkdir($tempDir, 0755, true);
     }
 
-    $zip->extractTo($tempDir);
-    $zip->close();
-
     $academicYearId = isset($_POST['academic_year_id']) ? (int) $_POST['academic_year_id'] : 0;
     $results = ['success' => 0, 'failed' => 0, 'skipped' => 0, 'details' => []];
     $allowedExt = ['jpg', 'jpeg', 'png'];
+    $maxEntryBytes = 15 * 1024 * 1024;
 
-    // Scan all files including subdirectories
-    $iterator = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($tempDir, RecursiveDirectoryIterator::SKIP_DOTS));
-    foreach ($iterator as $fileInfo) {
-        if ($fileInfo->isDir()) continue;
-        $fileName = $fileInfo->getBasename();
-        $fileExt = strtolower(pathinfo($fileName, PATHINFO_EXTENSION));
-        if (!in_array($fileExt, $allowedExt)) {
+    // Iterasi entry ZIP satu per satu (anti Zip-Slip, tidak memanggil extractTo langsung)
+    for ($i = 0; $i < $zip->numFiles; $i++) {
+        $stat = $zip->statIndex($i);
+        if (!$stat || empty($stat['name'])) continue;
+        $entryName = str_replace('\\', '/', $stat['name']);
+        if (substr($entryName, -1) === '/' || strpos($entryName, '..') !== false) {
+            continue;
+        }
+        $baseName = basename($entryName);
+        if ($baseName === '' || $baseName[0] === '.') continue; // skip __MACOSX / hidden files
+
+        $fileExt = strtolower(pathinfo($baseName, PATHINFO_EXTENSION));
+        if (!in_array($fileExt, $allowedExt, true)) {
             $results['skipped']++;
             continue;
         }
+        if (($stat['size'] ?? 0) <= 0 || ($stat['size'] ?? 0) > $maxEntryBytes) {
+            $results['failed']++;
+            $results['details'][] = "✗ {$baseName}: Ukuran file tidak valid atau terlalu besar.";
+            continue;
+        }
 
-        $result = processPhotoFile($fileName, $fileInfo->getPathname(), $academicYearId);
-        if ($result['success']) {
-            $results['success']++;
-            $results['details'][] = "✓ {$result['nis']} - {$result['nama']}";
+        $stream = $zip->getStream($stat['name']);
+        if (!$stream) {
+            $results['failed']++;
+            $results['details'][] = "✗ {$baseName}: Gagal membaca entry ZIP.";
+            continue;
+        }
+        $tmpEntryFile = $tempDir . DIRECTORY_SEPARATOR . uniqid('img_', true) . '.' . $fileExt;
+        $out = fopen($tmpEntryFile, 'wb');
+        $written = 0;
+        while (!feof($stream) && $written <= $maxEntryBytes) {
+            $buf = fread($stream, 8192);
+            if ($buf === false) break;
+            $written += strlen($buf);
+            if ($written > $maxEntryBytes) break;
+            fwrite($out, $buf);
+        }
+        fclose($out);
+        fclose($stream);
+
+        if ($written <= $maxEntryBytes) {
+            $result = processPhotoFile($baseName, $tmpEntryFile, $academicYearId);
+            if ($result['success']) {
+                $results['success']++;
+                $results['details'][] = "✓ {$result['nis']} - {$result['nama']}";
+            } else {
+                $results['failed']++;
+                $results['details'][] = "✗ {$baseName}: {$result['message']}";
+            }
         } else {
             $results['failed']++;
-            $results['details'][] = "✗ {$fileName}: {$result['message']}";
+            $results['details'][] = "✗ {$baseName}: Melebihi batas ukuran 15MB.";
         }
+        if (file_exists($tmpEntryFile)) @unlink($tmpEntryFile);
     }
+    $zip->close();
 
     // Clean up temp directory
     deleteDirectory($tempDir);
@@ -259,13 +294,9 @@ function deletePhoto()
         json_response(404, false, 'Siswa tidak ditemukan.');
     }
 
-    // Delete physical file
+    // Delete physical file safely inside uploads
     if (!empty($student['foto_path'])) {
-        $root = realpath(__DIR__ . '/../');
-        $fullPath = $root . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, ltrim($student['foto_path'], '/\\'));
-        if (file_exists($fullPath)) {
-            unlink($fullPath);
-        }
+        safe_unlink_in_dir($student['foto_path'], 'uploads');
     }
 
     // Clear database
@@ -284,8 +315,12 @@ function processPhotoFile($originalName, $tmpPath, $academicYearId = 0)
     $ext = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
     $baseName = pathinfo($originalName, PATHINFO_FILENAME);
 
-    if (!in_array($ext, $allowedExt)) {
+    if (!in_array($ext, $allowedExt, true)) {
         return ['success' => false, 'message' => 'Format file harus JPG atau PNG.'];
+    }
+
+    if (!file_exists($tmpPath) || !@getimagesize($tmpPath)) {
+        return ['success' => false, 'message' => 'File gambar tidak valid atau corrupt.'];
     }
 
     // NIS is the filename (without extension)
@@ -328,15 +363,13 @@ function processPhotoFile($originalName, $tmpPath, $academicYearId = 0)
 
     // Delete old photo if exists (REPLACE behavior)
     if (!empty($student['foto_path'])) {
-        $oldPath = $root . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, ltrim($student['foto_path'], '/\\'));
-        if (file_exists($oldPath)) {
-            unlink($oldPath);
-        }
+        safe_unlink_in_dir($student['foto_path'], 'uploads');
     }
 
-    // Save new photo
+    // Save new photo safely
+    $safeNis = preg_replace('/[^A-Za-z0-9._-]/', '_', $nis);
     $targetExt = ($ext === 'png') ? 'png' : 'jpg';
-    $targetName = $nis . '.' . $targetExt;
+    $targetName = $safeNis . '.' . $targetExt;
     $targetPath = $fullDir . DIRECTORY_SEPARATOR . $targetName;
     $relativePath = 'uploads/students/photos/' . $targetName;
 

@@ -5,6 +5,7 @@
  */
 
 require_once __DIR__ . '/config_perf.php';
+require_once __DIR__ . '/scoring_helper.php';
 
 $auth = perf_auth_check();
 if (!$auth) {
@@ -12,50 +13,6 @@ if (!$auth) {
 }
 
 $db = db();
-
-function getDeskripsiInfo($db, $tupoksi, $nilai) {
-    // Check direct scale
-    $stmt = $db->prepare("SELECT predikat, deskripsi FROM perf_deskripsi WHERE tupoksi = ? AND ? >= min_nilai AND ? <= max_nilai LIMIT 1");
-    $stmt->execute([$tupoksi, $nilai, $nilai]);
-    $res = $stmt->fetch(PDO::FETCH_ASSOC);
-    if ($res) return $res;
-
-    // Check converted scale 1-5 -> 100 if applicable
-    if ($nilai > 0 && $nilai <= 5.0) {
-        $nilai100 = ($nilai / 5.0) * 100;
-        $stmt->execute([$tupoksi, $nilai100, $nilai100]);
-        $res = $stmt->fetch(PDO::FETCH_ASSOC);
-        if ($res) return $res;
-    }
-
-    return null;
-}
-
-function getDefaultDeskripsiText($tupoksi, $predikat) {
-    $sebutan = (strpos(strtolower($tupoksi), 'guru') !== false) ? 'Guru' : 'Pegawai';
-    $pLower = strtolower($predikat);
-    if (strpos($pLower, 'sangat baik') !== false || strpos($pLower, 'sb') !== false || strpos($pLower, 'istimewa') !== false) {
-        return "{$sebutan} telah menunjukkan standar kompetensi yang sangat luar biasa dalam mengajar dan memberikan pelayanan pendidikan secara optimal.";
-    } elseif (strpos($pLower, 'baik') !== false || $pLower === 'b') {
-        return "{$sebutan} telah memenuhi standar kompetensi dengan baik dalam mengajar dan memberikan pelayanan pendidikan secara optimal.";
-    } elseif (strpos($pLower, 'cukup') !== false || $pLower === 'c') {
-        return "{$sebutan} telah memenuhi standar kompetensi dasar dalam mengajar, namun masih memerlukan bimbingan atau peningkatan pada beberapa aspek tertentu agar lebih optimal dalam pelayanan pendidikan.";
-    } else {
-        return "{$sebutan} perlu banyak bimbingan untuk mencapai standar kompetensi dasar dalam pelayanan pendidikan.";
-    }
-}
-
-function getDeskripsiPenilaian($db, $tupoksi, $nilai, $fallbackPredikat = '') {
-    $info = getDeskripsiInfo($db, $tupoksi, $nilai);
-    if ($info && !empty($info['deskripsi'])) {
-        return $info['deskripsi'];
-    }
-    if ($fallbackPredikat) {
-        return getDefaultDeskripsiText($tupoksi, $fallbackPredikat);
-    }
-    return '-';
-}
-
 
 $ptk_id = isset($_GET['ptk_id']) ? (int)$_GET['ptk_id'] : 0;
 $periode_id = isset($_GET['periode_id']) ? (int)$_GET['periode_id'] : 0;
@@ -73,21 +30,21 @@ $kop_surat = get_setting('kop_surat', '');
 if (!$periode) die("Periode tidak ditemukan.");
 
 // Check Authorization
-$isAdmin = in_array($auth['role'], ['admin', 'superadmin']);
+$isAdmin = in_array($auth['role'], ['admin', 'superadmin'], true) || in_array('hasil', $auth['permissions'] ?? [], true);
 if (!$isAdmin) {
-    if ($auth['ptk_id'] != $ptk_id) {
+    if (empty($auth['ptk_id']) || (int)$auth['ptk_id'] !== (int)$ptk_id) {
         die("Akses ditolak. Anda hanya dapat melihat laporan Anda sendiri.");
     }
-    if ($periode['is_released'] != 1) {
+    if ((int)$periode['is_released'] !== 1) {
         die("Akses ditolak. Hasil penilaian untuk periode ini belum dirilis.");
     }
 }
 
 // 2. Get PTK Biodata (from perf_ptk and users)
 $stmtPTK = $db->prepare("
-    SELECT pt.*, u.tmt, u.nama_lengkap, u.username as niy, u.tupoksi, u.jabatan 
+    SELECT pt.*, u.tmt, COALESCE(u.nama_lengkap, pt.nama) as nama_lengkap, pt.niy, COALESCE(u.tupoksi, pt.jenis_ptk) as tupoksi, u.jabatan 
     FROM perf_ptk pt
-    JOIN users u ON pt.niy COLLATE utf8mb4_unicode_ci = u.username
+    LEFT JOIN users u ON pt.niy COLLATE utf8mb4_unicode_ci = u.username COLLATE utf8mb4_unicode_ci
     WHERE pt.id = ?
 ");
 $stmtPTK->execute([$ptk_id]);

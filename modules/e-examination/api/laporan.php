@@ -13,9 +13,10 @@ try {
         // DATA HASIL UJIAN
         // ==========================================
         case 'hasil_ujian':
-            exam_require_admin_or_guru();
+            $user = exam_require_admin_or_guru();
             $ujian_id = (int)($_GET['ujian_id'] ?? 0);
             if (!$ujian_id) throw new Exception('Ujian ID tidak valid', 400);
+            exam_require_ujian_access($ujian_id, $user);
 
             // Fetch exam details first
             $stmtU = db()->prepare("SELECT judul, jenis, bank_soal_id FROM exam_ujian WHERE id = ?");
@@ -172,23 +173,10 @@ try {
         // DOWNLOAD EXCEL (CSV)
         // ==========================================
         case 'download_excel':
-            // Verifikasi token lewat GET karena ini dibuka via link <a> target="_blank"
-            $token = $_GET['token'] ?? '';
-            if (!$token) die('Token tidak valid');
-            
-            // Verifikasi token
-            $stmtAuth = db()->prepare("
-                SELECT u.role 
-                FROM sessions s JOIN users u ON s.user_id = u.id 
-                WHERE s.token = ? AND s.expired_at > NOW()
-            ");
-            $stmtAuth->execute([$token]);
-            $auth = $stmtAuth->fetch();
-            if (!$auth || !in_array($auth['role'], ['superadmin', 'user', 'guru'])) {
-                die('Akses ditolak');
-            }
-
+            $user = exam_require_admin_or_guru();
             $ujian_id = (int)($_GET['ujian_id'] ?? 0);
+            if (!$ujian_id) die('Ujian tidak ditemukan');
+            exam_require_ujian_access($ujian_id, $user);
             
             $stmtU = db()->prepare("
                 SELECT u.judul, u.jenis, u.bank_soal_id,
@@ -288,8 +276,8 @@ try {
             fprintf($output, chr(0xEF).chr(0xBB).chr(0xBF));
             
             // Header Info
-            fputcsv($output, ['Judul Ujian', $ujian['judul']]);
-            fputcsv($output, ['Kelas Peserta', $ujian['kelas_peserta']]);
+            fputcsv($output, ['Judul Ujian', csv_safe_cell($ujian['judul'])]);
+            fputcsv($output, ['Kelas Peserta', csv_safe_cell($ujian['kelas_peserta'])]);
             fputcsv($output, ['Jenis Ujian', $isPsikologi ? 'Tes Psikologi' : 'Tes Penilaian']);
             fputcsv($output, ['Soal Uraian', $countUraian > 0 ? "Ya ($countUraian Soal)" : 'Tidak']);
             fputcsv($output, []); // blank line
@@ -347,9 +335,9 @@ try {
 
                 $row = [
                     $no++,
-                    $r['nis'],
-                    $r['nama_siswa'],
-                    $r['kelas'],
+                    csv_safe_cell($r['nis']),
+                    csv_safe_cell($r['nama_siswa']),
+                    csv_safe_cell($r['kelas']),
                     $status,
                     $statusSkoring,
                     $r['waktu_mulai'] ?: '-',
@@ -369,8 +357,9 @@ try {
                             }
                         }
                     }
-                    $row[] = $hasil;
-                    $row[] = $deskripsi;
+                    $row[] = $skor;
+                    $row[] = csv_safe_cell($hasil);
+                    $row[] = csv_safe_cell($deskripsi);
                 } else {
                     if ($countUraian > 0) {
                         $row[] = $skorPg;
@@ -378,7 +367,7 @@ try {
                     }
                     $row[] = $skor;
                     if ($countUraian > 0) {
-                        $row[] = $r['nama_korektor'] ?: '-';
+                        $row[] = csv_safe_cell($r['nama_korektor'] ?: '-');
                         $row[] = $r['dikoreksi_pada'] ?: '-';
                     }
                 }
@@ -397,10 +386,10 @@ try {
                         $catatanSoal = $ansData['catatan_guru'] ?: '-';
                     }
 
-                    $row[] = $jawabanSiswa;
+                    $row[] = csv_safe_cell($jawabanSiswa);
                     $row[] = $skorSoal;
                     if ($isUraianSoal) {
-                        $row[] = $catatanSoal;
+                        $row[] = csv_safe_cell($catatanSoal);
                     }
                 }
 
@@ -414,21 +403,11 @@ try {
         // CETAK LAPORAN (PRINTABLE VIEW)
         // ==========================================
         case 'cetak_laporan':
-            $token = $_GET['token'] ?? '';
-            if (!$token) die('Token tidak valid');
-            
-            $stmtAuth = db()->prepare("
-                SELECT u.id, u.nama_lengkap, u.role 
-                FROM sessions s JOIN users u ON s.user_id = u.id 
-                WHERE s.token = ? AND s.expired_at > NOW()
-            ");
-            $stmtAuth->execute([$token]);
-            $auth = $stmtAuth->fetch();
-            if (!$auth || !in_array($auth['role'], ['superadmin', 'user', 'guru'])) {
-                die('Akses ditolak');
-            }
-
+            $auth = exam_require_admin_or_guru();
             $ujian_id = (int)($_GET['ujian_id'] ?? 0);
+            if (!$ujian_id) die('Ujian tidak ditemukan');
+            exam_require_ujian_access($ujian_id, $auth);
+
             $stmtU = db()->prepare("
                 SELECT u.*, 
                        (SELECT GROUP_CONCAT(kelas SEPARATOR ', ') FROM exam_ujian_kelas WHERE ujian_id = u.id) as kelas_peserta
@@ -635,7 +614,7 @@ try {
 
                 <div class="ttd-box">
                     <div class="ttd-inner">
-                        <p>Surabaya, <?php echo date('d F Y'); ?><br>Guru Pengampu,</p>
+                        <p><?php echo htmlspecialchars(get_setting('kota_sekolah', 'Surabaya')); ?>, <?php echo date('d F Y'); ?><br>Guru Pengampu,</p>
                         <div style="height:60px;"></div>
                         <p><strong><?php echo htmlspecialchars($auth['nama_lengkap'] ?: 'Guru Mata Pelajaran'); ?></strong></p>
                     </div>

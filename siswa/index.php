@@ -14,19 +14,19 @@ $app_icon = get_setting('app_icon_siswa', $school_icon);
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="description" content="<?php echo htmlspecialchars($app_name); ?>">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="description" content="<?php echo htmlspecialchars($app_name, ENT_QUOTES, 'UTF-8'); ?>">
     <meta name="theme-color" content="#1565C0">
     <meta name="format-detection" content="telephone=no">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="<?php echo htmlspecialchars($app_name); ?>">
+    <meta name="apple-mobile-web-app-title" content="<?php echo htmlspecialchars($app_name, ENT_QUOTES, 'UTF-8'); ?>">
 
-    <title><?php echo htmlspecialchars($app_name); ?></title>
+    <title><?php echo htmlspecialchars($app_name, ENT_QUOTES, 'UTF-8'); ?></title>
 
     <?php if($app_icon): ?>
-    <link rel="icon" href="<?php echo BASE_URL . htmlspecialchars($app_icon); ?>">
-    <link rel="apple-touch-icon" href="<?php echo BASE_URL . htmlspecialchars($app_icon); ?>">
+    <link rel="icon" href="<?php echo htmlspecialchars(BASE_URL . ltrim(str_replace('\\', '/', $app_icon), '/'), ENT_QUOTES, 'UTF-8'); ?>">
+    <link rel="apple-touch-icon" href="<?php echo htmlspecialchars(BASE_URL . ltrim(str_replace('\\', '/', $app_icon), '/'), ENT_QUOTES, 'UTF-8'); ?>">
     <?php endif; ?>
 
     <link rel="manifest" href="manifest.php">
@@ -37,12 +37,12 @@ $app_icon = get_setting('app_icon_siswa', $school_icon);
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Outfit:wght@500;600;700;800&display=swap" rel="stylesheet">
 
     <!-- CSS -->
-    <link rel="stylesheet" href="assets/css/siswa.css?v=<?php echo time(); ?>">
+    <link rel="stylesheet" href="assets/css/siswa.css?v=<?php echo asset_ver('siswa/assets/css/siswa.css'); ?>">
     <script>
-        window.APP_CONFIG = {
-            baseUrl: "<?php echo BASE_URL; ?>siswa/",
-            rootUrl: "<?php echo BASE_URL; ?>"
-        };
+        window.APP_CONFIG = <?php echo json_encode([
+            'baseUrl' => BASE_URL . 'siswa/',
+            'rootUrl' => BASE_URL
+        ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
     </script>
     
     <!-- OneSignal Web Push -->
@@ -50,7 +50,7 @@ $app_icon = get_setting('app_icon_siswa', $school_icon);
     <script>
       window.OneSignalDeferred = window.OneSignalDeferred || [];
       OneSignalDeferred.push(function(OneSignal) {
-        let appId = "<?php echo get_setting('onesignal_app_id', ''); ?>";
+        let appId = <?php echo json_encode((string)get_setting('onesignal_app_id', ''), JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT); ?>;
         if (appId) {
             OneSignal.init({
               appId: appId,
@@ -98,7 +98,7 @@ $app_icon = get_setting('app_icon_siswa', $school_icon);
                 <div class="login-form-group">
                     <label class="login-form-label" for="loginPassword">Tanggal Lahir (DDMMYYYY)</label>
                     <div class="login-form-input-wrap">
-                        <input type="text" inputmode="numeric" class="login-form-input" id="loginPassword" placeholder="Contoh: 12111998" required>
+                        <input type="password" inputmode="numeric" class="login-form-input" id="loginPassword" placeholder="Contoh: 12111998" required>
                         <svg class="input-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                             <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
                             <line x1="16" y1="2" x2="16" y2="6"/>
@@ -205,8 +205,8 @@ $app_icon = get_setting('app_icon_siswa', $school_icon);
     <div id="toastContainer" class="toast-container"></div>
 
     <!-- Scripts -->
-    <script src="../assets/vendor/jquery-3.7.1.min.js"></script>
-    <script src="assets/js/siswa.js?v=<?php echo time(); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/core-utils.js?v=<?php echo asset_ver('assets/js/core-utils.js'); ?>"></script>
+    <script src="assets/js/siswa.js?v=<?php echo asset_ver('siswa/assets/js/siswa.js'); ?>"></script>
 
     <!-- Register PWA Service Worker -->
     <script>

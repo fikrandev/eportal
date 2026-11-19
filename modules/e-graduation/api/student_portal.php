@@ -224,11 +224,5 @@ function activeYearIdForStudent()
 
 function bearerOrParamToken()
 {
-    $token = '';
-    if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
-        $token = str_replace('Bearer ', '', $_SERVER['HTTP_AUTHORIZATION']);
-    } elseif (isset($_GET['token'])) {
-        $token = $_GET['token'];
-    }
-    return sanitize($token);
+    return get_bearer_token(true);
 }

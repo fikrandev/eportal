@@ -5,9 +5,60 @@
  */
 require_once __DIR__ . '/config.php';
 
+if (!function_exists('mig_has_table')) {
+function mig_has_table($pdo, $table) {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?");
+    $stmt->execute([$table]);
+    return (int)$stmt->fetchColumn() > 0;
+}
+}
+
+if (!function_exists('mig_has_column')) {
+function mig_has_column($pdo, $table, $column) {
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?");
+    $stmt->execute([$table, $column]);
+    return (int)$stmt->fetchColumn() > 0;
+}
+}
+
+if (!function_exists('mig_ensure_index')) {
+function mig_ensure_index($pdo, $table, $indexName, $colsSql, $unique = false) {
+    try {
+        if (!mig_has_table($pdo, $table)) return;
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?");
+        $stmt->execute([$table, $indexName]);
+        if ((int)$stmt->fetchColumn() === 0) {
+            $kw = $unique ? 'UNIQUE INDEX' : 'INDEX';
+            $pdo->exec("ALTER TABLE `{$table}` ADD {$kw} `{$indexName}` ({$colsSql})");
+        }
+    } catch (Exception $e) {
+        error_log("mig_ensure_index {$table}.{$indexName}: " . $e->getMessage());
+    }
+}
+}
+
+if (!function_exists('mig_drop_index')) {
+function mig_drop_index($pdo, $table, $indexName) {
+    try {
+        if (!mig_has_table($pdo, $table)) return;
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND INDEX_NAME = ?");
+        $stmt->execute([$table, $indexName]);
+        if ((int)$stmt->fetchColumn() > 0) {
+            $pdo->exec("ALTER TABLE `{$table}` DROP INDEX `{$indexName}`");
+        }
+    } catch (Exception $e) {
+        error_log("mig_drop_index {$table}.{$indexName}: " . $e->getMessage());
+    }
+}
+}
+
 if (!function_exists('run_auto_migrations')) {
 function run_auto_migrations() {
-    $target_version = 25;
+    static $ran = false;
+    if ($ran) return;
+    $ran = true;
+
+    $target_version = 26;
     
     // 1. Get current version (default to 0 if not set or if table settings doesn't exist yet)
     $current_version = 0;
@@ -22,6 +73,19 @@ function run_auto_migrations() {
     }
 
     $pdo = db();
+    $locked = false;
+    try {
+        $locked = (int)$pdo->query("SELECT GET_LOCK('eportal_migration_lock', 10)")->fetchColumn() === 1;
+        // Re-check version inside lock in case another worker just migrated
+        try {
+            $stmtVer = $pdo->prepare("SELECT setting_value FROM settings WHERE setting_key = 'db_migration_version' LIMIT 1");
+            $stmtVer->execute();
+            $freshVer = (int)($stmtVer->fetchColumn() ?: 0);
+            if ($freshVer >= $target_version) {
+                return;
+            }
+            $current_version = $freshVer;
+        } catch (Exception $e) {}
 
     // Version 1 migrations (from migrate.php)
     if ($current_version < 1) {
@@ -98,11 +162,7 @@ function run_auto_migrations() {
     // Version 2 migrations (PWA settings and persistent session helpers)
     if ($current_version < 2) {
         // Ensure index for sessions.expired_at for faster cleanup
-        try {
-            $pdo->exec("ALTER TABLE `sessions` ADD INDEX IF NOT EXISTS `idx_expired_at` (`expired_at`)");
-        } catch (PDOException $e) {
-            // Ignore if index already exists
-        }
+        mig_ensure_index($pdo, 'sessions', 'idx_expired', '`expired_at`');
 
         // Set or update default settings for Guru App PWA
         upsert_setting('guru_pwa_version', '1.0.0', 'text', 'Versi PWA Guru');
@@ -890,9 +950,7 @@ function run_auto_migrations() {
                 $pdo->exec("ALTER TABLE `$t` CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
             } catch (Exception $e) {}
         }
-        try {
-            $pdo->exec("ALTER TABLE `perf_siswa` ADD INDEX IF NOT EXISTS `idx_perf_siswa_username` (`username`)");
-        } catch (Exception $e) {}
+        mig_ensure_index($pdo, 'perf_siswa', 'idx_perf_siswa_username', '`username`');
     }
 
     // Version 20 migrations (Ensure perf_deskripsi table exists and has predikat column)
@@ -1111,11 +1169,139 @@ function run_auto_migrations() {
         } catch (Exception $e) {}
     }
 
+    // Version 26 migrations (Consolidate runtime DDL, security tables/tokens & composite performance indexes)
+    if ($current_version < 26) {
+        // 1. Server-side application secret key for HMAC signatures
+        try {
+            $existingSecret = get_setting('app_secret_key', '');
+            if (strlen((string)$existingSecret) < 32) {
+                upsert_setting('app_secret_key', bin2hex(random_bytes(32)), 'text', 'Server signing secret');
+            }
+        } catch (Exception $e) {}
+
+        // 2. Revocable student sessions table for Siswa PWA
+        try {
+            $pdo->exec("CREATE TABLE IF NOT EXISTS `student_sessions` (
+                `id` INT(11) UNSIGNED NOT NULL AUTO_INCREMENT,
+                `student_id` INT(11) UNSIGNED NOT NULL,
+                `token` VARCHAR(128) NOT NULL,
+                `expired_at` DATETIME NOT NULL,
+                `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uk_student_session_token` (`token`),
+                KEY `idx_student_session_student` (`student_id`),
+                KEY `idx_student_session_expired` (`expired_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
+        } catch (Exception $e) {}
+
+        // 3. Consolidate schema columns that were previously ALTERed per-request
+        try {
+            if (mig_has_table($pdo, 'acad_absensi')) {
+                $pdo->exec("ALTER TABLE `acad_absensi` MODIFY COLUMN `status` VARCHAR(10) NOT NULL DEFAULT 'H'");
+            }
+            if (mig_has_table($pdo, 'acad_absensi_guru')) {
+                if (!mig_has_column($pdo, 'acad_absensi_guru', 'academic_year_id')) {
+                    $pdo->exec("ALTER TABLE `acad_absensi_guru` ADD COLUMN `academic_year_id` BIGINT(20) UNSIGNED DEFAULT NULL AFTER `guru_id`");
+                }
+                if (!mig_has_column($pdo, 'acad_absensi_guru', 'year_id')) {
+                    $pdo->exec("ALTER TABLE `acad_absensi_guru` ADD COLUMN `year_id` BIGINT(20) UNSIGNED NULL DEFAULT NULL AFTER `guru_id`");
+                } else {
+                    $pdo->exec("ALTER TABLE `acad_absensi_guru` MODIFY COLUMN `year_id` BIGINT(20) UNSIGNED NULL DEFAULT NULL");
+                }
+                if (!mig_has_column($pdo, 'acad_absensi_guru', 'sesi')) {
+                    $pdo->exec("ALTER TABLE `acad_absensi_guru` ADD COLUMN `sesi` ENUM('masuk','istirahat','pulang') NOT NULL DEFAULT 'masuk' AFTER `tanggal`");
+                }
+                $pdo->exec("ALTER TABLE `acad_absensi_guru` MODIFY COLUMN `status` VARCHAR(10) NOT NULL DEFAULT 'H'");
+                mig_drop_index($pdo, 'acad_absensi_guru', 'guru_tanggal_unique');
+                mig_drop_index($pdo, 'acad_absensi_guru', 'uk_guru_tanggal');
+                mig_drop_index($pdo, 'acad_absensi_guru', 'unique_guru_tanggal');
+                mig_ensure_index($pdo, 'acad_absensi_guru', 'uk_guru_tgl_sesi', '`guru_id`, `tanggal`, `sesi`', true);
+                mig_ensure_index($pdo, 'acad_absensi_guru', 'idx_guru_tgl_sesi', '`tanggal`, `sesi`');
+            }
+            if (mig_has_table($pdo, 'acad_buku_penghubung')) {
+                if (!mig_has_column($pdo, 'acad_buku_penghubung', 'foto')) {
+                    $pdo->exec("ALTER TABLE `acad_buku_penghubung` ADD COLUMN `foto` TEXT DEFAULT NULL AFTER `catatan`");
+                }
+                $pdo->exec("ALTER TABLE `acad_buku_penghubung` MODIFY COLUMN `jenis` VARCHAR(100) NOT NULL DEFAULT 'Konsultasi'");
+            }
+            if (mig_has_table($pdo, 'acad_izin_siswa')) {
+                $pdo->exec("ALTER TABLE `acad_izin_siswa` MODIFY COLUMN `status` ENUM('Pending','Disetujui','Ditolak','Approved','Rejected') NOT NULL DEFAULT 'Pending'");
+            }
+            if (mig_has_table($pdo, 'exam_ujian') && !mig_has_column($pdo, 'exam_ujian', 'metode_login')) {
+                $pdo->exec("ALTER TABLE `exam_ujian` ADD COLUMN `metode_login` ENUM('nis_dob','examcard') NOT NULL DEFAULT 'nis_dob' AFTER `jenis`");
+            }
+            if (mig_has_table($pdo, 'exam_soal') && !mig_has_column($pdo, 'exam_soal', 'audio_play_limit')) {
+                $pdo->exec("ALTER TABLE `exam_soal` ADD COLUMN `audio_play_limit` INT NOT NULL DEFAULT 0 AFTER `audio`");
+            }
+            if (mig_has_table($pdo, 'exam_student_login') && !mig_has_column($pdo, 'exam_student_login', 'session_token')) {
+                $pdo->exec("ALTER TABLE `exam_student_login` ADD COLUMN `session_token` VARCHAR(128) DEFAULT NULL AFTER `sesi_id`");
+            }
+            if (mig_has_table($pdo, 'perf_instrumen')) {
+                if (!mig_has_column($pdo, 'perf_instrumen', 'tipe_jawaban')) {
+                    $pdo->exec("ALTER TABLE `perf_instrumen` ADD COLUMN `tipe_jawaban` VARCHAR(20) DEFAULT 'angka'");
+                }
+                if (!mig_has_column($pdo, 'perf_instrumen', 'skor_ya')) {
+                    $pdo->exec("ALTER TABLE `perf_instrumen` ADD COLUMN `skor_ya` DECIMAL(5,2) DEFAULT 100.00");
+                }
+                if (!mig_has_column($pdo, 'perf_instrumen', 'skor_tidak')) {
+                    $pdo->exec("ALTER TABLE `perf_instrumen` ADD COLUMN `skor_tidak` DECIMAL(5,2) DEFAULT 0.00");
+                }
+            }
+            if (mig_has_table($pdo, 'absen_mesin') && !mig_has_column($pdo, 'absen_mesin', 'force_sync')) {
+                $pdo->exec("ALTER TABLE `absen_mesin` ADD COLUMN `force_sync` TINYINT(1) NOT NULL DEFAULT 0 AFTER `last_sync`");
+            }
+            if (mig_has_table($pdo, 'users') && !mig_has_column($pdo, 'users', 'no_hp')) {
+                $pdo->exec("ALTER TABLE `users` ADD COLUMN `no_hp` VARCHAR(30) DEFAULT NULL AFTER `role`");
+            }
+        } catch (Exception $e) {
+            error_log('Migration v26 schema error: ' . $e->getMessage());
+        }
+
+        // 4. Add composite performance indexes across high-traffic tables
+        mig_ensure_index($pdo, 'absen_logs', 'idx_pin_waktu', '`mesin_pin`, `waktu_absen`');
+        mig_ensure_index($pdo, 'acad_absensi', 'idx_year_tgl_kelas', '`academic_year_id`, `tanggal`, `kelas_id`');
+        mig_ensure_index($pdo, 'perf_penilaian', 'idx_perf_lookup', '`periode_id`, `penilai_type`, `penilai_id`, `dinilai_ptk_id`');
+        mig_ensure_index($pdo, 'exam_sesi', 'idx_ujian_status', '`ujian_id`, `status`');
+        mig_ensure_index($pdo, 'students', 'idx_nis_status', '`nis`, `status`');
+        mig_ensure_index($pdo, 'students', 'idx_year_status_kelas', '`academic_year_id`, `status`, `kelas`');
+        mig_ensure_index($pdo, 'students', 'idx_year_lulus', '`academic_year_id_lulus`');
+        mig_ensure_index($pdo, 'users', 'idx_role_status', '`role`, `status`');
+        mig_ensure_index($pdo, 'modules', 'idx_status_urutan', '`status`, `urutan`');
+        mig_ensure_index($pdo, 'sarpras_peminjaman', 'idx_peminjaman_sarpras', '`sarpras_id`, `status`');
+
+        // 5. Drop duplicate indexes
+        mig_drop_index($pdo, 'sessions', 'idx_expired_at');
+        mig_drop_index($pdo, 'sarpras_pj', 'user_id_2');
+
+        // 6. Seed default settings once instead of upserting in GET settings.php
+        try {
+            $defaultSettings = [
+                ['nama_sekolah', 'E-Portal Sekolah', 'text', 'Nama Sekolah'],
+                ['icon_sekolah', '', 'image', 'Icon / Favicon Sekolah'],
+                ['banner_dashboard', '', 'image', 'Banner Dashboard Utama'],
+                ['tahun_ajaran_aktif', '2025/2026', 'text', 'Tahun Ajaran Aktif'],
+                ['semester_aktif', 'Ganjil', 'text', 'Semester Aktif'],
+                ['alamat_sekolah', '', 'text', 'Alamat Sekolah'],
+                ['onesignal_app_id', '', 'text', 'OneSignal App ID'],
+                ['onesignal_rest_key', '', 'text', 'OneSignal REST API Key'],
+            ];
+            $stmtSet = $pdo->prepare("INSERT IGNORE INTO `settings` (`setting_key`, `setting_value`, `setting_type`, `keterangan`) VALUES (?, ?, ?, ?)");
+            foreach ($defaultSettings as $ds) {
+                $stmtSet->execute($ds);
+            }
+        } catch (Exception $e) {}
+    }
+
     // Update DB migration version to target_version
     try {
         upsert_setting('db_migration_version', (string)$target_version, 'number', 'Versi Migrasi Database E-Portal');
     } catch (Exception $e) {
         // Safe fallback
+    }
+    } finally {
+        if ($locked) {
+            try { $pdo->query("SELECT RELEASE_LOCK('eportal_migration_lock')"); } catch (Exception $e) {}
+        }
     }
 }
 }

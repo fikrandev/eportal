@@ -21,8 +21,24 @@ switch ($action) {
         json_response(400, false, 'Action tidak valid.');
 }
 
+function perf_require_rekap_access($db, $periode_id, $ptk_id) {
+    $auth = perf_auth_check();
+    $isAdmin = in_array($auth['role'], ['admin', 'superadmin'], true) || in_array('hasil', $auth['permissions'] ?? [], true);
+    if (!$isAdmin) {
+        if (empty($auth['ptk_id']) || (int)$auth['ptk_id'] !== (int)$ptk_id) {
+            json_response(403, false, 'Akses ditolak. Anda hanya dapat melihat rekap penilaian Anda sendiri.');
+        }
+        $stmtP = $db->prepare("SELECT is_released FROM perf_periode WHERE id = ?");
+        $stmtP->execute([$periode_id]);
+        $isReleased = (int)$stmtP->fetchColumn();
+        if ($isReleased !== 1) {
+            json_response(403, false, 'Hasil penilaian periode ini belum dirilis.');
+        }
+    }
+    return $auth;
+}
+
 function getRekapDiriSendiri() {
-    perf_auth_check();
     $db = db();
     
     $periode_id = isset($_GET['periode_id']) ? (int)$_GET['periode_id'] : 0;
@@ -31,6 +47,7 @@ function getRekapDiriSendiri() {
     if (!$periode_id || !$ptk_id) {
         json_response(400, false, 'Periode ID dan PTK ID diperlukan.');
     }
+    perf_require_rekap_access($db, $periode_id, $ptk_id);
 
     try {
         // 1. Get PTK Details
@@ -142,7 +159,6 @@ function getRekapDiriSendiri() {
 }
 
 function getRekapSiswa() {
-    perf_auth_check();
     $db = db();
     
     $periode_id = isset($_GET['periode_id']) ? (int)$_GET['periode_id'] : 0;
@@ -151,6 +167,7 @@ function getRekapSiswa() {
     if (!$periode_id || !$ptk_id) {
         json_response(400, false, 'Periode ID dan PTK ID diperlukan.');
     }
+    perf_require_rekap_access($db, $periode_id, $ptk_id);
 
     try {
         // 1. Get PTK Details
@@ -159,14 +176,14 @@ function getRekapSiswa() {
         $ptk = $stmtPtk->fetch(PDO::FETCH_ASSOC);
         if (!$ptk) json_response(404, false, 'Data PTK tidak ditemukan.');
 
-        // 2. Fetch Questions targeting 'Siswa'
+        // 2. Fetch Questions targeting 'Siswa' for this PTK's jenis_ptk
         $stmtQ = $db->prepare("
             SELECT id as instrumen_id, kategori, pertanyaan
             FROM perf_instrumen
-            WHERE periode_id = ? AND target_jabatan LIKE '%Siswa%'
+            WHERE periode_id = ? AND target_jabatan LIKE '%Siswa%' AND (target_dinilai = 'Semua' OR FIND_IN_SET(?, target_dinilai) > 0)
             ORDER BY kategori ASC, urutan ASC, id ASC
         ");
-        $stmtQ->execute([$periode_id]);
+        $stmtQ->execute([$periode_id, $ptk['jenis_ptk']]);
         $questions = $stmtQ->fetchAll(PDO::FETCH_ASSOC);
 
         if (empty($questions)) {
@@ -258,7 +275,6 @@ function getRekapSiswa() {
 }
 
 function checkTambahan() {
-    perf_auth_check();
     $db = db();
     
     $periode_id = isset($_GET['periode_id']) ? (int)$_GET['periode_id'] : 0;
@@ -267,6 +283,7 @@ function checkTambahan() {
     if (!$periode_id || !$ptk_id) {
         json_response(400, false, 'Periode ID dan PTK ID diperlukan.');
     }
+    perf_require_rekap_access($db, $periode_id, $ptk_id);
 
     try {
         $stmtManualInst = $db->prepare("SELECT id FROM perf_instrumen WHERE periode_id = ? AND is_manual = 1 AND bobot = 0");

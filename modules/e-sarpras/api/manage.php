@@ -239,14 +239,28 @@ function handlePerbaikan($action) {
 
 function processBuktiBayar($id) {
     if (!isset($_FILES['bukti_bayar']) || $_FILES['bukti_bayar']['error'] !== UPLOAD_ERR_OK) return;
-    $ext = strtolower(pathinfo($_FILES['bukti_bayar']['name'], PATHINFO_EXTENSION));
-    if (!in_array($ext, ['jpg','jpeg','png','pdf'])) return;
+    $file = $_FILES['bukti_bayar'];
+    if (!is_uploaded_file($file['tmp_name']) || (int)$file['size'] > 10 * 1024 * 1024) return;
+    $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    if (!in_array($ext, ['jpg','jpeg','png','pdf'], true)) return;
+
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mime = $finfo ? finfo_file($finfo, $file['tmp_name']) : '';
+    if ($finfo) finfo_close($finfo);
+    if (!in_array($mime, ['image/jpeg', 'image/png', 'application/pdf'], true)) return;
     
     $dir = UPLOAD_DIR . 'sarpras/bukti_bayar/';
     if (!is_dir($dir)) mkdir($dir, 0777, true);
     
-    $filename = 'bukti_' . $id . '_' . time() . '.' . $ext;
-    if (move_uploaded_file($_FILES['bukti_bayar']['tmp_name'], $dir . $filename)) {
+    $oldStmt = db()->prepare("SELECT bukti_bayar FROM sarpras_perbaikan WHERE id=?");
+    $oldStmt->execute([$id]);
+    $oldFile = $oldStmt->fetchColumn();
+
+    $filename = 'bukti_' . (int)$id . '_' . bin2hex(random_bytes(4)) . '.' . $ext;
+    if (move_uploaded_file($file['tmp_name'], $dir . $filename)) {
+        if (!empty($oldFile)) {
+            safe_unlink_in_dir('uploads/sarpras/bukti_bayar/' . basename((string)$oldFile), 'uploads/sarpras/bukti_bayar');
+        }
         db()->prepare("UPDATE sarpras_perbaikan SET bukti_bayar=? WHERE id=?")->execute([$filename, $id]);
     }
 }
@@ -543,7 +557,7 @@ function handleRoles($action) {
             $roleRow = $stmt_r->fetch();
             $rname = $roleRow['nama'] ?? '';
             if (!$rname) json_response(404, false, 'Role tidak ditemukan');
-            $rolePermissions = sp_normalize_permissions(explode(',', (string) ($roleRow['permissions'] ?? '')));
+            $rolePermissions = sp_normalize_permissions(explode(',', (string) ($roleRow['permissions'] ?? '')), false);
             $base_role = sp_has_any(['permissions' => $rolePermissions], ['roles_manage', 'settings_manage']) ? 'admin_sarpras' : 'operator_sarpras';
 
             db()->prepare("INSERT INTO sarpras_roles (user_id, custom_role_id, role) VALUES (?,?,?) ON DUPLICATE KEY UPDATE custom_role_id=?, role=?")
@@ -920,7 +934,7 @@ function handleLaporan($action) {
                 FROM ruang r
                 JOIN bangunan b ON r.bangunan_id = b.id
                 JOIN tanah t ON b.tanah_id = t.id
-                LEFT JOIN sarpras s ON s.ruang_id = r.id
+                LEFT JOIN sarpras s ON s.ruang_id = r.id AND s.is_hapus = 0
                 WHERE 1=1 " . sp_scope_where($user, 'r', 'id') . "
                 GROUP BY r.id
                 ORDER BY t.nama, b.nama, r.nama
@@ -1032,7 +1046,7 @@ function handleLaporan($action) {
                     SELECT s.*, k.nama as kategori_nama, k.kode as kategori_kode
                     FROM sarpras s 
                     JOIN kategori_sarpras k ON s.kategori_id = k.id
-                    WHERE s.ruang_id = ? 
+                    WHERE s.ruang_id = ? AND s.is_hapus = 0
                     ORDER BY k.kode ASC, s.nama ASC
                 ");
                 $stmt->execute([$room['id']]);
@@ -1180,8 +1194,9 @@ function handlePenghapusan($action) {
             
             if (!$nomorBa) json_response(400, false, 'Nomor Berita Acara harus diisi');
 
-            // Find all items that don't have BA yet
-            $stmt = db()->query("SELECT id FROM sarpras_perbaikan WHERE status='Penghapusan' AND berita_acara_id IS NULL");
+            // Find all items that don't have BA yet (respecting room scope)
+            $scopeBa = sp_scope_where($user, 's', 'ruang_id');
+            $stmt = db()->query("SELECT p.id FROM sarpras_perbaikan p JOIN sarpras s ON p.sarpras_id = s.id WHERE p.status='Penghapusan' AND p.berita_acara_id IS NULL $scopeBa");
             $items = $stmt->fetchAll();
             
             if (empty($items)) json_response(400, false, 'Tidak ada data penghapusan baru untuk dibuatkan Berita Acara');
@@ -1204,7 +1219,7 @@ function handlePenghapusan($action) {
                 $db->commit();
                 json_response(200, true, 'Berita Acara berhasil dibuat untuk ' . count($items) . ' barang.');
             } catch (Exception $e) {
-                $db->rollBack();
+                if (isset($db) && $db->inTransaction()) $db->rollBack();
                 json_response(500, false, 'Gagal membuat BA: ' . $e->getMessage());
             }
             break;

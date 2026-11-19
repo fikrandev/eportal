@@ -28,13 +28,13 @@ $active_academic_year = get_active_academic_year();
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="E-Sarpras — Sistem Manajemen Sarana & Prasarana Sekolah">
     
     <title>E-Sarpras — Sarana & Prasarana</title>
 
     <?php if($school_icon): ?>
-    <link rel="icon" href="<?php echo BASE_URL . $school_icon; ?>">
+    <link rel="icon" href="<?php echo htmlspecialchars(BASE_URL . ltrim(str_replace('\\', '/', $school_icon), '/'), ENT_QUOTES, 'UTF-8'); ?>">
     <?php endif; ?>
 
     <!-- Google Fonts -->
@@ -43,33 +43,33 @@ $active_academic_year = get_active_academic_year();
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
 
     <!-- Core Design System -->
-    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css?v=<?php echo time(); ?>">
+    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css?v=<?php echo asset_ver('assets/css/app.css'); ?>">
     <!-- Sarpras Module Styles -->
-    <link rel="stylesheet" href="assets/css/sarpras.css?v=<?php echo time(); ?>">
+    <link rel="stylesheet" href="assets/css/sarpras.css?v=<?php echo asset_ver('modules/e-sarpras/assets/css/sarpras.css'); ?>">
 
     <script>
         // Inject server data into JS
-        window.SARPRAS_CONFIG = {
-            baseUrl: '<?php echo BASE_URL; ?>',
-            moduleUrl: '<?php echo BASE_URL; ?>modules/e-sarpras/',
-            token: '<?php echo addslashes($token); ?>',
-            user: {
-                id: <?php echo $user['user_id']; ?>,
-                username: '<?php echo addslashes($user['username']); ?>',
-                nama_lengkap: '<?php echo addslashes($user['nama_lengkap']); ?>',
-                role: '<?php echo $user['role']; ?>',
-                avatar: '<?php echo addslashes($user['avatar'] ?? ''); ?>',
-                sarpras_role: '<?php echo addslashes($user['sarpras_role'] ?? 'viewer_sarpras'); ?>',
-                custom_role_name: '<?php echo addslashes($user['custom_role_name'] ?? ''); ?>',
-                permissions: <?php echo json_encode(array_values($user['permissions'] ?? []), JSON_UNESCAPED_UNICODE); ?>,
-                scoped_ruang_ids: <?php echo json_encode(array_map('intval', $user['scoped_ruang_ids'] ?? []), JSON_UNESCAPED_UNICODE); ?>
-            },
-            school: {
-                nama: '<?php echo addslashes($school_name); ?>',
-                icon: '<?php echo addslashes($school_icon); ?>'
-            },
-            academicYear: <?php echo json_encode($active_academic_year, JSON_UNESCAPED_UNICODE); ?>
-        };
+        window.SARPRAS_CONFIG = <?php echo json_encode([
+            'baseUrl' => BASE_URL,
+            'moduleUrl' => BASE_URL . 'modules/e-sarpras/',
+            'token' => $token,
+            'user' => [
+                'id' => (int)$user['user_id'],
+                'username' => $user['username'],
+                'nama_lengkap' => $user['nama_lengkap'],
+                'role' => $user['role'],
+                'avatar' => $user['avatar'] ?? '',
+                'sarpras_role' => $user['sarpras_role'] ?? 'viewer_sarpras',
+                'custom_role_name' => $user['custom_role_name'] ?? '',
+                'permissions' => array_values($user['permissions'] ?? []),
+                'scoped_ruang_ids' => array_map('intval', $user['scoped_ruang_ids'] ?? []),
+            ],
+            'school' => [
+                'nama' => $school_name,
+                'icon' => $school_icon,
+            ],
+            'academicYear' => $active_academic_year,
+        ], JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_UNESCAPED_UNICODE); ?>;
     </script>
     <?php echo get_module_theme_css('e-sarpras'); ?>
 </head>
@@ -149,12 +149,13 @@ $active_academic_year = get_active_academic_year();
 
     <!-- Vendor Scripts -->
     <script src="<?php echo BASE_URL; ?>assets/vendor/jquery-3.7.1.min.js"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/core-utils.js?v=<?php echo asset_ver('assets/js/core-utils.js'); ?>"></script>
     <!-- QR Code Library -->
     <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
     <!-- Modal System -->
-    <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=<?php echo time(); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=<?php echo asset_ver('assets/js/modal.js'); ?>"></script>
     <!-- Sarpras SPA -->
-    <script src="<?php echo BASE_URL; ?>assets/js/pagination.js?v=<?php echo time(); ?>"></script>
-    <script src="assets/js/sarpras.js?v=2.1_<?php echo time(); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/pagination.js?v=<?php echo asset_ver('assets/js/pagination.js'); ?>"></script>
+    <script src="assets/js/sarpras.js?v=<?php echo asset_ver('modules/e-sarpras/assets/js/sarpras.js'); ?>"></script>
 </body>
 </html>

@@ -269,24 +269,5 @@ function handleGuruLogout() {
  * Extract token from Authorization header or query parameter
  */
 function extractGuruToken() {
-    $token = '';
-
-    if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
-        $token = str_replace('Bearer ', '', $_SERVER['HTTP_AUTHORIZATION']);
-    } elseif (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
-        $token = str_replace('Bearer ', '', $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
-    } elseif (function_exists('getallheaders')) {
-        $headers = getallheaders();
-        if (isset($headers['Authorization'])) {
-            $token = str_replace('Bearer ', '', $headers['Authorization']);
-        } elseif (isset($headers['authorization'])) {
-            $token = str_replace('Bearer ', '', $headers['authorization']);
-        }
-    }
-
-    if (empty($token) && isset($_GET['token'])) {
-        $token = $_GET['token'];
-    }
-
-    return trim($token);
+    return get_bearer_token(true);
 }

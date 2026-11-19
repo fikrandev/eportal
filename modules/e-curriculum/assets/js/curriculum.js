@@ -6522,14 +6522,14 @@ const Curriculum = {
         // Determine the signer (teacher name)
         // If there is only one unique teacher in the data, use their name
         const uniqueTeachers = [...new Set(data.map(j => j.guru_nama))];
-        const signerName = uniqueTeachers.length === 1 ? uniqueTeachers[0] : (App.state.user ? App.state.user.nama_lengkap : 'Guru Mata Pelajaran');
-        const signerId = uniqueTeachers.length === 1 ? data[0].guru_id : (App.state.user ? App.state.user.id : 0);
+        const signerName = uniqueTeachers.length === 1 ? uniqueTeachers[0] : (this.state.user ? this.state.user.nama_lengkap : 'Guru Mata Pelajaran');
+        const signerId = uniqueTeachers.length === 1 ? data[0].guru_id : (this.state.user ? this.state.user.id : 0);
         
         // Build the HTML for the print window
         let contentHtml = '';
         
         dates.forEach(date => {
-            const formattedDate = this.formatDate(date);
+            const formattedDate = this._formatDateIndo ? this._formatDateIndo(date) : date;
             const entries = groups[date];
             
             let tableRows = entries.map((j, idx) => {
@@ -7501,6 +7501,23 @@ exportJadwalExcel() {
         });
     },
 
+    formatDate(dateStr) {
+        return this._formatDateIndo ? this._formatDateIndo(dateStr) : (dateStr || '-');
+    },
+
+    reloadCurrentPage() {
+        if (typeof this.renderPage === 'function') {
+            this.renderPage(this.state.currentRoute);
+        } else {
+            this.loadRouteFromHash();
+        }
+    },
+
+    deleteMaster(type, id) {
+        const map = { jam: 'sch_jam', kelas: 'sch_kelas', mapel: 'sch_mapel', guru: 'sch_guru' };
+        return this.deleteSchMaster(map[type] || type, id);
+    },
+
     deleteSchMaster(type, id) {
         EModal.confirm({
             title: 'Hapus Data',
@@ -7508,6 +7525,7 @@ exportJadwalExcel() {
             type: 'danger',
             onConfirm: () => {
                 this.api(type + '.php?action=delete', { method: 'POST', data: {id} }).done(res => {
+                    if(type == 'sch_jam') this.renderSchJam($('#mainContent'));
                     if(type == 'sch_kelas') this.loadSchKelas();
                     if(type == 'sch_mapel') this.loadSchMapel();
                     if(type == 'sch_guru') this.loadSchGuru();

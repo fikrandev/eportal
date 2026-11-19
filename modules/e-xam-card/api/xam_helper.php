@@ -5,23 +5,7 @@
 
 function xam_auth()
 {
-    $token = '';
-    if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
-        $token = str_replace('Bearer ', '', $_SERVER['HTTP_AUTHORIZATION']);
-    } elseif (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
-        $token = str_replace('Bearer ', '', $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
-    } elseif (function_exists('getallheaders')) {
-        $headers = getallheaders();
-        if (isset($headers['Authorization'])) {
-            $token = str_replace('Bearer ', '', $headers['Authorization']);
-        } elseif (isset($headers['authorization'])) {
-            $token = str_replace('Bearer ', '', $headers['authorization']);
-        }
-    }
-
-    if ($token === '' && isset($_GET['token'])) {
-        $token = (string) $_GET['token'];
-    }
+    $token = get_bearer_token(true);
 
     if ($token === '') {
         json_response(401, false, 'Token required');
@@ -39,8 +23,12 @@ function xam_auth()
         json_response(401, false, 'Session expired or invalid.');
     }
 
-    $user['is_admin'] = in_array(strtolower($user['role']), ['superadmin', 'user'], true);
-    $user['is_teacher'] = (strtolower($user['role']) === 'guru');
+    $roleLower = strtolower($user['role']);
+    $isSuperadmin = ($roleLower === 'superadmin');
+    $hasModulePerm = $isSuperadmin || portal_user_has_permission($user['user_id'], $user['role'], 'module_e-xam-card');
+
+    $user['is_admin'] = $isSuperadmin || ($roleLower === 'user' && $hasModulePerm);
+    $user['is_teacher'] = ($roleLower === 'guru');
     $user['managed_class'] = null;
     $user['has_access'] = $user['is_admin'];
 
@@ -50,6 +38,8 @@ function xam_auth()
         $access = $stmt->fetch();
         if ($access) {
             $user['managed_class'] = $access['kelas'];
+            $user['has_access'] = true;
+        } elseif ($hasModulePerm) {
             $user['has_access'] = true;
         }
     }
@@ -63,6 +53,15 @@ function xam_require_manage()
     $user = xam_auth();
     if (!$user['has_access']) {
         json_response(403, false, 'Akses ditolak. Anda tidak memiliki izin untuk mengakses modul ini.');
+    }
+    return $user;
+}
+
+function xam_require_admin()
+{
+    $user = xam_auth();
+    if (!$user['is_admin']) {
+        json_response(403, false, 'Akses ditolak. Fitur ini hanya untuk Administrator.');
     }
     return $user;
 }
@@ -176,8 +175,21 @@ function xam_indo_date($date)
  */
 function xam_verify_signature($studentId, $examId, $letterNumber)
 {
-    $secret = DB_NAME . '|' . DB_USER . '|' . DB_PASS;
-    return substr(hash_hmac('sha256', (int)$studentId . '|' . (int)$examId . '|' . (string)$letterNumber, $secret), 0, 16);
+    return substr(hash_hmac('sha256', (int)$studentId . '|' . (int)$examId . '|' . (string)$letterNumber, app_secret('qr')), 0, 16);
+}
+
+function xam_verify_signature_matches($studentId, $examId, $letterNumber, $sig)
+{
+    $sig = (string)$sig;
+    if ($sig === '') return false;
+    $expected = xam_verify_signature($studentId, $examId, $letterNumber);
+    if (hash_equals($expected, $sig)) {
+        return true;
+    }
+    // Legacy fallback for previously printed cards (accepted only when DB record is active & valid)
+    $legacySecret = DB_NAME . '|' . DB_USER . '|' . DB_PASS;
+    $legacyExpected = substr(hash_hmac('sha256', (int)$studentId . '|' . (int)$examId . '|' . (string)$letterNumber, $legacySecret), 0, 16);
+    return hash_equals($legacyExpected, $sig);
 }
 
 function absoluteBaseUrl()

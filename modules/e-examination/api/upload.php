@@ -23,7 +23,7 @@ try {
             throw new Exception('Path file tidak boleh kosong', 400);
         }
 
-        // Security: Prevent path traversal, only allow deleting in uploads/images/ or uploads/audio/
+        // Security: Only allow deleting inside modules/e-examination/uploads/images/ or uploads/audio/
         $normalized = str_replace(['\\', '..'], ['/', ''], $path);
         $normalized = ltrim($normalized, '/');
 
@@ -31,11 +31,11 @@ try {
             throw new Exception('Path file tidak valid atau berada di luar folder yang diizinkan', 403);
         }
 
-        $targetFile = __DIR__ . '/../' . $normalized;
-        if (file_exists($targetFile) && is_file($targetFile)) {
-            if (!@unlink($targetFile)) {
-                throw new Exception('Gagal menghapus file dari disk server. Periksa izin folder.', 500);
-            }
+        $allowedDir = strpos($normalized, 'uploads/audio/') === 0
+            ? 'modules/e-examination/uploads/audio'
+            : 'modules/e-examination/uploads/images';
+        if (!safe_unlink_in_dir('modules/e-examination/' . $normalized, $allowedDir)) {
+            throw new Exception('Gagal menghapus file atau file berada di luar direktori yang diizinkan.', 500);
         }
 
         json_response(200, true, 'File media berhasil dihapus dari server.');
@@ -79,14 +79,39 @@ try {
         $maxSize = 25 * 1024 * 1024; // 25MB
         $uploadDir = __DIR__ . '/../uploads/audio/';
     } else {
-        // Image upload for soal
-        $allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'];
+        // Image upload for soal (no SVG to prevent stored XSS)
+        $allowed = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
         $maxSize = 10 * 1024 * 1024; // 10MB
         $uploadDir = __DIR__ . '/../uploads/images/';
     }
 
-    if (!in_array($ext, $allowed)) {
+    if (!in_array($ext, $allowed, true)) {
         throw new Exception('Tipe file .' . $ext . ' tidak diizinkan. Gunakan format: ' . implode(', ', $allowed), 400);
+    }
+
+    if (!is_uploaded_file($file['tmp_name'])) {
+        throw new Exception('Sumber upload tidak valid.', 400);
+    }
+
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $detectedMime = $finfo ? finfo_file($finfo, $file['tmp_name']) : '';
+    if ($finfo) finfo_close($finfo);
+
+    if ($action === 'audio') {
+        $allowedAudioMimes = [
+            'audio/mpeg', 'audio/mp3', 'audio/ogg', 'audio/wav', 'audio/x-wav', 'audio/vnd.wave',
+            'audio/webm', 'video/webm', 'audio/mp4', 'video/mp4', 'audio/m4a', 'audio/x-m4a',
+            'audio/aac', 'audio/x-aac', 'audio/flac', 'audio/x-flac', 'audio/opus',
+            'audio/3gpp', 'video/3gpp', 'application/ogg'
+        ];
+        if ($detectedMime && !in_array($detectedMime, $allowedAudioMimes, true) && strpos($detectedMime, 'audio/') !== 0) {
+            throw new Exception('Isi file audio tidak valid (' . $detectedMime . ').', 400);
+        }
+    } else {
+        $allowedImageMimes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+        if (!$detectedMime || !in_array($detectedMime, $allowedImageMimes, true) || !@getimagesize($file['tmp_name'])) {
+            throw new Exception('File bukan gambar valid (JPG, PNG, GIF, WebP).', 400);
+        }
     }
 
     if ($file['size'] > $maxSize) {
@@ -110,19 +135,10 @@ try {
     }
 
     // 4. Generate unique filename and store file
-    $filename = uniqid('exam_') . '_' . time() . '.' . $ext;
+    $filename = uniqid('exam_', true) . '.' . $ext;
     $filepath = $uploadDir . $filename;
 
-    $moved = false;
-    if (is_uploaded_file($file['tmp_name'])) {
-        $moved = @move_uploaded_file($file['tmp_name'], $filepath);
-    }
-    if (!$moved) {
-        $moved = @copy($file['tmp_name'], $filepath);
-        if ($moved && file_exists($file['tmp_name'])) {
-            @unlink($file['tmp_name']);
-        }
-    }
+    $moved = @move_uploaded_file($file['tmp_name'], $filepath);
 
     if (!$moved) {
         $lastErr = error_get_last();

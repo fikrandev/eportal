@@ -71,7 +71,7 @@ function movePenugasan() {
         $db->commit();
         json_response(200, true, 'Penugasan berhasil dipindahkan.');
     } catch (Exception $e) {
-        $db->rollBack();
+        if ($db->inTransaction()) $db->rollBack();
         json_response(500, false, 'Terjadi kesalahan sistem: ' . $e->getMessage());
     }
 }
@@ -180,7 +180,7 @@ function deletePenugasan() {
         $db->commit();
         json_response(200, true, 'Penugasan berhasil dihapus.');
     } catch (Exception $e) {
-        $db->rollBack();
+        if ($db->inTransaction()) $db->rollBack();
         json_response(500, false, 'Terjadi kesalahan sistem: ' . $e->getMessage());
     }
 }

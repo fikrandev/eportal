@@ -10,30 +10,7 @@ require_once __DIR__ . '/../../../api/config.php';
  * Extract token from Authorization header or query parameter
  */
 function acad_extract_token() {
-    $token = '';
-    
-    // Check via $_SERVER HTTP headers
-    if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
-        $token = str_replace('Bearer ', '', $_SERVER['HTTP_AUTHORIZATION']);
-    } elseif (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
-        $token = str_replace('Bearer ', '', $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
-    } 
-    // Fallback: getallheaders
-    elseif (function_exists('getallheaders')) {
-        $headers = getallheaders();
-        if (isset($headers['Authorization'])) {
-            $token = str_replace('Bearer ', '', $headers['Authorization']);
-        } elseif (isset($headers['authorization'])) {
-            $token = str_replace('Bearer ', '', $headers['authorization']);
-        }
-    }
-    
-    // Final fallback: query parameters
-    if ($token === '' && isset($_GET['token'])) {
-        $token = (string)$_GET['token'];
-    }
-    
-    return trim($token);
+    return get_bearer_token(true);
 }
 
 /**
@@ -79,7 +56,7 @@ function acad_auth() {
  * Enforce admin role permission check
  */
 function acad_require_admin($user) {
-    if (!in_array($user['role'], ['superadmin'])) {
+    if (($user['role'] ?? '') !== 'superadmin' && !portal_has_permission($user, 'module_e-absen') && !portal_has_permission($user, '*')) {
         json_response(403, false, 'Akses ditolak. Anda tidak memiliki hak akses admin untuk modul ini.');
     }
 }

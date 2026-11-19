@@ -41,12 +41,12 @@ try {
     $passwordValid = false;
     foreach ($studentRecords as $rec) {
         $dbDob = $rec['tanggal_lahir'] ?? '';
-        if (!$dbDob) continue;
+        if (!$dbDob || $dbDob === '0000-00-00') continue;
         $ts = strtotime($dbDob);
-        if (!$ts) continue;
+        if (!$ts || $ts <= 0) continue;
         $dmy = date('dmY', $ts);
         $ymd = date('Ymd', $ts);
-        if ($inputClean === $dmy || $inputClean === $ymd || $dob === $dbDob) {
+        if ($inputClean !== '' && ($inputClean === $dmy || $inputClean === $ymd || $dob === $dbDob)) {
             $passwordValid = true;
             break;
         }
@@ -163,7 +163,7 @@ try {
         'exam_id' => (int) $examInfo['exam_id'],
         'exp' => time() + 3600 // 1 hour
     ];
-    $token = base64_encode(json_encode($tokenData)) . '.' . hash_hmac('sha256', json_encode($tokenData), DB_NAME);
+    $token = base64_encode(json_encode($tokenData)) . '.' . hash_hmac('sha256', json_encode($tokenData), app_secret('xam_card'));
 
     json_response(200, true, 'Auth success', [
         'status' => $examInfo['status'],

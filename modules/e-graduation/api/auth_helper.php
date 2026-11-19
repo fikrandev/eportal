@@ -5,23 +5,7 @@
 
 function grad_auth()
 {
-    $token = '';
-    if (isset($_SERVER['HTTP_AUTHORIZATION'])) {
-        $token = str_replace('Bearer ', '', $_SERVER['HTTP_AUTHORIZATION']);
-    } elseif (isset($_SERVER['REDIRECT_HTTP_AUTHORIZATION'])) {
-        $token = str_replace('Bearer ', '', $_SERVER['REDIRECT_HTTP_AUTHORIZATION']);
-    } elseif (function_exists('getallheaders')) {
-        $headers = getallheaders();
-        if (isset($headers['Authorization'])) {
-            $token = str_replace('Bearer ', '', $headers['Authorization']);
-        } elseif (isset($headers['authorization'])) {
-            $token = str_replace('Bearer ', '', $headers['authorization']);
-        }
-    }
-
-    if (empty($token) && isset($_GET['token'])) {
-        $token = $_GET['token'];
-    }
+    $token = get_bearer_token(true);
 
     if (empty($token)) {
         json_response(401, false, 'Token required');
@@ -40,7 +24,11 @@ function grad_auth()
         json_response(401, false, 'Session expired or user inactive');
     }
 
-    $user['can_manage_graduation'] = $user['role'] === 'superadmin';
+    $roleLower = strtolower($user['role']);
+    $isSuperadmin = ($roleLower === 'superadmin');
+    $hasModulePerm = $isSuperadmin || portal_user_has_permission($user['user_id'], $user['role'], 'module_e-graduation');
+
+    $user['can_manage_graduation'] = $isSuperadmin || ($roleLower === 'user' && $hasModulePerm);
     $user['graduation_role'] = $user['can_manage_graduation'] ? 'admin' : 'viewer';
     $user['scoped_classes'] = [];
 

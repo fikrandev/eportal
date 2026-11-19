@@ -76,8 +76,7 @@ try {
         // BANK SOAL
         // ==========================================
         case 'list_bank':
-            exam_require_admin_or_guru();
-            $user = exam_auth();
+            $user = exam_require_admin_or_guru();
             
             $where = "b.status = 1";
             $params = [];
@@ -119,9 +118,10 @@ try {
             break;
 
         case 'get_bank':
-            exam_require_admin_or_guru();
+            $user = exam_require_admin_or_guru();
             $id = (int)($_GET['id'] ?? 0);
             if (!$id) throw new Exception('ID tidak valid', 400);
+            exam_require_bank_access($id, $user);
 
             $stmt = db()->prepare("
                 SELECT b.*, m.nama_mapel,
@@ -162,11 +162,12 @@ try {
             break;
 
         case 'update_bank':
-            exam_require_admin_or_guru();
+            $user = exam_require_admin_or_guru();
             if ($method !== 'POST') throw new Exception('Method not allowed', 405);
             $data = get_input();
             $id = (int)($data['id'] ?? 0);
             if (!$id) throw new Exception('ID tidak valid', 400);
+            exam_require_bank_access($id, $user);
 
             $stmt = db()->prepare("
                 UPDATE exam_bank_soal SET 
@@ -212,9 +213,10 @@ try {
         // SOAL
         // ==========================================
         case 'list_soal':
-            exam_require_admin_or_guru();
+            $user = exam_require_admin_or_guru();
             $bank_id = (int)($_GET['bank_soal_id'] ?? 0);
             if (!$bank_id) throw new Exception('bank_soal_id wajib diisi', 400);
+            exam_require_bank_access($bank_id, $user);
 
             $stmt = db()->prepare("
                 SELECT * FROM exam_soal 
@@ -226,7 +228,7 @@ try {
             break;
 
         case 'create_soal':
-            exam_require_admin_or_guru();
+            $user = exam_require_admin_or_guru();
             if ($method !== 'POST') throw new Exception('Method not allowed', 405);
             $data = get_input();
 
@@ -237,6 +239,7 @@ try {
             if (!$bank_id || empty($tipe) || empty($pertanyaan)) {
                 throw new Exception('Data soal tidak lengkap', 400);
             }
+            exam_require_bank_access($bank_id, $user);
 
             $opsi = isset($data['opsi']) ? json_encode($data['opsi'], JSON_UNESCAPED_UNICODE) : null;
             $kunci = isset($data['kunci_jawaban']) ? json_encode($data['kunci_jawaban'], JSON_UNESCAPED_UNICODE) : null;
@@ -267,16 +270,18 @@ try {
             break;
 
         case 'update_soal':
-            exam_require_admin_or_guru();
+            $user = exam_require_admin_or_guru();
             if ($method !== 'POST') throw new Exception('Method not allowed', 405);
             $data = get_input();
             $id = (int)($data['id'] ?? 0);
             if (!$id) throw new Exception('ID tidak valid', 400);
 
-            // Fetch existing question to inspect old media files
-            $stmtOld = db()->prepare("SELECT gambar, audio FROM exam_soal WHERE id = ?");
+            // Fetch existing question to inspect bank ownership and old media files
+            $stmtOld = db()->prepare("SELECT bank_soal_id, gambar, audio FROM exam_soal WHERE id = ?");
             $stmtOld->execute([$id]);
             $oldSoal = $stmtOld->fetch();
+            if (!$oldSoal) throw new Exception('Soal tidak ditemukan', 404);
+            exam_require_bank_access((int)$oldSoal['bank_soal_id'], $user);
 
             $opsi = isset($data['opsi']) ? json_encode($data['opsi'], JSON_UNESCAPED_UNICODE) : null;
             $kunci = isset($data['kunci_jawaban']) ? json_encode($data['kunci_jawaban'], JSON_UNESCAPED_UNICODE) : null;
@@ -299,19 +304,17 @@ try {
 
             // Unlink old gambar if removed or replaced
             if ($oldSoal && !empty($oldSoal['gambar']) && $oldSoal['gambar'] !== $newGambar) {
-                $cleanPath = str_replace(['..', '\\'], ['', '/'], $oldSoal['gambar']);
-                $oldFile = __DIR__ . '/../' . ltrim($cleanPath, '/');
-                if (file_exists($oldFile) && is_file($oldFile)) {
-                    @unlink($oldFile);
+                $cleanPath = ltrim(str_replace(['..', '\\'], ['', '/'], (string)$oldSoal['gambar']), '/');
+                if ($cleanPath !== '') {
+                    safe_unlink_in_dir('modules/e-examination/' . $cleanPath, 'modules/e-examination/uploads');
                 }
             }
 
             // Unlink old audio if removed or replaced
             if ($oldSoal && !empty($oldSoal['audio']) && $oldSoal['audio'] !== $newAudio) {
-                $cleanPath = str_replace(['..', '\\'], ['', '/'], $oldSoal['audio']);
-                $oldFile = __DIR__ . '/../' . ltrim($cleanPath, '/');
-                if (file_exists($oldFile) && is_file($oldFile)) {
-                    @unlink($oldFile);
+                $cleanPath = ltrim(str_replace(['..', '\\'], ['', '/'], (string)$oldSoal['audio']), '/');
+                if ($cleanPath !== '') {
+                    safe_unlink_in_dir('modules/e-examination/' . $cleanPath, 'modules/e-examination/uploads');
                 }
             }
 
@@ -338,7 +341,7 @@ try {
             break;
 
         case 'delete_media':
-            exam_require_admin_or_guru();
+            $user = exam_require_admin_or_guru();
             if ($method !== 'POST') throw new Exception('Method not allowed', 405);
             $data = get_input();
             $id = (int)($data['id'] ?? 0);
@@ -347,17 +350,17 @@ try {
                 throw new Exception('Parameter id atau type tidak valid', 400);
             }
 
-            $stmt = db()->prepare("SELECT gambar, audio FROM exam_soal WHERE id = ?");
+            $stmt = db()->prepare("SELECT bank_soal_id, gambar, audio FROM exam_soal WHERE id = ?");
             $stmt->execute([$id]);
             $soal = $stmt->fetch();
             if (!$soal) throw new Exception('Soal tidak ditemukan', 404);
+            exam_require_bank_access((int)$soal['bank_soal_id'], $user);
 
             $filePath = $type === 'gambar' ? $soal['gambar'] : $soal['audio'];
             if (!empty($filePath)) {
-                $cleanPath = str_replace(['..', '\\'], ['', '/'], $filePath);
-                $fullPath = __DIR__ . '/../' . ltrim($cleanPath, '/');
-                if (file_exists($fullPath) && is_file($fullPath)) {
-                    @unlink($fullPath);
+                $cleanPath = ltrim(str_replace(['..', '\\'], ['', '/'], (string)$filePath), '/');
+                if ($cleanPath !== '') {
+                    safe_unlink_in_dir('modules/e-examination/' . $cleanPath, 'modules/e-examination/uploads');
                 }
             }
 
@@ -369,11 +372,17 @@ try {
             break;
 
         case 'delete_soal':
-            exam_require_admin_or_guru();
+            $user = exam_require_admin_or_guru();
             if ($method !== 'POST') throw new Exception('Method not allowed', 405);
             $data = get_input();
             $id = (int)($data['id'] ?? 0);
             if (!$id) throw new Exception('ID tidak valid', 400);
+
+            $stmtCheck = db()->prepare("SELECT bank_soal_id FROM exam_soal WHERE id = ?");
+            $stmtCheck->execute([$id]);
+            $bankIdCheck = $stmtCheck->fetchColumn();
+            if (!$bankIdCheck) throw new Exception('Soal tidak ditemukan', 404);
+            exam_require_bank_access((int)$bankIdCheck, $user);
 
             $stmt = db()->prepare("UPDATE exam_soal SET status = 0 WHERE id = ?");
             $stmt->execute([$id]);
@@ -381,14 +390,29 @@ try {
             break;
 
         case 'reorder_soal':
-            exam_require_admin_or_guru();
+            $user = exam_require_admin_or_guru();
             if ($method !== 'POST') throw new Exception('Method not allowed', 405);
             $data = get_input();
             $orders = $data['orders'] ?? [];
-            
-            $stmt = db()->prepare("UPDATE exam_soal SET urutan = ? WHERE id = ?");
-            foreach ($orders as $item) {
-                $stmt->execute([(int)$item['urutan'], (int)$item['id']]);
+            if (!is_array($orders) || empty($orders)) {
+                json_response(200, true, 'Tidak ada perubahan urutan');
+            }
+
+            if (!$user['is_admin']) {
+                $firstId = (int)($orders[0]['id'] ?? 0);
+                $stmtChk = db()->prepare("SELECT bank_soal_id FROM exam_soal WHERE id = ?");
+                $stmtChk->execute([$firstId]);
+                $bId = (int)$stmtChk->fetchColumn();
+                if ($bId) exam_require_bank_access($bId, $user);
+                $stmt = db()->prepare("UPDATE exam_soal SET urutan = ? WHERE id = ? AND bank_soal_id = ?");
+                foreach ($orders as $item) {
+                    $stmt->execute([(int)$item['urutan'], (int)$item['id'], $bId]);
+                }
+            } else {
+                $stmt = db()->prepare("UPDATE exam_soal SET urutan = ? WHERE id = ?");
+                foreach ($orders as $item) {
+                    $stmt->execute([(int)$item['urutan'], (int)$item['id']]);
+                }
             }
             json_response(200, true, 'Urutan soal berhasil diperbarui');
             break;
@@ -397,11 +421,12 @@ try {
         // IMPORT SOAL
         // ==========================================
         case 'import_soal':
-            exam_require_admin_or_guru();
+            $user = exam_require_admin_or_guru();
             if ($method !== 'POST') throw new Exception('Method not allowed', 405);
 
             $bank_id = (int)($_POST['bank_soal_id'] ?? 0);
             if (!$bank_id) throw new Exception('bank_soal_id wajib diisi', 400);
+            exam_require_bank_access($bank_id, $user);
 
             if (!isset($_FILES['file']) || $_FILES['file']['error'] !== UPLOAD_ERR_OK) {
                 throw new Exception('File tidak valid', 400);
@@ -413,6 +438,7 @@ try {
             }
 
             $content = file_get_contents($_FILES['file']['tmp_name']);
+            $content = preg_replace('/^\xEF\xBB\xBF/', '', (string)$content);
             $imported = 0;
 
             // Get next urutan
@@ -425,7 +451,7 @@ try {
                 if (!is_array($rows)) throw new Exception('Format JSON tidak valid', 400);
             } else {
                 // CSV: tipe_soal, pertanyaan, opsi_a, opsi_b, opsi_c, opsi_d, opsi_e, kunci, pembahasan, bobot
-                $lines = array_filter(array_map('trim', explode("\n", $content)));
+                $lines = array_filter(array_map('trim', preg_split('/\r\n|\n|\r/', $content) ?: []));
                 $rows = [];
                 $isFirst = true;
                 foreach ($lines as $line) {
@@ -461,30 +487,37 @@ try {
                 }
             }
 
-            $stmtInsert = db()->prepare("
-                INSERT INTO exam_soal (bank_soal_id, tipe_soal, pertanyaan, opsi, kunci_jawaban, pembahasan, bobot, urutan)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ");
+            try {
+                db()->beginTransaction();
+                $stmtInsert = db()->prepare("
+                    INSERT INTO exam_soal (bank_soal_id, tipe_soal, pertanyaan, opsi, kunci_jawaban, pembahasan, bobot, urutan)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ");
 
-            foreach ($rows as $row) {
-                $tipe = $row['tipe_soal'] ?? 'pilihan_satu';
-                $pertanyaan = trim($row['pertanyaan'] ?? '');
-                if (empty($pertanyaan)) continue;
+                foreach ($rows as $row) {
+                    $tipe = $row['tipe_soal'] ?? 'pilihan_satu';
+                    $pertanyaan = trim($row['pertanyaan'] ?? '');
+                    if (empty($pertanyaan)) continue;
 
-                $opsi = isset($row['opsi']) ? json_encode($row['opsi'], JSON_UNESCAPED_UNICODE) : null;
-                $kunci = isset($row['kunci_jawaban']) ? json_encode($row['kunci_jawaban'], JSON_UNESCAPED_UNICODE) : null;
+                    $opsi = isset($row['opsi']) ? json_encode($row['opsi'], JSON_UNESCAPED_UNICODE) : null;
+                    $kunci = isset($row['kunci_jawaban']) ? json_encode($row['kunci_jawaban'], JSON_UNESCAPED_UNICODE) : null;
 
-                $stmtInsert->execute([
-                    $bank_id,
-                    $tipe,
-                    $pertanyaan,
-                    $opsi,
-                    $kunci,
-                    trim($row['pembahasan'] ?? '') ?: null,
-                    (float)($row['bobot'] ?? 1),
-                    $nextUrutan++
-                ]);
-                $imported++;
+                    $stmtInsert->execute([
+                        $bank_id,
+                        $tipe,
+                        $pertanyaan,
+                        $opsi,
+                        $kunci,
+                        trim($row['pembahasan'] ?? '') ?: null,
+                        (float)($row['bobot'] ?? 1),
+                        $nextUrutan++
+                    ]);
+                    $imported++;
+                }
+                db()->commit();
+            } catch (Throwable $e) {
+                if (db()->inTransaction()) db()->rollBack();
+                throw $e;
             }
 
             json_response(200, true, "Berhasil mengimport $imported soal", ['imported' => $imported]);
@@ -494,9 +527,10 @@ try {
         // PSIKOLOGI HASIL (Psychology Profile Results Ranges)
         // ==========================================
         case 'list_psikologi_hasil':
-            exam_require_admin_or_guru();
+            $user = exam_require_admin_or_guru();
             $bank_id = (int)($_GET['bank_soal_id'] ?? 0);
             if (!$bank_id) throw new Exception('bank_soal_id wajib diisi', 400);
+            exam_require_bank_access($bank_id, $user);
 
             $stmt = db()->prepare("SELECT * FROM exam_psikologi_hasil WHERE bank_soal_id = ? ORDER BY rentang_min ASC");
             $stmt->execute([$bank_id]);
@@ -504,7 +538,7 @@ try {
             break;
 
         case 'create_psikologi_hasil':
-            exam_require_admin_or_guru();
+            $user = exam_require_admin_or_guru();
             if ($method !== 'POST') throw new Exception('Method not allowed', 405);
             $data = get_input();
 
@@ -517,6 +551,7 @@ try {
             if (!$bank_id || empty($kode_hasil) || empty($deskripsi)) {
                 throw new Exception('Data tidak lengkap', 400);
             }
+            exam_require_bank_access($bank_id, $user);
 
             $stmt = db()->prepare("
                 INSERT INTO exam_psikologi_hasil (bank_soal_id, kode_hasil, deskripsi, rentang_min, rentang_max)
@@ -527,7 +562,7 @@ try {
             break;
 
         case 'update_psikologi_hasil':
-            exam_require_admin_or_guru();
+            $user = exam_require_admin_or_guru();
             if ($method !== 'POST') throw new Exception('Method not allowed', 405);
             $data = get_input();
 
@@ -540,6 +575,11 @@ try {
             if (!$id || empty($kode_hasil) || empty($deskripsi)) {
                 throw new Exception('Data tidak lengkap', 400);
             }
+            $stmtChk = db()->prepare("SELECT bank_soal_id FROM exam_psikologi_hasil WHERE id = ?");
+            $stmtChk->execute([$id]);
+            $bankChk = (int)$stmtChk->fetchColumn();
+            if (!$bankChk) throw new Exception('Data tidak ditemukan', 404);
+            exam_require_bank_access($bankChk, $user);
 
             $stmt = db()->prepare("
                 UPDATE exam_psikologi_hasil 
@@ -551,23 +591,21 @@ try {
             break;
 
         case 'delete_psikologi_hasil':
-            exam_require_admin_or_guru();
+            $user = exam_require_admin_or_guru();
             if ($method !== 'POST') throw new Exception('Method not allowed', 405);
             $data = get_input();
             $id = (int)($data['id'] ?? 0);
             if (!$id) throw new Exception('ID tidak valid', 400);
 
+            $stmtChk = db()->prepare("SELECT bank_soal_id FROM exam_psikologi_hasil WHERE id = ?");
+            $stmtChk->execute([$id]);
+            $bankChk = (int)$stmtChk->fetchColumn();
+            if (!$bankChk) throw new Exception('Data tidak ditemukan', 404);
+            exam_require_bank_access($bankChk, $user);
+
             $stmt = db()->prepare("DELETE FROM exam_psikologi_hasil WHERE id = ?");
             $stmt->execute([$id]);
             json_response(200, true, 'Profil hasil psikologi berhasil dihapus');
-            break;
-
-        // ==========================================
-        // CLASSES (get available classes)
-        // ==========================================
-        case 'list_classes':
-            exam_auth();
-            json_response(200, true, '', exam_get_classes());
             break;
 
         // ==========================================
@@ -586,9 +624,19 @@ try {
             $stmtMapel = db()->query("SELECT COUNT(*) FROM exam_mapel WHERE status = 1");
             $stmtBank = db()->prepare("SELECT COUNT(*) FROM exam_bank_soal WHERE $whereBank");
             $stmtBank->execute($paramsBank);
-            $stmtSoal = db()->query("SELECT COUNT(*) FROM exam_soal WHERE status = 1");
-            $stmtUjian = db()->query("SELECT COUNT(*) FROM exam_ujian");
-            $stmtUjianAktif = db()->query("SELECT COUNT(*) FROM exam_ujian WHERE status = 'aktif'");
+
+            if ($user['is_guru'] && !$user['is_admin']) {
+                $stmtSoal = db()->prepare("SELECT COUNT(*) FROM exam_soal s JOIN exam_bank_soal b ON s.bank_soal_id = b.id WHERE s.status = 1 AND b.created_by = ?");
+                $stmtSoal->execute([$user['user_id']]);
+                $stmtUjian = db()->prepare("SELECT COUNT(*) FROM exam_ujian WHERE created_by = ?");
+                $stmtUjian->execute([$user['user_id']]);
+                $stmtUjianAktif = db()->prepare("SELECT COUNT(*) FROM exam_ujian WHERE status = 'aktif' AND created_by = ?");
+                $stmtUjianAktif->execute([$user['user_id']]);
+            } else {
+                $stmtSoal = db()->query("SELECT COUNT(*) FROM exam_soal WHERE status = 1");
+                $stmtUjian = db()->query("SELECT COUNT(*) FROM exam_ujian");
+                $stmtUjianAktif = db()->query("SELECT COUNT(*) FROM exam_ujian WHERE status = 'aktif'");
+            }
 
             json_response(200, true, '', [
                 'total_mapel'       => (int)$stmtMapel->fetchColumn(),
