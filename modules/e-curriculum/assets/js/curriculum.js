@@ -372,7 +372,7 @@ const Curriculum = {
         const kelasId = $('#jdwFilter').val() || '';
         this.api(`sch_jadwal.php?action=list${kelasId ? `&kelas_id=${kelasId}` : ''}`).done(res => {
             if (!res.success) return;
-            const sig = JSON.stringify((res.data || []).map(j => `${j.id}_${j.hari}_${j.jam_ke}`));
+            const sig = JSON.stringify((res.data || []).map(j => `${j.id}_${j.distribusi_id}_${j.hari}_${j.jam_ke}`));
             const prevSig = this._lastRealtimeSignatures['sch_jadwal'];
             this._lastRealtimeSignatures['sch_jadwal'] = sig;
 
@@ -7147,11 +7147,12 @@ exportJadwalExcel() {
             fullUrl += (fullUrl.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(this.state.token);
         }
         const isWa = endpoint.includes('wa') || endpoint.includes('send_wa_group');
+        const isLongTask = endpoint.includes('action=generate') || endpoint.includes('action=auto_fill_gaps');
         const defaults = {
             url: fullUrl,
             dataType: 'json',
             contentType: 'application/json',
-            timeout: isWa ? 75000 : 30000,
+            timeout: isLongTask ? 120000 : (isWa ? 75000 : 30000),
             headers: { 'Authorization': 'Bearer ' + this.state.token }
         };
 
@@ -9364,6 +9365,7 @@ title: 'Gagal Mengunci',
                 });
             }
             this.viewJadwal($('#jdwFilter').val());
+            this.loadDailyRekap(this.state.selectedRekapHari);
         }).fail(err => {
             EModal.close(loader);
             EModal.toast({
@@ -9392,7 +9394,7 @@ title: 'Gagal Mengunci',
                 const $overlay = $(`
                     <div id="genProgressOverlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,0.9);backdrop-filter:blur(4px);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;color:white;font-family:'Inter',sans-serif;">
                         <h2 style="margin-bottom:12px;font-size:24px;font-weight:700">Engine Algoritma Sedang Bekerja...</h2>
-                        <p style="margin-bottom:30px;color:#94a3b8;font-size:16px" id="genProgressText">Mencari kombinasi jadwal terbaik (Estimasi: 15 - 45 detik)</p>
+                        <p style="margin-bottom:30px;color:#94a3b8;font-size:16px" id="genProgressText">Mencari kombinasi jadwal terbaik (Estimasi: 8 - 15 detik)</p>
                         <div style="width:400px;background:#334155;border-radius:12px;height:16px;overflow:hidden;box-shadow:inset 0 2px 4px rgba(0,0,0,0.3)">
                             <div id="genProgressBar" style="width:0%;background:linear-gradient(90deg, #3b82f6, #60a5fa);height:100%;transition:width 0.4s ease;border-radius:12px"></div>
                         </div>
@@ -9492,9 +9494,19 @@ title: 'Gagal Mengunci',
             Object.values(daysMap).forEach(arr => { if (arr.length > maxJams) maxJams = arr.length; });
             const daysArr = Object.keys(daysMap);
 
+            // Hitung slot pembelajaran yang masih kosong secara akurat
+            const pembelajaranJams = jams.filter(j => j.tipe === 'Pembelajaran');
+            let emptySlotCount = 0;
+            Object.values(kelasGroups).forEach(kjadwal => {
+                const filledJamIds = new Set(kjadwal.map(x => String(x.jam_belajar_id)));
+                pembelajaranJams.forEach(pj => {
+                    if (!filledJamIds.has(String(pj.id))) emptySlotCount++;
+                });
+            });
+
             let html = '';
 
-            // Banner Status Tabrakan / Validitas / Locked
+            // Banner Status Tabrakan / Slot Kosong / Validitas / Locked
             const isLocked = !!(this.state.schLock && this.state.schLock.is_locked);
 
             if (isLocked) {
@@ -9525,6 +9537,21 @@ title: 'Gagal Mengunci',
                             </div>
                         </div>
                         ${this.isJadwalLocked ? '<div style="font-size:0.75rem; background:#fef3c7; color:#b45309; border:1px solid #fde68a; padding:4px 10px; border-radius:6px; font-weight:700;">🔒 Terkunci Resmi</div>' : '<div style="font-size:0.75rem; background:#fee2e2; color:#991b1b; padding:4px 10px; border-radius:6px; font-weight:700;">Drag & Drop Aktif</div>'}
+                    </div>
+                `;
+            } else if (emptySlotCount > 0) {
+                html += `
+                    <div style="background:#fffbeb; border:1px solid #fcd34d; border-left:5px solid #f59e0b; border-radius:10px; padding:12px 18px; margin-bottom:18px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; box-shadow:0 2px 6px rgba(245,158,11,0.08);">
+                        <div style="display:flex; align-items:center; gap:12px;">
+                            <div style="width:36px; height:36px; border-radius:8px; background:#f59e0b; color:white; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                            </div>
+                            <div>
+                                <div style="font-weight:800; font-size:0.95rem; color:#92400e;">Terdeteksi ${emptySlotCount} Slot Jam Kosong</div>
+                                <div style="font-size:0.8rem; color:#b45309; margin-top:2px;">Terdapat ${emptySlotCount} slot pembelajaran yang belum terisi (0 bentrok guru). Gunakan tombol <strong>Isi Jam Kosong Otomatis</strong> atau <strong>Drag & Drop</strong> untuk menyesuaikannya.</div>
+                            </div>
+                        </div>
+                        <div style="font-size:0.75rem; background:#fef3c7; color:#92400e; padding:4px 10px; border-radius:6px; font-weight:700;">Drag & Drop Aktif</div>
                     </div>
                 `;
             } else {
@@ -9591,7 +9618,8 @@ title: 'Gagal Mengunci',
 
             if (kelasId) {
                 // TAMPILAN PER KELAS
-                for (let kname in kelasGroups) {
+                const sortedKelasNames = Object.keys(kelasGroups).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+                for (const kname of sortedKelasNames) {
                     const kjadwal = kelasGroups[kname];
                     const kId = kelasNameToId[kname] || (kjadwal[0] ? kjadwal[0].kelas_id : kelasId);
 
@@ -9622,7 +9650,7 @@ title: 'Gagal Mengunci',
                 }
             } else {
                 // TAMPILAN MASTER JADWAL (SEMUA KELAS)
-                const kelasNames = Object.keys(kelasGroups).sort();
+                const kelasNames = Object.keys(kelasGroups).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
                 
                 html += `<div style="overflow-x:auto; border:1px solid var(--border-color); border-radius:8px;">
                     <table class="sch-table matrix-table sch-grid-compact" style="width:max-content; min-width:0; background:white; border-collapse:collapse; margin:0;">`;
@@ -9642,8 +9670,8 @@ title: 'Gagal Mengunci',
                     });
                     html += `</tr>`;
                     
-                    // Baris Jam (Data vertikal)
-                    for (let idx = 0; idx < maxJams; idx++) {
+                    // Baris Jam (Data vertikal - render tepat sesuai jumlah jam hari tsb)
+                    for (let idx = 0; idx < dayJams.length; idx++) {
                         const cellJam = dayJams[idx];
                         let labelJam = cellJam ? (cellJam.tipe === 'Pembelajaran' ? cellJam.nama_jam : cellJam.nama_jam.toUpperCase()) : (idx+1);
                         
@@ -9717,6 +9745,7 @@ title: 'Gagal Mengunci',
             const targetJamId = $(this).data('jam-id');
             const targetKelasId = $(this).data('kelas-id');
 
+            if (draggedItem.kelasId != targetKelasId) return;
             if (draggedItem.jamId == targetJamId && draggedItem.kelasId == targetKelasId) return;
 
             if ($(this).hasClass('sch-cell-empty')) {
@@ -9740,6 +9769,14 @@ title: 'Gagal Mengunci',
             const sourceId = draggedItem.id;
 
             if (!targetJamId || !targetKelasId) return;
+            if (draggedItem.kelasId != targetKelasId) {
+                EModal.toast({
+                    type: 'warning',
+                    title: 'Aksi Ditolak',
+                    message: 'Jadwal hanya dapat dipindahkan atau ditukar di dalam kelas yang sama.'
+                });
+                return;
+            }
             if (draggedItem.jamId == targetJamId && draggedItem.kelasId == targetKelasId) return;
 
             const isSwap = $(this).hasClass('sch-cell-filled');
@@ -9770,6 +9807,7 @@ title: 'Gagal Mengunci',
                     });
                 }
                 Curriculum.viewJadwal($('#jdwFilter').val());
+                Curriculum.loadDailyRekap(Curriculum.state.selectedRekapHari);
             }).fail(err => {
                 EModal.close(loader);
                 EModal.toast({

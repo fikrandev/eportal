@@ -62,12 +62,14 @@ const Schedule = {
     },
 
     api(endpoint, options = {}) {
+        const isLongTask = endpoint.includes('action=generate') || endpoint.includes('action=auto_fill_gaps');
         return $.ajax({
             url: this.state.apiUrl + endpoint,
             method: options.method || 'GET',
             data: options.data,
             processData: !(options.data instanceof FormData),
             contentType: options.data instanceof FormData ? false : 'application/x-www-form-urlencoded; charset=UTF-8',
+            timeout: options.timeout || (isLongTask ? 120000 : 30000),
             headers: { 'Authorization': 'Bearer ' + this.state.token }
         }).fail(xhr => {
             if (xhr.status === 401) {
@@ -1374,6 +1376,14 @@ const Schedule = {
     },
 
     autoFillGaps() {
+        if (this.isJadwalLocked) {
+            EModal.info({
+                title: 'Jadwal Terkunci',
+                message: 'Jadwal saat ini dalam status <strong>Terkunci Resmi</strong>.<br>Silakan klik tombol <strong>Buka Kunci Jadwal</strong> terlebih dahulu jika Anda ingin memadatkan jadwal.'
+            });
+            return;
+        }
+
         const loader = EModal.loading('Memeriksa slot jam kosong dan memadatkan jadwal...');
         this.api('jadwal.php?action=auto_fill_gaps', { method: 'POST' }).done(res => {
             EModal.close(loader);
@@ -1490,9 +1500,19 @@ const Schedule = {
             Object.values(daysMap).forEach(arr => { if (arr.length > maxJams) maxJams = arr.length; });
             const daysArr = Object.keys(daysMap);
 
+            // Hitung slot pembelajaran yang masih kosong secara akurat
+            const pembelajaranJams = jams.filter(j => j.tipe === 'Pembelajaran');
+            let emptySlotCount = 0;
+            Object.values(kelasGroups).forEach(kjadwal => {
+                const filledJamIds = new Set(kjadwal.map(x => String(x.jam_belajar_id)));
+                pembelajaranJams.forEach(pj => {
+                    if (!filledJamIds.has(String(pj.id))) emptySlotCount++;
+                });
+            });
+
             let html = '';
 
-            // Banner Status Tabrakan / Validitas
+            // Banner Status Tabrakan / Slot Kosong / Validitas
             if (clashingIds.size > 0) {
                 html += `
                     <div style="background:#fef2f2; border:1px solid #fca5a5; border-left:5px solid #ef4444; border-radius:10px; padding:12px 18px; margin-bottom:18px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; box-shadow:0 2px 6px rgba(239,68,68,0.1);">
@@ -1506,6 +1526,21 @@ const Schedule = {
                             </div>
                         </div>
                         ${this.isJadwalLocked ? '<div style="font-size:0.75rem; background:#fef3c7; color:#b45309; border:1px solid #fde68a; padding:4px 10px; border-radius:6px; font-weight:700;">🔒 Terkunci Resmi</div>' : '<div style="font-size:0.75rem; background:#fee2e2; color:#991b1b; padding:4px 10px; border-radius:6px; font-weight:700;">Drag & Drop Aktif</div>'}
+                    </div>
+                `;
+            } else if (emptySlotCount > 0) {
+                html += `
+                    <div style="background:#fffbeb; border:1px solid #fcd34d; border-left:5px solid #f59e0b; border-radius:10px; padding:12px 18px; margin-bottom:18px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; box-shadow:0 2px 6px rgba(245,158,11,0.08);">
+                        <div style="display:flex; align-items:center; gap:12px;">
+                            <div style="width:36px; height:36px; border-radius:8px; background:#f59e0b; color:white; display:flex; align-items:center; justify-content:center; flex-shrink:0;">
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                            </div>
+                            <div>
+                                <div style="font-weight:800; font-size:0.95rem; color:#92400e;">Terdeteksi ${emptySlotCount} Slot Jam Kosong</div>
+                                <div style="font-size:0.8rem; color:#b45309; margin-top:2px;">Terdapat ${emptySlotCount} slot pembelajaran yang belum terisi (0 bentrok guru). Gunakan tombol <strong>Isi Jam Kosong Otomatis</strong> atau <strong>Drag & Drop</strong> untuk menyesuaikannya.</div>
+                            </div>
+                        </div>
+                        ${this.isJadwalLocked ? '<div style="font-size:0.75rem; background:#fef3c7; color:#b45309; border:1px solid #fde68a; padding:4px 10px; border-radius:6px; font-weight:700;">🔒 Terkunci Resmi</div>' : '<div style="font-size:0.75rem; background:#fef3c7; color:#92400e; padding:4px 10px; border-radius:6px; font-weight:700;">Drag & Drop Aktif</div>'}
                     </div>
                 `;
             } else {
@@ -1567,7 +1602,8 @@ const Schedule = {
 
             if (kelasId) {
                 // TAMPILAN PER KELAS
-                for (let kname in kelasGroups) {
+                const sortedKelasNames = Object.keys(kelasGroups).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
+                for (const kname of sortedKelasNames) {
                     const kjadwal = kelasGroups[kname];
                     const kId = kelasNameToId[kname] || (kjadwal[0] ? kjadwal[0].kelas_id : kelasId);
 
@@ -1598,7 +1634,7 @@ const Schedule = {
                 }
             } else {
                 // TAMPILAN MASTER JADWAL (SEMUA KELAS)
-                const kelasNames = Object.keys(kelasGroups).sort();
+                const kelasNames = Object.keys(kelasGroups).sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' }));
                 
                 html += `<div style="overflow-x:auto; border:1px solid var(--border-color); border-radius:8px;">
                     <table class="sch-table matrix-table sch-grid-compact" style="width:max-content; min-width:0; background:white; border-collapse:collapse; margin:0;">`;
@@ -1618,8 +1654,8 @@ const Schedule = {
                     });
                     html += `</tr>`;
                     
-                    // Baris Jam (Data vertikal)
-                    for (let idx = 0; idx < maxJams; idx++) {
+                    // Baris Jam (Data vertikal - render tepat sesuai jumlah jam hari tsb)
+                    for (let idx = 0; idx < dayJams.length; idx++) {
                         const cellJam = dayJams[idx];
                         let labelJam = cellJam ? (cellJam.tipe === 'Pembelajaran' ? cellJam.nama_jam : cellJam.nama_jam.toUpperCase()) : (idx+1);
                         
@@ -1689,6 +1725,7 @@ const Schedule = {
             const targetJamId = $(this).data('jam-id');
             const targetKelasId = $(this).data('kelas-id');
 
+            if (draggedItem.kelasId != targetKelasId) return;
             if (draggedItem.jamId == targetJamId && draggedItem.kelasId == targetKelasId) return;
 
             if ($(this).hasClass('sch-cell-empty')) {
@@ -1712,6 +1749,14 @@ const Schedule = {
             const sourceId = draggedItem.id;
 
             if (!targetJamId || !targetKelasId) return;
+            if (draggedItem.kelasId != targetKelasId) {
+                EModal.toast({
+                    type: 'warning',
+                    title: 'Aksi Ditolak',
+                    message: 'Jadwal hanya dapat dipindahkan atau ditukar di dalam kelas yang sama.'
+                });
+                return;
+            }
             if (draggedItem.jamId == targetJamId && draggedItem.kelasId == targetKelasId) return;
 
             const isSwap = $(this).hasClass('sch-cell-filled');
