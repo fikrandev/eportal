@@ -173,8 +173,11 @@ function listAbsensiGuru($user) {
         ");
         $stmtA->execute([$tanggal, $sesi]);
         $existingManual = [];
-        while ($row = $stmtA->fetch()) {
-            $existingManual[$row['guru_id']] = $row;
+        $resetToMachine = !empty($_GET['reset_to_machine']) && $_GET['reset_to_machine'] == '1';
+        if (!$resetToMachine) {
+            while ($row = $stmtA->fetch()) {
+                $existingManual[$row['guru_id']] = $row;
+            }
         }
 
         // Jika sesi istirahat atau pulang, cek apakah sesi masuk berstatus S, I, A, DNS, atau TA untuk auto-inheritance
@@ -282,7 +285,7 @@ function listAbsensiGuru($user) {
                 $manRow = $existingManual[$tid];
                 $manSt = ($manRow['status'] === 'D') ? 'DNS' : $manRow['status'];
                 $manKet = trim((string)($manRow['keterangan'] ?? ''));
-                if ($sesi === 'masuk' && $manSt === 'H' && $calculatedStatus === 'T' && ($manKet === '' || stripos($manKet, 'Fingerprint') !== false)) {
+                if ($sesi === 'masuk' && $manSt === 'H' && $calculatedStatus === 'T') {
                     $finalStatus = 'T';
                 } elseif ($isAutoTA && $jamScanSesi === null && $manSt === 'A' && $manKet === '') {
                     $finalStatus = 'TA';
@@ -619,7 +622,7 @@ function getRekapAbsensiGuruData($tanggal_awal, $tanggal_akhir) {
             if (isset($manual[1])) {
                 $m1St = $manual[1]['status'];
                 $m1Ket = $manual[1]['keterangan'] ?? '';
-                if ($m1St === 'H' && $calcA === 'T' && ($m1Ket === '' || stripos($m1Ket, 'Fingerprint') !== false)) {
+                if ($m1St === 'H' && $calcA === 'T') {
                     $stA = 'T';
                 } elseif ($isAutoTA && !$calcA && $m1St === 'A' && $m1Ket === '') {
                     $stA = 'TA';

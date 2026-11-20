@@ -2821,13 +2821,21 @@ const Curriculum = {
     },
 
     setAllAbsensiStatus(status) {
-        $(`#absensiDataTable input[type=radio][value="${status}"]`).each(function() {
-            $(this).prop('checked', true).trigger('change');
+        const sesi = this.state.absensiSesi || 1;
+        $('#absensiDataTable tbody tr').each(function() {
+            const badgeText = $(this).find('td:nth-child(4)').text() || '';
+            const isLate = (sesi === 1 && badgeText.indexOf('Terlambat') !== -1);
+            const targetVal = (status === 'H' && isLate) ? 'T' : status;
+
+            const $radio = $(this).find(`input[type=radio][value="${targetVal}"]`);
+            if ($radio.length) {
+                $radio.prop('checked', true).trigger('change');
+            }
         });
-        EModal.toast({ type: 'info', message: `Semua siswa di-set ${status === 'H' ? 'Hadir' : status}.` });
+        EModal.toast({ type: 'info', message: status === 'H' ? 'Semua siswa di-set Hadir (siswa terlambat otomatis tetap Terlambat).' : `Semua siswa di-set ${status === 'A' ? 'Alpha' : status}.` });
     },
 
-    loadAbsensiTable() {
+    loadAbsensiTable(resetToMachine = false) {
         const tanggal = $('#absensiTanggal').val();
         const kelas_id = $('#absensiKelas').val();
         const sesi = this.state.absensiSesi || 1;
@@ -2838,7 +2846,8 @@ const Curriculum = {
 
         $('#absensiTableWrapper').html('<div class="skeleton-module" style="height:200px;"></div>');
 
-        this.api(`absensi.php?action=list&tanggal=${tanggal}&kelas_id=${kelas_id}&jam_ke=${sesi}`).done(res => {
+        const queryReset = resetToMachine ? '&reset_to_machine=1' : '';
+        this.api(`absensi.php?action=list&tanggal=${tanggal}&kelas_id=${kelas_id}&jam_ke=${sesi}${queryReset}`).done(res => {
             const data = res.data ? res.data.students || [] : [];
             if (res.data) {
                 this.state.siswaSettings = res.data;
@@ -2852,10 +2861,18 @@ const Curriculum = {
 
             const rows = data.map((s, idx) => {
                 const isScanLate = (sesi === 1 && s.scan_info && s.scan_info.indexOf('Terlambat') === 0);
+                
+                // Prioritaskan status Terlambat jika hasil scan sesi 1 menunjukkan terlambat
+                // kecuali status manual yang dipilih memang izin khusus (Sakit, Izin, Alpha)
+                let currentStatus = s.status;
+                if (sesi === 1 && isScanLate && !['S', 'I', 'A', 'DNS', 'D', 'TA'].includes(currentStatus)) {
+                    currentStatus = 'T';
+                }
+
                 let scanBadge = '';
                 if (sesi === 1) {
                     if (s.jam_scan) {
-                        scanBadge = `<span class="badge ${(s.status === 'T' || isScanLate) ? 'badge-warning' : 'badge-success'}" style="font-size:0.8rem; background:${(s.status === 'T' || isScanLate) ? '#FEF3C7; color:#92400E; border:1px solid #FCD34D' : '#DCFCE7; color:#166534; border:1px solid #86EFAC'};">${this.escapeHtml(s.scan_info)}</span>`;
+                        scanBadge = `<span class="badge ${(currentStatus === 'T' || isScanLate) ? 'badge-warning' : 'badge-success'}" style="font-size:0.8rem; background:${(currentStatus === 'T' || isScanLate) ? '#FEF3C7; color:#92400E; border:1px solid #FCD34D' : '#DCFCE7; color:#166534; border:1px solid #86EFAC'};">${this.escapeHtml(s.scan_info)}</span>`;
                     } else {
                         scanBadge = `<span class="badge badge-secondary" style="font-size:0.8rem; background:#F1F5F9; color:#64748B; border:1px solid #CBD5E1;">Belum Scan Mesin</span>`;
                     }
@@ -2877,11 +2894,11 @@ const Curriculum = {
                     <td>${scanBadge}</td>
                     <td>
                         <div class="absensi-radio-group">
-                            <label class="absensi-radio ${s.status === 'H' ? 'active-h' : ''}"><input type="radio" name="abs_${s.student_id}" value="H" ${s.status === 'H' ? 'checked' : ''}> Hadir</label>
-                            <label class="absensi-radio ${s.status === 'T' ? 'active-t' : ''}"><input type="radio" name="abs_${s.student_id}" value="T" ${s.status === 'T' ? 'checked' : ''}> Terlambat</label>
-                            <label class="absensi-radio ${s.status === 'S' ? 'active-s' : ''}"><input type="radio" name="abs_${s.student_id}" value="S" ${s.status === 'S' ? 'checked' : ''}> Sakit</label>
-                            <label class="absensi-radio ${s.status === 'I' ? 'active-i' : ''}"><input type="radio" name="abs_${s.student_id}" value="I" ${s.status === 'I' ? 'checked' : ''}> Izin</label>
-                            <label class="absensi-radio ${s.status === 'A' ? 'active-a' : ''}"><input type="radio" name="abs_${s.student_id}" value="A" ${s.status === 'A' ? 'checked' : ''}> Alpha</label>
+                            <label class="absensi-radio ${currentStatus === 'H' ? 'active-h' : ''}"><input type="radio" name="abs_${s.student_id}" value="H" ${currentStatus === 'H' ? 'checked' : ''}> Hadir</label>
+                            <label class="absensi-radio ${currentStatus === 'T' ? 'active-t' : ''}"><input type="radio" name="abs_${s.student_id}" value="T" ${currentStatus === 'T' ? 'checked' : ''}> Terlambat</label>
+                            <label class="absensi-radio ${currentStatus === 'S' ? 'active-s' : ''}"><input type="radio" name="abs_${s.student_id}" value="S" ${currentStatus === 'S' ? 'checked' : ''}> Sakit</label>
+                            <label class="absensi-radio ${currentStatus === 'I' ? 'active-i' : ''}"><input type="radio" name="abs_${s.student_id}" value="I" ${currentStatus === 'I' ? 'checked' : ''}> Izin</label>
+                            <label class="absensi-radio ${currentStatus === 'A' ? 'active-a' : ''}"><input type="radio" name="abs_${s.student_id}" value="A" ${currentStatus === 'A' ? 'checked' : ''}> Alpha</label>
                         </div>
                     </td>
                     <td>
@@ -2900,7 +2917,7 @@ const Curriculum = {
                         <button class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.setAllAbsensiStatus('A')" style="font-size:0.8rem; border-color:#EF4444; color:#DC2626;">
                             ❌ Set Semua Alpha
                         </button>
-                        <button class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.loadAbsensiTable()" style="font-size:0.8rem;">
+                        <button class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.loadAbsensiTable(true)" style="font-size:0.8rem;">
                             🔄 Reset Sesuai Mesin
                         </button>
                     </div>
@@ -3859,20 +3876,32 @@ const Curriculum = {
     },
 
     setAllAbsensiGuruStatus(status) {
+        const sesi = this.state.absensiGuruSesi || 'masuk';
         $('.absensi-guru-radio-group').each(function() {
             const $group = $(this);
+            const $row = $group.closest('tr');
+            const scanText = $row.find('td:nth-child(3)').text() || '';
+            const isLate = (sesi === 'masuk' && scanText.indexOf('Terlambat') !== -1);
+            const isTA = (sesi === 'masuk' && (scanText.indexOf('Tidak Ada Jadwal') !== -1 || scanText.indexOf('TA') !== -1));
+            
+            let targetStatus = status;
+            if (status === 'H') {
+                if (isLate) targetStatus = 'T';
+                else if (isTA) targetStatus = 'TA';
+            }
+
             $group.find('.absensi-radio').removeClass('active-h active-s active-i active-a active-t active-ta active-dns');
-            const $radio = $group.find(`input[value="${status}"]`);
+            const $radio = $group.find(`input[value="${targetStatus}"]`);
             if ($radio.length) {
                 $radio.prop('checked', true);
-                $radio.parent().addClass(`active-${status.toLowerCase()}`);
+                $radio.parent().addClass(`active-${targetStatus.toLowerCase()}`);
             }
         });
         const labelMap = { 'H': 'Hadir', 'S': 'Sakit', 'I': 'Izin', 'A': 'Alpha', 'TA': 'TA', 'DNS': 'DNS' };
-        EModal.toast({ type: 'info', message: `Semua guru di-set ${labelMap[status] || status}.` });
+        EModal.toast({ type: 'info', message: status === 'H' ? 'Semua guru di-set Hadir (guru terlambat otomatis tetap Terlambat).' : `Semua guru di-set ${labelMap[status] || status}.` });
     },
 
-    loadAbsensiGuruTable() {
+    loadAbsensiGuruTable(resetToMachine = false) {
         const tanggal = $('#absensiGuruTanggal').val();
         const sesi = this.state.absensiGuruSesi || 'masuk';
         if (!tanggal) return;
@@ -3883,7 +3912,8 @@ const Curriculum = {
         const $wrapper = $('#absensiGuruTableWrapper');
         $wrapper.html('<div style="padding:20px; text-align:center;">Memuat data absensi...</div>');
 
-        this.api(`absensi_guru.php?action=list&tanggal=${tanggal}&sesi=${sesi}`).done(res => {
+        const queryReset = resetToMachine ? '&reset_to_machine=1' : '';
+        this.api(`absensi_guru.php?action=list&tanggal=${tanggal}&sesi=${sesi}${queryReset}`).done(res => {
             if (!res.success) {
                 $wrapper.html(`<div style="color:red; padding:20px;">Error: ${res.message}</div>`);
                 return;
@@ -3929,13 +3959,19 @@ const Curriculum = {
                     }
                 }
 
-                const isH = (t.status === 'H');
-                const isT = (t.status === 'T');
-                const isS = (t.status === 'S');
-                const isI = (t.status === 'I');
-                const isA = (t.status === 'A');
-                const isTA = (t.status === 'TA');
-                const isDNS = (t.status === 'DNS' || t.status === 'D');
+                const isScanLate = (sesi === 'masuk' && t.scan_info && t.scan_info.indexOf('Terlambat') === 0);
+                let curStatus = t.status;
+                if (sesi === 'masuk' && isScanLate && !['S', 'I', 'A', 'TA', 'DNS', 'D'].includes(curStatus)) {
+                    curStatus = 'T';
+                }
+
+                const isH = (curStatus === 'H');
+                const isT = (curStatus === 'T');
+                const isS = (curStatus === 'S');
+                const isI = (curStatus === 'I');
+                const isA = (curStatus === 'A');
+                const isTA = (curStatus === 'TA');
+                const isDNS = (curStatus === 'DNS' || curStatus === 'D');
 
                 trs += `
                     <tr>
@@ -3974,7 +4010,7 @@ const Curriculum = {
                         <button class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.setAllAbsensiGuruStatus('A')" style="font-size:0.8rem; border-color:#EF4444; color:#DC2626;">
                             ❌ Set Semua Alpha
                         </button>
-                        <button class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.loadAbsensiGuruTable()" style="font-size:0.8rem;">
+                        <button class="btn-acad btn-acad-outline btn-acad-sm" onclick="Curriculum.loadAbsensiGuruTable(true)" style="font-size:0.8rem;">
                             🔄 Reset Sesuai Mesin
                         </button>
                     </div>

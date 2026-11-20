@@ -91,14 +91,17 @@ function listAbsensi($user) {
         ");
         $stmtA->execute([$tanggal, $kelas_id, $jam_ke]);
         $existingManual = [];
-        while ($row = $stmtA->fetch()) {
-            // Abaikan record otomatis mesin (jam_ke = 0 & dicatat_oleh IS NULL / 'Hadir via Fingerprint')
-            // agar status Hadir/Terlambat dihitung akurat dari jam_masuk & batas waktu_terlambat_siswa
-            if ((int)$row['jam_ke'] === 0 && empty($row['dicatat_oleh']) && in_array($row['keterangan'], ['Hadir via Fingerprint', 'Terlambat via Fingerprint'], true)) {
-                continue;
-            }
-            if (!isset($existingManual[$row['student_id']])) {
-                $existingManual[$row['student_id']] = $row;
+        $resetToMachine = !empty($_GET['reset_to_machine']) && $_GET['reset_to_machine'] == '1';
+        if (!$resetToMachine) {
+            while ($row = $stmtA->fetch()) {
+                // Abaikan record otomatis mesin (jam_ke = 0 & dicatat_oleh IS NULL)
+                // agar status Hadir/Terlambat dihitung akurat dari jam_masuk & batas waktu_terlambat_siswa
+                if ((int)$row['jam_ke'] === 0 && empty($row['dicatat_oleh'])) {
+                    continue;
+                }
+                if (!isset($existingManual[$row['student_id']])) {
+                    $existingManual[$row['student_id']] = $row;
+                }
             }
         }
 
@@ -191,7 +194,9 @@ function listAbsensi($user) {
             if (isset($existingManual[$s['id']])) {
                 $manRow = $existingManual[$s['id']];
                 $manKet = trim((string)($manRow['keterangan'] ?? ''));
-                if ($jam_ke == 1 && $manRow['status'] === 'H' && $calculatedStatus === 'T' && ($manKet === '' || stripos($manKet, 'Fingerprint') !== false)) {
+                // Jika sesi 1 dan hasil scan fingerprint menunjukkan Terlambat (calculatedStatus = 'T'),
+                // sedangkan status manual tercatat Hadir ('H'), maka wajib otomatis diselaraskan ke Terlambat ('T')
+                if ($jam_ke == 1 && $calculatedStatus === 'T' && $manRow['status'] === 'H') {
                     $finalStatus = 'T';
                 } else {
                     $finalStatus = $manRow['status'];
@@ -544,7 +549,7 @@ function getRekapAbsensiData($kelas_id, $tanggal_awal, $tanggal_akhir) {
             $sid = $row['student_id'];
             $tgl = $row['tanggal'];
             $jke = (int)$row['jam_ke'];
-            if ($jke === 0 && empty($row['dicatat_oleh']) && in_array($row['keterangan'], ['Hadir via Fingerprint', 'Terlambat via Fingerprint'], true)) {
+            if ($jke === 0 && empty($row['dicatat_oleh'])) {
                 continue;
             }
             $manualMap[$sid][$tgl][$jke] = [
@@ -613,7 +618,7 @@ function getRekapAbsensiData($kelas_id, $tanggal_awal, $tanggal_akhir) {
 
             if (!$stA && $calcA) {
                 $stA = $calcA;
-            } elseif ($stA === 'H' && $calcA === 'T' && ($ketA === '' || stripos($ketA, 'Fingerprint') !== false)) {
+            } elseif ($stA === 'H' && $calcA === 'T') {
                 $stA = 'T';
             }
             if (!$stA) {
