@@ -32,7 +32,7 @@ function get_lampiran_html($ptk_id, $periode_id, $is_first) {
         // Extract only body contents and add a page break before it
         if (preg_match('/<body[^>]*>(.*?)<\/body>/is', $out, $matches)) {
             // hapus print button div jika ada
-            $body = preg_replace('/<div class="print-actions">.*?<\/div>/is', '', $matches[1]);
+            $body = preg_replace('/<div class="(?:print-actions|no-print)".*?<\/div>/is', '', $matches[1]);
             return '<div style="page-break-before: always;"></div>' . $body;
         }
         return $out;

@@ -286,25 +286,34 @@ function checkTambahan() {
     perf_require_rekap_access($db, $periode_id, $ptk_id);
 
     try {
-        $stmtManualInst = $db->prepare("SELECT id FROM perf_instrumen WHERE periode_id = ? AND is_manual = 1 AND bobot = 0");
-        $stmtManualInst->execute([$periode_id]);
-        $tugas_tambahan = $stmtManualInst->fetchAll(PDO::FETCH_ASSOC);
+        // 1. Check PTK role / jabatan
+        $stmtPtk = $db->prepare("SELECT jenis_ptk, jabatan FROM perf_ptk WHERE id = ?");
+        $stmtPtk->execute([$ptk_id]);
+        $ptk = $stmtPtk->fetch(PDO::FETCH_ASSOC);
 
         $has_tambahan = false;
-        if (!empty($tugas_tambahan)) {
-            $stmtManual = $db->prepare("SELECT data FROM perf_penilaian_manual WHERE periode_id = ? AND ptk_id = ? LIMIT 1");
-            $stmtManual->execute([$periode_id, $ptk_id]);
-            $manualRow = $stmtManual->fetch(PDO::FETCH_ASSOC);
+        if ($ptk) {
+            $jabatan_full = strtolower(trim(($ptk['jabatan'] ?? '') . ' ' . ($ptk['jenis_ptk'] ?? '')));
+            if (strpos($jabatan_full, 'waka') !== false || strpos($jabatan_full, 'wakil') !== false ||
+                strpos($jabatan_full, 'kepala tu') !== false || strpos($jabatan_full, 'ka. tu') !== false ||
+                strpos($jabatan_full, 'kepala perpus') !== false || strpos($jabatan_full, 'ka. perpus') !== false ||
+                strpos($jabatan_full, 'kepala lab') !== false || strpos($jabatan_full, 'ka. lab') !== false) {
+                $has_tambahan = true;
+            }
+        }
 
-            if ($manualRow && $manualRow['data']) {
-                $manualData = json_decode($manualRow['data'], true) ?: [];
-                foreach ($tugas_tambahan as $tt) {
-                    $score = isset($manualData[$tt['id']]) ? (float)$manualData[$tt['id']] : 0;
-                    if ($score > 0) {
-                        $has_tambahan = true;
-                        break;
-                    }
-                }
+        // 2. Check if there are assessments in Tugas Tambahan categories in perf_penilaian
+        if (!$has_tambahan) {
+            $stmtCek = $db->prepare("
+                SELECT COUNT(*) 
+                FROM perf_penilaian p 
+                JOIN perf_instrumen i ON p.instrumen_id = i.id 
+                WHERE p.periode_id = ? AND p.dinilai_ptk_id = ? 
+                AND TRIM(REPLACE(i.kategori, '\xc2\xa0', '')) IN ('Manajerial', 'Kepemimpinan', 'Kewirausahaan')
+            ");
+            $stmtCek->execute([$periode_id, $ptk_id]);
+            if ($stmtCek->fetchColumn() > 0) {
+                $has_tambahan = true;
             }
         }
         
