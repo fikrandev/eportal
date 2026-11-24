@@ -495,6 +495,26 @@ function createSarpras() {
             
             processFotoUpload($existingWarehouse['id']);
             
+            // Catat ke riwayat barang masuk (restock)
+            sp_log_barang_masuk([
+                'sarpras_id' => $existingWarehouse['id'],
+                'kode_inventaris' => $existingWarehouse['kode_inventaris'],
+                'nama_barang' => $existingWarehouse['nama'],
+                'kategori_id' => $existingWarehouse['kategori_id'],
+                'grup_pintasan' => $existingWarehouse['grup_pintasan'],
+                'ruang_id' => null,
+                'tanggal' => $newTgl ?: date('Y-m-d'),
+                'jumlah' => $jumlah,
+                'harga_satuan' => $newHarga > 0 ? $newHarga : floatval($existingWarehouse['harga_perolehan']),
+                'total_harga' => ($newHarga > 0 ? $newHarga : floatval($existingWarehouse['harga_perolehan'])) * $jumlah,
+                'asal_perolehan' => sanitize($d['asal_perolehan'] ?? ($existingWarehouse['asal_perolehan'] ?: 'APBD')),
+                'merk' => $newMerk ?: $existingWarehouse['merk'],
+                'spesifikasi' => $newSpek ?: $existingWarehouse['spesifikasi'],
+                'keterangan' => sanitize($d['keterangan'] ?? 'Beli Lagi / Tambah Stok Gudang'),
+                'jenis_transaksi' => 'restock',
+                'created_by' => $user['user_id'] ?? null
+            ]);
+            
             json_response(200, true, "Stok '{$existingWarehouse['nama']}' di gudang berhasil ditambahkan sebanyak {$jumlah} unit (Total Gudang: {$newWarehouseStock} unit).", [
                 'id' => (int)$existingWarehouse['id'],
                 'kode_inventaris' => $existingWarehouse['kode_inventaris'],
@@ -542,6 +562,27 @@ function createSarpras() {
         ]);
         $newId = db()->lastInsertId();
         processFotoUpload($newId);
+
+        // Catat ke riwayat barang masuk (tambah baru)
+        sp_log_barang_masuk([
+            'sarpras_id' => $newId,
+            'kode_inventaris' => $kode,
+            'nama_barang' => $nama,
+            'kategori_id' => $kategori_id,
+            'grup_pintasan' => sanitize($d['grup_pintasan'] ?? null),
+            'ruang_id' => $ruang_id,
+            'tanggal' => $tahun_perolehan,
+            'jumlah' => $jumlah,
+            'harga_satuan' => floatval($d['harga_perolehan'] ?? 0),
+            'total_harga' => floatval($d['harga_perolehan'] ?? 0) * $jumlah,
+            'asal_perolehan' => sanitize($d['asal_perolehan'] ?? 'APBD'),
+            'merk' => sanitize($d['merk'] ?? ''),
+            'spesifikasi' => sanitize($d['spesifikasi'] ?? ''),
+            'keterangan' => sanitize($d['keterangan'] ?? 'Pengadaan Baru'),
+            'jenis_transaksi' => 'tambah_baru',
+            'created_by' => $user['user_id'] ?? null
+        ]);
+
         json_response(201, true, 'Sarpras berhasil ditambahkan', ['id' => $newId, 'kode_inventaris' => $kode]);
     } catch (PDOException $e) {
         json_response(500, false, 'Error: '.$e->getMessage());

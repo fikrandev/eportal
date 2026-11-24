@@ -1983,7 +1983,12 @@ const Sarpras = {
             let addBtnLabel = '+ Tambah Barang';
             let extraBtn = '';
 
-            if (isAngkutan) {
+            if (route === 'ahp-bhp') {
+                extraBtn = `<button class="btn btn-secondary btn-sm" onclick="Sarpras.modalLaporanBarangMasuk('ahp-bhp')" style="display:inline-flex; align-items:center; gap:6px;">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                    Laporan Barang Masuk
+                </button>`;
+            } else if (isAngkutan) {
                 addBtnAction = 'Sarpras.formAngkutan()';
                 addBtnLabel = '+ Tambah Kendaraan';
             } else if (route === 'buku') {
@@ -5366,6 +5371,10 @@ const Sarpras = {
                 <div class="sp-card">
                     <div class="sp-card-header"><h3>Laporan Detail</h3></div>
                     <div class="sp-card-body">
+                        <div class="sp-laporan-item" onclick="Sarpras.modalLaporanBarangMasuk('ahp-bhp')">
+                            <div class="sp-lap-icon" style="background: #fef3c7; color: #d97706;"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>
+                            <div class="sp-lap-text"><h4>Laporan Barang Masuk (AHP-BHP)</h4><p>Laporan penambahan & pengadaan barang per tanggal atau durasi tanggal</p></div>
+                        </div>
                         <div class="sp-laporan-item" onclick="Sarpras.printReport('detail-per-ruang')">
                             <div class="sp-lap-icon" style="background: #e0e7ff; color: #4f46e5;"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg></div>
                             <div class="sp-lap-text"><h4>Daftar Barang per Ruang</h4><p>Daftar inventaris lengkap per ruangan</p></div>
@@ -5382,6 +5391,123 @@ const Sarpras = {
             url += `&${key}=${encodeURIComponent(value)}`;
         }
         window.open(url, '_blank');
+    },
+
+    /**
+     * MODAL: CETAK LAPORAN BARANG MASUK / TAMBAH BARANG (PER TANGGAL / DURASI TANGGAL)
+     */
+    modalLaporanBarangMasuk(defaultGrup = 'ahp-bhp') {
+        const today = new Date().toISOString().split('T')[0];
+        const firstDayOfMonth = today.substring(0, 8) + '01';
+
+        EModal.form({
+            title: 'Cetak Laporan Barang Masuk / Tambah Barang',
+            size: 'md',
+            form: `
+                <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:12px 16px; margin-bottom:16px;">
+                    <div style="font-weight:700; color:#1e293b; font-size:0.95rem;">Filter Periode Penambahan Barang</div>
+                    <div style="font-size:0.8rem; color:#64748b; margin-top:2px;">
+                        Pilih pencetakan per tanggal tertentu atau rentang durasi tanggal untuk barang masuk / pengadaan.
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom:14px;">
+                    <label style="font-weight:600; display:block; margin-bottom:6px;">Metode Filter Tanggal</label>
+                    <div style="display:flex; gap:18px;">
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:500; font-size:14px;">
+                            <input type="radio" name="bm_mode" value="single" id="bm_mode_single">
+                            <span>Per Tanggal Tertentu</span>
+                        </label>
+                        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-weight:500; font-size:14px;">
+                            <input type="radio" name="bm_mode" value="range" id="bm_mode_range" checked>
+                            <span>Durasi / Rentang Tanggal</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div id="bm_single_section" style="display:none; margin-bottom:14px;">
+                    <div class="form-group">
+                        <label style="font-weight:600;">Tanggal Masuk / Perolehan</label>
+                        <input type="date" class="form-input" id="bm_single_date" value="${today}">
+                    </div>
+                </div>
+
+                <div id="bm_range_section" class="sp-form-row" style="margin-bottom:14px; display:grid; grid-template-columns: 1fr 1fr; gap:12px;">
+                    <div class="form-group">
+                        <label style="font-weight:600;">Dari Tanggal</label>
+                        <input type="date" class="form-input" id="bm_start_date" value="${firstDayOfMonth}">
+                    </div>
+                    <div class="form-group">
+                        <label style="font-weight:600;">Sampai Tanggal</label>
+                        <input type="date" class="form-input" id="bm_end_date" value="${today}">
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom:18px;">
+                    <label style="font-weight:600;">Grup Barang</label>
+                    <select class="form-input" id="bm_grup">
+                        <option value="ahp-bhp" ${defaultGrup === 'ahp-bhp' ? 'selected' : ''}>Alat & Bahan Habis Pakai (AHP-BHP)</option>
+                        <option value="all" ${defaultGrup === 'all' ? 'selected' : ''}>Semua Grup Sarpras & Inventaris</option>
+                        <option value="angkutan" ${defaultGrup === 'angkutan' ? 'selected' : ''}>Alat Angkutan / Kendaraan</option>
+                        <option value="buku" ${defaultGrup === 'buku' ? 'selected' : ''}>Koleksi Buku</option>
+                    </select>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:20px; border-top:1px solid #e2e8f0; padding-top:14px;">
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="EModal.closeAll()">Batal</button>
+                    <button type="button" class="btn btn-outline btn-sm" id="btnExportExcelBm" style="color:#16a34a; border-color:#86efac; display:inline-flex; align-items:center; gap:6px;">
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        Export Excel (.xls)
+                    </button>
+                    <button type="button" class="btn btn-primary btn-sm" id="btnPrintReportBm" style="display:inline-flex; align-items:center; gap:6px;">
+                        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                        🖨️ Cetak Laporan
+                    </button>
+                </div>
+            `,
+            hideFooter: true,
+            onOpen: () => {
+                $('input[name="bm_mode"]').on('change', function() {
+                    if ($(this).val() === 'single') {
+                        $('#bm_single_section').show();
+                        $('#bm_range_section').hide();
+                    } else {
+                        $('#bm_single_section').hide();
+                        $('#bm_range_section').show();
+                    }
+                });
+
+                const getReportParams = (format = 'html') => {
+                    const mode = $('input[name="bm_mode"]:checked').val();
+                    const date = $('#bm_single_date').val() || today;
+                    const start = $('#bm_start_date').val() || firstDayOfMonth;
+                    const end = $('#bm_end_date').val() || today;
+                    const grup = $('#bm_grup').val() || 'ahp-bhp';
+                    
+                    let params = {
+                        mode: mode,
+                        grup: grup
+                    };
+                    if (format === 'excel') params.format = 'excel';
+                    if (mode === 'single') {
+                        params.tanggal = date;
+                    } else {
+                        params.start_date = start;
+                        params.end_date = end;
+                    }
+                    return params;
+                };
+
+                $('#btnExportExcelBm').on('click', () => {
+                    this.printReport('barang-masuk', getReportParams('excel'));
+                });
+
+                $('#btnPrintReportBm').on('click', () => {
+                    this.printReport('barang-masuk', getReportParams('html'));
+                    EModal.closeAll();
+                });
+            }
+        });
     },
 
     /**

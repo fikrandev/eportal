@@ -818,7 +818,7 @@ function handleSettings($action) {
 // ==================== LAPORAN ====================
 function handleLaporan($action) {
     $user = sp_auth();
-    sp_require_any($user, ['report_view'], 'Akses ditolak');
+    sp_require_any($user, ['report_view', 'sarpras_manage'], 'Akses ditolak');
     $type = $_GET['type'] ?? '';
 
     // Legacy: action=print routes by type param  
@@ -1152,6 +1152,186 @@ function handleLaporan($action) {
                 echo '</div>'; // End sp-report-page
             }
 
+            echo '</body></html>';
+            exit;
+
+        // ============================
+        // LAPORAN BARANG MASUK / TAMBAH BARANG (AHP-BHP & SARPRAS)
+        // ============================
+        case 'barang-masuk':
+            sp_ensure_riwayat_masuk_table();
+
+            $mode = trim($_GET['mode'] ?? 'range'); // 'single' atau 'range'
+            $tanggal = trim($_GET['tanggal'] ?? date('Y-m-d'));
+            $start_date = trim($_GET['start_date'] ?? ($mode === 'single' ? $tanggal : date('Y-m-01')));
+            $end_date = trim($_GET['end_date'] ?? ($mode === 'single' ? $tanggal : date('Y-m-d')));
+            if ($mode === 'single') {
+                $start_date = $tanggal;
+                $end_date = $tanggal;
+            }
+
+            $grup = trim($_GET['grup'] ?? 'ahp-bhp'); // 'ahp-bhp', 'all', 'angkutan', 'buku'
+            $isExcel = (isset($_GET['format']) && $_GET['format'] === 'excel');
+
+            $where = ["rm.tanggal BETWEEN ? AND ?"];
+            $params = [$start_date, $end_date];
+
+            if ($grup !== '' && $grup !== 'all') {
+                $where[] = "(rm.grup_pintasan = ? OR (rm.grup_pintasan IS NULL AND s.grup_pintasan = ?))";
+                $params[] = $grup;
+                $params[] = $grup;
+            }
+
+            // Scope for room if applicable
+            if (!empty($user['is_room_scoped'])) {
+                $scopedIds = array_map('intval', $user['scoped_ruang_ids'] ?? []);
+                if (!empty($scopedIds)) {
+                    $where[] = "(rm.ruang_id IS NULL OR rm.ruang_id IN (" . implode(',', $scopedIds) . "))";
+                }
+            }
+
+            $whereSql = implode(' AND ', $where);
+
+            $sql = "
+                SELECT rm.*, 
+                       COALESCE(k.nama, 'Lainnya') as kategori_nama,
+                       r.nama as ruang_nama
+                FROM sarpras_riwayat_masuk rm
+                LEFT JOIN sarpras s ON rm.sarpras_id = s.id
+                LEFT JOIN kategori_sarpras k ON rm.kategori_id = k.id
+                LEFT JOIN ruang r ON rm.ruang_id = r.id
+                WHERE $whereSql
+                ORDER BY rm.tanggal ASC, rm.id ASC
+            ";
+            $stmt = db()->prepare($sql);
+            $stmt->execute($params);
+            $items = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+            // Group Label for title
+            $grupLabel = 'SEMUA SARANA & PRASARANA';
+            if ($grup === 'ahp-bhp') $grupLabel = 'ALAT & BAHAN HABIS PAKAI (AHP-BHP)';
+            elseif ($grup === 'angkutan') $grupLabel = 'ALAT ANGKUTAN / KENDARAAN';
+            elseif ($grup === 'buku') $grupLabel = 'KOLEKSI BUKU / PUSTAKA';
+
+            // Periode label
+            if ($mode === 'single' || $start_date === $end_date) {
+                $periodeText = "Tanggal: " . sp_format_indo_date($start_date);
+                $fileSuffix = $start_date;
+            } else {
+                $periodeText = "Periode: " . sp_format_indo_date($start_date) . " s/d " . sp_format_indo_date($end_date);
+                $fileSuffix = "{$start_date}_sd_{$end_date}";
+            }
+
+            if ($isExcel) {
+                header("Content-Type: application/vnd.ms-excel; charset=utf-8");
+                header("Content-Disposition: attachment; filename=\"Laporan_Barang_Masuk_{$grup}_{$fileSuffix}.xls\"");
+                echo "\xEF\xBB\xBF"; // UTF-8 BOM
+            }
+
+            $school_kepala = trim(global_kepala_sekolah('')) ?: '.............................';
+            $school_waka = trim(get_setting('sarpras_waka_sarpras', '')) ?: '.............................';
+
+            $totalItems = count($items);
+            $totalUnit = 0;
+            $totalNilai = 0;
+            $rowsHtml = '';
+
+            if (empty($items)) {
+                $rowsHtml = '<tr><td colspan="12" class="center" style="padding:30px; font-style:italic; color:#64748b;">Tidak ada data barang masuk / pengadaan pada periode tanggal yang dipilih.</td></tr>';
+            } else {
+                foreach ($items as $idx => $r) {
+                    $jml = (int)$r['jumlah'];
+                    $hrg = floatval($r['harga_satuan']);
+                    $subtotal = floatval($r['total_harga']) > 0 ? floatval($r['total_harga']) : ($jml * $hrg);
+                    $totalUnit += $jml;
+                    $totalNilai += $subtotal;
+
+                    $tglIndo = sp_format_indo_date($r['tanggal']);
+                    $lokasi = !empty($r['ruang_nama']) ? htmlspecialchars($r['ruang_nama']) : '<span style="color:#15803d; font-weight:600;">Gudang Utama</span>';
+                    
+                    $jenisBadge = ($r['jenis_transaksi'] === 'restock') 
+                        ? '<span style="display:inline-block; font-size:8pt; padding:1px 6px; border-radius:10px; background:#dbeafe; color:#1e40af; font-weight:bold;">Restock</span>'
+                        : '<span style="display:inline-block; font-size:8pt; padding:1px 6px; border-radius:10px; background:#dcfce7; color:#166534; font-weight:bold;">Baru</span>';
+
+                    $spekMerk = trim(($r['merk'] ? $r['merk'] : '') . ($r['spesifikasi'] ? ' / ' . $r['spesifikasi'] : ''));
+                    if ($spekMerk === '') $spekMerk = '-';
+
+                    $ketText = trim((string)($r['keterangan'] ?? ''));
+                    $ketCol = $jenisBadge . ($ketText !== '' ? ' <div style="font-size:9pt; margin-top:2px;">' . htmlspecialchars($ketText) . '</div>' : '');
+
+                    $rowsHtml .= '<tr>';
+                    $rowsHtml .= '<td class="center">' . ($idx + 1) . '</td>';
+                    $rowsHtml .= '<td class="center" style="white-space:nowrap;">' . $tglIndo . '</td>';
+                    $rowsHtml .= '<td class="center font-mono" style="font-family:monospace; font-weight:bold;">' . htmlspecialchars($r['kode_inventaris'] ?: '-') . '</td>';
+                    $rowsHtml .= '<td><strong>' . htmlspecialchars($r['nama_barang']) . '</strong></td>';
+                    $rowsHtml .= '<td>' . htmlspecialchars($r['kategori_nama']) . '</td>';
+                    $rowsHtml .= '<td>' . htmlspecialchars($spekMerk) . '</td>';
+                    $rowsHtml .= '<td class="center">' . htmlspecialchars($r['asal_perolehan'] ?: 'APBD') . '</td>';
+                    $rowsHtml .= '<td class="center bold">' . number_format($jml, 0, ',', '.') . '</td>';
+                    $rowsHtml .= '<td class="right" style="white-space:nowrap;">Rp ' . number_format($hrg, 0, ',', '.') . '</td>';
+                    $rowsHtml .= '<td class="right bold" style="white-space:nowrap;">Rp ' . number_format($subtotal, 0, ',', '.') . '</td>';
+                    $rowsHtml .= '<td>' . $lokasi . '</td>';
+                    $rowsHtml .= '<td>' . $ketCol . '</td>';
+                    $rowsHtml .= '</tr>';
+                }
+            }
+
+            echo '<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Laporan Barang Masuk - ' . htmlspecialchars($grupLabel) . '</title>' . $css . '</head><body>';
+            if (!$isExcel) {
+                echo '<button class="btn-print" onclick="window.print()">🖨️ Cetak Laporan</button>';
+            }
+            echo '<div class="sp-report-page">';
+            echo $headerHtml;
+
+            echo '<div class="report-section-title" style="text-align:center; font-size:13pt; margin-bottom:4px;">LAPORAN BARANG MASUK / PENAMBAHAN INVENTARIS</div>';
+            echo '<div style="text-align:center; font-weight:bold; font-size:11pt; color:#334155; margin-bottom:4px;">GRUP: ' . htmlspecialchars($grupLabel) . '</div>';
+            echo '<div style="text-align:center; font-size:10pt; color:#475569; margin-bottom:18px;">' . htmlspecialchars($periodeText) . '</div>';
+
+            // Ringkasan Pengadaan
+            echo '<div style="display:flex; justify-content:space-between; margin-bottom:12px; font-size:10pt; background:#f8fafc; border:1px solid #cbd5e1; padding:8px 14px; border-radius:6px;">';
+            echo '  <div><strong>Total Jenis Barang:</strong> ' . $totalItems . ' item</div>';
+            echo '  <div><strong>Total Unit Masuk:</strong> ' . number_format($totalUnit, 0, ',', '.') . ' unit</div>';
+            echo '  <div><strong>Total Nilai Pengadaan:</strong> Rp ' . number_format($totalNilai, 0, ',', '.') . '</div>';
+            echo '</div>';
+
+            echo '<table>';
+            echo '<thead><tr>';
+            echo '  <th style="width:30px;">NO</th>';
+            echo '  <th style="width:90px;">TANGGAL</th>';
+            echo '  <th style="width:95px;">KODE</th>';
+            echo '  <th>NAMA BARANG</th>';
+            echo '  <th>KATEGORI</th>';
+            echo '  <th>MERK / SPESIFIKASI</th>';
+            echo '  <th style="width:75px;">SUMBER</th>';
+            echo '  <th style="width:50px;">JUMLAH</th>';
+            echo '  <th style="width:95px;">HARGA SATUAN</th>';
+            echo '  <th style="width:110px;">TOTAL NILAI</th>';
+            echo '  <th>LOKASI PENEMPATAN</th>';
+            echo '  <th style="width:110px;">KETERANGAN</th>';
+            echo '</tr></thead>';
+            echo '<tbody>' . $rowsHtml . '</tbody>';
+            echo '<tfoot>';
+            echo '<tr class="group-row" style="background:#f1f5f9; font-weight:bold;">';
+            echo '  <td colspan="7" class="right" style="padding:8px;">TOTAL KESELURUHAN</td>';
+            echo '  <td class="center bold">' . number_format($totalUnit, 0, ',', '.') . '</td>';
+            echo '  <td></td>';
+            echo '  <td class="right bold" style="white-space:nowrap;">Rp ' . number_format($totalNilai, 0, ',', '.') . '</td>';
+            echo '  <td colspan="2"></td>';
+            echo '</tr>';
+            echo '</tfoot>';
+            echo '</table>';
+
+            // Signatures
+            echo '<div class="ttd-wrapper">';
+            echo '  <div class="ttd"><div class="label">MENGETAHUI,<br>WAKA. SARANA PRASARANA</div><div class="nama">' . $school_waka . '</div></div>';
+            echo '  <div class="ttd"><div class="label">' . global_kota() . ', ' . date('d F Y') . '<br>PETUGAS INVENTARIS</div><div class="nama">.............................</div></div>';
+            echo '</div>';
+            echo '<div class="ttd-center">';
+            echo '  <div class="ttd"><div class="label">MENGETAHUI,<br>KEPALA SEKOLAH</div><div class="nama">' . $school_kepala . '</div></div>';
+            echo '</div>';
+
+            echo '<p class="footer-note">Laporan ini dibuat otomatis melalui Sistem Informasi E-Sarpras pada ' . date('d F Y H:i') . '</p>';
+            echo '</div>'; // End sp-report-page
             echo '</body></html>';
             exit;
 
