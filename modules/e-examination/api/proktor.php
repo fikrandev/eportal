@@ -213,14 +213,24 @@ try {
             ");
             $stmt->execute($studentIds);
 
-            // Hanya aktifkan kembali sesi pada ujian yang sedang aktif
+            // Hanya aktifkan kembali sesi pada ujian yang sedang aktif dan reset counter pelanggaran
             $stmtUnterminate = db()->prepare("
                 UPDATE exam_sesi es
                 JOIN exam_ujian u ON u.id = es.ujian_id
-                SET es.status = 'mengerjakan' 
+                SET es.status = 'mengerjakan', es.pelanggaran = 0 
                 WHERE es.student_id IN ($placeholders) AND es.status = 'dihentikan' AND u.status = 'aktif'
             ");
             $stmtUnterminate->execute($studentIds);
+
+            // Bersihkan riwayat log pelanggaran pada sesi yang diaktifkan kembali
+            try {
+                db()->prepare("
+                    DELETE cl FROM exam_cheat_log cl
+                    JOIN exam_sesi es ON cl.sesi_id = es.id
+                    JOIN exam_ujian u ON u.id = es.ujian_id
+                    WHERE es.student_id IN ($placeholders) AND es.status = 'mengerjakan' AND u.status = 'aktif'
+                ")->execute($studentIds);
+            } catch (Exception $e) {}
 
             // Also check student names for feedback message
             $stmtNames = db()->prepare("SELECT nama FROM students WHERE id IN ($placeholders) LIMIT 3");
@@ -278,14 +288,18 @@ try {
             ");
             $stmtReset->execute($targetIds);
 
-            // Re-activate terminated sessions on active exams only so they can continue
-            $sqlU = "UPDATE exam_sesi es JOIN exam_ujian u ON u.id = es.ujian_id SET es.status = 'mengerjakan' WHERE es.student_id IN ($placeholders) AND es.status = 'dihentikan' AND u.status = 'aktif'";
+            // Re-activate terminated sessions on active exams only so they can continue, and reset violations
+            $sqlU = "UPDATE exam_sesi es JOIN exam_ujian u ON u.id = es.ujian_id SET es.status = 'mengerjakan', es.pelanggaran = 0 WHERE es.student_id IN ($placeholders) AND es.status = 'dihentikan' AND u.status = 'aktif'";
             $paramsU = $targetIds;
             if ($ujian_id > 0) {
                 $sqlU .= " AND es.ujian_id = ?";
                 $paramsU[] = $ujian_id;
             }
             db()->prepare($sqlU)->execute($paramsU);
+
+            try {
+                db()->prepare("DELETE cl FROM exam_cheat_log cl JOIN exam_sesi es ON cl.sesi_id = es.id JOIN exam_ujian u ON u.id = es.ujian_id WHERE es.student_id IN ($placeholders) AND es.status = 'mengerjakan' AND u.status = 'aktif'")->execute($targetIds);
+            } catch (Exception $e) {}
 
             json_response(200, true, 'Berhasil mereset ' . count($targetIds) . ' akun siswa yang terkunci.');
             break;
@@ -336,14 +350,18 @@ try {
             ");
             $stmtReset->execute($targetIds);
 
-            // Re-activate terminated sessions on active exams only so they can continue
-            $sqlU2 = "UPDATE exam_sesi es JOIN exam_ujian u ON u.id = es.ujian_id SET es.status = 'mengerjakan' WHERE es.student_id IN ($placeholders) AND es.status = 'dihentikan' AND u.status = 'aktif'";
+            // Re-activate terminated sessions on active exams only so they can continue, and reset violations
+            $sqlU2 = "UPDATE exam_sesi es JOIN exam_ujian u ON u.id = es.ujian_id SET es.status = 'mengerjakan', es.pelanggaran = 0 WHERE es.student_id IN ($placeholders) AND es.status = 'dihentikan' AND u.status = 'aktif'";
             $paramsU2 = $targetIds;
             if ($ujian_id > 0) {
                 $sqlU2 .= " AND es.ujian_id = ?";
                 $paramsU2[] = $ujian_id;
             }
             db()->prepare($sqlU2)->execute($paramsU2);
+
+            try {
+                db()->prepare("DELETE cl FROM exam_cheat_log cl JOIN exam_sesi es ON cl.sesi_id = es.id JOIN exam_ujian u ON u.id = es.ujian_id WHERE es.student_id IN ($placeholders) AND es.status = 'mengerjakan' AND u.status = 'aktif'")->execute($targetIds);
+            } catch (Exception $e) {}
 
             json_response(200, true, 'Berhasil mereset ' . count($targetIds) . ' akun siswa.');
             break;

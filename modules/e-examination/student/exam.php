@@ -631,7 +631,7 @@ if (!$session_id) {
             Untuk alasan keamanan dan integritas ujian, Anda <strong style="color:#fca5a5;">diwajibkan</strong> menggunakan mode layar penuh (Fullscreen).
         </p>
         <p style="color:#64748b; margin-bottom:32px; font-size:13px; max-width:450px;">
-            ⚠ Keluar dari mode layar penuh, berpindah tab, atau membuka aplikasi lain akan dicatat sebagai <strong style="color:#fca5a5;">pelanggaran</strong>. Pelanggaran 3× = ujian dihentikan otomatis.
+            ⚠ Keluar dari mode layar penuh, berpindah tab, atau membuka aplikasi lain akan dicatat sebagai <strong style="color:#fca5a5;">pelanggaran</strong>. Pelanggaran 5× = ujian dihentikan otomatis.
         </p>
         <button id="btnEnterFullscreen" onclick="(function(){ if(window.ExamApp && typeof window.ExamApp.enterFullscreen === 'function'){ window.ExamApp.enterFullscreen(); } else { const el = document.getElementById('fullscreenOverlay'); if(el) el.style.display='none'; } })()">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:8px;">

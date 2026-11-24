@@ -15,6 +15,10 @@ const ExamApp = {
     mediaRecorder: null,
     audioChunks: [],
     recordingSoalId: null,
+    _lastViolationReportTime: 0,
+    _fsExitTimeout: null,
+    _blurTimeout: null,
+    _visibilityTimeout: null,
 
     init() {
         if (typeof EXAM_SESSION_ID === 'undefined' || !EXAM_SESSION_ID) {
@@ -117,9 +121,19 @@ const ExamApp = {
             if (!getFullscreenElement()) {
                 if (this._hasEnteredFullscreen) {
                     $('#fullscreenOverlay').css('display', 'flex');
-                    this.reportCheating('exit_fullscreen');
+                    // Toleransi jeda 2.5 detik sebelum mencatat pelanggaran
+                    if (this._fsExitTimeout) clearTimeout(this._fsExitTimeout);
+                    this._fsExitTimeout = setTimeout(() => {
+                        if (!getFullscreenElement() && !this._examStopped && !this.isSubmitting) {
+                            this.reportCheating('exit_fullscreen');
+                        }
+                    }, 2500);
                 }
             } else {
+                if (this._fsExitTimeout) {
+                    clearTimeout(this._fsExitTimeout);
+                    this._fsExitTimeout = null;
+                }
                 this._hasEnteredFullscreen = true;
                 $('#fullscreenOverlay').hide();
             }
@@ -159,11 +173,22 @@ const ExamApp = {
         document.addEventListener('visibilitychange', () => {
             if (document.hidden) {
                 this.isTabActive = false;
-                // If last interaction was > 15 seconds ago, it's likely auto-sleep
-                if (Date.now() - this.lastInteraction < 15000) {
-                    this.reportCheating('tab_switch');
+                // Jika tidak ada interaksi selama > 30 detik, kemungkinan layar redup/auto-sleep (abaikan)
+                if (Date.now() - this.lastInteraction >= 30000) {
+                    return;
                 }
+                // Berikan jeda toleransi 2.5 detik agar perpindahan tidak disengaja/notifikasi tidak langsung dihukum
+                if (this._visibilityTimeout) clearTimeout(this._visibilityTimeout);
+                this._visibilityTimeout = setTimeout(() => {
+                    if (document.hidden && !this._examStopped && !this.isSubmitting) {
+                        this.reportCheating('tab_switch');
+                    }
+                }, 2500);
             } else {
+                if (this._visibilityTimeout) {
+                    clearTimeout(this._visibilityTimeout);
+                    this._visibilityTimeout = null;
+                }
                 this.isTabActive = true;
                 requestWakeLock();
             }
@@ -171,16 +196,23 @@ const ExamApp = {
 
         // ===== 4. WINDOW BLUR (Unfocus / Alt-Tab) =====
         window.addEventListener('blur', () => {
-            if (this.isTabActive) {
-                this.isTabActive = false;
-                // Avoid penalizing blur on mobile devices due to keyboard popups and sleep
-                const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-                if (!isMobile) {
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+            if (isMobile) return; // Abaikan di perangkat mobile (keyboard popup, status bar, dll)
+            if (document.hidden) return; // Jika tab sedang hidden, visibilitychange yang menangani
+
+            if (this._blurTimeout) clearTimeout(this._blurTimeout);
+            // Berikan jeda toleransi 3 detik untuk klik tak sengaja di luar area browser atau notifikasi
+            this._blurTimeout = setTimeout(() => {
+                if (!document.hasFocus() && !document.hidden && !this._examStopped && !this.isSubmitting) {
                     this.reportCheating('window_blur');
                 }
-            }
+            }, 3000);
         });
         window.addEventListener('focus', () => {
+            if (this._blurTimeout) {
+                clearTimeout(this._blurTimeout);
+                this._blurTimeout = null;
+            }
             this.isTabActive = true;
         });
 
@@ -233,22 +265,9 @@ const ExamApp = {
             }
         });
 
-        // ===== 9. DEVTOOLS OPEN DETECTION =====
-        // Detect via window outer-inner size difference (resize trick)
-        this._devtoolsCheckInterval = setInterval(() => {
-            const widthDiff = window.outerWidth - window.innerWidth;
-            const heightDiff = window.outerHeight - window.innerHeight;
-            
-            // If difference exceeds threshold, DevTools is likely open (docked)
-            if (widthDiff > 200 || heightDiff > 200) {
-                if (!this._devtoolsWarned) {
-                    this._devtoolsWarned = true;
-                    this.reportCheating('devtools');
-                }
-            } else {
-                this._devtoolsWarned = false;
-            }
-        }, 2000);
+        // ===== 9. DEVTOOLS BLOCK =====
+        // Shortcut F12, Ctrl+Shift+I/J/C, dan klik kanan Inspect sudah diblokir total di atas.
+        // Deteksi outer/inner size dinonaktifkan untuk mencegah false positive pada Windows scaling (125%/150%), browser zoom, dan sidebar Edge/Opera.
 
         // ===== 10. DRAG PREVENTION =====
         document.addEventListener('dragstart', e => e.preventDefault());
@@ -261,6 +280,10 @@ const ExamApp = {
     },
 
     enterFullscreen() {
+        if (this._fsExitTimeout) {
+            clearTimeout(this._fsExitTimeout);
+            this._fsExitTimeout = null;
+        }
         this._hasEnteredFullscreen = true;
         $('#fullscreenOverlay').hide();
 
@@ -287,6 +310,14 @@ const ExamApp = {
         if (this.isSubmitting) return;
         // Don't report if exam is already stopped
         if (this._examStopped) return;
+
+        // Rate limit: Debounce pemanggilan pelanggaran di sisi klien minimal 8 detik agar tidak beruntun
+        const now = Date.now();
+        if (this._lastViolationReportTime && (now - this._lastViolationReportTime) < 8000) {
+            console.warn('Violation throttled (client debounce):', type);
+            return;
+        }
+        this._lastViolationReportTime = now;
         
         // Show big red violation overlay immediately
         this.showViolationOverlay(type);
@@ -306,6 +337,11 @@ const ExamApp = {
                         return;
                     }
 
+                    if (r.data.action === 'ignore') {
+                        // Diabaikan oleh server karena dalam jeda toleransi
+                        return;
+                    }
+
                     this.violations = r.data.violations;
                     if (r.data.action === 'stop') {
                         // Fatal — exam terminated
@@ -317,8 +353,8 @@ const ExamApp = {
                                 <svg viewBox="0 0 24 24" width="64" height="64" fill="none" stroke="#ef4444" stroke-width="2" style="margin:0 auto 16px;">
                                     <circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/>
                                 </svg>
-                                <p style="font-size:16px;color:#0f172a;font-weight:600;">Ujian Anda dihentikan karena melakukan <strong>${this.violations} pelanggaran</strong>.</p>
-                                <p style="color:#64748b;">Silakan hubungi pengawas ujian.</p>
+                                <p style="font-size:16px;color:#0f172a;font-weight:600;">Ujian Anda dihentikan karena mencapai batas toleransi <strong>${this.violations} kali pelanggaran</strong>.</p>
+                                <p style="color:#64748b;">Silakan hubungi proktor/pengawas ujian.</p>
                             </div>`,
                             type: 'error',
                             onClose: () => { window.location.href = 'dashboard.php'; }
@@ -371,7 +407,7 @@ const ExamApp = {
                 <p id="violationCounter" style="
                     font-size:15px; color:#fca5a5; margin-bottom:32px;
                     background:rgba(0,0,0,0.3); padding:8px 20px; border-radius:8px;
-                ">Pelanggaran ke-${this.violations + 1} dari 3 (maks)</p>
+                ">Pelanggaran ke-${Math.min(this.violations + 1, 5)} dari 5 (maks)</p>
                 <button onclick="$('#violationOverlay').fadeOut(300, function(){ $(this).remove(); }); ExamApp.enterFullscreen();" style="
                     background:white; color:#991b1b; border:none; padding:14px 32px;
                     border-radius:10px; font-weight:700; font-size:16px; cursor:pointer;
@@ -384,7 +420,7 @@ const ExamApp = {
     },
 
     updateViolationOverlay() {
-        $('#violationCounter').text(`Pelanggaran ke-${this.violations} dari 3 (maks)`);
+        $('#violationCounter').text(`Pelanggaran ke-${Math.min(this.violations, 5)} dari 5 (maks)`);
     },
 
     fetchSoal() {

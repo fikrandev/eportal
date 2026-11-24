@@ -704,24 +704,40 @@ try {
                 break;
             }
 
-            $stmt = db()->prepare("INSERT INTO exam_cheat_log (sesi_id, jenis) VALUES (?, ?)");
-            $stmt->execute([$session_id, $cheat_type]);
- 
-            // Check total violations for THIS session only
+            // Hitung total pelanggaran yang sudah tercatat
             $stmtCount = db()->prepare("SELECT COUNT(*) FROM exam_cheat_log WHERE sesi_id = ?");
             $stmtCount->execute([$session_id]);
             $totalViolations = (int)$stmtCount->fetchColumn();
 
-            // Also update pelanggaran counter on exam_sesi
+            // Server-side throttle: abaikan jika ada log pelanggaran baru dalam selang < 6 detik (mencegah double-count)
+            $stmtLast = db()->prepare("SELECT created_at FROM exam_cheat_log WHERE sesi_id = ? ORDER BY id DESC LIMIT 1");
+            $stmtLast->execute([$session_id]);
+            $lastCheatTime = $stmtLast->fetchColumn();
+
+            if ($lastCheatTime && (time() - strtotime($lastCheatTime)) < 6) {
+                json_response(200, true, 'Pelanggaran dalam jeda toleransi (diabaikan)', [
+                    'action' => 'ignore',
+                    'violations' => $totalViolations
+                ]);
+                break;
+            }
+
+            $stmt = db()->prepare("INSERT INTO exam_cheat_log (sesi_id, jenis) VALUES (?, ?)");
+            $stmt->execute([$session_id, $cheat_type]);
+            $totalViolations++;
+
+            // Update counter pelanggaran pada exam_sesi
             try {
                 db()->prepare("UPDATE exam_sesi SET pelanggaran = ? WHERE id = ?")->execute([$totalViolations, $session_id]);
             } catch (Exception $e) {}
- 
-            // Stop exam if >= 3 violations
-            if ($totalViolations >= 3) {
+
+            $maxViolations = 5; // Batas toleransi ditingkatkan menjadi 5 kali
+
+            // Hentikan ujian jika sudah mencapai batas maksimal ($maxViolations)
+            if ($totalViolations >= $maxViolations) {
                 db()->prepare("UPDATE exam_sesi SET status = 'dihentikan', waktu_selesai = NOW(), pelanggaran = ? WHERE id = ? AND student_id = ?")->execute([$totalViolations, $session_id, $student['id']]);
                 try {
-                    db()->prepare("UPDATE exam_student_login SET status = 'logged_out', is_locked = 1, lock_reason = 'Ujian dihentikan karena 3 kali pelanggaran anti-cheat', updated_at = NOW() WHERE student_id = ?")->execute([$student['id']]);
+                    db()->prepare("UPDATE exam_student_login SET status = 'logged_out', is_locked = 1, lock_reason = 'Ujian dihentikan karena {$maxViolations} kali pelanggaran anti-cheat', updated_at = NOW() WHERE student_id = ?")->execute([$student['id']]);
                 } catch (Exception $e) {}
                 try {
                     processGrading($session_id);
