@@ -350,7 +350,7 @@ try {
                 SELECT u.*, uk.kelas 
                 FROM exam_ujian u
                 JOIN exam_ujian_kelas uk ON uk.ujian_id = u.id
-                WHERE u.id = ? AND u.status = 'aktif' AND uk.kelas = ?
+                WHERE u.id = ? AND u.status = 'aktif' AND TRIM(uk.kelas) = TRIM(?)
             ");
             $stmt->execute([$ujian_id, $student['kelas']]);
             $ujian = $stmt->fetch();
@@ -789,17 +789,24 @@ try {
             }
 
             $ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION)) ?: 'webm';
-            if (!in_array($ext, ['webm', 'mp3', 'wav', 'ogg', 'm4a'], true)) {
-                throw new Exception('Format audio tidak didukung. Gunakan: webm, mp3, wav, ogg, m4a.', 400);
+            if (!in_array($ext, ['webm', 'mp3', 'wav', 'ogg', 'm4a', 'mp4', 'aac', 'opus', '3gp'], true)) {
+                throw new Exception('Format audio tidak didukung. Gunakan: webm, mp3, wav, ogg, m4a, mp4, aac.', 400);
             }
 
-            $finfo = finfo_open(FILEINFO_MIME_TYPE);
-            $mime = $finfo ? finfo_file($finfo, $file['tmp_name']) : '';
-            if ($finfo) finfo_close($finfo);
+            $mime = '';
+            if (function_exists('finfo_open')) {
+                $finfo = @finfo_open(FILEINFO_MIME_TYPE);
+                if ($finfo) {
+                    $mime = (string)@finfo_file($finfo, $file['tmp_name']);
+                    @finfo_close($finfo);
+                }
+            }
             $allowedMimes = [
                 'audio/webm', 'video/webm', 'audio/mpeg', 'audio/mp3', 'audio/wav',
                 'audio/x-wav', 'audio/vnd.wave', 'audio/ogg', 'application/ogg',
-                'audio/mp4', 'audio/m4a', 'audio/x-m4a', 'application/octet-stream'
+                'audio/mp4', 'video/mp4', 'audio/m4a', 'audio/x-m4a',
+                'audio/aac', 'audio/x-aac', 'audio/opus', 'audio/3gpp', 'video/3gpp',
+                'application/octet-stream'
             ];
             if ($mime && !in_array($mime, $allowedMimes, true) && strpos($mime, 'audio/') !== 0) {
                 throw new Exception('File bukan rekaman audio yang valid (' . $mime . ').', 400);

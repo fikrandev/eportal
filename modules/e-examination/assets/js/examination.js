@@ -34,6 +34,10 @@ const Exam = {
         return this.state.moduleUrl + clean;
     },
 
+    formatAudioUrl(raw) {
+        return this.formatImageUrl(raw);
+    },
+
     doLogout() {
         EModal.confirm({
             title: 'Logout',
@@ -110,10 +114,101 @@ const Exam = {
         });
     },
 
-    uploadFile(file, type) {
-        const formData = new FormData();
-        formData.append('file', file);
-        return this.api('upload.php?action=' + type, { method: 'POST', data: formData });
+    extractAjaxError(xhr, fallback = 'Gagal koneksi ke server') {
+        if (!xhr) return fallback;
+        if (typeof xhr === 'string') return xhr;
+        if (xhr.responseJSON && xhr.responseJSON.message) return xhr.responseJSON.message;
+        if (xhr.responseText) {
+            try {
+                const parsed = JSON.parse(xhr.responseText);
+                if (parsed && parsed.message) return parsed.message;
+            } catch (e) {}
+        }
+        if (xhr.status === 413) return 'Ukuran file melebihi batas maksimal request server (HTTP 413).';
+        if (xhr.status === 401 || xhr.status === 403) return 'Sesi login berakhir atau akses ditolak. Silakan muat ulang halaman.';
+        return fallback;
+    },
+
+    uploadFile(file, type, onProgress) {
+        const CHUNK_SIZE = 750 * 1024; // 750 KB per chunk (aman untuk Nginx 1MB & PHP 2MB)
+        const mediaType = (type === 'audio') ? 'audio' : 'image';
+        const maxBytes = mediaType === 'audio' ? (25 * 1024 * 1024) : (10 * 1024 * 1024);
+
+        const promise = new Promise(async (resolve, reject) => {
+            if (!file) {
+                reject(new Error('File tidak ditemukan'));
+                return;
+            }
+            if (file.size > maxBytes) {
+                const maxMb = Math.round(maxBytes / (1024 * 1024));
+                reject(new Error(`Ukuran file (${(file.size / (1024 * 1024)).toFixed(2)} MB) melebihi batas maksimal ${maxMb} MB.`));
+                return;
+            }
+
+            const sendChunked = async () => {
+                const ext = ((file.name || '').split('.').pop() || (mediaType === 'audio' ? 'mp3' : 'jpg')).toLowerCase();
+                const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
+                const uploadId = Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 12);
+
+                let lastResponse = null;
+                for (let idx = 0; idx < totalChunks; idx++) {
+                    const start = idx * CHUNK_SIZE;
+                    const end = Math.min(file.size, start + CHUNK_SIZE);
+                    const blob = file.slice(start, end);
+
+                    const fd = new FormData();
+                    fd.append('media_type', mediaType);
+                    fd.append('upload_id', uploadId);
+                    fd.append('chunk_index', String(idx));
+                    fd.append('total_chunks', String(totalChunks));
+                    fd.append('ext', ext);
+                    fd.append('chunk', blob, `part_${idx}.${ext}`);
+
+                    try {
+                        lastResponse = await new Promise((res, rej) => {
+                            this.api('upload.php?action=chunk', { method: 'POST', data: fd })
+                                .done(r => {
+                                    if (r && r.success) res(r);
+                                    else rej(new Error((r && r.message) ? r.message : 'Gagal mengunggah bagian file'));
+                                })
+                                .fail(xhr => rej(new Error(this.extractAjaxError(xhr, `Gagal koneksi saat upload bagian ${idx + 1}/${totalChunks}`))));
+                        });
+                        if (typeof onProgress === 'function') {
+                            onProgress(Math.round(((idx + 1) / totalChunks) * 100));
+                        }
+                    } catch (err) {
+                        throw err;
+                    }
+                }
+                return lastResponse;
+            };
+
+            try {
+                if (file.size > CHUNK_SIZE) {
+                    const res = await sendChunked();
+                    resolve(res);
+                } else {
+                    const formData = new FormData();
+                    formData.append('file', file);
+                    this.api('upload.php?action=' + mediaType, { method: 'POST', data: formData })
+                        .done(r => {
+                            if (typeof onProgress === 'function') onProgress(100);
+                            resolve(r);
+                        })
+                        .fail(async xhr => {
+                            // Jika server membatasi upload < 750KB (misal 512KB), fallback ke chunk lebih kecil atau lempar pesan asli
+                            reject(new Error(this.extractAjaxError(xhr, `Gagal mengupload ${mediaType === 'audio' ? 'audio' : 'gambar'}`)));
+                        });
+                }
+            } catch (err) {
+                reject(err instanceof Error ? err : new Error(String(err)));
+            }
+        });
+
+        promise.fail = function(fn) {
+            return promise.catch(err => fn(err && err.message ? err.message : String(err)));
+        };
+        return promise;
     },
 
     loadMasterData() {
@@ -664,7 +759,7 @@ const Exam = {
                     ${s.audio ? `
                     <div style="padding-left:44px;margin-bottom:12px;">
                         <div style="display:inline-flex;align-items:center;gap:10px;background:#f8fafc;padding:8px 12px;border-radius:8px;border:1px solid #e2e8f0;flex-wrap:wrap;">
-                            <audio controls style="max-width:300px;height:34px;"><source src="${this.state.moduleUrl + s.audio}" type="audio/mpeg"></audio>
+                            <audio controls preload="metadata" src="${this.formatAudioUrl(s.audio)}" style="max-width:300px;height:34px;"></audio>
                             <span style="font-size:11px;background:#f3e8ff;color:#7e22ce;padding:3px 8px;border-radius:6px;font-weight:600;border:1px solid #e9d5ff;">
                                 🎧 ${parseInt(s.audio_play_limit) > 0 ? `Batas: ${s.audio_play_limit}x putar` : 'Bebas diputar'}
                             </span>
@@ -832,7 +927,7 @@ const Exam = {
                                 <div style="font-size:22px;">🔊</div>
                                 <div style="flex:1;min-width:0;">
                                     <div style="font-size:12px;font-weight:600;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${existing.audio.split('/').pop()}</div>
-                                    <audio controls style="width:100%;height:30px;margin-top:4px;"><source src="${this.state.moduleUrl + existing.audio}" type="audio/mpeg"></audio>
+                                    <audio controls preload="metadata" src="${this.formatAudioUrl(existing.audio)}" style="width:100%;height:30px;margin-top:4px;"></audio>
                                     <div id="fSoalAudioStatus" style="font-size:11px;color:#64748b;margin-top:2px;">Audio saat ini terpasang</div>
                                 </div>
                                 <button type="button" id="btnToggleHapusAudio" class="btn btn-sm" onclick="Exam.toggleDeleteAudio()" style="color:#dc2626;border:1px solid #fca5a5;background:#fef2f2;padding:4px 10px;font-size:12px;border-radius:6px;display:inline-flex;align-items:center;gap:4px;cursor:pointer;">
@@ -841,7 +936,7 @@ const Exam = {
                                 </button>
                             </div>
                         ` : ''}
-                        <input type="file" class="form-input" id="fSoalAudioFile" accept="audio/*" onchange="Exam.handleFileSelected('audio', this)">
+                        <input type="file" class="form-input" id="fSoalAudioFile" accept="audio/*,.mp3,.m4a,.wav,.ogg,.aac,.flac,.opus,.webm,.mp4,.3gp,.amr" onchange="Exam.handleFileSelected('audio', this)">
                         <div id="fSoalAudioNewPreview" style="display:none;margin-top:6px;padding:8px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:6px;align-items:center;gap:10px;"></div>
                         
                         <div style="margin-top:8px;padding:10px;background:#f8fafc;border-radius:8px;border:1px solid #e2e8f0;">
@@ -983,31 +1078,31 @@ const Exam = {
                 const audFile = document.getElementById('fSoalAudioFile')?.files[0];
 
                 const uploadPromises = [];
-                const loader = EModal.loading('Menyimpan Soal...');
+                const loader = EModal.loading(audFile ? 'Mengupload audio & menyimpan soal...' : 'Menyimpan Soal...');
 
                 if (imgFile) {
-                    uploadPromises.push(new Promise((resolve, reject) => {
+                    uploadPromises.push(
                         this.uploadFile(imgFile, 'image').then(r => {
-                            if (r.success) {
+                            if (r && r.success) {
                                 data.gambar = r.data.path;
                                 delete data.delete_gambar;
-                                resolve();
+                            } else {
+                                throw new Error((r && r.message) ? r.message : 'Gagal upload gambar');
                             }
-                            else { reject(r.message || 'Gagal upload gambar'); }
-                        }).fail(() => reject('Gagal koneksi upload gambar'));
-                    }));
+                        })
+                    );
                 }
                 if (audFile) {
-                    uploadPromises.push(new Promise((resolve, reject) => {
+                    uploadPromises.push(
                         this.uploadFile(audFile, 'audio').then(r => {
-                            if (r.success) {
+                            if (r && r.success) {
                                 data.audio = r.data.path;
                                 delete data.delete_audio;
-                                resolve();
+                            } else {
+                                throw new Error((r && r.message) ? r.message : 'Gagal upload audio');
                             }
-                            else { reject(r.message || 'Gagal upload audio'); }
-                        }).fail(() => reject('Gagal koneksi upload audio'));
-                    }));
+                        })
+                    );
                 }
 
                 Promise.all(uploadPromises).then(() => {
@@ -1016,13 +1111,14 @@ const Exam = {
                         EModal.close(loader);
                         if (r.success) { EModal.toast({type:'success',title:'Berhasil'}); this.navigate('detail_bank', {id: bankId}); }
                         else EModal.toast({type:'error',title:'Gagal',message:r.message});
-                    }).fail(() => {
+                    }).fail(xhr => {
                         EModal.close(loader);
-                        EModal.toast({type:'error',title:'Gagal menyimpan soal'});
+                        EModal.toast({type:'error',title:'Gagal menyimpan soal', message: this.extractAjaxError(xhr, 'Gagal menyimpan soal')});
                     });
                 }).catch((err) => {
                     EModal.close(loader);
-                    EModal.toast({type:'error',title:'Gagal', message: (typeof err === 'string' ? err : 'Gagal mengupload media')});
+                    const msg = (err && err.message) ? err.message : (typeof err === 'string' ? err : 'Gagal mengupload media');
+                    EModal.toast({type:'error',title:'Gagal Upload Media', message: msg});
                 });
                 return false;
             }
@@ -1265,10 +1361,19 @@ const Exam = {
         } else if (type === 'audio') {
             const $preview = $('#fSoalAudioNewPreview');
             if (file) {
+                if (file.size > 25 * 1024 * 1024) {
+                    EModal.toast({ type: 'error', title: 'Ukuran Terlalu Besar', message: 'Ukuran file audio maksimal 25 MB.' });
+                    input.value = '';
+                    $preview.hide().empty();
+                    return;
+                }
+                const sizeLabel = file.size >= 1048576
+                    ? (file.size / 1048576).toFixed(2) + ' MB'
+                    : (file.size / 1024).toFixed(1) + ' KB';
                 $preview.html(`
                     <span style="font-size:20px;">🎵</span>
                     <div style="flex:1;font-size:12px;color:#166534;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
-                        <strong>Akan diupload:</strong> ${this.esc(file.name)} (${(file.size / 1024).toFixed(1)} KB)
+                        <strong>Akan diupload:</strong> ${this.esc(file.name)} (${sizeLabel})
                     </div>
                     <button type="button" class="btn btn-ghost btn-sm" style="color:#ef4444;padding:2px 8px;font-size:12px;" onclick="Exam.clearSelectedFile('audio')">✕ Batal</button>
                 `).css('display', 'flex');
@@ -2068,7 +2173,7 @@ const Exam = {
                                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
                                 Rekaman Jawaban Suara Siswa:
                             </div>
-                            <audio controls src="${this.state.baseUrl}${item.jawaban_voice}" style="width:100%; height:38px;"></audio>
+                            <audio controls preload="metadata" src="${this.formatAudioUrl(item.jawaban_voice)}" style="width:100%; height:38px;"></audio>
                         </div>` : '';
 
                     const aiFeedbackHtml = item.ai_feedback ? `
@@ -2077,7 +2182,7 @@ const Exam = {
                         </div>` : '';
 
                     const mediaHtml = item.gambar ? `
-                        <div style="margin:8px 0;"><img src="${this.state.baseUrl}${item.gambar}" style="max-width:100%; max-height:220px; border-radius:6px; border:1px solid #e2e8f0;"></div>
+                        <div style="margin:8px 0;"><img src="${this.formatImageUrl(item.gambar)}" style="max-width:100%; max-height:220px; border-radius:6px; border:1px solid #e2e8f0;"></div>
                     ` : '';
 
                     const currentVal = item.skor !== null ? item.skor : '';

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cbt-student-v2';
+const CACHE_NAME = 'cbt-student-v3';
 const ASSETS = [
     '../assets/css/examination.css',
     '../assets/js/student_exam.js'

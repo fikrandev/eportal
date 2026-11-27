@@ -20,7 +20,7 @@ $stmt = db()->prepare("
     FROM exam_ujian u
     JOIN exam_bank_soal b ON u.bank_soal_id = b.id
     JOIN exam_ujian_kelas uk ON uk.ujian_id = u.id
-    WHERE u.status = 'aktif' AND uk.kelas = ?
+    WHERE u.status = 'aktif' AND TRIM(uk.kelas) = TRIM(?)
     ORDER BY u.created_at DESC
 ");
 $stmt->execute([$student['kelas']]);
@@ -55,8 +55,8 @@ $pastExams = $stmtPast->fetchAll();
     <meta name="apple-mobile-web-app-capable" content="yes">
 
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css">
-    <link rel="stylesheet" href="../assets/css/examination.css">
+    <link rel="stylesheet" href="<?php echo BASE_URL; ?>assets/css/app.css?v=<?php echo asset_ver('assets/css/app.css'); ?>">
+    <link rel="stylesheet" href="../assets/css/examination.css?v=<?php echo asset_ver('modules/e-examination/assets/css/examination.css'); ?>">
 
     <!-- KaTeX for Math Equations -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
@@ -169,7 +169,7 @@ $pastExams = $stmtPast->fetchAll();
                                         Selesai Dikerjakan
                                     </button>
                                 <?php else: ?>
-                                    <button class="btn-start" onclick="showTokenModal(<?php echo $ex['id']; ?>)">Mulai Ujian</button>
+                                    <button type="button" class="btn-start" onclick="showTokenModal(<?php echo (int)$ex['id']; ?>)">Mulai Ujian</button>
                                 <?php endif; ?>
                             </div>
                         </div>
@@ -251,10 +251,18 @@ $pastExams = $stmtPast->fetchAll();
     <div id="toastContainer" class="toast-container"></div>
 
     <script src="<?php echo BASE_URL; ?>assets/vendor/jquery-3.7.1.min.js"></script>
-    <script src="<?php echo BASE_URL . asset_ver('assets/js/core-utils.js'); ?>"></script>
-    <script src="<?php echo BASE_URL . asset_ver('assets/js/modal.js'); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/core-utils.js?v=<?php echo asset_ver('assets/js/core-utils.js'); ?>"></script>
+    <script src="<?php echo BASE_URL; ?>assets/js/modal.js?v=<?php echo asset_ver('assets/js/modal.js'); ?>"></script>
     <script>
         function logout() {
+            if (typeof EModal === 'undefined') {
+                if (window.confirm('Yakin ingin keluar dari portal CBT?')) {
+                    $.post('../api/pengerjaan.php?action=logout', function() {
+                        window.location.href = 'login.php';
+                    });
+                }
+                return;
+            }
             EModal.confirm({
                 title: 'Logout',
                 message: 'Yakin ingin keluar dari portal CBT?',
@@ -267,7 +275,48 @@ $pastExams = $stmtPast->fetchAll();
             });
         }
 
+        function startExamRequest(ujianId, token, loader) {
+            $.ajax({
+                url: '../api/pengerjaan.php?action=start',
+                method: 'POST',
+                data: JSON.stringify({
+                    ujian_id: ujianId,
+                    token: token
+                }),
+                contentType: 'application/json',
+                success: function(r) {
+                    if (loader && window.EModal) EModal.close(loader);
+                    if (r && r.success) {
+                        window.location.href = 'exam.php?session_id=' + r.data.session_id;
+                    } else {
+                        const errMsg = (r && r.message) ? r.message : 'Gagal memulai ujian';
+                        if (window.EModal) EModal.alert('Gagal Memulai Ujian', errMsg);
+                        else window.alert(errMsg);
+                    }
+                },
+                error: function(xhr) {
+                    if (loader && window.EModal) EModal.close(loader);
+                    let msg = 'Terjadi kesalahan pada server';
+                    try { msg = xhr.responseJSON.message || msg; } catch(e){}
+                    if (window.EModal) EModal.alert('Gagal Memulai Ujian', msg);
+                    else window.alert(msg);
+                }
+            });
+        }
+
         function showTokenModal(ujianId, defaultToken = '') {
+            if (typeof EModal === 'undefined') {
+                const rawToken = window.prompt('Masukkan TOKEN UJIAN dari Pengawas / Proktor:', defaultToken || '');
+                if (rawToken === null) return;
+                const cleanToken = String(rawToken).trim().toUpperCase();
+                if (!cleanToken) {
+                    window.alert('Token ujian wajib diisi');
+                    return;
+                }
+                startExamRequest(ujianId, cleanToken, null);
+                return;
+            }
+
             const safeToken = (window.EPortalUtils ? EPortalUtils.escapeHtml(defaultToken) : String(defaultToken || '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])));
             EModal.form({
                 title: 'Konfirmasi Mulai Ujian',
@@ -287,29 +336,7 @@ $pastExams = $stmtPast->fetchAll();
                     if (!token) { EModal.toast({type:'error', title:'Token ujian wajib diisi'}); return false; }
                     
                     const loader = EModal.loading('Memverifikasi token & menyiapkan ujian...');
-                    $.ajax({
-                        url: '../api/pengerjaan.php?action=start',
-                        method: 'POST',
-                        data: JSON.stringify({ 
-                            ujian_id: ujianId, 
-                            token: token
-                        }),
-                        contentType: 'application/json',
-                        success: function(r) {
-                            EModal.close(loader);
-                            if (r.success) {
-                                window.location.href = 'exam.php?session_id=' + r.data.session_id;
-                            } else {
-                                EModal.alert('Gagal Memulai Ujian', r.message);
-                            }
-                        },
-                        error: function(xhr) {
-                            EModal.close(loader);
-                            let msg = 'Terjadi kesalahan pada server';
-                            try { msg = xhr.responseJSON.message || msg; } catch(e){}
-                            EModal.alert('Gagal Memulai Ujian', msg);
-                        }
-                    });
+                    startExamRequest(ujianId, token, loader);
                 }
             });
         }
