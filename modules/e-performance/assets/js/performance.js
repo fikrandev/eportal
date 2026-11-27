@@ -605,14 +605,33 @@ const Perf = {
             let contentsHtml = '';
 
             let first = true;
+            let tabIdx = 0;
             for (const tupoksi in tabs) {
                 const activeClass = first ? 'active' : '';
                 const display = first ? 'block' : 'none';
+                const tabDomId = 'tab-kepsek-' + tabIdx;
+                tabIdx++;
+
+                const tList = tabs[tupoksi].teachers || [];
+                const qList = tabs[tupoksi].questions || [];
+                const expectedCells = tList.length * qList.length;
+                let filledCells = 0;
+                qList.forEach(q => {
+                    tList.forEach(t => {
+                        if ((answers[`${q.instrumen_id}_${t.id}`] || 0) > 0) filledCells++;
+                    });
+                });
+                const isTabComplete = expectedCells > 0 && filledCells >= expectedCells;
+                const statusBadge = expectedCells > 0
+                    ? (isTabComplete
+                        ? `<span class="kepsek-tab-badge" style="margin-left:6px; font-size:11px; padding:2px 6px; border-radius:10px; background:#D1FAE5; color:#065F46;">✓ Lengkap</span>`
+                        : `<span class="kepsek-tab-badge" style="margin-left:6px; font-size:11px; padding:2px 6px; border-radius:10px; background:#FEF3C7; color:#92400E;">${filledCells}/${expectedCells}</span>`)
+                    : '';
+
+                tabsHtml += `<button class="pf-tab-btn ${activeClass}" data-tab-target="${tabDomId}" data-expected="${expectedCells}" style="padding:12px 20px; background:none; border:none; border-bottom:2px solid transparent; font-weight:600; color:#4B5563; cursor:pointer; white-space:nowrap; transition:all 0.2s; margin-bottom:-2px; display:inline-flex; align-items:center;">${this.escapeHtml(tupoksi)} (${tList.length})${statusBadge}</button>`;
                 
-                tabsHtml += `<button class="pf-tab-btn ${activeClass}" data-tab="${tupoksi}" style="padding:12px 24px; background:none; border:none; border-bottom:2px solid transparent; font-weight:600; color:#4B5563; cursor:pointer; white-space:nowrap; transition:all 0.2s; margin-bottom:-2px;">${tupoksi} (${tabs[tupoksi].teachers.length})</button>`;
-                
-                let tableHtml = this.buildMatrixTableHtml(tabs[tupoksi].teachers, tabs[tupoksi].questions, answers, periode_id);
-                contentsHtml += `<div class="pf-tab-content" id="tab-${tupoksi.replace(/\s+/g, '-')}" style="display:${display}; max-width: 100%;">${tableHtml}</div>`;
+                let tableHtml = this.buildMatrixTableHtml(tList, qList, answers, periode_id);
+                contentsHtml += `<div class="pf-tab-content" id="${tabDomId}" style="display:${display}; max-width: 100%;">${tableHtml}</div>`;
                 
                 first = false;
             }
@@ -620,13 +639,28 @@ const Perf = {
 
             $('#kepsekMatrixContainer').html(tabsHtml + contentsHtml).show();
 
+            const refreshTabBadge = (tabDomId) => {
+                const $pane = $('#' + tabDomId);
+                const $btn = $(`.pf-tab-btn[data-tab-target="${tabDomId}"]`);
+                const expected = parseInt($btn.data('expected'), 10) || 0;
+                if (expected <= 0) return;
+                const filled = $pane.find('input.matrix-radio:checked').length;
+                const $badge = $btn.find('.kepsek-tab-badge');
+                if (filled >= expected) {
+                    $badge.css({ background: '#D1FAE5', color: '#065F46' }).text('✓ Lengkap');
+                } else {
+                    $badge.css({ background: '#FEF3C7', color: '#92400E' }).text(`${filled}/${expected}`);
+                }
+            };
+            window._refreshKepsekTabBadge = refreshTabBadge;
+
             // Setup custom styling and event listeners
             $('.pf-tab-btn').on('click', function() {
                 $('.pf-tab-btn').css({ 'border-bottom-color':'transparent', 'color':'#4B5563' }).removeClass('active');
                 $(this).css({ 'border-bottom-color':'var(--primary)', 'color':'var(--primary)' }).addClass('active');
                 
                 $('.pf-tab-content').hide();
-                $('#tab-' + $(this).data('tab').replace(/\s+/g, '-')).fadeIn(200);
+                $('#' + $(this).data('tab-target')).fadeIn(200);
             });
 
             $('.pf-tab-btn.active').css({ 'border-bottom-color':'var(--primary)', 'color':'var(--primary)' });
@@ -678,6 +712,8 @@ const Perf = {
                 }).done(saveRes => {
                     if (saveRes.success) {
                         $indicator.html('<span style="color:#10B981; font-size:11px;">✓ ' + (nilai == 0 ? 'Dibatalkan' : 'Tersimpan') + '</span>');
+                        const paneId = $cell.closest('.pf-tab-content').attr('id');
+                        if (paneId && window._refreshKepsekTabBadge) window._refreshKepsekTabBadge(paneId);
                         setTimeout(() => $indicator.fadeOut(), 2000);
                     } else {
                         $indicator.html('<span style="color:#EF4444; font-size:11px;">✗ Gagal</span>');
@@ -746,6 +782,8 @@ const Perf = {
                         $(this).parent('label').css({'background':'#ECFDF5', 'border-color':'var(--primary)', 'color':'var(--primary)'});
                         $(this).prop('checked', true);
                     });
+                    const paneId = $table.closest('.pf-tab-content').attr('id');
+                    if (paneId && window._refreshKepsekTabBadge) window._refreshKepsekTabBadge(paneId);
 
                     setTimeout(() => $indicator.fadeOut(), 2000);
                 } else {

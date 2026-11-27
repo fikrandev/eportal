@@ -4,6 +4,7 @@
  * Endpoints for generating recap reports
  */
 require_once __DIR__ . '/config_perf.php';
+require_once __DIR__ . '/scoring_helper.php';
 
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
@@ -51,7 +52,7 @@ function getRekapDiriSendiri() {
 
     try {
         // 1. Get PTK Details
-        $stmtPtk = $db->prepare("SELECT id, nama, jenis_ptk, niy FROM perf_ptk WHERE id = ?");
+        $stmtPtk = $db->prepare("SELECT id, nama, jenis_ptk, jabatan, niy FROM perf_ptk WHERE id = ?");
         $stmtPtk->execute([$ptk_id]);
         $ptk = $stmtPtk->fetch(PDO::FETCH_ASSOC);
         if (!$ptk) json_response(404, false, 'Data PTK tidak ditemukan.');
@@ -71,38 +72,10 @@ function getRekapDiriSendiri() {
         $stmtTupoksi = $db->prepare("SELECT tupoksi FROM users WHERE username = ? AND status = 1 LIMIT 1");
         $stmtTupoksi->execute([$perfUser['username']]);
         $tupoksiRow = $stmtTupoksi->fetch(PDO::FETCH_ASSOC);
-        
-        $actualTupoksi = ($tupoksiRow && !empty($tupoksiRow['tupoksi'])) ? $tupoksiRow['tupoksi'] : 'Guru';
-        $rater_str = $actualTupoksi;
-        $rater_str_self = 'Diri Sendiri';
-        $rater_fallback = (stripos($actualTupoksi, 'Guru') !== false || stripos($actualTupoksi, 'Wali Kelas') !== false) ? 'Guru' : $actualTupoksi;
+        $actualTupoksi = ($tupoksiRow && !empty($tupoksiRow['tupoksi'])) ? $tupoksiRow['tupoksi'] : $ptk['jenis_ptk'];
 
-        // 4. Fetch Questions targeting this PTK
-        $stmtQ = $db->prepare("
-            SELECT id as instrumen_id, kategori, pertanyaan
-            FROM perf_instrumen
-            WHERE periode_id = ? AND (
-                (
-                    (FIND_IN_SET(?, target_jabatan) > 0 OR FIND_IN_SET(?, target_jabatan) > 0)
-                    AND (target_dinilai = 'Semua' OR FIND_IN_SET(?, target_dinilai) > 0)
-                )
-                OR
-                (
-                    FIND_IN_SET(?, target_jabatan) > 0 
-                    AND (target_dinilai = 'Semua' OR FIND_IN_SET(?, target_dinilai) > 0 OR FIND_IN_SET(?, target_dinilai) > 0)
-                )
-                OR
-                (FIND_IN_SET(?, target_jabatan) > 0 AND FIND_IN_SET(?, target_dinilai) > 0)
-            )
-            ORDER BY kategori ASC, urutan ASC, id ASC
-        ");
-        $stmtQ->execute([
-            $periode_id, 
-            $rater_str, $rater_fallback, $ptk['jenis_ptk'],
-            $rater_str_self, $ptk['jenis_ptk'], $rater_str_self,
-            $ptk['jenis_ptk'], $rater_str_self
-        ]);
-        $questions = $stmtQ->fetchAll(PDO::FETCH_ASSOC);
+        // 4. Fetch Questions targeting this PTK (including inherited Sebagai Guru questions for Waka)
+        $questions = perfGetInstrumenForTarget($db, (int)$periode_id, 'self', $ptk, $actualTupoksi);
 
         // 5. Fetch Answers where penilai is self
         // Note: we don't strictly check penilai_type because penilai_id and dinilai_ptk_id are enough to identify "self"
@@ -171,20 +144,13 @@ function getRekapSiswa() {
 
     try {
         // 1. Get PTK Details
-        $stmtPtk = $db->prepare("SELECT id, nama, jenis_ptk, niy FROM perf_ptk WHERE id = ?");
+        $stmtPtk = $db->prepare("SELECT id, nama, jenis_ptk, jabatan, niy FROM perf_ptk WHERE id = ?");
         $stmtPtk->execute([$ptk_id]);
         $ptk = $stmtPtk->fetch(PDO::FETCH_ASSOC);
         if (!$ptk) json_response(404, false, 'Data PTK tidak ditemukan.');
 
-        // 2. Fetch Questions targeting 'Siswa' for this PTK's jenis_ptk
-        $stmtQ = $db->prepare("
-            SELECT id as instrumen_id, kategori, pertanyaan
-            FROM perf_instrumen
-            WHERE periode_id = ? AND target_jabatan LIKE '%Siswa%' AND (target_dinilai = 'Semua' OR FIND_IN_SET(?, target_dinilai) > 0)
-            ORDER BY kategori ASC, urutan ASC, id ASC
-        ");
-        $stmtQ->execute([$periode_id, $ptk['jenis_ptk']]);
-        $questions = $stmtQ->fetchAll(PDO::FETCH_ASSOC);
+        // 2. Fetch Questions targeting 'Siswa' for this PTK (including inherited Guru questions for Waka)
+        $questions = perfGetInstrumenForTarget($db, (int)$periode_id, 'siswa', $ptk, 'Siswa');
 
         if (empty($questions)) {
             json_response(200, true, 'Tidak ada instrumen untuk siswa', ['ptk' => $ptk, 'rekap' => [], 'murid_count' => 0]);

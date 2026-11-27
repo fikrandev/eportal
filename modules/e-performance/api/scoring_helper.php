@@ -366,6 +366,241 @@ if (!function_exists('calculateManualGroups')) {
     }
 }
 
+if (!function_exists('perfSplitCsv')) {
+    function perfSplitCsv($csv): array {
+        $clean = str_replace(["\xc2\xa0", "\xC2\xA0"], ' ', (string)$csv);
+        $parts = explode(',', $clean);
+        $out = [];
+        foreach ($parts as $p) {
+            $t = trim($p);
+            if ($t !== '') $out[] = $t;
+        }
+        return $out;
+    }
+}
+
+if (!function_exists('perfInCsv')) {
+    function perfInCsv(string $needle, $csv): bool {
+        $n = strtolower(trim(str_replace(["\xc2\xa0", "\xC2\xA0"], ' ', $needle)));
+        if ($n === '') return false;
+        foreach (perfSplitCsv($csv) as $item) {
+            if (strtolower($item) === $n) return true;
+        }
+        return false;
+    }
+}
+
+if (!function_exists('perfLoadPeriodInstrumen')) {
+    function perfLoadPeriodInstrumen($db, int $periode_id): array {
+        $stmt = $db->prepare("
+            SELECT id AS instrumen_id, kategori, target_jabatan, target_dinilai, pertanyaan, urutan
+            FROM perf_instrumen
+            WHERE periode_id = ? AND is_manual = 0
+            ORDER BY urutan ASC, id ASC
+        ");
+        $stmt->execute([$periode_id]);
+        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+    }
+}
+
+if (!function_exists('perfGetInstrumenForTarget')) {
+    /**
+     * Resolve non-manual instruments for a target PTK & rater mode ('kepsek', 'self', 'peer', 'siswa').
+     * Automatically inherits missing main Guru/Staff competencies (e.g. Kepala Sekolah menilai
+     * Wakil Kepala Sekolah sebagai Guru: Pedagogik, Kepribadian, Sosial, Profesional) without duplicates.
+     */
+    function perfGetInstrumenForTarget($db, int $periode_id, string $rater_mode, $target_ptk, string $rater_tupoksi = '', ?array $allInstrumen = null): array {
+        if ($allInstrumen === null) {
+            $allInstrumen = perfLoadPeriodInstrumen($db, $periode_id);
+        }
+        if (empty($allInstrumen)) return [];
+
+        if (!is_array($target_ptk)) {
+            $target_ptk = ['jenis_ptk' => (string)$target_ptk, 'jabatan' => ''];
+        }
+        $flags = getPtkRoleFlags($target_ptk);
+        $ptk_jenis = $flags['ptk_jenis'];
+        $is_staff = $flags['is_staff'];
+        $is_waka = $flags['is_waka'];
+        $is_ka_tu = $flags['is_ka_tu'];
+        $is_ka_perpus = $flags['is_ka_perpus'];
+        $is_ka_lab = $flags['is_ka_lab'];
+        $allowed_tambahan = $flags['allowed_tambahan'];
+
+        $rater_tupoksi = trim($rater_tupoksi);
+        $isGuruRater = (stripos($rater_tupoksi, 'guru') !== false || stripos($rater_tupoksi, 'wali kelas') !== false || stripos($rater_tupoksi, 'wakil') !== false || stripos($rater_tupoksi, 'waka') !== false);
+
+        $matchesRoleAndTarget = function (array $row, array $targetRoles, array $extraRaterRoles = []) use ($rater_mode, $rater_tupoksi, $isGuruRater): bool {
+            $tJab = $row['target_jabatan'] ?? '';
+            $tDin = $row['target_dinilai'] ?? '';
+
+            $targetHit = perfInCsv('Semua', $tDin);
+            if (!$targetHit) {
+                foreach ($targetRoles as $tr) {
+                    if (perfInCsv($tr, $tDin)) {
+                        $targetHit = true;
+                        break;
+                    }
+                }
+            }
+
+            if ($rater_mode === 'kepsek') {
+                $raterHit = perfInCsv('Kepala Sekolah', $tJab) || perfInCsv('Kepsek', $tJab) || perfInCsv('Plt. Kepala Sekolah', $tJab);
+                return $raterHit && $targetHit;
+            }
+
+            if ($rater_mode === 'siswa') {
+                $raterHit = perfInCsv('Siswa', $tJab) || perfInCsv('Murid', $tJab);
+                return $raterHit && $targetHit;
+            }
+
+            $raterCandidates = array_filter(array_unique(array_merge(
+                [$rater_tupoksi],
+                $isGuruRater ? ['Guru'] : [],
+                $extraRaterRoles
+            )));
+
+            $raterDirectHit = false;
+            foreach ($raterCandidates as $rc) {
+                if (perfInCsv($rc, $tJab)) {
+                    $raterDirectHit = true;
+                    break;
+                }
+            }
+
+            if ($rater_mode === 'self') {
+                if ($raterDirectHit && (perfInCsv('Diri Sendiri', $tDin) || $targetHit)) return true;
+                if (perfInCsv('Diri Sendiri', $tJab) && (perfInCsv('Diri Sendiri', $tDin) || $targetHit)) return true;
+                return false;
+            }
+
+            if ($rater_mode === 'peer') {
+                if ($raterDirectHit && (perfInCsv('Teman Sejawat', $tDin) || $targetHit)) return true;
+                if (perfInCsv('Teman Sejawat', $tJab) && (perfInCsv('Teman Sejawat', $tDin) || $targetHit)) return true;
+                return false;
+            }
+
+            return false;
+        };
+
+        // 1. Direct target roles
+        $directTargets = [$ptk_jenis];
+        if ($is_waka && !in_array('Wakil Kepala Sekolah', $directTargets, true)) $directTargets[] = 'Wakil Kepala Sekolah';
+        if ($is_ka_tu && !in_array('Kepala TU', $directTargets, true)) $directTargets[] = 'Kepala TU';
+        if ($is_ka_perpus && !in_array('Kepala Perpus', $directTargets, true)) $directTargets[] = 'Kepala Perpus';
+        if ($is_ka_lab && !in_array('Kepala Lab', $directTargets, true)) $directTargets[] = 'Kepala Lab';
+
+        $matched = [];
+        foreach ($allInstrumen as $row) {
+            $normKat = normalizeAngketKategori($row['kategori'] ?? '', $is_staff);
+            $isTambahanKat = in_array($normKat, $allowed_tambahan, true);
+            if ($isTambahanKat && $rater_mode !== 'kepsek') {
+                continue;
+            }
+            if ($matchesRoleAndTarget($row, $directTargets)) {
+                $row['norm_kategori'] = $normKat;
+                $row['is_tambahan'] = $isTambahanKat;
+                $matched[(int)$row['instrumen_id']] = $row;
+            }
+        }
+
+        // 2. Base-role inheritance: Wakil Kepala Sekolah, Kepala TU, Kepala Perpus, dan Kepala Lab
+        // wajib mewarisi instrumen kompetensi pokok ("Sebagai Guru" / "Sebagai Staf") apabila belum diset langsung
+        $needsBaseInheritance = ($is_waka || $is_ka_tu || $is_ka_perpus || $is_ka_lab);
+        if ($needsBaseInheritance) {
+            $reqMainKats = $is_staff
+                ? ['Kepribadian', 'Sosial', 'Teknis']
+                : ['Pedagogik', 'Kepribadian', 'Sosial', 'Profesional'];
+
+            $presentMainKats = [];
+            foreach ($matched as $m) {
+                if (!$m['is_tambahan'] && in_array($m['norm_kategori'], $reqMainKats, true)) {
+                    $presentMainKats[$m['norm_kategori']] = true;
+                }
+            }
+
+            $missingMainKats = [];
+            foreach ($reqMainKats as $rk) {
+                if (empty($presentMainKats[$rk])) $missingMainKats[] = $rk;
+            }
+
+            if (!empty($missingMainKats)) {
+                $fallbackTargets = [];
+                if (!$is_staff) {
+                    if (stripos($ptk_jenis, 'bk') !== false) {
+                        $fallbackTargets = ['Guru BK', 'Guru Mata Pelajaran', 'Guru'];
+                    } else {
+                        // Wakil Kepala Sekolah & Guru lainnya mewarisi instrumen Guru Mata Pelajaran / Guru
+                        $fallbackTargets = ['Guru Mata Pelajaran', 'Guru'];
+                    }
+                } elseif ($flags['group_role'] === 'Tenaga Administrasi') {
+                    $fallbackTargets = ['Tenaga Administrasi', 'TU', 'Tata Usaha'];
+                } elseif ($flags['group_role'] === 'Pustakawan') {
+                    $fallbackTargets = ['Pustakawan'];
+                } elseif ($flags['group_role'] === 'IT-Support') {
+                    $fallbackTargets = ['IT-Support'];
+                }
+
+                if (!empty($fallbackTargets)) {
+                    // Populate one fallback role at a time so we don't mix Guru BK + Guru Mapel if Guru Mapel already has it
+                    foreach ($fallbackTargets as $fbRole) {
+                        $stillMissing = [];
+                        foreach ($reqMainKats as $rk) {
+                            if (empty($presentMainKats[$rk])) $stillMissing[] = $rk;
+                        }
+                        if (empty($stillMissing)) break;
+
+                        $addedCatsInPass = [];
+                        foreach ($allInstrumen as $row) {
+                            $id = (int)$row['instrumen_id'];
+                            if (isset($matched[$id])) continue;
+
+                            $normKat = normalizeAngketKategori($row['kategori'] ?? '', $is_staff);
+                            if (in_array($normKat, $allowed_tambahan, true)) continue;
+                            if (!in_array($normKat, $stillMissing, true)) continue;
+
+                            if ($matchesRoleAndTarget($row, [$fbRole], [$fbRole])) {
+                                $row['norm_kategori'] = $normKat;
+                                $row['is_tambahan'] = false;
+                                $matched[$id] = $row;
+                                $addedCatsInPass[$normKat] = true;
+                            }
+                        }
+                        foreach ($addedCatsInPass as $ck => $_) {
+                            $presentMainKats[$ck] = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Order cleanly: Main competencies in standard Guideline order first, Tugas Tambahan second
+        $mainOrder = $is_staff
+            ? ['Kepribadian' => 1, 'Sosial' => 2, 'Teknis' => 3]
+            : ['Pedagogik' => 1, 'Kepribadian' => 2, 'Sosial' => 3, 'Profesional' => 4];
+        $tambahanOrder = ['Manajerial' => 101, 'Kepemimpinan' => 102, 'Teknis' => 103, 'Kewirausahaan' => 104];
+
+        $result = array_values($matched);
+        usort($result, function ($a, $b) use ($mainOrder, $tambahanOrder) {
+            $aTam = !empty($a['is_tambahan']) ? 1 : 0;
+            $bTam = !empty($b['is_tambahan']) ? 1 : 0;
+            if ($aTam !== $bTam) return $aTam - $bTam;
+
+            $aRank = $aTam ? ($tambahanOrder[$a['norm_kategori']] ?? 199) : ($mainOrder[$a['norm_kategori']] ?? 99);
+            $bRank = $bTam ? ($tambahanOrder[$b['norm_kategori']] ?? 199) : ($mainOrder[$b['norm_kategori']] ?? 99);
+            if ($aRank !== $bRank) return $aRank - $bRank;
+
+            $aUrut = (int)($a['urutan'] ?? 0);
+            $bUrut = (int)($b['urutan'] ?? 0);
+            if ($aUrut !== $bUrut) return $aUrut - $bUrut;
+
+            return ((int)$a['instrumen_id']) - ((int)$b['instrumen_id']);
+        });
+
+        return $result;
+    }
+}
+
 if (!function_exists('calculateAngketScores')) {
     /**
      * Aggregate angket evaluations, separate main vs Tugas Tambahan, and convert to scale 100.
@@ -392,7 +627,7 @@ if (!function_exists('calculateAngketScores')) {
         $stdOrder = $is_staff
             ? ['Kepribadian', 'Sosial', 'Teknis']
             : ['Pedagogik', 'Kepribadian', 'Sosial', 'Profesional'];
-        $ordered_kats = array_values(array_intersect($stdOrder, $kategori_list));
+        $ordered_kats = $stdOrder;
         foreach ($kategori_list as $k) {
             if (!in_array($k, $ordered_kats, true)) {
                 $ordered_kats[] = $k;
@@ -409,9 +644,18 @@ if (!function_exists('calculateAngketScores')) {
         $agg_tambahan = [];
         foreach ($rawScores as $row) {
             $ptype_raw = strtolower(trim((string)$row['penilai_type']));
-            if (strpos($ptype_raw, 'siswa') !== false || strpos($ptype_raw, 'murid') !== false) {
+            $rater_role = strtolower(trim((string)($row['rater_role'] ?? '')));
+            $t_jab = trim((string)($row['target_jabatan'] ?? ''));
+
+            if (strpos($ptype_raw, 'siswa') !== false || strpos($ptype_raw, 'murid') !== false || $rater_role === 'siswa') {
                 $ptype = 'siswa';
-            } elseif ($ptype_raw === 'kepala sekolah' || strpos($ptype_raw, 'kepsek') !== false) {
+            } elseif (
+                $ptype_raw === 'kepala sekolah' ||
+                strpos($ptype_raw, 'kepsek') !== false ||
+                strpos($ptype_raw, 'kepala sekolah') !== false ||
+                $rater_role === 'kepsek' ||
+                strcasecmp($t_jab, 'Kepala Sekolah') === 0
+            ) {
                 $ptype = 'kepsek';
             } elseif ($row['rater_ptk_id'] != null && (int)$row['rater_ptk_id'] === (int)$row['dinilai_ptk_id']) {
                 $ptype = 'sendiri';

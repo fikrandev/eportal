@@ -3,6 +3,7 @@
  * E-Performance — Instrumen & Penilai API
  */
 require_once __DIR__ . '/config_perf.php';
+require_once __DIR__ . '/scoring_helper.php';
 
 $auth = perf_auth_check();
 $role = $auth['role'];
@@ -303,42 +304,23 @@ try {
                         ];
                     }
                 } else if (strtolower($role) === 'kepsek' || strtolower($role) === 'kepala sekolah') {
-                    // Hitung target expected dengan iterasi masing-masing jenis PTK agar akurat (mirip dashboardStats)
-                    $stmtTargets = $db->prepare("SELECT jenis_ptk, COUNT(id) as jml FROM perf_ptk WHERE status = 1 AND jenis_ptk != 'Kepala Sekolah' GROUP BY jenis_ptk");
+                    // Hitung target expected termasuk pewarisan instrumen Sebagai Guru untuk Wakil Kepala Sekolah
+                    $stmtTargets = $db->prepare("SELECT jenis_ptk, jabatan, COUNT(id) as jml FROM perf_ptk WHERE status = 1 AND jenis_ptk != 'Kepala Sekolah' GROUP BY jenis_ptk, jabatan");
                     $stmtTargets->execute();
                     $target_groups = $stmtTargets->fetchAll(PDO::FETCH_ASSOC);
-                    
-                    $stmtQ_dyn = $db->prepare("
-                        SELECT COUNT(id) FROM perf_instrumen WHERE periode_id = ? AND is_manual = 0 AND (
-                            (
-                                (FIND_IN_SET(?, target_jabatan) > 0 OR FIND_IN_SET(?, target_jabatan) > 0)
-                                AND (target_dinilai = 'Semua' OR FIND_IN_SET(?, target_dinilai) > 0)
-                            )
-                            OR
-                            (
-                                FIND_IN_SET(?, target_jabatan) > 0 
-                                AND (target_dinilai = 'Semua' OR FIND_IN_SET(?, target_dinilai) > 0 OR FIND_IN_SET(?, target_dinilai) > 0)
-                            )
-                            OR
-                            (FIND_IN_SET(?, target_jabatan) > 0 AND FIND_IN_SET(?, target_dinilai) > 0)
-                        )
-                    ");
-                    
-                    $rater_str = 'Kepala Sekolah';
-                    $rater_fallback = 'Kepala Sekolah';
-                    $rater_str_self = 'Kepala Sekolah';
+                    $allPeriodInstrumen = perfLoadPeriodInstrumen($db, (int)$periode_id);
                     
                     $total_expected = 0;
                     foreach ($target_groups as $tg) {
-                        $t_jenis = $tg['jenis_ptk'] ?: 'Guru';
-                        $stmtQ_dyn->execute([
-                            $periode_id,
-                            $rater_str, $rater_fallback, $t_jenis,
-                            $rater_str_self, $t_jenis, $rater_str_self,
-                            $t_jenis, $rater_str_self
-                        ]);
-                        $q_per_target = (int)$stmtQ_dyn->fetchColumn();
-                        $total_expected += ($q_per_target * $tg['jml']);
+                        $matchedQ = perfGetInstrumenForTarget(
+                            $db,
+                            (int)$periode_id,
+                            'kepsek',
+                            ['jenis_ptk' => $tg['jenis_ptk'] ?: 'Guru', 'jabatan' => $tg['jabatan'] ?? ''],
+                            'Kepala Sekolah',
+                            $allPeriodInstrumen
+                        );
+                        $total_expected += (count($matchedQ) * (int)$tg['jml']);
                     }
                     
                     if ($total_expected === 0) $total_expected = 1;
@@ -528,47 +510,27 @@ try {
             }
 
             // Get all PTK
-            $stmtP = $db->query("SELECT id, nama, jenis_ptk FROM perf_ptk WHERE status = 1 ORDER BY nama ASC");
+            $stmtP = $db->query("SELECT id, nama, jenis_ptk, jabatan FROM perf_ptk WHERE status = 1 ORDER BY nama ASC");
             $ptks = $stmtP->fetchAll(PDO::FETCH_ASSOC);
-
-            // Pre-compile statement to check targets
-            $stmtChk = $db->prepare("
-                SELECT COUNT(id) FROM perf_instrumen WHERE periode_id = ? AND is_manual = 0 AND (
-                    (
-                        (FIND_IN_SET(?, target_jabatan) > 0 OR FIND_IN_SET(?, target_jabatan) > 0)
-                        AND (target_dinilai = 'Semua' OR FIND_IN_SET(?, target_dinilai) > 0)
-                    )
-                    OR
-                    (
-                        FIND_IN_SET(?, target_jabatan) > 0 
-                        AND (target_dinilai = 'Semua' OR FIND_IN_SET(?, target_dinilai) > 0 OR FIND_IN_SET(?, target_dinilai) > 0)
-                    )
-                    OR
-                    (FIND_IN_SET(?, target_jabatan) > 0 AND FIND_IN_SET(?, target_dinilai) > 0)
-                )
-            ");
+            $allPeriodInstrumen = perfLoadPeriodInstrumen($db, (int)$periode_id);
 
             $laporan_data = [];
             foreach ($ptks as $p) {
                 $total_expected = 0;
-                $ptk_id = $p['id'];
+                $ptk_id = (int)$p['id'];
                 $jenis_ptk = $p['jenis_ptk'];
+                $ptkInfo = ['jenis_ptk' => $jenis_ptk, 'jabatan' => $p['jabatan'] ?? ''];
+                $kepsekExpectedQuestions = [];
 
                 if (strtolower($jenis_ptk) === 'kepala sekolah') {
-                    // Kepsek only evaluated by Kepsek
-                    $rater_str = 'Kepala Sekolah';
-                    $rater_fallback = 'Kepala Sekolah';
-                    $stmtChk->execute([$periode_id, $rater_str, $rater_fallback, $jenis_ptk, $rater_str, $jenis_ptk, $rater_str, $jenis_ptk, $rater_str]);
-                    if ($stmtChk->fetchColumn() > 0) {
+                    $kepsekExpectedQuestions = perfGetInstrumenForTarget($db, (int)$periode_id, 'kepsek', $ptkInfo, 'Kepala Sekolah', $allPeriodInstrumen);
+                    if ($has_kepsek && count($kepsekExpectedQuestions) > 0) {
                         $total_expected += $total_kepsek;
                     }
                 } else {
-                    // Guru / Staf
                     if ($has_siswa) {
-                        $rater_str = 'Siswa';
-                        $rater_fallback = 'Siswa';
-                        $stmtChk->execute([$periode_id, $rater_str, $rater_fallback, $jenis_ptk, $rater_str, $jenis_ptk, $rater_str, $jenis_ptk, $rater_str]);
-                        if ($stmtChk->fetchColumn() > 0) {
+                        $siswaQ = perfGetInstrumenForTarget($db, (int)$periode_id, 'siswa', $ptkInfo, 'Siswa', $allPeriodInstrumen);
+                        if (count($siswaQ) > 0) {
                             $jp = strtolower($jenis_ptk);
                             if ($jp === 'tu') {
                                 $total_expected += $total_siswa;
@@ -579,30 +541,22 @@ try {
                             }
                         }
                     }
-                    
+
                     if ($has_kepsek) {
-                        $rater_str = 'Kepala Sekolah';
-                        $rater_fallback = 'Kepala Sekolah';
-                        $stmtChk->execute([$periode_id, $rater_str, $rater_fallback, $jenis_ptk, $rater_str, $jenis_ptk, $rater_str, $jenis_ptk, $rater_str]);
-                        if ($stmtChk->fetchColumn() > 0) {
+                        $kepsekExpectedQuestions = perfGetInstrumenForTarget($db, (int)$periode_id, 'kepsek', $ptkInfo, 'Kepala Sekolah', $allPeriodInstrumen);
+                        if (count($kepsekExpectedQuestions) > 0) {
                             $total_expected += $total_kepsek;
                         }
                     }
-                    
+
                     if ($has_guru) {
-                        // Diri Sendiri
-                        $rater_str = 'Diri Sendiri';
-                        $rater_fallback = 'Diri Sendiri';
-                        $stmtChk->execute([$periode_id, $rater_str, $rater_fallback, $jenis_ptk, $rater_str, $jenis_ptk, $rater_str, $jenis_ptk, $rater_str]);
-                        if ($stmtChk->fetchColumn() > 0) {
+                        $selfQ = perfGetInstrumenForTarget($db, (int)$periode_id, 'self', $ptkInfo, $jenis_ptk, $allPeriodInstrumen);
+                        if (count($selfQ) > 0) {
                             $total_expected += 1;
                         }
-                        
-                        // Peers
-                        $rater_str = 'Teman Sejawat';
-                        $rater_fallback = 'Teman Sejawat';
-                        $stmtChk->execute([$periode_id, $rater_str, $rater_fallback, $jenis_ptk, $rater_str, $jenis_ptk, $rater_str, $jenis_ptk, $rater_str]);
-                        if ($stmtChk->fetchColumn() > 0) {
+
+                        $peerQ = perfGetInstrumenForTarget($db, (int)$periode_id, 'peer', $ptkInfo, $jenis_ptk, $allPeriodInstrumen);
+                        if (count($peerQ) > 0) {
                             $stmtPeer = $db->prepare("SELECT COUNT(*) FROM perf_penugasan_sejawat WHERE dinilai_ptk_id = ? AND periode_id = ?");
                             $stmtPeer->execute([$ptk_id, $periode_id]);
                             $total_expected += (int)$stmtPeer->fetchColumn();
@@ -612,10 +566,32 @@ try {
 
                 if ($total_expected === 0) $total_expected = 1;
 
-                // Total people who have answered for this PTK
-                $stmtAns = $db->prepare("SELECT COUNT(DISTINCT penilai_id, penilai_type) FROM perf_penilaian WHERE dinilai_ptk_id = ? AND periode_id = ?");
-                $stmtAns->execute([$ptk_id, $periode_id]);
-                $answered = (int)$stmtAns->fetchColumn();
+                // Hitung penilai non-kepsek yang sudah menjawab
+                $stmtAnsNonKs = $db->prepare("SELECT COUNT(DISTINCT penilai_id, penilai_type) FROM perf_penilaian WHERE dinilai_ptk_id = ? AND periode_id = ? AND LOWER(penilai_type) NOT IN ('kepsek', 'kepala sekolah')");
+                $stmtAnsNonKs->execute([$ptk_id, $periode_id]);
+                $answered = (int)$stmtAnsNonKs->fetchColumn();
+
+                // Untuk Kepala Sekolah: jika target punya soal Sebagai Guru + Tugas Tambahan (misal Waka),
+                // baru dihitung selesai penuh apabila keduanya sudah dinilai (bukan hanya salah satu)
+                if ($has_kepsek && count($kepsekExpectedQuestions) > 0) {
+                    $mainIds = [];
+                    $tamIds = [];
+                    foreach ($kepsekExpectedQuestions as $kq) {
+                        if (!empty($kq['is_tambahan'])) $tamIds[] = (int)$kq['instrumen_id'];
+                        else $mainIds[] = (int)$kq['instrumen_id'];
+                    }
+                    $stmtAnsKs = $db->prepare("SELECT DISTINCT instrumen_id FROM perf_penilaian WHERE dinilai_ptk_id = ? AND periode_id = ? AND LOWER(penilai_type) IN ('kepsek', 'kepala sekolah')");
+                    $stmtAnsKs->execute([$ptk_id, $periode_id]);
+                    $ksAnsweredIds = array_map('intval', $stmtAnsKs->fetchAll(PDO::FETCH_COLUMN));
+
+                    if (!empty($ksAnsweredIds)) {
+                        $hasMainDone = empty($mainIds) || count(array_intersect($mainIds, $ksAnsweredIds)) > 0;
+                        $hasTamDone = empty($tamIds) || count(array_intersect($tamIds, $ksAnsweredIds)) > 0;
+                        if ($hasMainDone && $hasTamDone) {
+                            $answered += max(1, $total_kepsek);
+                        }
+                    }
+                }
 
                 $laporan_data[] = [
                     'id' => $ptk_id,
@@ -623,7 +599,7 @@ try {
                     'jenis_ptk' => $p['jenis_ptk'],
                     'answered' => $answered,
                     'total' => $total_expected,
-                    'percentage' => round(($answered / $total_expected) * 100)
+                    'percentage' => min(100, (int)round(($answered / $total_expected) * 100))
                 ];
             }
 
@@ -656,7 +632,7 @@ try {
             $stmt2->execute([$from_id]);
             $questions = $stmt2->fetchAll(PDO::FETCH_ASSOC);
             
-            $ins = $db->prepare("INSERT INTO perf_instrumen (periode_id, kode, kategori, target_jabatan, pertanyaan, urutan, bobot, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+            $ins = $db->prepare("INSERT INTO perf_instrumen (periode_id, kode, kategori, target_jabatan, target_dinilai, pertanyaan, urutan, bobot, is_manual, tipe_jawaban, skor_ya, skor_tidak, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
             $c = 0;
             foreach ($questions as $q) {
                 $ins->execute([
@@ -664,9 +640,14 @@ try {
                     'P'.time().$c,
                     $q['kategori'],
                     $q['target_jabatan'],
+                    $q['target_dinilai'] ?? 'Semua',
                     $q['pertanyaan'],
                     $q['urutan'],
                     $q['bobot'],
+                    (int)($q['is_manual'] ?? 0),
+                    $q['tipe_jawaban'] ?? 'angka',
+                    (float)($q['skor_ya'] ?? 100),
+                    (float)($q['skor_tidak'] ?? 0),
                     $q['status']
                 ]);
                 $c++;

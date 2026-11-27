@@ -4,6 +4,7 @@
  * Handle endpoint untuk isi penilaian (Phase 2)
  */
 require_once __DIR__ . '/config_perf.php';
+require_once __DIR__ . '/scoring_helper.php';
 
 $action = isset($_GET['action']) ? $_GET['action'] : '';
 
@@ -172,10 +173,9 @@ function listTarget() {
                 'target_type' => 'Guru/Staf' // Dari sudut pandang siswa, ini Guru/Staf
             ];
         }
-    } else if (strtolower($actualTupoksi) === 'kepala sekolah' || strtolower($actualTupoksi) === 'plt. kepala sekolah') {
-        // Kepala Sekolah menilai SEMUA PTK (termasuk dirinya sendiri atau tidak? Biasanya orang lain saja)
-        // Kita tampilkan semua PTK
-        $stmt = $db->prepare("SELECT id, nama, jenis_ptk, mata_pelajaran FROM perf_ptk WHERE status = 1 ORDER BY nama ASC");
+    } else if (strtolower($actualTupoksi) === 'kepala sekolah' || strtolower($actualTupoksi) === 'plt. kepala sekolah' || strtolower($role) === 'kepsek') {
+        // Kepala Sekolah menilai SEMUA PTK (selain Kepala Sekolah sendiri)
+        $stmt = $db->prepare("SELECT id, nama, jenis_ptk, jabatan, mata_pelajaran FROM perf_ptk WHERE status = 1 AND jenis_ptk != 'Kepala Sekolah' ORDER BY nama ASC");
         $stmt->execute();
         $ptks = $stmt->fetchAll(PDO::FETCH_ASSOC);
         
@@ -184,8 +184,9 @@ function listTarget() {
                 'target_id' => $p['id'],
                 'nama' => $p['nama'],
                 'jenis_ptk' => $p['jenis_ptk'],
+                'jabatan' => $p['jabatan'] ?? '',
                 'mata_pelajaran' => $p['mata_pelajaran'] ?? null,
-                'target_type' => ($p['id'] == $perf_user_id) ? 'Diri Sendiri' : ''
+                'target_type' => ($p['id'] == $ptk_id) ? 'Diri Sendiri' : ''
             ];
         }
     } else {
@@ -320,85 +321,43 @@ function listTarget() {
     }
     
     // Cek progress pengisian untuk masing-masing target
+    $allPeriodInstrumen = perfLoadPeriodInstrumen($db, (int)$periode_id);
+    $isKepsekRater = (strtolower($actualTupoksi) === 'kepala sekolah' || strtolower($actualTupoksi) === 'plt. kepala sekolah' || strtolower($role) === 'kepsek');
+
     foreach ($targets as &$t) {
-        $penilai_type = 'guru';
         if ($role === 'siswa') {
-            $penilai_type = 'siswa';
-        } else if (strtolower($actualTupoksi) === 'kepala sekolah') {
-            $penilai_type = 'kepsek';
-        } else if (isset($self) && $self) {
-            $penilai_type = strtolower($self['jenis_ptk']);
-        }
-        
-        // Tentukan role penilai dalam bentuk string untuk mencocokkan target_jabatan (yang sebenarnya berisi target_penilai)
-        $rater_str = 'Guru';
-        $rater_fallback = 'Guru';
-        $rater_str_self = 'Guru';
-        
-        if ($role === 'siswa') {
-            $rater_str = 'Siswa';
-            $rater_fallback = 'Siswa';
-            $rater_str_self = 'Siswa';
-        } else if (strtolower($actualTupoksi) === 'kepala sekolah') {
-            $rater_str = 'Kepala Sekolah';
-            $rater_fallback = 'Kepala Sekolah';
-            $rater_str_self = 'Kepala Sekolah';
+            $raterMode = 'siswa';
+        } elseif ($isKepsekRater) {
+            $raterMode = 'kepsek';
+        } elseif ($ptk_id == $t['target_id']) {
+            $raterMode = 'self';
         } else {
-            if ($ptk_id == $t['target_id']) {
-                $rater_str = $actualTupoksi;
-                $rater_str_self = 'Diri Sendiri';
-                $rater_fallback = (stripos($actualTupoksi, 'Guru') !== false || stripos($actualTupoksi, 'Wali Kelas') !== false) ? 'Guru' : $actualTupoksi;
-            } else {
-                $rater_str = $actualTupoksi;
-                $rater_str_self = 'Teman Sejawat';
-                $rater_fallback = (stripos($actualTupoksi, 'Guru') !== false || stripos($actualTupoksi, 'Wali Kelas') !== false) ? 'Guru' : $actualTupoksi;
-            }
+            $raterMode = 'peer';
         }
 
-        // Determine strict target for dinilai (Diri Sendiri, Teman Sejawat, or their actual PTK type)
-        $strict_dinilai = '';
-        if (isset($t['target_type']) && $t['target_type'] === 'Diri Sendiri') {
-            $strict_dinilai = 'Diri Sendiri';
-        } else if (isset($t['target_type']) && $t['target_type'] === 'Teman Sejawat') {
-            $strict_dinilai = 'Teman Sejawat';
-        } else {
-            $strict_dinilai = $t['jenis_ptk'];
-        }
+        $matchedQuestions = perfGetInstrumenForTarget(
+            $db,
+            (int)$periode_id,
+            $raterMode,
+            ['jenis_ptk' => $t['jenis_ptk'], 'jabatan' => $t['jabatan'] ?? ''],
+            $actualTupoksi,
+            $allPeriodInstrumen
+        );
+        $total = count($matchedQuestions);
 
-        // Count total questions available for this rater (match either actual tupoksi, fallback, or Diri Sendiri)
-        $stmtTotal = $db->prepare("
-            SELECT COUNT(id) 
-            FROM perf_instrumen 
-            WHERE periode_id = ? AND is_manual = 0 AND (
-                (
-                    (FIND_IN_SET(?, target_jabatan) > 0 OR FIND_IN_SET(?, target_jabatan) > 0)
-                    AND (target_dinilai = 'Semua' OR FIND_IN_SET(?, target_dinilai) > 0)
-                )
-                OR
-                (
-                    FIND_IN_SET(?, target_jabatan) > 0 
-                    AND (target_dinilai = 'Semua' OR FIND_IN_SET(?, target_dinilai) > 0 OR FIND_IN_SET(?, target_dinilai) > 0)
-                )
-                OR
-                (FIND_IN_SET(?, target_jabatan) > 0 AND FIND_IN_SET(?, target_dinilai) > 0)
-            )
-        ");
-        $stmtTotal->execute([
-            $periode_id, 
-            $rater_str, $rater_fallback, $t['jenis_ptk'],
-            $rater_str_self, $t['jenis_ptk'], $rater_str_self,
-            $t['jenis_ptk'], $rater_str_self
-        ]);
-        $total = (int)$stmtTotal->fetchColumn();
-        
-        // Count answered
-        $stmtAns = $db->prepare("
-            SELECT COUNT(*) 
-            FROM perf_penilaian 
-            WHERE periode_id = ? AND penilai_id = ? AND dinilai_ptk_id = ?
-        ");
-        $stmtAns->execute([$periode_id, $perf_user_id, $t['target_id']]);
-        $answered = (int)$stmtAns->fetchColumn();
+        // Count answered among matched questions
+        $answered = 0;
+        if ($total > 0) {
+            $qIds = array_map(fn($q) => (int)$q['instrumen_id'], $matchedQuestions);
+            $inQ = implode(',', $qIds);
+            $stmtAns = $db->prepare("
+                SELECT COUNT(DISTINCT instrumen_id) 
+                FROM perf_penilaian 
+                WHERE periode_id = ? AND penilai_id = ? AND dinilai_ptk_id = ? AND instrumen_id IN ($inQ)
+            ");
+            $stmtAns->execute([$periode_id, $perf_user_id, $t['target_id']]);
+            $answered = (int)$stmtAns->fetchColumn();
+        }
         
         $t['progress_answered'] = $answered;
         $t['progress_total'] = $total;
@@ -443,32 +402,19 @@ function getForm() {
         }
     }
     
-    $stmtT = $db->prepare("SELECT jenis_ptk FROM perf_ptk WHERE id = ?");
+    $stmtT = $db->prepare("SELECT jenis_ptk, jabatan FROM perf_ptk WHERE id = ?");
     $stmtT->execute([$target_id]);
     $target_ptk = $stmtT->fetch(PDO::FETCH_ASSOC);
-    
-    $target_jenis_ptk = $target_ptk ? strtolower($target_ptk['jenis_ptk']) : 'guru';
 
-    // Tentukan penilai_type (untuk record jawaban) & rater_str (untuk filter soal di target_jabatan)
     $penilai_type = 'guru';
-    $rater_str = 'Guru';
-    
-    $rater_fallback = 'Guru';
-    $rater_str_self = 'Guru';
-    $target_type_str = '';
-    
+    $isKepsekRater = (strtolower($actualTupoksi) === 'kepala sekolah' || strtolower($actualTupoksi) === 'plt. kepala sekolah' || strtolower($role) === 'kepsek');
+
     if ($role === 'siswa') {
         $penilai_type = 'siswa';
-        $rater_str = 'Siswa';
-        $rater_fallback = 'Siswa';
-        $rater_str_self = 'Siswa';
-        $target_type_str = 'Guru/Staf';
-    } else if (strtolower($actualTupoksi) === 'kepala sekolah') {
+        $raterMode = 'siswa';
+    } elseif ($isKepsekRater) {
         $penilai_type = 'kepsek';
-        $rater_str = 'Kepala Sekolah';
-        $rater_fallback = 'Kepala Sekolah';
-        $rater_str_self = 'Kepala Sekolah';
-        $target_type_str = '';
+        $raterMode = 'kepsek';
     } else {
         $stmt = $db->prepare("SELECT jenis_ptk FROM perf_ptk WHERE id = ? LIMIT 1");
         $stmt->execute([$ptk_id]);
@@ -476,58 +422,16 @@ function getForm() {
         if ($self) {
             $penilai_type = strtolower($self['jenis_ptk']);
         }
-        
-        if ($ptk_id == $target_id) {
-            $rater_str = $actualTupoksi;
-            $rater_str_self = 'Diri Sendiri';
-            $rater_fallback = (stripos($actualTupoksi, 'Guru') !== false || stripos($actualTupoksi, 'Wali Kelas') !== false) ? 'Guru' : $actualTupoksi;
-            $target_type_str = 'Diri Sendiri';
-        } else {
-            $rater_str = $actualTupoksi;
-            $rater_str_self = 'Teman Sejawat';
-            $rater_fallback = (stripos($actualTupoksi, 'Guru') !== false || stripos($actualTupoksi, 'Wali Kelas') !== false) ? 'Guru' : $actualTupoksi;
-            $target_type_str = 'Teman Sejawat';
-        }
+        $raterMode = ($ptk_id == $target_id) ? 'self' : 'peer';
     }
 
-    $actual_target_jenis = $target_ptk ? $target_ptk['jenis_ptk'] : 'Guru';
-
-    // Determine strict target for dinilai
-    $strict_dinilai = '';
-    if (isset($target_type_str) && $target_type_str === 'Diri Sendiri') {
-        $strict_dinilai = 'Diri Sendiri';
-    } else if (isset($target_type_str) && $target_type_str === 'Teman Sejawat') {
-        $strict_dinilai = 'Teman Sejawat';
-    } else {
-        $strict_dinilai = $actual_target_jenis;
-    }
-
-    // Ambil pertanyaan (cocokkan target_jabatan dengan tupoksi asli, fallback, ATAU 'Diri Sendiri' jika sedang menilai diri sendiri)
-    $stmtQ = $db->prepare("
-        SELECT id as instrumen_id, kategori, pertanyaan
-        FROM perf_instrumen
-        WHERE periode_id = ? AND is_manual = 0 AND (
-            (
-                (FIND_IN_SET(?, target_jabatan) > 0 OR FIND_IN_SET(?, target_jabatan) > 0)
-                AND (target_dinilai = 'Semua' OR FIND_IN_SET(?, target_dinilai) > 0)
-            )
-            OR
-            (
-                FIND_IN_SET(?, target_jabatan) > 0 
-                AND (target_dinilai = 'Semua' OR FIND_IN_SET(?, target_dinilai) > 0 OR FIND_IN_SET(?, target_dinilai) > 0)
-            )
-            OR
-            (FIND_IN_SET(?, target_jabatan) > 0 AND FIND_IN_SET(?, target_dinilai) > 0)
-        )
-        ORDER BY kategori ASC, urutan ASC, id ASC
-    ");
-    $stmtQ->execute([
-        $periode_id, 
-        $rater_str, $rater_fallback, $actual_target_jenis,
-        $rater_str_self, $actual_target_jenis, $rater_str_self,
-        $actual_target_jenis, $rater_str_self
-    ]);
-    $questions = $stmtQ->fetchAll(PDO::FETCH_ASSOC);
+    $questions = perfGetInstrumenForTarget(
+        $db,
+        (int)$periode_id,
+        $raterMode,
+        $target_ptk ?: ['jenis_ptk' => $target_jenis ?: 'Guru', 'jabatan' => ''],
+        $actualTupoksi
+    );
 
     // Ambil jawaban yang sudah ada
     $stmtA = $db->prepare("
@@ -667,73 +571,38 @@ function dashboardStats() {
     
     $total_targets = count($targets);
     $selesai = 0;
-    
-    $penilai_type = 'guru';
-    if ($role === 'siswa') $penilai_type = 'siswa';
-    else if (strtolower($actualTupoksi) === 'kepala sekolah') $penilai_type = 'kepsek';
-    else if (isset($self) && $self) $penilai_type = strtolower($self['jenis_ptk']);
-
-    $rater_str = 'Guru';
-    $rater_fallback = 'Guru';
-    
-    if ($role === 'siswa') {
-        $rater_str = 'Siswa';
-        $rater_fallback = 'Siswa';
-    } else if (strtolower($actualTupoksi) === 'kepala sekolah') {
-        $rater_str = 'Kepala Sekolah';
-        $rater_fallback = 'Kepala Sekolah';
-    } else {
-        $rater_str = $actualTupoksi;
-    }
+    $allPeriodInstrumen = perfLoadPeriodInstrumen($db, (int)$periode_id);
+    $isKepsekRater = (strtolower($actualTupoksi) === 'kepala sekolah' || strtolower($actualTupoksi) === 'plt. kepala sekolah' || strtolower($role) === 'kepsek');
 
     foreach ($targets as $t) {
-        $actual_target_jenis = $t['jenis_ptk'] ?? 'Guru';
-        $t_strict = $actual_target_jenis;
-
-        if ($role !== 'siswa' && strtolower($actualTupoksi) !== 'kepala sekolah') {
-            if ($ptk_id == $t['target_id']) {
-                $r_str = $rater_str; // $rater_str holds tupoksi here
-                $r_str_self = 'Diri Sendiri';
-                $r_fallback = (stripos($rater_str, 'Guru') !== false || stripos($rater_str, 'Wali Kelas') !== false) ? 'Guru' : $rater_str;
-                $t_strict = 'Diri Sendiri';
-            } else {
-                $r_str = $rater_str;
-                $r_str_self = 'Teman Sejawat';
-                $r_fallback = (stripos($rater_str, 'Guru') !== false || stripos($rater_str, 'Wali Kelas') !== false) ? 'Guru' : $rater_str;
-                $t_strict = 'Teman Sejawat';
-            }
+        if ($role === 'siswa') {
+            $raterMode = 'siswa';
+        } elseif ($isKepsekRater) {
+            $raterMode = 'kepsek';
+        } elseif ($ptk_id == $t['target_id']) {
+            $raterMode = 'self';
         } else {
-            $r_str = $rater_str;
-            $r_str_self = $rater_str;
-            $r_fallback = $rater_fallback;
+            $raterMode = 'peer';
         }
-        
-        $stmtTotal = $db->prepare("
-            SELECT COUNT(id) FROM perf_instrumen WHERE periode_id = ? AND is_manual = 0 AND (
-                (
-                    (FIND_IN_SET(?, target_jabatan) > 0 OR FIND_IN_SET(?, target_jabatan) > 0)
-                    AND (target_dinilai = 'Semua' OR FIND_IN_SET(?, target_dinilai) > 0)
-                )
-                OR
-                (
-                    FIND_IN_SET(?, target_jabatan) > 0 
-                    AND (target_dinilai = 'Semua' OR FIND_IN_SET(?, target_dinilai) > 0 OR FIND_IN_SET(?, target_dinilai) > 0)
-                )
-                OR
-                (FIND_IN_SET(?, target_jabatan) > 0 AND FIND_IN_SET(?, target_dinilai) > 0)
-            )
-        ");
-        $stmtTotal->execute([
-            $periode_id, 
-            $r_str, $r_fallback, $actual_target_jenis,
-            $r_str_self, $actual_target_jenis, $r_str_self,
-            $actual_target_jenis, $r_str_self
-        ]);
-        $total_q = (int)$stmtTotal->fetchColumn();
-        
-        $stmtAns = $db->prepare("SELECT COUNT(*) FROM perf_penilaian WHERE periode_id = ? AND penilai_id = ? AND dinilai_ptk_id = ?");
-        $stmtAns->execute([$periode_id, $perf_user_id, $t['target_id']]);
-        $answered = (int)$stmtAns->fetchColumn();
+
+        $matchedQ = perfGetInstrumenForTarget(
+            $db,
+            (int)$periode_id,
+            $raterMode,
+            ['jenis_ptk' => $t['jenis_ptk'] ?? 'Guru', 'jabatan' => $t['jabatan'] ?? ''],
+            $actualTupoksi,
+            $allPeriodInstrumen
+        );
+        $total_q = count($matchedQ);
+
+        $answered = 0;
+        if ($total_q > 0) {
+            $qIds = array_map(fn($q) => (int)$q['instrumen_id'], $matchedQ);
+            $inQ = implode(',', $qIds);
+            $stmtAns = $db->prepare("SELECT COUNT(DISTINCT instrumen_id) FROM perf_penilaian WHERE periode_id = ? AND penilai_id = ? AND dinilai_ptk_id = ? AND instrumen_id IN ($inQ)");
+            $stmtAns->execute([$periode_id, $perf_user_id, $t['target_id']]);
+            $answered = (int)$stmtAns->fetchColumn();
+        }
         
         if ($total_q > 0 && $answered >= $total_q) {
             $selesai++;
@@ -779,60 +648,67 @@ function getMatrixKepsek() {
     $penilai_type = 'kepsek';
 
     // 1. Fetch all targets except Kepala Sekolah (karena Kepsek tidak dinilai)
-    $stmtT = $db->prepare("SELECT id, nama, jenis_ptk, mata_pelajaran FROM perf_ptk WHERE status = 1 AND jenis_ptk != 'Kepala Sekolah' ORDER BY jenis_ptk ASC, nama ASC");
+    $stmtT = $db->prepare("SELECT id, niy, nama, jenis_ptk, jabatan, mata_pelajaran FROM perf_ptk WHERE status = 1 AND jenis_ptk != 'Kepala Sekolah' ORDER BY jenis_ptk ASC, nama ASC");
     $stmtT->execute();
     $allTargets = $stmtT->fetchAll(PDO::FETCH_ASSOC);
 
     // Group targets by tupoksi
-    $tabs = [];
-    $ptkIds = [];
+    $rawGroups = [];
     foreach ($allTargets as $t) {
         $jenis = $t['jenis_ptk'] ?: 'Guru';
-        if (!isset($tabs[$jenis])) {
-            $tabs[$jenis] = ['teachers' => [], 'questions' => []];
+        if (!isset($rawGroups[$jenis])) {
+            $rawGroups[$jenis] = [];
         }
-        $tabs[$jenis]['teachers'][] = $t;
-        $ptkIds[] = $t['id'];
+        $rawGroups[$jenis][] = $t;
     }
 
-    // 2. Fetch questions for Kepsek
-    $rater_str = 'Kepala Sekolah';
-    $rater_fallback = 'Kepala Sekolah';
-    $rater_str_self = 'Kepala Sekolah'; // Kepsek doesn't do self/peer in the same way, but just in case.
+    // 2. Fetch questions for Kepsek (with automatic inheritance of Guru competencies for Wakil Kepala Sekolah)
+    $allPeriodInstrumen = perfLoadPeriodInstrumen($db, (int)$periode_id);
+    $tabs = [];
 
-    foreach (array_keys($tabs) as $jenis) {
-        $actual_target_jenis = $jenis;
-        $stmtQ = $db->prepare("
-            SELECT id as instrumen_id, kategori, pertanyaan
-            FROM perf_instrumen
-            WHERE periode_id = ? AND (
-                (
-                    (FIND_IN_SET(?, target_jabatan) > 0 OR FIND_IN_SET(?, target_jabatan) > 0)
-                    AND (target_dinilai = 'Semua' OR FIND_IN_SET(?, target_dinilai) > 0)
-                )
-                OR
-                (
-                    FIND_IN_SET(?, target_jabatan) > 0 
-                    AND (target_dinilai = 'Semua' OR FIND_IN_SET(?, target_dinilai) > 0 OR FIND_IN_SET(?, target_dinilai) > 0)
-                )
-                OR
-                (FIND_IN_SET(?, target_jabatan) > 0 AND FIND_IN_SET(?, target_dinilai) > 0)
-            )
-            AND is_manual = 0
-            ORDER BY kategori ASC, id ASC
-        ");
-        $stmtQ->execute([
-            $periode_id, 
-            $rater_str, $rater_fallback, $actual_target_jenis,
-            $rater_str_self, $actual_target_jenis, $rater_str_self,
-            $actual_target_jenis, $rater_str_self
-        ]);
-        $tabs[$jenis]['questions'] = $stmtQ->fetchAll(PDO::FETCH_ASSOC);
+    foreach ($rawGroups as $jenis => $teachers) {
+        $samplePtk = $teachers[0];
+        $flags = getPtkRoleFlags($samplePtk);
+        $allQuestions = perfGetInstrumenForTarget($db, (int)$periode_id, 'kepsek', $samplePtk, 'Kepala Sekolah', $allPeriodInstrumen);
+
+        $mainQuestions = [];
+        $tambahanQuestions = [];
+        foreach ($allQuestions as $q) {
+            $cleanQ = [
+                'instrumen_id' => $q['instrumen_id'],
+                'kategori'     => $q['norm_kategori'] ?: $q['kategori'],
+                'pertanyaan'   => $q['pertanyaan'],
+            ];
+            if (!empty($q['is_tambahan'])) {
+                $tambahanQuestions[] = $cleanQ;
+            } else {
+                $mainQuestions[] = $cleanQ;
+            }
+        }
+
+        // Jika memiliki soal utama (Sebagai Guru / Staf) SEKALIGUS soal Tugas Tambahan (seperti Wakil Kepala Sekolah / Kepala TU),
+        // pisahkan menjadi 2 tab yang jelas agar Kepala Sekolah tidak melewatkan penilaian sebagai Guru!
+        if (!empty($mainQuestions) && !empty($tambahanQuestions)) {
+            $roleLabel = $flags['is_staff'] ? 'Sebagai Staf' : 'Sebagai Guru';
+            $tabs["{$jenis} ({$roleLabel})"] = [
+                'teachers'  => $teachers,
+                'questions' => $mainQuestions,
+            ];
+            $tabs["{$jenis} (Tugas Tambahan)"] = [
+                'teachers'  => $teachers,
+                'questions' => $tambahanQuestions,
+            ];
+        } else {
+            $tabs[$jenis] = [
+                'teachers'  => $teachers,
+                'questions' => !empty($mainQuestions) ? $mainQuestions : $tambahanQuestions,
+            ];
+        }
     }
 
-    // 3. Fetch all answers submitted by this Kepsek for this periode
+    // 3. Fetch all answers submitted by Kepsek for this periode
     $answers = [];
-    $stmtA = $db->prepare("SELECT dinilai_ptk_id, instrumen_id, nilai FROM perf_penilaian WHERE periode_id = ? AND penilai_id = ? AND penilai_type = 'kepsek'");
+    $stmtA = $db->prepare("SELECT dinilai_ptk_id, instrumen_id, nilai FROM perf_penilaian WHERE periode_id = ? AND (penilai_id = ? OR penilai_type = 'kepsek')");
     $stmtA->execute([$periode_id, $perf_user_id]);
     while ($row = $stmtA->fetch(PDO::FETCH_ASSOC)) {
         $key = $row['instrumen_id'] . '_' . $row['dinilai_ptk_id'];
@@ -854,10 +730,11 @@ function submitMatrixSingle() {
     $db = db();
 
     $isKepsek = false;
+    $tupoksiLower = strtolower(trim($auth['tupoksi'] ?? ''));
     if (isset($auth['type']) && $auth['type'] === 'perf') {
         if (strtolower($auth['role'] ?? '') === 'kepsek') $isKepsek = true;
     } else {
-        if (strtolower(trim($auth['tupoksi'] ?? '')) === 'kepala sekolah') $isKepsek = true;
+        if ($tupoksiLower === 'kepala sekolah' || $tupoksiLower === 'plt. kepala sekolah') $isKepsek = true;
     }
 
     if (!$isKepsek) {
@@ -905,10 +782,11 @@ function submitMatrixMassal() {
     $db = db();
 
     $isKepsek = false;
+    $tupoksiLower = strtolower(trim($auth['tupoksi'] ?? ''));
     if (isset($auth['type']) && $auth['type'] === 'perf') {
         if (strtolower($auth['role'] ?? '') === 'kepsek') $isKepsek = true;
     } else {
-        if (strtolower(trim($auth['tupoksi'] ?? '')) === 'kepala sekolah') $isKepsek = true;
+        if ($tupoksiLower === 'kepala sekolah' || $tupoksiLower === 'plt. kepala sekolah') $isKepsek = true;
     }
 
     if (!$isKepsek) {

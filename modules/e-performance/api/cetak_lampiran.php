@@ -88,6 +88,8 @@ $stmtNilai = $db->prepare("
         p.penilai_id,
         p.dinilai_ptk_id,
         u.perf_ptk_id as rater_ptk_id,
+        u.role as rater_role,
+        i.target_jabatan,
         TRIM(REPLACE(i.kategori, '\xc2\xa0', '')) as kategori,
         p.nilai
     FROM perf_penilaian p
