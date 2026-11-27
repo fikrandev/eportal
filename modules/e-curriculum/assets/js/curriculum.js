@@ -9430,7 +9430,7 @@ title: 'Gagal Mengunci',
                 const $overlay = $(`
                     <div id="genProgressOverlay" style="position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(15,23,42,0.9);backdrop-filter:blur(4px);z-index:99999;display:flex;flex-direction:column;align-items:center;justify-content:center;color:white;font-family:'Inter',sans-serif;">
                         <h2 style="margin-bottom:12px;font-size:24px;font-weight:700">Engine Algoritma Sedang Bekerja...</h2>
-                        <p style="margin-bottom:30px;color:#94a3b8;font-size:16px" id="genProgressText">Mencari kombinasi jadwal terbaik (Estimasi: 8 - 15 detik)</p>
+                        <p style="margin-bottom:30px;color:#94a3b8;font-size:16px" id="genProgressText">Mencari kombinasi jadwal terbaik 100% sesuai aturan (Estimasi: 15 - 30 detik)</p>
                         <div style="width:400px;background:#334155;border-radius:12px;height:16px;overflow:hidden;box-shadow:inset 0 2px 4px rgba(0,0,0,0.3)">
                             <div id="genProgressBar" style="width:0%;background:linear-gradient(90deg, #3b82f6, #60a5fa);height:100%;transition:width 0.4s ease;border-radius:12px"></div>
                         </div>

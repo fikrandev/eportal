@@ -387,6 +387,13 @@ function sch_eval_dist_slots(int $d, array $sl, array &$distMeta, array &$slotRu
         return [$pv * 3, $pv, $sd];
     }
 
+    // Rule Khusus TIK = wajib 2+1, atau 3 sekaligus
+    if ($m['is_tik'] && $jp === 3) {
+        if ($parts === [1, 1, 1]) return [3, 0, $sd];
+        if ($parts !== [3] && $parts !== [2, 1]) return [2, 0, $sd];
+        return [0, 0, $sd];
+    }
+
     // Exact user rules:
     // 2 JP = 2, tidak boleh 1+1
     // 3 JP = 3 sekaligus, 2+1, tidak boleh 1+1+1
@@ -418,77 +425,15 @@ function sch_eval_dist_slots(int $d, array $sl, array &$distMeta, array &$slotRu
 }
 
 /**
- * Bentuk template pemecahan slice & target blok slot untuk satu kelas.
+ * Analisis kapasitas run dan guru ketat lintas kelas sebelum membentuk template blok per kelas.
  */
-function sch_generate_class_block_template(array &$ctx, int $kId): array {
-    $runs = $ctx['runs'];
-    $distMeta = $ctx['distMeta'];
-    $dists = $ctx['kelasDists'][$kId];
-
-    $j1 = [];
-    $j2 = [];
-    $j3 = [];
-    $j4 = [];
-    $j5 = [];
-    $pjok = null;
-
-    foreach ($dists as $d) {
-        $m = $distMeta[$d];
-        if ($m['is_pjok']) {
-            $pjok = $d;
-        } elseif ($m['jp'] === 1) {
-            $j1[] = $d;
-        } elseif ($m['jp'] === 2) {
-            $j2[] = $d;
-        } elseif ($m['jp'] === 3) {
-            $j3[] = $d;
-        } elseif ($m['jp'] === 4) {
-            $j4[] = $d;
-        } elseif ($m['jp'] === 5) {
-            $j5[] = $d;
-        }
-    }
-
-    $s3 = [];
-    $s2 = [];
-    $s1 = [];
-
-    if ($pjok !== null) {
-        $jp = $distMeta[$pjok]['jp'];
-        if ($jp === 2) $s2[] = $pjok;
-        elseif ($jp === 3) $s3[] = $pjok;
-    }
-
-    foreach ($j1 as $d) $s1[] = $d;
-    foreach ($j2 as $d) $s2[] = $d;
-    foreach ($j3 as $d) $s3[] = $d;
-    foreach ($j4 as $d) {
-        $s2[] = $d;
-        $s2[] = $d;
-    }
-    foreach ($j5 as $d) {
-        $s3[] = $d;
-        $s2[] = $d;
-    }
-
-    // Adaptasi 3-JP slices ke [2, 1] jika slot blok 3 melebihi kapasitas run
-    while (count($s3) > 4 + count($s1)) {
-        $found = false;
-        for ($i = count($s3) - 1; $i >= 0; $i--) {
-            $d = $s3[$i];
-            if ($distMeta[$d]['jp'] === 3 && !$distMeta[$d]['is_pjok']) {
-                array_splice($s3, $i, 1);
-                $s2[] = $d;
-                $s1[] = $d;
-                $found = true;
-                break;
-            }
-        }
-        if (!$found) break;
-    }
-
-    $nPair31 = count($s1);
-    $nPure3 = count($s3) - $nPair31;
+function sch_prepare_init_plan(array &$ctx): array {
+    $runs = &$ctx['runs'];
+    $distMeta = &$ctx['distMeta'];
+    $guruKes = &$ctx['guruKes'];
+    $guruKesList = &$ctx['guruKesList'];
+    $kelasIds = $ctx['kelasIds'];
+    $nClasses = count($kelasIds);
 
     $len4Runs = [];
     $len3Runs = [];
@@ -500,38 +445,329 @@ function sch_generate_class_block_template(array &$ctx, int $kId): array {
         elseif ($l === 2) $len2Runs[] = $rIdx;
     }
 
-    $blocks2 = [];
-    $blocks3 = [];
-    $blocks1 = [];
+    $guruLoad = [];
+    $guruDists = [];
+    $guruNeed3Dists = [];
+    foreach ($distMeta as $d => $m) {
+        if ($d === 0) continue;
+        $g = $m['guru_id'];
+        $guruLoad[$g] = ($guruLoad[$g] ?? 0) + $m['jp'];
+        $guruDists[$g][] = $d;
+        if ($m['jp'] === 3 || $m['jp'] === 5) $guruNeed3Dists[$g][] = $d;
+    }
 
-    // Assign len 4 runs: [3, 1] atau [2, 2]
-    for ($i = 0; $i < count($len4Runs); $i++) {
-        $rIdx = $len4Runs[$i];
+    // Deteksi run len-2 yang harus dipecah [1,1] untuk guru slack <= 1 yang hanya punya 1 slot di run tersebut
+    $classForceLen2Split = [];
+    foreach ($kelasIds as $kId) $classForceLen2Split[$kId] = [];
+    foreach ($len2Runs as $rIdx) {
         $sl = $runs[$rIdx]['slots'];
-        if ($i < $nPair31) {
-            $blocks3[] = ['slots' => array_slice($sl, 0, 3), 'run' => $rIdx];
-            $blocks1[] = ['slots' => array_slice($sl, 3, 1), 'run' => $rIdx];
+        $sA = $sl[0];
+        $sB = $sl[1];
+        foreach ($guruLoad as $g => $load) {
+            $avail = count($guruKesList[$g] ?? []);
+            if ($avail - $load > 1) continue;
+            $hasA = isset($guruKes[$g][$sA]);
+            $hasB = isset($guruKes[$g][$sB]);
+            if ($hasA !== $hasB) {
+                $candClasses = [];
+                foreach ($guruDists[$g] ?? [] as $d) {
+                    $kId = $distMeta[$d]['kelas_id'];
+                    $blocked = false;
+                    foreach ($ctx['kelasDists'][$kId] as $d2) {
+                        $g2 = $distMeta[$d2]['guru_id'];
+                        if ($g2 === $g) continue;
+                        $av2 = count($guruKesList[$g2] ?? []);
+                        if ($av2 - ($guruLoad[$g2] ?? 0) === 0 && isset($guruKes[$g2][$sA]) && isset($guruKes[$g2][$sB])) {
+                            $blocked = true;
+                            break;
+                        }
+                    }
+                    if (!$blocked) $candClasses[] = $kId;
+                }
+                if (!empty($candClasses)) {
+                    $pickK = $candClasses[array_rand($candClasses)];
+                    $classForceLen2Split[$pickK][$rIdx] = true;
+                }
+            }
+        }
+    }
+
+    // Deteksi bottleneck kapasitas blok 3 pada run len-3 (misal Jumat jam 10-12) beserta orientasi [1,2] vs [2,1]
+    $splitRunCounts = [];
+    $splitRunOrient = [];
+    foreach ($len3Runs as $rIdx) {
+        $sl = $runs[$rIdx]['slots'];
+        $cap3 = 0;
+        $availEnd = 0;
+        $only2AtEnd = 0;
+        $only1AtStart = 0;
+        $only2AtStart = 0;
+        foreach ($guruLoad as $g => $load) {
+            $a0 = isset($guruKes[$g][$sl[0]]);
+            $a1 = isset($guruKes[$g][$sl[1]]);
+            $a2 = isset($guruKes[$g][$sl[2]]);
+            if ($a2) $availEnd++;
+            $hasGe3 = false;
+            foreach ($guruDists[$g] ?? [] as $d) {
+                if ($distMeta[$d]['jp'] >= 3) { $hasGe3 = true; break; }
+            }
+            if ($a0 && $a1 && $a2 && $hasGe3) {
+                $cap3++;
+            } else {
+                if (!$hasGe3 && $a1 && $a2) $only2AtEnd++;
+                if ($a2 && $a1 && !$a0) $only2AtEnd++;
+                if ($a0 && !$a1 && !$a2) $only1AtStart++;
+                if (!$hasGe3 && $a0 && $a1) $only2AtStart++;
+            }
+        }
+        $neededSplits = max(0, $nClasses - $cap3);
+        if ($availEnd <= $nClasses + 1) {
+            $neededSplits = max($neededSplits, $only2AtEnd + 1);
+        }
+        if ($neededSplits > 0) {
+            $splitRunCounts[$rIdx] = min($nClasses, max(min(6, $nClasses), $neededSplits));
+            $splitRunOrient[$rIdx] = ($only2AtEnd + $only1AtStart >= $only2AtStart) ? '12' : '21';
+        }
+    }
+
+    $classForceSplitRun = [];
+    foreach ($kelasIds as $kId) $classForceSplitRun[$kId] = [];
+    foreach ($splitRunCounts as $rIdx => $needSplits) {
+        $sl = $runs[$rIdx]['slots'];
+        $scored = [];
+        foreach ($kelasIds as $kId) {
+            $score = 0;
+            $extra3 = 0;
+            foreach ($ctx['kelasDists'][$kId] as $d) {
+                $m = $distMeta[$d];
+                if ($m['jp'] === 3 && !$m['is_pjok']) $extra3++;
+                $g = $m['guru_id'];
+                $slack = count($guruKesList[$g] ?? []) - ($guruLoad[$g] ?? 0);
+                if ($slack <= 2) {
+                    $a0 = isset($guruKes[$g][$sl[0]]);
+                    $a1 = isset($guruKes[$g][$sl[1]]);
+                    $a2 = isset($guruKes[$g][$sl[2]]);
+                    if (($a0 && !$a1 && !$a2) || (!$a0 && $a1 && $a2)) $score += 100;
+                }
+            }
+            $score += $extra3 * 2 + mt_rand(0, 3);
+            $scored[] = ['k' => $kId, 'score' => $score];
+        }
+        usort($scored, static fn($a, $b) => $b['score'] <=> $a['score']);
+        for ($i = 0; $i < min($needSplits, count($scored)); $i++) {
+            $classForceSplitRun[$scored[$i]['k']][$rIdx] = true;
+        }
+    }
+
+    return [
+        'len4Runs' => $len4Runs,
+        'len3Runs' => $len3Runs,
+        'len2Runs' => $len2Runs,
+        'guruLoad' => $guruLoad,
+        'guruNeed3Dists' => $guruNeed3Dists,
+        'splitRunOrient' => $splitRunOrient,
+        'classForceSplitRun' => $classForceSplitRun,
+        'classForceLen2Split' => $classForceLen2Split
+    ];
+}
+
+/**
+ * Bentuk template pemecahan slice & target blok slot untuk satu kelas.
+ */
+function sch_generate_class_block_template(array &$ctx, int $kId, ?array $plan = null): array {
+    if ($plan === null) {
+        $plan = sch_prepare_init_plan($ctx);
+    }
+    $runs = &$ctx['runs'];
+    $distMeta = &$ctx['distMeta'];
+    $guruKes = &$ctx['guruKes'];
+    $guruKesList = &$ctx['guruKesList'];
+    $guruTriples = &$ctx['guruTriples'];
+    $dists = $ctx['kelasDists'][$kId];
+
+    $len4Runs = $plan['len4Runs'];
+    $len3Runs = $plan['len3Runs'];
+    $len2Runs = $plan['len2Runs'];
+    $guruLoad = $plan['guruLoad'];
+    $guruNeed3Dists = $plan['guruNeed3Dists'];
+    $splitRunOrient = $plan['splitRunOrient'];
+    $forceSplitLen3 = $plan['classForceSplitRun'][$kId] ?? [];
+    $forceSplitLen2 = $plan['classForceLen2Split'][$kId] ?? [];
+
+    $j1 = []; $j2 = []; $j3 = []; $j4 = []; $j5 = []; $pjok = null;
+    foreach ($dists as $d) {
+        $m = $distMeta[$d];
+        if ($m['is_pjok']) $pjok = $d;
+        elseif ($m['jp'] === 1) $j1[] = $d;
+        elseif ($m['jp'] === 2) $j2[] = $d;
+        elseif ($m['jp'] === 3) $j3[] = $d;
+        elseif ($m['jp'] === 4) $j4[] = $d;
+        elseif ($m['jp'] === 5) $j5[] = $d;
+    }
+
+    $s3 = []; $s2 = []; $s1 = [];
+    if ($pjok !== null) {
+        $jp = $distMeta[$pjok]['jp'];
+        if ($jp === 2) $s2[] = $pjok;
+        else $s3[] = $pjok;
+    }
+    foreach ($j1 as $d) $s1[] = $d;
+    foreach ($j2 as $d) $s2[] = $d;
+
+    // Guru tanpa kesediaan 3-blok berurutan wajib dipecah ke [2, 1] / [2, 2, 1] sejak awal
+    $forcedSplits35 = [];
+    foreach (array_merge($j3, $j5) as $d) {
+        if (empty($guruTriples[$distMeta[$d]['guru_id']])) {
+            $forcedSplits35[$d] = true;
+        }
+    }
+    foreach ($j3 as $d) {
+        if (isset($forcedSplits35[$d])) { $s2[] = $d; $s1[] = $d; }
+        else $s3[] = $d;
+    }
+    foreach ($j4 as $d) { $s2[] = $d; $s2[] = $d; }
+    foreach ($j5 as $d) {
+        if (isset($forcedSplits35[$d])) { $s2[] = $d; $s2[] = $d; $s1[] = $d; }
+        else { $s3[] = $d; $s2[] = $d; }
+    }
+
+    usort($s3, static function ($da, $db) use (&$distMeta, &$guruTriples, &$guruNeed3Dists) {
+        $ma = $distMeta[$da]; $mb = $distMeta[$db];
+        if ($ma['is_pjok'] !== $mb['is_pjok']) return $ma['is_pjok'] ? -1 : 1;
+        $ga = $ma['guru_id']; $gb = $mb['guru_id'];
+        $ra = count($guruTriples[$ga] ?? []) - count($guruNeed3Dists[$ga] ?? []);
+        $rb = count($guruTriples[$gb] ?? []) - count($guruNeed3Dists[$gb] ?? []);
+        return $rb <=> $ra;
+    });
+
+    // Keseimbangan matematis slot: count(s3) - count(s1) = len(len3Runs) - 2*k3 - 2*k2
+    $nLen3 = count($len3Runs);
+    $forcedK3 = count($forceSplitLen3);
+    $forcedK2 = count($forceSplitLen2);
+    $targetDiff = $nLen3 - 2 * $forcedK3 - 2 * $forcedK2;
+
+    while ((count($s3) - count($s1)) > $targetDiff) {
+        $found = false;
+        for ($i = count($s3) - 1; $i >= 0; $i--) {
+            $d = $s3[$i];
+            if ($distMeta[$d]['jp'] === 3 && !$distMeta[$d]['is_pjok']) {
+                array_splice($s3, $i, 1);
+                $s2[] = $d; $s1[] = $d;
+                $found = true; break;
+            }
+        }
+        if (!$found) {
+            for ($i = count($s3) - 1; $i >= 0; $i--) {
+                $d = $s3[$i];
+                if ($distMeta[$d]['jp'] === 5) {
+                    array_splice($s3, $i, 1);
+                    $s2[] = $d; $s1[] = $d;
+                    $found = true; break;
+                }
+            }
+        }
+        if (!$found) break;
+    }
+
+    $c3 = count($s3);
+    $c1 = count($s1);
+    $k2 = $forcedK2;
+    $k3 = max(0, (int)floor(($nLen3 - 2 * $k2 - ($c3 - $c1)) / 2));
+    $k4 = max(0, $c1 - $k3 - 2 * $k2);
+
+    $len4Scored = [];
+    foreach ($len4Runs as $rIdx) {
+        $sl = $runs[$rIdx]['slots'];
+        $want22 = 0; $want31 = 0;
+        foreach ($dists as $d) {
+            $g = $distMeta[$d]['guru_id'];
+            $slack = count($guruKesList[$g] ?? []) - ($guruLoad[$g] ?? 0);
+            if ($slack > 5) continue;
+            $a0 = isset($guruKes[$g][$sl[0]]); $a1 = isset($guruKes[$g][$sl[1]]);
+            $a2 = isset($guruKes[$g][$sl[2]]); $a3 = isset($guruKes[$g][$sl[3]]);
+            $cnt = ($a0?1:0) + ($a1?1:0) + ($a2?1:0) + ($a3?1:0);
+            if ($cnt === 2 && (($a0 && $a1) || ($a2 && $a3))) $want22 += (6 - $slack);
+            if ($cnt === 3) $want31 += (6 - $slack);
+        }
+        $len4Scored[] = ['rIdx' => $rIdx, 'pref31' => $want31 - $want22];
+    }
+    usort($len4Scored, static fn($a, $b) => $b['pref31'] <=> $a['pref31']);
+
+    $blocks3 = []; $blocks2 = []; $blocks1 = [];
+    for ($i = 0; $i < count($len4Scored); $i++) {
+        $rIdx = $len4Scored[$i]['rIdx'];
+        $sl = $runs[$rIdx]['slots'];
+        if ($i < $k4) {
+            $pref13 = 0;
+            foreach ($dists as $d) {
+                $g = $distMeta[$d]['guru_id'];
+                if (!isset($guruKes[$g][$sl[0]]) && isset($guruKes[$g][$sl[1]]) && isset($guruKes[$g][$sl[2]]) && isset($guruKes[$g][$sl[3]])) {
+                    $pref13++;
+                }
+            }
+            if ($pref13 > 0) {
+                $blocks1[] = ['slots' => array_slice($sl, 0, 1), 'run' => $rIdx];
+                $blocks3[] = ['slots' => array_slice($sl, 1, 3), 'run' => $rIdx];
+            } else {
+                $blocks3[] = ['slots' => array_slice($sl, 0, 3), 'run' => $rIdx];
+                $blocks1[] = ['slots' => array_slice($sl, 3, 1), 'run' => $rIdx];
+            }
         } else {
             $blocks2[] = ['slots' => array_slice($sl, 0, 2), 'run' => $rIdx];
             $blocks2[] = ['slots' => array_slice($sl, 2, 2), 'run' => $rIdx];
         }
     }
 
-    // Assign len 3 runs: [3] atau [2, 1]
-    for ($i = 0; $i < count($len3Runs); $i++) {
-        $rIdx = $len3Runs[$i];
+    $remK3 = $k3;
+    foreach ($len3Runs as $rIdx) {
         $sl = $runs[$rIdx]['slots'];
-        if ($i < $nPure3) {
-            $blocks3[] = ['slots' => $sl, 'run' => $rIdx];
+        if (isset($forceSplitLen3[$rIdx]) && $remK3 > 0) {
+            $use12 = (($splitRunOrient[$rIdx] ?? '12') === '12');
+            foreach ($dists as $d) {
+                $g = $distMeta[$d]['guru_id'];
+                $slack = count($guruKesList[$g] ?? []) - ($guruLoad[$g] ?? 0);
+                if ($slack <= 3) {
+                    if (isset($guruKes[$g][$sl[1]]) && isset($guruKes[$g][$sl[2]]) && !isset($guruKes[$g][$sl[0]])) $use12 = true;
+                    if (isset($guruKes[$g][$sl[0]]) && !isset($guruKes[$g][$sl[1]]) && !isset($guruKes[$g][$sl[2]])) $use12 = true;
+                }
+            }
+            if ($use12) {
+                $blocks1[] = ['slots' => array_slice($sl, 0, 1), 'run' => $rIdx];
+                $blocks2[] = ['slots' => array_slice($sl, 1, 2), 'run' => $rIdx];
+            } else {
+                $blocks2[] = ['slots' => array_slice($sl, 0, 2), 'run' => $rIdx];
+                $blocks1[] = ['slots' => array_slice($sl, 2, 1), 'run' => $rIdx];
+            }
+            $remK3--;
         } else {
-            $blocks2[] = ['slots' => array_slice($sl, 0, 2), 'run' => $rIdx];
-            $blocks1[] = ['slots' => array_slice($sl, 2, 1), 'run' => $rIdx];
+            $blocks3[] = ['slots' => $sl, 'run' => $rIdx];
+        }
+    }
+    if ($remK3 > 0) {
+        foreach ($len3Runs as $rIdx) {
+            if ($remK3 <= 0) break;
+            if (isset($forceSplitLen3[$rIdx])) continue;
+            foreach ($blocks3 as $bIdx => $b) {
+                if ($b['run'] === $rIdx) {
+                    $sl = $runs[$rIdx]['slots'];
+                    array_splice($blocks3, $bIdx, 1);
+                    $blocks2[] = ['slots' => array_slice($sl, 0, 2), 'run' => $rIdx];
+                    $blocks1[] = ['slots' => array_slice($sl, 2, 1), 'run' => $rIdx];
+                    $remK3--;
+                    break;
+                }
+            }
         }
     }
 
-    // Assign len 2 runs: [2]
     foreach ($len2Runs as $rIdx) {
-        $blocks2[] = ['slots' => $runs[$rIdx]['slots'], 'run' => $rIdx];
+        $sl = $runs[$rIdx]['slots'];
+        if (isset($forceSplitLen2[$rIdx])) {
+            $blocks1[] = ['slots' => [$sl[0]], 'run' => $rIdx];
+            $blocks1[] = ['slots' => [$sl[1]], 'run' => $rIdx];
+        } else {
+            $blocks2[] = ['slots' => $sl, 'run' => $rIdx];
+        }
     }
 
     return [
@@ -545,22 +781,40 @@ function sch_generate_class_block_template(array &$ctx, int $kId): array {
 }
 
 /**
- * Inisialisasi grid awal berbasis pencocokan blok JP kontinu (Block-Matching Bipartite).
+ * Inisialisasi grid awal berbasis pencocokan blok JP kontinu (MRV Block-Matching Bipartite).
  * Jika $existingGrid diberikan (untuk auto_fill_gaps), slot valid dipertahankan dan sisanya dicocokkan.
  */
 function sch_init_grid(array &$ctx, ?array $existingGrid = null): array {
     $nSlots = $ctx['nSlots'];
-    $distMeta = $ctx['distMeta'];
-    $guruKes = $ctx['guruKes'];
-    $guruKesList = $ctx['guruKesList'];
+    $distMeta = &$ctx['distMeta'];
+    $guruKes = &$ctx['guruKes'];
+    $guruKesList = &$ctx['guruKesList'];
     $grid = [];
     $hasSoftKes = false;
 
-    // Jika mode generate baru (bukan auto_fill_gaps), gunakan konstruksi template blok utuh
     if ($existingGrid === null) {
-        foreach ($ctx['kelasIds'] as $kId) {
+        $plan = sch_prepare_init_plan($ctx);
+        $guruLoad = $plan['guruLoad'];
+        $globalGuruUsed = [];
+
+        // Proses kelas dengan guru paling ketat (slack terendah) terlebih dahulu
+        $orderedKelas = $ctx['kelasIds'];
+        usort($orderedKelas, static function ($ka, $kb) use (&$ctx, &$distMeta, &$guruLoad, &$guruKesList) {
+            $sa = 0; $sb = 0;
+            foreach ($ctx['kelasDists'][$ka] as $d) {
+                $g = $distMeta[$d]['guru_id'];
+                $sa += max(0, 10 - (count($guruKesList[$g] ?? []) - ($guruLoad[$g] ?? 0)));
+            }
+            foreach ($ctx['kelasDists'][$kb] as $d) {
+                $g = $distMeta[$d]['guru_id'];
+                $sb += max(0, 10 - (count($guruKesList[$g] ?? []) - ($guruLoad[$g] ?? 0)));
+            }
+            return $sb <=> $sa;
+        });
+
+        foreach ($orderedKelas as $kId) {
             $row = array_fill(0, $nSlots, 0);
-            $t = sch_generate_class_block_template($ctx, $kId);
+            $t = sch_generate_class_block_template($ctx, $kId, $plan);
 
             foreach ([3, 2, 1] as $blen) {
                 $slList = $t['s' . $blen];
@@ -568,48 +822,49 @@ function sch_init_grid(array &$ctx, ?array $existingGrid = null): array {
                 $nSl = count($slList);
                 $nB = count($bList);
 
+                $order = range(0, $nSl - 1);
                 $adj = [];
                 for ($i = 0; $i < $nSl; $i++) {
                     $d = $slList[$i];
                     $g = $distMeta[$d]['guru_id'];
-                    $adj[$i] = [];
+                    $freeList = [];
+                    $busyList = [];
                     for ($j = 0; $j < $nB; $j++) {
                         $ok = true;
+                        $clash = false;
                         foreach ($bList[$j]['slots'] as $s) {
                             if (!isset($guruKes[$g][$s])) { $ok = false; break; }
+                            if (!empty($globalGuruUsed[$g][$s])) $clash = true;
                         }
-                        if ($ok) $adj[$i][] = $j;
+                        if ($ok) {
+                            if ($clash) $busyList[] = $j;
+                            else $freeList[] = $j;
+                        }
                     }
-                    shuffle($adj[$i]);
+                    shuffle($freeList);
+                    shuffle($busyList);
+                    $adj[$i] = array_merge($freeList, $busyList);
                 }
+                usort($order, static fn($a, $b) => count($adj[$a]) <=> count($adj[$b]));
 
                 $bToSl = array_fill(0, $nB, -1);
                 $unmatched = [];
-                for ($i = 0; $i < $nSl; $i++) {
+                foreach ($order as $i) {
                     $visited = [];
                     $dfs = function ($u) use (&$dfs, &$adj, &$bToSl, &$visited, &$bList, &$slList): bool {
                         $uDist = $slList[$u];
                         foreach ($adj[$u] as $v) {
                             if (isset($visited[$v])) continue;
                             $visited[$v] = true;
-
-                            // Cegah dua slice dari mapel yang sama (misal 4 JP atau 5 JP) berada di run yang sama
                             $vRun = $bList[$v]['run'];
                             $conflict = false;
                             for ($otherB = 0; $otherB < count($bList); $otherB++) {
                                 if ($otherB !== $v && $bList[$otherB]['run'] === $vRun && $bToSl[$otherB] !== -1) {
-                                    if ($slList[$bToSl[$otherB]] === $uDist) {
-                                        $conflict = true;
-                                        break;
-                                    }
+                                    if ($slList[$bToSl[$otherB]] === $uDist) { $conflict = true; break; }
                                 }
                             }
                             if ($conflict) continue;
-
-                            if ($bToSl[$v] === -1 || $dfs($bToSl[$v])) {
-                                $bToSl[$v] = $u;
-                                return true;
-                            }
+                            if ($bToSl[$v] === -1 || $dfs($bToSl[$v])) { $bToSl[$v] = $u; return true; }
                         }
                         return false;
                     };
@@ -626,12 +881,36 @@ function sch_init_grid(array &$ctx, ?array $existingGrid = null): array {
                     }
                 }
 
+                // Pastikan tidak ada 2 slice dari distribusi yang sama di run yang sama (misal jika fallback menempatkannya bersama)
+                for ($j1 = 0; $j1 < $nB; $j1++) {
+                    for ($j2 = $j1 + 1; $j2 < $nB; $j2++) {
+                        if ($bToSl[$j1] !== -1 && $bToSl[$j2] !== -1 && $bList[$j1]['run'] === $bList[$j2]['run']) {
+                            $u1 = $bToSl[$j1];
+                            $u2 = $bToSl[$j2];
+                            if ($slList[$u1] === $slList[$u2]) {
+                                for ($j3 = 0; $j3 < $nB; $j3++) {
+                                    if ($bList[$j3]['run'] !== $bList[$j1]['run']) {
+                                        $u3 = $bToSl[$j3];
+                                        if ($u3 !== -1 && $slList[$u3] !== $slList[$u1]) {
+                                            $bToSl[$j2] = $u3;
+                                            $bToSl[$j3] = $u2;
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 for ($j = 0; $j < $nB; $j++) {
                     $u = $bToSl[$j];
                     if ($u !== -1 && isset($slList[$u])) {
                         $d = $slList[$u];
+                        $g = $distMeta[$d]['guru_id'];
                         foreach ($bList[$j]['slots'] as $s) {
                             $row[$s] = $d;
+                            $globalGuruUsed[$g][$s] = true;
                         }
                     }
                 }
@@ -743,11 +1022,14 @@ function sch_init_grid(array &$ctx, ?array $existingGrid = null): array {
 }
 
 /**
- * Optimasi Jadwal menggunakan Multi-Neighborhood Simulated Annealing (Slot + Broken-Block Teleport + Snap + Rot3)
- * diikuti Stage-2 Strict Polish untuk menekan block violations & same-day splits tanpa bentrok guru.
+ * Optimasi Jadwal menggunakan 3-Fase Block-Respecting Simulated Annealing:
+ *   Fase 1: Eksplorasi seimbang (kesediaan, blok, bentrok guru, whole-run swap & run-reverse)
+ *   Fase 2: Resolusi bentrok guru menuju 0 sambil mengunci ketat rules JP (blk=0, pjok=0)
+ *   Fase 3: Strict Polish (menjaga cl=0, blk=0, pjok=0 sambil menekan pelanggaran kesediaan & pemecahan hari)
  */
-function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $stage1Budget = 6.5, float $stage2Budget = 2.5): array {
+function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $stage1Budget = 6.5, float $stage2Budget = 3.0): array {
     $t0 = microtime(true);
+    $totalBudget = max(2.0, $stage1Budget + $stage2Budget);
     $nSlots = $ctx['nSlots'];
     $kelasIds = $ctx['kelasIds'];
     $nKelas = count($kelasIds);
@@ -760,9 +1042,14 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
     $slotHari = &$ctx['slotHari'];
     $slotPrev = &$ctx['slotPrev'];
     $slotNext = &$ctx['slotNext'];
+    $runs = &$ctx['runs'];
+
+    $runsByLen = [];
+    foreach ($runs as $rIdx => $r) {
+        $runsByLen[count($r['slots'])][] = $rIdx;
+    }
 
     $grid = $initGrid;
-
     $guruCnt = [];
     $distSlots = [];
     foreach ($distMeta as $d => $m) {
@@ -771,60 +1058,76 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
         if (!isset($guruCnt[$g])) $guruCnt[$g] = array_fill(0, $nSlots, 0);
     }
 
-    $totKes = 0;
-    foreach ($kelasIds as $k) {
-        for ($s = 0; $s < $nSlots; $s++) {
-            $d = $grid[$k][$s];
-            if ($d > 0) {
-                $distSlots[$d][] = $s;
-                $g = $distMeta[$d]['guru_id'];
-                $guruCnt[$g][$s]++;
-                if (!isset($guruKes[$g][$s])) $totKes++;
-            }
-        }
-    }
-
-    $totCl = 0;
-    foreach ($guruCnt as $g => $arr) {
-        if ($g === 0) continue;
-        for ($s = 0; $s < $nSlots; $s++) {
-            if ($arr[$s] > 1) $totCl += ($arr[$s] - 1);
-        }
-    }
-
     $distBlk = [0 => 0];
     $distPjok = [0 => 0];
     $distSd = [0 => 0];
-    $totBlk = 0;
-    $totPjok = 0;
-    $totSd = 0;
-    foreach ($distSlots as $d => $sl) {
-        [$b, $pv, $sd] = sch_eval_dist_slots($d, $sl, $distMeta, $slotRun, $slotHari);
-        $distBlk[$d] = $b;
-        $distPjok[$d] = $pv;
-        $distSd[$d] = $sd;
-        $totBlk += $b;
-        $totPjok += $pv;
-        $totSd += $sd;
-    }
+    $totKes = 0; $totCl = 0; $totBlk = 0; $totPjok = 0; $totSd = 0;
 
-    $W_KES = 750;
-    $W_CL = 180;
-    $W_PJOK = 350;
-    $W_BLK = 250;
-    $W_SD = 8;
+    $computeGridState = static function (array $sourceGrid) use (
+        &$grid, &$guruCnt, &$distSlots, &$kelasIds, &$distMeta,
+        &$distBlk, &$distPjok, &$distSd, &$totKes, &$totCl, &$totBlk, &$totPjok, &$totSd,
+        &$guruKes, &$slotRun, &$slotHari, $nSlots
+    ): void {
+        $grid = $sourceGrid;
+        foreach ($guruCnt as &$arr) $arr = array_fill(0, $nSlots, 0);
+        unset($arr);
+        foreach ($distSlots as &$arr) $arr = [];
+        unset($arr);
 
-    $bestKes = $totKes;
-    $bestCl = $totCl;
-    $bestPjok = $totPjok;
-    $bestBlk = $totBlk;
-    $bestSd = $totSd;
+        $totKes = 0;
+        foreach ($kelasIds as $k) {
+            for ($s = 0; $s < $nSlots; $s++) {
+                $d = $grid[$k][$s] ?? 0;
+                if ($d > 0) {
+                    $distSlots[$d][] = $s;
+                    $g = $distMeta[$d]['guru_id'];
+                    $guruCnt[$g][$s]++;
+                    if (!isset($guruKes[$g][$s])) $totKes++;
+                }
+            }
+        }
+
+        $totCl = 0;
+        foreach ($guruCnt as $g => $arr) {
+            if ($g === 0) continue;
+            for ($s = 0; $s < $nSlots; $s++) {
+                if ($arr[$s] > 1) $totCl += ($arr[$s] - 1);
+            }
+        }
+
+        $totBlk = 0; $totPjok = 0; $totSd = 0;
+        foreach ($distSlots as $d => $sl) {
+            [$b, $pv, $sd] = sch_eval_dist_slots($d, $sl, $distMeta, $slotRun, $slotHari);
+            $distBlk[$d] = $b;
+            $distPjok[$d] = $pv;
+            $distSd[$d] = $sd;
+            $totBlk += $b;
+            $totPjok += $pv;
+            $totSd += $sd;
+        }
+    };
+
+    $computeGridState($initGrid);
+
+    // Hierarki prioritas mutlak: 0 PJOK terpisah > 0 pelanggaran blok JP > 0 bentrok guru > min kesediaan > min pecah hari
+    $bestScore = [$totPjok, $totBlk, $totCl, $totKes, $totSd];
     $bestGrid = $grid;
+    $isBetter = static function (array $a, array $b): bool {
+        $hardA = $a[0] * 100000 + $a[1] * 20000 + $a[2] * 3000 + $a[3] * 80 + $a[4];
+        $hardB = $b[0] * 100000 + $b[1] * 20000 + $b[2] * 3000 + $b[3] * 80 + $b[4];
+        return $hardA < $hardB;
+    };
+
+    $W_PJOK = 2500;
+    $W_BLK  = 1100;
+    $W_CL   = 360;
+    $W_KES  = 650;
+    $W_SD   = 8;
 
     $applyPerm = function (int $k, array $srcSlots, array $dstSlots, float $T, int $mode) use (
         &$grid, &$distMeta, &$guruKes, &$guruCnt, &$distSlots, &$distBlk, &$distPjok, &$distSd,
         &$totKes, &$totCl, &$totBlk, &$totPjok, &$totSd, &$slotRun, &$slotHari,
-        &$W_KES, &$W_CL, &$W_PJOK, &$W_BLK, &$W_SD, $hasSoftKes
+        &$W_KES, &$W_CL, &$W_PJOK, &$W_BLK, &$W_SD, &$bestScore, &$bestGrid, $isBetter
     ): bool {
         $len = count($srcSlots);
         $dArr = [];
@@ -836,15 +1139,13 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
             $dArr[$i] = $d;
             if ($d !== $grid[$k][$dstSlots[$i]]) $changed = true;
             $g = $distMeta[$d]['guru_id'];
-            $okDst = isset($guruKes[$g][$dstSlots[$i]]) ? 1 : 0;
-            if (!$hasSoftKes && !$okDst) return false;
-            if ($hasSoftKes && $d > 0) {
+            if ($d > 0) {
                 $okSrc = isset($guruKes[$g][$srcSlots[$i]]) ? 1 : 0;
+                $okDst = isset($guruKes[$g][$dstSlots[$i]]) ? 1 : 0;
                 $dKes += ($okSrc - $okDst);
             }
         }
         if (!$changed) return false;
-        if ($mode === 1 && $dKes > 0) return false;
 
         $touchedG = [];
         for ($i = 0; $i < $len; $i++) {
@@ -863,7 +1164,7 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
                 $dCl += ($new > 1 ? $new - 1 : 0) - ($old > 1 ? $old - 1 : 0);
             }
         }
-        if ($mode === 1 && $dCl > 0) return false;
+        if ($mode === 2 && $dCl > 0) return false;
 
         $aff = [];
         for ($i = 0; $i < $len; $i++) {
@@ -888,10 +1189,7 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
             }
         }
 
-        $dBlk = 0;
-        $dPjok = 0;
-        $dSd = 0;
-        $newEval = [];
+        $dBlk = 0; $dPjok = 0; $dSd = 0; $newEval = [];
         foreach ($aff as $d => $_) {
             [$nb, $npv, $nsd] = sch_eval_dist_slots($d, $newSlotsMap[$d], $distMeta, $slotRun, $slotHari);
             $newEval[$d] = [$nb, $npv, $nsd];
@@ -899,10 +1197,10 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
             $dPjok += ($npv - $distPjok[$d]);
             $dSd += ($nsd - $distSd[$d]);
         }
-        if ($mode === 1 && ($dPjok > 0 || $dBlk > 0)) return false;
+        if (($mode === 1 || $mode === 2) && ($dPjok > 0 || $dBlk > 0)) return false;
 
-        $delta = ($mode === 1)
-            ? ($dKes * $W_KES + $dBlk * 250 + $dSd * 10)
+        $delta = ($mode === 2)
+            ? ($dKes * $W_KES + $dSd * $W_SD)
             : ($dKes * $W_KES + $dCl * $W_CL + $dPjok * $W_PJOK + $dBlk * $W_BLK + $dSd * $W_SD);
 
         if ($delta <= 0 || ($T > 0.01 && (mt_rand() / mt_getrandmax()) < exp(-$delta / $T))) {
@@ -921,38 +1219,30 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
             $totBlk += $dBlk;
             $totPjok += $dPjok;
             $totSd += $dSd;
+            $cur = [$totPjok, $totBlk, $totCl, $totKes, $totSd];
+            if ($isBetter($cur, $bestScore)) {
+                $bestScore = $cur;
+                $bestGrid = $grid;
+            }
             return true;
         }
         return false;
     };
 
-    $swap1 = static function (int $k, int $s1, int $s2, float $T, int $m) use ($applyPerm): bool {
-        if ($s1 === $s2) return false;
-        return $applyPerm($k, [$s1, $s2], [$s2, $s1], $T, $m);
-    };
+    $swap1 = static fn(int $k, int $s1, int $s2, float $T, int $m): bool =>
+        ($s1 !== $s2) && $applyPerm($k, [$s1, $s2], [$s2, $s1], $T, $m);
 
-    $swapPair = static function (int $k, array $A, array $B, float $T, int $m) use ($applyPerm, $swap1): bool {
-        if ($A[0] === $A[1] || $B[0] === $B[1]) return false;
-        if ($A[0] !== $B[0] && $A[0] !== $B[1] && $A[1] !== $B[0] && $A[1] !== $B[1]) {
-            return $applyPerm($k, [$A[0], $A[1], $B[0], $B[1]], [$B[0], $B[1], $A[0], $A[1]], $T, $m);
-        }
-        // Handle partial 1-slot overlap cleanly by reducing to a single-slot swap
-        if ($A[0] === $B[0] && $A[1] !== $B[1]) return $swap1($k, $A[1], $B[1], $T, $m);
-        if ($A[0] === $B[1] && $A[1] !== $B[0]) return $swap1($k, $A[1], $B[0], $T, $m);
-        if ($A[1] === $B[0] && $A[0] !== $B[1]) return $swap1($k, $A[0], $B[1], $T, $m);
-        if ($A[1] === $B[1] && $A[0] !== $B[0]) return $swap1($k, $A[0], $B[0], $T, $m);
-        return false;
-    };
+    $swapPair = static fn(int $k, array $A, array $B, float $T, int $m): bool =>
+        ($A[0] !== $A[1] && $B[0] !== $B[1] && $A[0] !== $B[0] && $A[0] !== $B[1] && $A[1] !== $B[0] && $A[1] !== $B[1])
+            && $applyPerm($k, [$A[0], $A[1], $B[0], $B[1]], [$B[0], $B[1], $A[0], $A[1]], $T, $m);
 
     $swapTriple = static function (int $k, array $A, array $B, float $T, int $m) use ($applyPerm): bool {
         foreach ($A as $sa) foreach ($B as $sb) if ($sa === $sb) return false;
         return $applyPerm($k, [$A[0], $A[1], $A[2], $B[0], $B[1], $B[2]], [$B[0], $B[1], $B[2], $A[0], $A[1], $A[2]], $T, $m);
     };
 
-    $rot3 = static function (int $k, int $s1, int $s2, int $s3, float $T, int $m) use ($applyPerm): bool {
-        if ($s1 === $s2 || $s2 === $s3 || $s1 === $s3) return false;
-        return $applyPerm($k, [$s1, $s2, $s3], [$s2, $s3, $s1], $T, $m);
-    };
+    $rot3 = static fn(int $k, int $s1, int $s2, int $s3, float $T, int $m): bool =>
+        ($s1 !== $s2 && $s2 !== $s3 && $s1 !== $s3) && $applyPerm($k, [$s1, $s2, $s3], [$s2, $s3, $s1], $T, $m);
 
     $getBlockAt = static function (int $k, int $s) use (&$grid, &$slotPrev, &$slotNext): array {
         $d = $grid[$k][$s];
@@ -971,390 +1261,272 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
         return $slots;
     };
 
-    $pickCand = static function (int $g, float $fallbackAll = 0.0) use (&$guruKesList, $nSlots): int {
-        $list = $guruKesList[$g] ?? [];
-        if (empty($list) || ($fallbackAll > 0 && mt_rand() / mt_getrandmax() < $fallbackAll)) {
-            return mt_rand(0, $nSlots - 1);
+    $getClassBlocks = static function (int $k) use (&$grid, &$runs): array {
+        $blocks = [];
+        foreach ($runs as $rIdx => $r) {
+            $sl = $r['slots'];
+            $len = count($sl);
+            $curD = $grid[$k][$sl[0]];
+            $curSlots = [$sl[0]];
+            for ($i = 1; $i < $len; $i++) {
+                $d = $grid[$k][$sl[$i]];
+                if ($d === $curD && $d > 0) {
+                    $curSlots[] = $sl[$i];
+                } else {
+                    $blocks[] = ['d' => $curD, 'slots' => $curSlots, 'len' => count($curSlots), 'run' => $rIdx];
+                    $curD = $d;
+                    $curSlots = [$sl[$i]];
+                }
+            }
+            $blocks[] = ['d' => $curD, 'slots' => $curSlots, 'len' => count($curSlots), 'run' => $rIdx];
         }
+        return $blocks;
+    };
+
+    $trySwapSameLenBlockAt = static function (int $k, int $sTarget, float $T, int $mode) use ($getClassBlocks, $applyPerm): bool {
+        $blks = $getClassBlocks($k);
+        $bA = null;
+        foreach ($blks as $b) {
+            if (in_array($sTarget, $b['slots'], true)) { $bA = $b; break; }
+        }
+        if ($bA === null) return false;
+        $sameLen = [];
+        foreach ($blks as $b) {
+            if ($b['len'] === $bA['len'] && $b['d'] !== $bA['d']) $sameLen[] = $b;
+        }
+        if (empty($sameLen)) return false;
+        $bB = $sameLen[mt_rand(0, count($sameLen) - 1)];
+        return $applyPerm($k, array_merge($bA['slots'], $bB['slots']), array_merge($bB['slots'], $bA['slots']), $T, $mode);
+    };
+
+    $tryRandomSameLenBlockSwap = static function (int $k, float $T, int $mode) use ($getClassBlocks, $applyPerm): bool {
+        $blks = $getClassBlocks($k);
+        $byLen = [];
+        foreach ($blks as $b) $byLen[$b['len']][] = $b;
+        $szPool = [];
+        foreach ([2, 3, 1] as $sz) {
+            if (!empty($byLen[$sz]) && count($byLen[$sz]) >= 2) $szPool[] = $sz;
+        }
+        if (empty($szPool)) return false;
+        $list = $byLen[$szPool[mt_rand(0, count($szPool) - 1)]];
+        $i1 = mt_rand(0, count($list) - 1);
+        $i2 = mt_rand(0, count($list) - 2);
+        if ($i2 >= $i1) $i2++;
+        if ($list[$i1]['d'] === $list[$i2]['d']) return false;
+        return $applyPerm($k, array_merge($list[$i1]['slots'], $list[$i2]['slots']), array_merge($list[$i2]['slots'], $list[$i1]['slots']), $T, $mode);
+    };
+
+    $tryRunMove = static function (int $k, float $T, int $mode) use (&$runs, &$runsByLen, $applyPerm): bool {
+        if (mt_rand(0, 1)) {
+            $sl = $runs[mt_rand(0, count($runs) - 1)]['slots'];
+            return count($sl) >= 2 && $applyPerm($k, $sl, array_reverse($sl), $T, $mode);
+        }
+        $lens = array_keys($runsByLen);
+        $rLen = $lens[mt_rand(0, count($lens) - 1)];
+        if (count($runsByLen[$rLen]) < 2) return false;
+        $i1 = mt_rand(0, count($runsByLen[$rLen]) - 1);
+        $i2 = mt_rand(0, count($runsByLen[$rLen]) - 2);
+        if ($i2 >= $i1) $i2++;
+        $r1 = $runsByLen[$rLen][$i1];
+        $r2 = $runsByLen[$rLen][$i2];
+        return $applyPerm($k, array_merge($runs[$r1]['slots'], $runs[$r2]['slots']), array_merge($runs[$r2]['slots'], $runs[$r1]['slots']), $T, $mode);
+    };
+
+    $pickCand = static function (int $g) use (&$guruKesList, $nSlots): int {
+        $list = $guruKesList[$g] ?? [];
+        if (empty($list)) return mt_rand(0, $nSlots - 1);
         return $list[mt_rand(0, count($list) - 1)];
     };
 
-    $maybeUpdateBest = static function () use (&$totKes, &$totCl, &$totPjok, &$totBlk, &$totSd, &$bestKes, &$bestCl, &$bestPjok, &$bestBlk, &$bestSd, &$grid, &$bestGrid): void {
-        $isBetter = false;
-        if ($totKes !== $bestKes) {
-            $isBetter = ($totKes < $bestKes);
-        } elseif ($totCl !== $bestCl) {
-            $isBetter = ($totCl < $bestCl);
-        } elseif ($totPjok !== $bestPjok) {
-            $isBetter = ($totPjok < $bestPjok);
-        } elseif ($totBlk !== $bestBlk) {
-            $isBetter = ($totBlk < $bestBlk);
-        } elseif ($totSd < $bestSd) {
-            $isBetter = true;
-        }
-        if ($isBetter) {
-            $bestKes = $totKes;
-            $bestCl = $totCl;
-            $bestPjok = $totPjok;
-            $bestBlk = $totBlk;
-            $bestSd = $totSd;
-            $bestGrid = $grid;
-        }
-    };
-
-    $refreshActiveLists = function (array &$badDists, array &$clashCells, array &$sdDists) use (&$distBlk, &$distSd, &$kelasIds, &$grid, &$distMeta, &$guruCnt, $nSlots): void {
-        $badDists = [];
-        $sdDists = [];
+    $refreshActiveLists = static function (array &$badDists, array &$clashCells, array &$kesCells, array &$sdDists) use (
+        &$distBlk, &$distSd, &$kelasIds, &$grid, &$distMeta, &$guruCnt, &$guruKes, $nSlots
+    ): void {
+        $badDists = []; $sdDists = []; $clashCells = []; $kesCells = [];
         foreach ($distBlk as $d => $b) if ($b > 0) $badDists[] = $d;
         foreach ($distSd as $d => $v) if ($v > 0) $sdDists[] = $d;
-        $clashCells = [];
         foreach ($kelasIds as $k) {
             for ($s = 0; $s < $nSlots; $s++) {
                 $d = $grid[$k][$s];
-                if ($d > 0 && $guruCnt[$distMeta[$d]['guru_id']][$s] > 1) {
-                    $clashCells[] = [$k, $s];
+                if ($d > 0) {
+                    $g = $distMeta[$d]['guru_id'];
+                    if ($guruCnt[$g][$s] > 1) $clashCells[] = [$k, $s];
+                    if (!isset($guruKes[$g][$s])) $kesCells[] = [$k, $s];
                 }
             }
         }
     };
 
-    // Stage 1: Multi-Cycle Balanced SA
-    $itersPerCycle = 75000;
-    for ($cycle = 0; $cycle < 10; $cycle++) {
-        if (microtime(true) - $t0 > $stage1Budget) break;
-        if ($bestKes === 0 && $bestCl === 0 && $bestPjok === 0 && $bestBlk === 0 && $bestSd <= 2) break;
+    // Fase 1: Multi-Cycle Balanced SA
+    $p1End = $t0 + $totalBudget * 0.55;
+    $itersPerCycle = 85000;
+    for ($cycle = 0; $cycle < 8; $cycle++) {
+        if (microtime(true) > $p1End) break;
+        if ($bestScore[0] === 0 && $bestScore[1] === 0 && $bestScore[2] === 0 && $bestScore[3] === 0 && $bestScore[4] === 0) break;
+        if ($cycle > 0) $computeGridState($bestGrid);
 
-        $W_CL = ($cycle >= 2 && $bestCl > 0) ? 155 : 125;
-        $Tstart = ($cycle === 0) ? 48.0 : 32.0;
-        $Tend = 2.5;
+        $W_PJOK = 3200;
+        $W_KES = 650;
+        $W_BLK = ($cycle >= 2) ? 2000 : 1400;
+        $W_CL  = ($cycle >= 2 && $bestScore[2] > 0) ? 450 : 320;
+        $Tstart = ($cycle === 0) ? 55.0 : 30.0;
+        $Tend = 1.2;
         $cool = pow($Tend / $Tstart, 1.0 / $itersPerCycle);
         $T = $Tstart;
 
-        $badDists = [];
-        $clashCells = [];
-        $sdDists = [];
-        $refreshActiveLists($badDists, $clashCells, $sdDists);
+        $badDists = []; $clashCells = []; $kesCells = []; $sdDists = [];
+        $refreshActiveLists($badDists, $clashCells, $kesCells, $sdDists);
 
         for ($it = 0; $it < $itersPerCycle; $it++) {
             if (($it & 511) === 0) {
-                if (microtime(true) - $t0 > $stage1Budget) break;
-                $refreshActiveLists($badDists, $clashCells, $sdDists);
+                if (microtime(true) > $p1End) break;
+                $refreshActiveLists($badDists, $clashCells, $kesCells, $sdDists);
+                if (empty($clashCells) && empty($badDists) && empty($kesCells) && empty($sdDists)) break;
             }
-
             $r = mt_rand(0, 99);
-            if ($r < 32 && !empty($clashCells)) {
+            if ($r < 36 && !empty($clashCells)) {
                 $cc = $clashCells[mt_rand(0, count($clashCells) - 1)];
-                $k = $cc[0];
-                $s1 = $cc[1];
-                $d1 = $grid[$k][$s1];
-                $g1 = $distMeta[$d1]['guru_id'];
-                $blk1 = $getBlockAt($k, $s1);
+                $k = $cc[0]; $s1s = $cc[1];
+                $g1 = $distMeta[$grid[$k][$s1s]]['guru_id'];
+                $blk1 = $getBlockAt($k, $s1s);
                 $len1 = count($blk1);
-
-                if ($len1 === 2 && !empty($guruPairs[$g1]) && mt_rand(0, 9) < 7) {
+                if ($len1 === 2 && !empty($guruPairs[$g1]) && mt_rand(0, 9) < 8) {
                     $pB = $guruPairs[$g1][mt_rand(0, count($guruPairs[$g1]) - 1)];
                     if (mt_rand(0, 1)) $pB = [$pB[1], $pB[0]];
                     $swapPair($k, $blk1, $pB, $T, 0);
-                } elseif ($len1 === 3 && !empty($guruTriples[$g1]) && mt_rand(0, 9) < 7) {
-                    $tB = $guruTriples[$g1][mt_rand(0, count($guruTriples[$g1]) - 1)];
-                    $swapTriple($k, $blk1, $tB, $T, 0);
-                } elseif (mt_rand(0, 9) < 6) {
-                    $swap1($k, $s1, $pickCand($g1), $T, 0);
+                } elseif ($len1 === 3 && !empty($guruTriples[$g1]) && mt_rand(0, 9) < 8) {
+                    $swapTriple($k, $blk1, $guruTriples[$g1][mt_rand(0, count($guruTriples[$g1]) - 1)], $T, 0);
+                } elseif ($len1 === 1) {
+                    $swap1($k, $s1s, $pickCand($g1), $T, 0);
                 } else {
-                    $s2 = $pickCand($g1);
-                    $g2 = $distMeta[$grid[$k][$s2]]['guru_id'];
-                    $s3 = $pickCand($g2);
-                    $rot3($k, $s1, $s2, $s3, $T, 0);
+                    $tryRunMove($k, $T, 0);
                 }
-            } elseif ($r < 56 && !empty($badDists)) {
+            } elseif ($r < 54 && !empty($badDists)) {
                 $d = $badDists[mt_rand(0, count($badDists) - 1)];
                 $k = $distMeta[$d]['kelas_id'];
-                $g = $distMeta[$d]['guru_id'];
                 $sl = $distSlots[$d];
                 $cnt = count($sl);
                 if ($cnt >= 2) {
                     $i1 = mt_rand(0, $cnt - 1);
                     $i2 = mt_rand(0, $cnt - 2);
                     if ($i2 >= $i1) $i2++;
-                    $m = mt_rand(0, 9);
-                    if ($m < 5 && !empty($guruPairs[$g])) {
-                        $pB = $guruPairs[$g][mt_rand(0, count($guruPairs[$g]) - 1)];
-                        if (mt_rand(0, 1)) $pB = [$pB[1], $pB[0]];
-                        $swapPair($k, [$sl[$i1], $sl[$i2]], $pB, $T, 0);
-                    } elseif ($m < 8) {
-                        $sA = $sl[$i1];
-                        $sB = $sl[$i2];
-                        $candN = [];
-                        if ($slotPrev[$sA] !== -1 && $grid[$k][$slotPrev[$sA]] !== $d) $candN[] = $slotPrev[$sA];
-                        if ($slotNext[$sA] !== -1 && $grid[$k][$slotNext[$sA]] !== $d) $candN[] = $slotNext[$sA];
-                        if (!empty($candN)) {
-                            $sN = $candN[mt_rand(0, count($candN) - 1)];
-                            if (!$swap1($k, $sB, $sN, $T, 0)) {
-                                $gN = $distMeta[$grid[$k][$sN]]['guru_id'];
-                                $rot3($k, $sB, $sN, $pickCand($gN), $T, 0);
-                            }
-                        }
-                    } else {
-                        $s1 = $sl[$i1];
-                        $s2 = $pickCand($g);
-                        $g2 = $distMeta[$grid[$k][$s2]]['guru_id'];
-                        $rot3($k, $s1, $s2, $pickCand($g2), $T, 0);
-                    }
-                }
-            } elseif ($r < 72 && !empty($sdDists)) {
-                $d = $sdDists[mt_rand(0, count($sdDists) - 1)];
-                $k = $distMeta[$d]['kelas_id'];
-                $g = $distMeta[$d]['guru_id'];
-                $sl = $distSlots[$d];
-                $s1 = $sl[mt_rand(0, count($sl) - 1)];
-                $pairA = null;
-                if ($slotNext[$s1] !== -1 && $grid[$k][$s1 + 1] === $d) $pairA = [$s1, $s1 + 1];
-                elseif ($slotPrev[$s1] !== -1 && $grid[$k][$s1 - 1] === $d) $pairA = [$s1 - 1, $s1];
-                if ($pairA !== null && !empty($guruPairs[$g]) && mt_rand(0, 1)) {
-                    $pB = $guruPairs[$g][mt_rand(0, count($guruPairs[$g]) - 1)];
-                    if (mt_rand(0, 1)) $pB = [$pB[1], $pB[0]];
-                    $swapPair($k, $pairA, $pB, $T, 0);
-                } else {
-                    $swap1($k, $s1, $pickCand($g), $T, 0);
-                }
-            } elseif ($r < 88) {
-                $k = $kelasIds[mt_rand(0, $nKelas - 1)];
-                $s1 = mt_rand(0, $nSlots - 1);
-                $d1 = $grid[$k][$s1];
-                $g1 = $distMeta[$d1]['guru_id'];
-                $pairA = null;
-                if ($slotNext[$s1] !== -1 && $grid[$k][$s1 + 1] === $d1) $pairA = [$s1, $s1 + 1];
-                elseif ($slotPrev[$s1] !== -1 && $grid[$k][$s1 - 1] === $d1) $pairA = [$s1 - 1, $s1];
-                if ($pairA !== null && !empty($guruPairs[$g1])) {
-                    $pB = $guruPairs[$g1][mt_rand(0, count($guruPairs[$g1]) - 1)];
-                    if (mt_rand(0, 1)) $pB = [$pB[1], $pB[0]];
-                    $swapPair($k, $pairA, $pB, $T, 0);
-                } else {
-                    $swap1($k, $s1, $pickCand($g1), $T, 0);
-                }
-            } elseif ($r < 95) {
-                $k = $kelasIds[mt_rand(0, $nKelas - 1)];
-                $s1 = mt_rand(0, $nSlots - 1);
-                $g1 = $distMeta[$grid[$k][$s1]]['guru_id'];
-                $s2 = $pickCand($g1);
-                $g2 = $distMeta[$grid[$k][$s2]]['guru_id'];
-                $rot3($k, $s1, $s2, $pickCand($g2), $T, 0);
-            } else {
-                $k = $kelasIds[mt_rand(0, $nKelas - 1)];
-                $s1 = mt_rand(0, $nSlots - 1);
-                $d1 = $grid[$k][$s1];
-                $g1 = $distMeta[$d1]['guru_id'];
-                if ($slotPrev[$s1] !== -1 && $slotNext[$s1] !== -1 && $grid[$k][$s1 - 1] === $d1 && $grid[$k][$s1 + 1] === $d1 && !empty($guruTriples[$g1])) {
-                    $swapTriple($k, [$s1 - 1, $s1, $s1 + 1], $guruTriples[$g1][mt_rand(0, count($guruTriples[$g1]) - 1)], $T, 0);
-                }
-            }
-
-            $maybeUpdateBest();
-            $T *= $cool;
-        }
-    }
-
-    // Helper sinkronisasi state dari $bestGrid sebelum fase lanjutan
-    $syncStateFromBest = static function () use (&$grid, &$bestGrid, &$guruCnt, &$distSlots, &$kelasIds, &$distMeta, &$distBlk, &$distPjok, &$distSd, &$totKes, &$totCl, &$totBlk, &$totPjok, &$totSd, &$guruKes, &$slotRun, &$slotHari, $nSlots): void {
-        $grid = $bestGrid;
-        foreach ($guruCnt as &$arr) $arr = array_fill(0, $nSlots, 0);
-        unset($arr);
-        foreach ($distSlots as &$arr) $arr = [];
-        unset($arr);
-        $totKes = 0;
-        foreach ($kelasIds as $k) {
-            for ($s = 0; $s < $nSlots; $s++) {
-                $d = $grid[$k][$s];
-                if ($d > 0) {
-                    $distSlots[$d][] = $s;
-                    $g = $distMeta[$d]['guru_id'];
-                    $guruCnt[$g][$s]++;
-                    if (!isset($guruKes[$g][$s])) $totKes++;
-                }
-            }
-        }
-        $totCl = 0;
-        foreach ($guruCnt as $g => $arr) {
-            if ($g === 0) continue;
-            for ($s = 0; $s < $nSlots; $s++) if ($arr[$s] > 1) $totCl += ($arr[$s] - 1);
-        }
-        $totBlk = 0;
-        $totPjok = 0;
-        $totSd = 0;
-        foreach ($distSlots as $d => $sl) {
-            [$b, $pv, $sd] = sch_eval_dist_slots($d, $sl, $distMeta, $slotRun, $slotHari);
-            $distBlk[$d] = $b;
-            $distPjok[$d] = $pv;
-            $distSd[$d] = $sd;
-            $totBlk += $b;
-            $totPjok += $pv;
-            $totSd += $sd;
-        }
-    };
-
-    // Fallback khusus jika masih terdapat bentrok setelah Stage 1
-    if ($bestCl > 0) {
-        $syncStateFromBest();
-        $W_CL = 260;
-        $W_PJOK = 115;
-        $W_BLK = 75;
-        $W_SD = 5;
-        $fbStart = microtime(true);
-        $fbIters = 180000;
-        $T = 40.0;
-        $cool = pow(2.0 / 40.0, 1.0 / $fbIters);
-        $badDists = [];
-        $clashCells = [];
-        $sdDists = [];
-        $refreshActiveLists($badDists, $clashCells, $sdDists);
-
-        for ($it = 0; $it < $fbIters; $it++) {
-            if ($bestCl === 0) break;
-            if (($it & 511) === 0) {
-                if (microtime(true) - $fbStart > 2.5) break;
-                $refreshActiveLists($badDists, $clashCells, $sdDists);
-            }
-            if (!empty($clashCells) && mt_rand(0, 99) < 65) {
-                $cc = $clashCells[mt_rand(0, count($clashCells) - 1)];
-                $k = $cc[0];
-                $s1 = $cc[1];
-                $d1 = $grid[$k][$s1];
-                $g1 = $distMeta[$d1]['guru_id'];
-                $blk1 = $getBlockAt($k, $s1);
-                $len1 = count($blk1);
-
-                if ($len1 === 2 && !empty($guruPairs[$g1]) && mt_rand(0, 1)) {
-                    $pB = $guruPairs[$g1][mt_rand(0, count($guruPairs[$g1]) - 1)];
-                    if (mt_rand(0, 1)) $pB = [$pB[1], $pB[0]];
-                    $swapPair($k, $blk1, $pB, $T, 0);
-                } elseif ($len1 === 3 && !empty($guruTriples[$g1]) && mt_rand(0, 1)) {
-                    $tB = $guruTriples[$g1][mt_rand(0, count($guruTriples[$g1]) - 1)];
-                    $swapTriple($k, $blk1, $tB, $T, 0);
-                } elseif (mt_rand(0, 2) !== 0) {
-                    $swap1($k, $s1, $pickCand($g1), $T, 0);
-                } else {
-                    $s2 = $pickCand($g1);
-                    $g2 = $distMeta[$grid[$k][$s2]]['guru_id'];
-                    $rot3($k, $s1, $s2, $pickCand($g2), $T, 0);
-                }
-            } else {
-                $k = $kelasIds[mt_rand(0, $nKelas - 1)];
-                $s1 = mt_rand(0, $nSlots - 1);
-                $g1 = $distMeta[$grid[$k][$s1]]['guru_id'];
-                $swap1($k, $s1, $pickCand($g1), $T, 0);
-            }
-            $maybeUpdateBest();
-            $T *= $cool;
-        }
-    }
-
-    // Stage 2: Strict Polish (menjaga Kes, Clashes, Pjok, Blk tidak memburuk sambil menekan Blk & Same-Day ke titik optimal)
-    $syncStateFromBest();
-    $pStart = microtime(true);
-    $pIters = 180000;
-    $T = 16.0;
-    $cool = pow(0.2 / 16.0, 1.0 / $pIters);
-    $badDists = [];
-    $clashCells = [];
-    $sdDists = [];
-    $refreshActiveLists($badDists, $clashCells, $sdDists);
-
-    for ($it = 0; $it < $pIters; $it++) {
-        if (($it & 511) === 0) {
-            if (microtime(true) - $pStart > $stage2Budget) break;
-            $refreshActiveLists($badDists, $clashCells, $sdDists);
-            if (empty($sdDists) && empty($badDists)) break;
-        }
-
-        $r = mt_rand(0, 99);
-        if ($r < 28 && !empty($badDists)) {
-            $d = $badDists[mt_rand(0, count($badDists) - 1)];
-            $k = $distMeta[$d]['kelas_id'];
-            $g = $distMeta[$d]['guru_id'];
-            $sl = $distSlots[$d];
-            $cnt = count($sl);
-            if ($cnt >= 2) {
-                $i1 = mt_rand(0, $cnt - 1);
-                $i2 = mt_rand(0, $cnt - 2);
-                if ($i2 >= $i1) $i2++;
-                $m = mt_rand(0, 9);
-                if ($m < 5 && !empty($guruPairs[$g])) {
-                    $pB = $guruPairs[$g][mt_rand(0, count($guruPairs[$g]) - 1)];
-                    if (mt_rand(0, 1)) $pB = [$pB[1], $pB[0]];
-                    $swapPair($k, [$sl[$i1], $sl[$i2]], $pB, $T, 1);
-                } elseif ($m < 8) {
-                    $sA = $sl[$i1];
-                    $sB = $sl[$i2];
+                    $sA = $sl[$i1]; $sB = $sl[$i2];
                     $candN = [];
                     if ($slotPrev[$sA] !== -1 && $grid[$k][$slotPrev[$sA]] !== $d) $candN[] = $slotPrev[$sA];
                     if ($slotNext[$sA] !== -1 && $grid[$k][$slotNext[$sA]] !== $d) $candN[] = $slotNext[$sA];
                     if (!empty($candN)) {
                         $sN = $candN[mt_rand(0, count($candN) - 1)];
-                        if (!$swap1($k, $sB, $sN, $T, 1)) {
+                        if (!$swap1($k, $sB, $sN, $T, 0)) {
                             $gN = $distMeta[$grid[$k][$sN]]['guru_id'];
-                            $rot3($k, $sB, $sN, $pickCand($gN), $T, 1);
+                            $rot3($k, $sB, $sN, $pickCand($gN), $T, 0);
                         }
                     }
+                }
+            } elseif ($r < 84) {
+                $k = $kelasIds[mt_rand(0, $nKelas - 1)];
+                $s1s = mt_rand(0, $nSlots - 1);
+                $g1 = $distMeta[$grid[$k][$s1s]]['guru_id'];
+                $blk = $getBlockAt($k, $s1s);
+                if (count($blk) === 2 && !empty($guruPairs[$g1])) {
+                    $pB = $guruPairs[$g1][mt_rand(0, count($guruPairs[$g1]) - 1)];
+                    if (mt_rand(0, 1)) $pB = [$pB[1], $pB[0]];
+                    $swapPair($k, $blk, $pB, $T, 0);
+                } elseif (count($blk) === 3 && !empty($guruTriples[$g1])) {
+                    $swapTriple($k, $blk, $guruTriples[$g1][mt_rand(0, count($guruTriples[$g1]) - 1)], $T, 0);
                 } else {
-                    $s1 = $sl[$i1];
-                    $s2 = $pickCand($g);
-                    $g2 = $distMeta[$grid[$k][$s2]]['guru_id'];
-                    $rot3($k, $s1, $s2, $pickCand($g2), $T, 1);
+                    $swap1($k, $s1s, $pickCand($g1), $T, 0);
+                }
+            } elseif ($r < 95) {
+                $tryRunMove($kelasIds[mt_rand(0, $nKelas - 1)], $T, 0);
+            } else {
+                $k = $kelasIds[mt_rand(0, $nKelas - 1)];
+                $s1s = mt_rand(0, $nSlots - 1);
+                $g1 = $distMeta[$grid[$k][$s1s]]['guru_id'];
+                $s2s = $pickCand($g1);
+                if (mt_rand(0, 1)) $swap1($k, $s1s, $s2s, $T, 0);
+                else {
+                    $g2 = $distMeta[$grid[$k][$s2s]]['guru_id'];
+                    $rot3($k, $s1s, $s2s, $pickCand($g2), $T, 0);
                 }
             }
-        } elseif ($r < 68 && !empty($sdDists)) {
+            $T *= $cool;
+        }
+    }
+
+    // Pastikan Fase 2 memulai dari state tanpa pelanggaran blok/PJOK bila initGrid valid,
+    // sehingga Fase 2 & 3 menjamin 100% aturan blok & PJOK tetap terkunci = 0.
+    if ($bestScore[0] > 0 || $bestScore[1] > 0) {
+        $computeGridState($initGrid);
+        if ($totPjok === 0 && $totBlk === 0) {
+            $bestGrid = $initGrid;
+            $bestScore = [$totPjok, $totBlk, $totCl, $totKes, $totSd];
+        } else {
+            $computeGridState($bestGrid);
+        }
+    } else {
+        $computeGridState($bestGrid);
+    }
+    if ($bestScore[2] > 0) {
+        $p2End = $t0 + $totalBudget * 0.85;
+        $W_CL = 750;
+        $W_KES = 140;
+        $W_SD = 6;
+        $p2Iters = 140000;
+        $T = 35.0;
+        $cool = pow(0.3 / 35.0, 1.0 / $p2Iters);
+        $badDists = []; $clashCells = []; $kesCells = []; $sdDists = [];
+        $refreshActiveLists($badDists, $clashCells, $kesCells, $sdDists);
+
+        for ($it = 0; $it < $p2Iters; $it++) {
+            if ($bestScore[2] === 0 && $bestScore[0] === 0 && $bestScore[1] === 0) break;
+            if (($it & 255) === 0) {
+                if (microtime(true) > $p2End) break;
+                $refreshActiveLists($badDists, $clashCells, $kesCells, $sdDists);
+            }
+            $r = mt_rand(0, 99);
+            if ($r < 50 && !empty($clashCells)) {
+                $cc = $clashCells[mt_rand(0, count($clashCells) - 1)];
+                $trySwapSameLenBlockAt($cc[0], $cc[1], $T, 1);
+            } elseif ($r < 82) {
+                $tryRandomSameLenBlockSwap($kelasIds[mt_rand(0, $nKelas - 1)], $T, 1);
+            } else {
+                $tryRunMove($kelasIds[mt_rand(0, $nKelas - 1)], $T, 1);
+            }
+            $T *= $cool;
+        }
+    }
+
+    // Fase 3: Strict Polish (kunci bentrok, blok JP, PJOK; minimalkan pelanggaran kesediaan & pecah hari)
+    $computeGridState($bestGrid);
+    $p3End = $t0 + $totalBudget;
+    $W_KES = 350;
+    $W_SD = 25;
+    $p3Iters = 100000;
+    $T = 16.0;
+    $cool = pow(0.2 / 16.0, 1.0 / $p3Iters);
+    $badDists = []; $clashCells = []; $kesCells = []; $sdDists = [];
+    $refreshActiveLists($badDists, $clashCells, $kesCells, $sdDists);
+
+    for ($it = 0; $it < $p3Iters; $it++) {
+        if (($it & 511) === 0) {
+            if (microtime(true) > $p3End) break;
+            $refreshActiveLists($badDists, $clashCells, $kesCells, $sdDists);
+            if (empty($kesCells) && empty($sdDists)) break;
+        }
+        $r = mt_rand(0, 99);
+        if ($r < 35 && !empty($kesCells)) {
+            $kc = $kesCells[mt_rand(0, count($kesCells) - 1)];
+            $trySwapSameLenBlockAt($kc[0], $kc[1], $T, 2);
+        } elseif ($r < 65 && !empty($sdDists)) {
             $d = $sdDists[mt_rand(0, count($sdDists) - 1)];
-            $k = $distMeta[$d]['kelas_id'];
-            $g = $distMeta[$d]['guru_id'];
             $sl = $distSlots[$d];
-            $s1 = $sl[mt_rand(0, count($sl) - 1)];
-            $pairA = null;
-            if ($slotNext[$s1] !== -1 && $grid[$k][$s1 + 1] === $d) $pairA = [$s1, $s1 + 1];
-            elseif ($slotPrev[$s1] !== -1 && $grid[$k][$s1 - 1] === $d) $pairA = [$s1 - 1, $s1];
-            if ($pairA !== null && !empty($guruPairs[$g]) && mt_rand(0, 2) !== 0) {
-                $pB = $guruPairs[$g][mt_rand(0, count($guruPairs[$g]) - 1)];
-                if (mt_rand(0, 1)) $pB = [$pB[1], $pB[0]];
-                $swapPair($k, $pairA, $pB, $T, 1);
-            } elseif (mt_rand(0, 2) !== 0) {
-                $swap1($k, $s1, $pickCand($g), $T, 1);
-            } else {
-                $s2 = $pickCand($g);
-                $g2 = $distMeta[$grid[$k][$s2]]['guru_id'];
-                $rot3($k, $s1, $s2, $pickCand($g2), $T, 1);
-            }
+            $trySwapSameLenBlockAt($distMeta[$d]['kelas_id'], $sl[mt_rand(0, count($sl) - 1)], $T, 2);
         } elseif ($r < 85) {
-            $k = $kelasIds[mt_rand(0, $nKelas - 1)];
-            $s1 = mt_rand(0, $nSlots - 1);
-            $d1 = $grid[$k][$s1];
-            $g1 = $distMeta[$d1]['guru_id'];
-            $pairA = null;
-            if ($slotNext[$s1] !== -1 && $grid[$k][$s1 + 1] === $d1) $pairA = [$s1, $s1 + 1];
-            elseif ($slotPrev[$s1] !== -1 && $grid[$k][$s1 - 1] === $d1) $pairA = [$s1 - 1, $s1];
-            if ($pairA !== null && !empty($guruPairs[$g1])) {
-                $pB = $guruPairs[$g1][mt_rand(0, count($guruPairs[$g1]) - 1)];
-                if (mt_rand(0, 1)) $pB = [$pB[1], $pB[0]];
-                $swapPair($k, $pairA, $pB, $T, 1);
-            } else {
-                $swap1($k, $s1, $pickCand($g1), $T, 1);
-            }
-        } elseif ($r < 95) {
-            $k = $kelasIds[mt_rand(0, $nKelas - 1)];
-            $s1 = mt_rand(0, $nSlots - 1);
-            $g1 = $distMeta[$grid[$k][$s1]]['guru_id'];
-            $s2 = $pickCand($g1);
-            $g2 = $distMeta[$grid[$k][$s2]]['guru_id'];
-            $rot3($k, $s1, $s2, $pickCand($g2), $T, 1);
+            $tryRandomSameLenBlockSwap($kelasIds[mt_rand(0, $nKelas - 1)], $T, 2);
         } else {
             $k = $kelasIds[mt_rand(0, $nKelas - 1)];
-            $s1 = mt_rand(0, $nSlots - 1);
-            $d1 = $grid[$k][$s1];
-            $g1 = $distMeta[$d1]['guru_id'];
-            if ($slotPrev[$s1] !== -1 && $slotNext[$s1] !== -1 && $grid[$k][$s1 - 1] === $d1 && $grid[$k][$s1 + 1] === $d1 && !empty($guruTriples[$g1])) {
-                $swapTriple($k, [$s1 - 1, $s1, $s1 + 1], $guruTriples[$g1][mt_rand(0, count($guruTriples[$g1]) - 1)], $T, 1);
-            }
+            $sl = $runs[mt_rand(0, count($runs) - 1)]['slots'];
+            if (count($sl) >= 2) $applyPerm($k, $sl, array_reverse($sl), $T, 2);
         }
-
-        $maybeUpdateBest();
         $T *= $cool;
     }
 
@@ -1377,6 +1549,7 @@ function sch_audit_grid(array &$ctx, array $grid): array {
 
     $totalPlaced = 0;
     $kesViol = 0;
+    $kesDetails = [];
     $gCheck = [];
     $dCheck = [];
 
@@ -1386,7 +1559,13 @@ function sch_audit_grid(array &$ctx, array $grid): array {
             if ($d === 0) continue;
             $totalPlaced++;
             $g = $distMeta[$d]['guru_id'];
-            if (!isset($guruKes[$g][$s])) $kesViol++;
+            if (!isset($guruKes[$g][$s])) {
+                $kesViol++;
+                if (count($kesDetails) < 10) {
+                    $m = $distMeta[$d];
+                    $kesDetails[] = "{$m['nama_kelas']} {$m['kode']} ({$m['nama_guru']}) - {$ctx['slotHariName'][$s]} Jam {$ctx['slotJamKe'][$s]}";
+                }
+            }
             $gCheck[$g][$s] = ($gCheck[$g][$s] ?? 0) + 1;
             $dCheck[$d][] = $s;
         }
@@ -1426,6 +1605,7 @@ function sch_audit_grid(array &$ctx, array $grid): array {
         'total_clashes' => $clashes,
         'has_clashes' => ($clashes > 0),
         'kesediaan_violations' => $kesViol,
+        'kesediaan_violation_details' => $kesDetails,
         'pjok_violations' => $pjokViol,
         'block_violations' => $blkViol,
         'same_day_splits' => $sameDaySplits,
@@ -1460,6 +1640,67 @@ function sch_persist_grid(PDO $pdo, array &$ctx, array $grid): void {
 }
 
 /**
+ * Jalankan multi-start solver agar 100% patuh seluruh aturan blok JP, PJOK, TIK, dan 0 bentrok guru,
+ * serta memilih kandidat dengan pelanggaran kesediaan dan pecah hari paling minimum.
+ */
+function sch_run_best_solver(array &$ctx, ?array $existingGrid = null, bool $isFillMode = false): array {
+    $tAll = microtime(true);
+    $rankOf = static fn(array $a): array => [
+        $a['pjok_violations'],
+        $a['block_violations'],
+        $a['total_clashes'],
+        $a['empty_slots'],
+        $a['kesediaan_violations'],
+        $a['same_day_splits']
+    ];
+
+    $bestResult = null;
+    $bestAudit = null;
+    $bestRank = null;
+
+    $maxAttempts = $isFillMode ? 1 : 4;
+    $maxTotalSeconds = $isFillMode ? 18.0 : 32.0;
+
+    for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
+        if ($attempt > 1 && (microtime(true) - $tAll) > ($maxTotalSeconds - 7.0)) {
+            break;
+        }
+        $init = sch_init_grid($ctx, $attempt === 1 ? $existingGrid : null);
+        $stage1Budget = $isFillMode ? 4.5 : 6.0;
+        $stage2Budget = $isFillMode ? 2.5 : 3.0;
+        $res = sch_solve_sa($ctx, $init['grid'], $init['hasSoftKes'], $stage1Budget, $stage2Budget);
+        $aud = sch_audit_grid($ctx, $res['grid']);
+        $rk = $rankOf($aud);
+
+        if ($bestRank === null || $rk < $bestRank) {
+            $bestRank = $rk;
+            $bestResult = $res;
+            $bestAudit = $aud;
+        }
+
+        if ($isFillMode && ($aud['pjok_violations'] > 0 || $aud['block_violations'] > 0 || $aud['total_clashes'] > 0)) {
+            // Fallback clean run untuk mode pemadatan bila grid lama menyisakan blok tidak valid
+            $cleanInit = sch_init_grid($ctx, null);
+            $resClean = sch_solve_sa($ctx, $cleanInit['grid'], $cleanInit['hasSoftKes'], 6.0, 3.0);
+            $audClean = sch_audit_grid($ctx, $resClean['grid']);
+            $rkClean = $rankOf($audClean);
+            if ($rkClean < $bestRank) {
+                $bestRank = $rkClean;
+                $bestResult = $resClean;
+                $bestAudit = $audClean;
+            }
+        }
+
+        if ($bestRank === [0, 0, 0, 0, 0, 0]) {
+            break;
+        }
+    }
+
+    $bestResult['elapsed_seconds'] = round(microtime(true) - $tAll, 2);
+    return ['result' => $bestResult, 'audit' => $bestAudit];
+}
+
+/**
  * Bentuk pesan & payload respon standar untuk aksi generate dan auto_fill_gaps.
  */
 function sch_build_solver_response(array &$ctx, array $audit, float $elapsed, string $verbLabel = 'di-generate'): array {
@@ -1468,6 +1709,7 @@ function sch_build_solver_response(array &$ctx, array $audit, float $elapsed, st
     $emptySlots = $audit['empty_slots'];
     $clashes = $audit['total_clashes'];
     $kesViol = $audit['kesediaan_violations'];
+    $kesDetails = $audit['kesediaan_violation_details'] ?? [];
     $pjokViol = $audit['pjok_violations'];
     $blkViol = $audit['block_violations'];
     $sdSplits = $audit['same_day_splits'];
@@ -1476,13 +1718,19 @@ function sch_build_solver_response(array &$ctx, array $audit, float $elapsed, st
     $summaryParts = [
         "{$placed}/{$reqJp} JP terisi" . ($emptySlots > 0 ? " ({$emptySlots} slot kosong)" : " tanpa jam kosong"),
         "{$clashes} bentrok guru",
-        "{$kesViol} pelanggaran kesediaan",
         "{$blkViol} pelanggaran blok JP",
+        "{$pjokViol} pelanggaran PJOK",
+        "{$kesViol} penyesuaian kesediaan",
         "{$sdSplits} mapel terpecah di hari sama"
     ];
 
     if ($clashes === 0 && $kesViol === 0 && $pjokViol === 0 && $blkViol === 0 && $emptySlots === 0) {
         $msg = "Jadwal berhasil {$verbLabel} 100% optimal! (" . implode(', ', $summaryParts) . ").";
+    } elseif ($clashes === 0 && $pjokViol === 0 && $blkViol === 0) {
+        $msg = "Jadwal berhasil {$verbLabel} dengan 0 bentrok guru & 100% patuh seluruh aturan blok JP (1-5 JP, PJOK, TIK)! (" . implode(', ', $summaryParts) . ").";
+        if ($kesViol > 0 && !empty($kesDetails)) {
+            $msg .= ' Penyesuaian kesediaan: ' . implode('; ', $kesDetails) . '.';
+        }
     } elseif ($clashes === 0 && $kesViol === 0 && $pjokViol === 0) {
         $msg = "Jadwal selesai {$verbLabel} dengan 0 bentrok guru & 100% patuh kesediaan (" . implode(', ', $summaryParts) . ").";
         if ($blkViol > 0 && !empty($bottlenecks)) {
@@ -1510,6 +1758,7 @@ function sch_build_solver_response(array &$ctx, array $audit, float $elapsed, st
             'diagnostics' => [
                 'teachers_without_kesediaan' => $ctx['diagnostics']['teachers_without_kesediaan'] ?? [],
                 'run_bottlenecks' => $bottlenecks,
+                'kesediaan_violation_details' => $kesDetails,
                 'block_violation_details' => $audit['block_violation_details']
             ]
         ]
@@ -1929,11 +2178,9 @@ switch ($action) {
                 }
             }
 
-            $init = sch_init_grid($ctx, $existingGrid);
-            $stage1Budget = $isFillMode ? 3.5 : 6.5;
-            $stage2Budget = $isFillMode ? 1.5 : 2.5;
-            $result = sch_solve_sa($ctx, $init['grid'], $init['hasSoftKes'], $stage1Budget, $stage2Budget);
-            $audit = sch_audit_grid($ctx, $result['grid']);
+            $solved = sch_run_best_solver($ctx, $existingGrid, $isFillMode);
+            $result = $solved['result'];
+            $audit = $solved['audit'];
 
             // Simpan atomik ke database hanya setelah solusi lengkap selesai & teraudit
             sch_persist_grid(db(), $ctx, $result['grid']);

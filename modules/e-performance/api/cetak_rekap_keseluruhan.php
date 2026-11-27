@@ -39,7 +39,7 @@ if ($setting_kepsek) {
 }
 
 // 3. Get Manual Instruments
-$stmtManualInst = $db->prepare("SELECT id, kategori, bobot, skor_ya, target_dinilai FROM perf_instrumen WHERE periode_id = ? AND is_manual = 1 ORDER BY urutan ASC, id ASC");
+$stmtManualInst = $db->prepare("SELECT id, kategori, bobot, skor_ya, target_dinilai, urutan FROM perf_instrumen WHERE periode_id = ? AND is_manual = 1 ORDER BY urutan ASC, id ASC");
 $stmtManualInst->execute([$periode_id]);
 $allManualInst = $stmtManualInst->fetchAll(PDO::FETCH_ASSOC);
 
@@ -56,7 +56,7 @@ $stmtPtk = $db->prepare("
     SELECT pt.id, pt.nama, pt.niy, pt.jabatan, pt.jenis_ptk, 
            COALESCE(u.tupoksi, pt.jenis_ptk) as tupoksi
     FROM perf_ptk pt
-    LEFT JOIN users u ON pt.niy COLLATE utf8mb4_unicode_ci = u.username
+    LEFT JOIN users u ON pt.niy COLLATE utf8mb4_unicode_ci = u.username COLLATE utf8mb4_unicode_ci
     WHERE pt.status = 1 
     ORDER BY pt.jenis_ptk ASC, pt.nama ASC
 ");
@@ -67,22 +67,11 @@ $results = [];
 
 foreach ($all_ptks as $ptk) {
     $ptk_id = $ptk['id'];
-    $ptk_jenis = trim($ptk['jenis_ptk'] ? $ptk['jenis_ptk'] : ($ptk['tupoksi'] ? $ptk['tupoksi'] : 'Guru'));
-    $group_role = normalizeTupoksiGroup($ptk_jenis);
-    $is_staff = ($group_role !== 'Guru');
-
-    $jabatan_full = strtolower(trim(($ptk['jabatan'] ?? '') . ' ' . $ptk_jenis));
-    $is_waka = (strpos($jabatan_full, 'waka') !== false || strpos($jabatan_full, 'wakil') !== false);
-    $is_ka_tu = (strpos($jabatan_full, 'kepala tu') !== false || strpos($jabatan_full, 'ka. tu') !== false);
-    $is_ka_perpus = (strpos($jabatan_full, 'kepala perpus') !== false || strpos($jabatan_full, 'ka. perpus') !== false);
-    $is_ka_lab = (strpos($jabatan_full, 'kepala lab') !== false || strpos($jabatan_full, 'ka. lab') !== false);
-
-    $allowed_tambahan = [];
-    if ($is_waka) {
-        $allowed_tambahan = ['Manajerial', 'Kepemimpinan', 'Teknis', 'Kewirausahaan'];
-    } elseif ($is_ka_tu || $is_ka_perpus || $is_ka_lab) {
-        $allowed_tambahan = ['Manajerial'];
-    }
+    $roleFlags = getPtkRoleFlags($ptk);
+    $ptk_jenis = $roleFlags['ptk_jenis'];
+    $is_staff = $roleFlags['is_staff'];
+    $is_waka = $roleFlags['is_waka'];
+    $allowed_tambahan = $roleFlags['allowed_tambahan'];
 
     // A. Manual Scores
     $stmtManual = $db->prepare("SELECT data FROM perf_penilaian_manual WHERE periode_id = ? AND ptk_id = ? LIMIT 1");
@@ -90,72 +79,23 @@ foreach ($all_ptks as $ptk) {
     $manualRow = $stmtManual->fetch(PDO::FETCH_ASSOC);
     $manualData = ($manualRow && $manualRow['data']) ? json_decode($manualRow['data'], true) : [];
 
-    // Filter instrumen manual untuk PTK ini
-    $ptk_main_manual = [];
-    foreach ($allManualInst as $inst) {
-        $targetsStr = trim($inst['target_dinilai'] ? $inst['target_dinilai'] : 'Semua');
-        $targets = array_map('trim', explode(',', $targetsStr));
-        if ($targetsStr !== 'Semua' && !in_array('Semua', $targets) && !in_array($ptk_jenis, $targets)) {
-            continue;
-        }
-        if ((float)$inst['bobot'] > 0) {
-            $ptk_main_manual[] = $inst;
-        }
-    }
+    $grouped_manual = calculateManualGroups($allManualInst, $manualData, $ptk_jenis, $is_staff);
+    $has_perangkat = isset($grouped_manual['Perangkat Mengajar']);
 
-    // Kelompokkan Manual
-    $grouped_manual = [];
-    foreach ($ptk_main_manual as $inst) {
-        $kat = trim($inst['kategori']);
-        $k_lower = strtolower($kat);
-        $clean_kat = $kat;
-        $bobot_kat = 10;
-        
-        if (strpos($k_lower, 'perangkat') !== false) {
-            $clean_kat = 'Perangkat Mengajar';
-            $bobot_kat = 10;
-        } elseif (strpos($k_lower, 'hadir') !== false) {
-            $clean_kat = 'Kehadiran';
-            $bobot_kat = 20;
-        } elseif (strpos($k_lower, 'rapat') !== false || strpos($k_lower, 'kedinasan') !== false) {
-            $clean_kat = 'Keikutsertaan dalam rapat/kedinasan';
-            $bobot_kat = $is_staff ? 20 : 10;
-        } elseif (strpos($k_lower, 'partisipasi') !== false) {
-            $clean_kat = 'Partisipasi kegiatan sekolah';
-            $bobot_kat = 30;
-        }
-
-        if (!isset($grouped_manual[$clean_kat])) {
-            $grouped_manual[$clean_kat] = [
-                'total_bobot' => $bobot_kat,
-                'achieved_score' => 0,
-                'max_score' => 0
-            ];
-        }
-        $score = isset($manualData[$inst['id']]) ? (float)$manualData[$inst['id']] : 0;
-        $skor_ya = (float)($inst['skor_ya'] > 0 ? $inst['skor_ya'] : 100);
-        $grouped_manual[$clean_kat]['achieved_score'] += $score;
-        $grouped_manual[$clean_kat]['max_score'] += $skor_ya;
-    }
-
-    // Hitung komponen manual berdasarkan nama kategori
     $val_perangkat = '';
     $val_kehadiran = 0;
     $val_rapat = 0;
     $val_partisipasi = 0;
 
     foreach ($grouped_manual as $kat => $group) {
-        $avg_score = $group['max_score'] > 0 ? ($group['achieved_score'] / $group['max_score']) * 100 : 0;
-        $group_nilai = round($avg_score * ($group['total_bobot'] / 100), 2);
-        
         if ($kat === 'Perangkat Mengajar') {
-            $val_perangkat = $group_nilai;
+            $val_perangkat = $group['group_nilai'];
         } elseif ($kat === 'Kehadiran') {
-            $val_kehadiran = $group_nilai;
+            $val_kehadiran = $group['group_nilai'];
         } elseif ($kat === 'Keikutsertaan dalam rapat/kedinasan') {
-            $val_rapat = $group_nilai;
+            $val_rapat = $group['group_nilai'];
         } elseif ($kat === 'Partisipasi kegiatan sekolah') {
-            $val_partisipasi = $group_nilai;
+            $val_partisipasi = $group['group_nilai'];
         }
     }
 
@@ -171,91 +111,24 @@ foreach ($all_ptks as $ptk) {
         FROM perf_penilaian p
         JOIN perf_instrumen i ON p.instrumen_id = i.id
         LEFT JOIN perf_users u ON p.penilai_id = u.id
-        WHERE p.periode_id = ? AND p.dinilai_ptk_id = ?
+        WHERE p.periode_id = ? AND p.dinilai_ptk_id = ? AND i.is_manual = 0
     ");
     $stmtNilai->execute([$periode_id, $ptk_id]);
     $rawScores = $stmtNilai->fetchAll(PDO::FETCH_ASSOC);
 
-    $allKats = [];
-    foreach ($rawScores as $r) {
-        $k = trim($r['kategori']);
-        if ($k && !in_array($k, $allKats)) $allKats[] = $k;
-    }
-
-    $kategori_list = [];
-    foreach ($allKats as $k) {
-        if (!in_array($k, $allowed_tambahan)) {
-            $kategori_list[] = $k;
-        }
-    }
-
-    $agg = [];
-    foreach ($rawScores as $row) {
-        $ptype_raw = strtolower(trim($row['penilai_type']));
-        if (strpos($ptype_raw, 'siswa') !== false || strpos($ptype_raw, 'murid') !== false) {
-            $ptype = 'siswa';
-        } elseif ($ptype_raw === 'kepala sekolah' || strpos($ptype_raw, 'kepsek') !== false) {
-            $ptype = 'kepsek';
-        } else {
-            if ($row['rater_ptk_id'] != null && (int)$row['rater_ptk_id'] === (int)$row['dinilai_ptk_id']) {
-                $ptype = 'sendiri';
-            } else {
-                $ptype = 'teman';
-            }
-        }
-        
-        $k = trim($row['kategori']);
-        if (in_array($k, $kategori_list)) {
-            if (!isset($agg[$ptype][$k])) $agg[$ptype][$k] = ['sum' => 0, 'count' => 0];
-            $agg[$ptype][$k]['sum'] += (float)$row['nilai'];
-            $agg[$ptype][$k]['count']++;
-        }
-    }
-
-    $scores = [];
-    foreach ($penilai_list as $key => $p) {
-        $scores[$key] = ['kategori' => []];
-        foreach ($kategori_list as $kat) {
-            $scores[$key]['kategori'][$kat] = 0;
-            if (isset($agg[$key][$kat]) && $agg[$key][$kat]['count'] > 0) {
-                $scores[$key]['kategori'][$kat] = $agg[$key][$kat]['sum'] / $agg[$key][$kat]['count'];
-            }
-        }
-    }
-
-    $konversi = [];
-    foreach ($kategori_list as $kat) {
-        $sum_val = 0;
-        $count_penilai = 0;
-        foreach ($scores as $key => $data) {
-            if ($data['kategori'][$kat] > 0) {
-                $sum_val += $data['kategori'][$kat];
-                $count_penilai++;
-            }
-        }
-        $max_skor = $count_penilai * 5;
-        $konversi[$kat] = $max_skor > 0 ? ($sum_val / $max_skor) * 100 : 0;
-    }
-
-    $angket_score = count($konversi) > 0 ? (array_sum($konversi) / count($konversi)) : 0;
-    $bobot_angket = 30;
-    $angket_nilai_weighted = round($angket_score * ($bobot_angket / 100), 2);
+    $angketCalc = calculateAngketScores($rawScores, $is_staff, $is_waka, $allowed_tambahan, $penilai_list);
+    $angket_nilai_weighted = $angketCalc['rounded_nilai_angket'];
 
     // Susun Nilai Kolom 1 s.d 5
-    // Kolom 1: Perangkat (Guru saja, staff kosong)
-    // Kolom 2: Kehadiran
-    // Kolom 3: Rapat
-    // Kolom 4: Partisipasi
-    // Kolom 5: Angket
     $col_scores = [
-        $is_staff ? '' : $val_perangkat,
+        $has_perangkat ? $val_perangkat : '',
         $val_kehadiran,
         $val_rapat,
         $val_partisipasi,
         $angket_nilai_weighted
     ];
 
-    $total_score_ptk = ($is_staff ? 0 : (float)$val_perangkat) + $val_kehadiran + $val_rapat + $val_partisipasi + $angket_nilai_weighted;
+    $total_score_ptk = ($has_perangkat ? (float)$val_perangkat : 0) + $val_kehadiran + $val_rapat + $val_partisipasi + $angket_nilai_weighted;
     $total_score_ptk = round($total_score_ptk, 2);
 
     // Predikat
@@ -447,11 +320,10 @@ $qr_url = $full_base_url . "/modules/e-xam-card/api/qr.php?size=4&data=" . urlen
                     ?>
                     <td class="text-center"><?php 
                         if ($val_col === '') echo '';
-                        elseif (fmod((float)$val_col, 1) !== 0.0) echo number_format($val_col, 2);
-                        else echo number_format($val_col, 0);
+                        else echo number_format(round((float)$val_col), 0);
                     ?></td>
                     <?php endfor; ?>
-                    <td class="text-center"><b><?php echo (fmod((float)$r['tot'], 1) !== 0.0 ? number_format($r['tot'], 2) : number_format($r['tot'], 0)); ?></b></td>
+                    <td class="text-center"><b><?php echo number_format(round((float)$r['tot']), 0); ?></b></td>
                     <td class="text-center"><b><?php echo $r['predikat']; ?></b></td>
                     <td style="font-size: 8.5pt; text-align: justify;"><?php echo htmlspecialchars($r['deskripsi']); ?></td>
                 </tr>

@@ -186,3 +186,338 @@ if (!function_exists('getDeskripsiPenilaian')) {
         return '-';
     }
 }
+
+if (!function_exists('getPtkRoleFlags')) {
+    /**
+     * Resolve normalized PTK role flags and allowed Tugas Tambahan categories.
+     */
+    function getPtkRoleFlags($ptk) {
+        $ptk_jenis = trim(!empty($ptk['jenis_ptk']) ? $ptk['jenis_ptk'] : (!empty($ptk['tupoksi']) ? $ptk['tupoksi'] : 'Guru'));
+        $group_role = normalizeTupoksiGroup($ptk_jenis);
+        $is_staff = ($group_role !== 'Guru');
+
+        $jabatan_full = strtolower(trim(($ptk['jabatan'] ?? '') . ' ' . $ptk_jenis));
+        $is_waka = (strpos($jabatan_full, 'waka') !== false || strpos($jabatan_full, 'wakil') !== false);
+        $is_ka_tu = (strpos($jabatan_full, 'kepala tu') !== false || strpos($jabatan_full, 'ka. tu') !== false);
+        $is_ka_perpus = (strpos($jabatan_full, 'kepala perpus') !== false || strpos($jabatan_full, 'ka. perpus') !== false);
+        $is_ka_lab = (strpos($jabatan_full, 'kepala lab') !== false || strpos($jabatan_full, 'ka. lab') !== false);
+
+        $allowed_tambahan = [];
+        if ($is_waka) {
+            $allowed_tambahan = ['Manajerial', 'Kepemimpinan', 'Teknis', 'Kewirausahaan'];
+        } elseif ($is_ka_tu || $is_ka_perpus || $is_ka_lab) {
+            $allowed_tambahan = ['Manajerial'];
+        }
+
+        return [
+            'ptk_jenis' => $ptk_jenis,
+            'group_role' => $group_role,
+            'is_staff' => $is_staff,
+            'is_waka' => $is_waka,
+            'is_ka_tu' => $is_ka_tu,
+            'is_ka_perpus' => $is_ka_perpus,
+            'is_ka_lab' => $is_ka_lab,
+            'allowed_tambahan' => $allowed_tambahan,
+        ];
+    }
+}
+
+if (!function_exists('normalizeAngketKategori')) {
+    /**
+     * Normalize competency category labels across raters (including Guru BK & typos)
+     * so equivalent competencies aggregate cleanly under standard Guideline names.
+     */
+    function normalizeAngketKategori($kategori, $is_staff = false) {
+        $clean = trim(str_replace(["\xc2\xa0", "\xC2\xA0"], ' ', (string)$kategori));
+        $clean = trim(preg_replace('/\?+$/', '', $clean));
+        $clean = preg_replace('/^Kompetensi\s+/i', '', $clean);
+        $lower = strtolower($clean);
+
+        if (!$is_staff) {
+            if (in_array($lower, ['pedagogik', 'paedagogik', 'pelayanan', 'kreativitas'], true)) {
+                return 'Pedagogik';
+            }
+            if ($lower === 'kepribadian') {
+                return 'Kepribadian';
+            }
+            if ($lower === 'sosial') {
+                return 'Sosial';
+            }
+            if (in_array($lower, ['profesional', 'professional', 'profesionalisme', 'kepercayaan'], true)) {
+                return 'Profesional';
+            }
+        } else {
+            if ($lower === 'kepribadian') return 'Kepribadian';
+            if ($lower === 'sosial') return 'Sosial';
+            if ($lower === 'teknis') return 'Teknis';
+        }
+
+        return $clean;
+    }
+}
+
+if (!function_exists('calculateManualGroups')) {
+    /**
+     * Group, deduplicate (legacy vs active instrument batches), and score manual items.
+     */
+    function calculateManualGroups($allManualInstRaw, $manualData, $ptk_jenis, $is_staff) {
+        $batches = [];
+        foreach ($allManualInstRaw as $inst) {
+            $targetsStr = trim(!empty($inst['target_dinilai']) ? $inst['target_dinilai'] : 'Semua');
+            $targets = array_map('trim', explode(',', $targetsStr));
+            if ($targetsStr !== 'Semua' && !in_array('Semua', $targets, true) && !in_array($ptk_jenis, $targets, true)) {
+                continue;
+            }
+            if ((float)$inst['bobot'] <= 0) {
+                continue;
+            }
+
+            $kat = trim((string)$inst['kategori']);
+            $k_lower = strtolower($kat);
+            $clean_kat = $kat;
+
+            // Check rapat/kedinasan BEFORE hadir because "Kehadiran rapat" contains both words
+            if (strpos($k_lower, 'perangkat') !== false) {
+                $clean_kat = 'Perangkat Mengajar';
+            } elseif (strpos($k_lower, 'rapat') !== false || strpos($k_lower, 'kedinasan') !== false) {
+                $clean_kat = 'Keikutsertaan dalam rapat/kedinasan';
+            } elseif (strpos($k_lower, 'hadir') !== false) {
+                $clean_kat = 'Kehadiran';
+            } elseif (strpos($k_lower, 'partisipasi') !== false) {
+                $clean_kat = 'Partisipasi kegiatan sekolah';
+            }
+
+            $urutan = isset($inst['urutan']) ? (int)$inst['urutan'] : 0;
+            if (!isset($batches[$clean_kat][$urutan])) {
+                $batches[$clean_kat][$urutan] = [
+                    'achieved_score' => 0.0,
+                    'max_score' => 0.0,
+                    'max_id' => 0,
+                    'urutan' => $urutan,
+                ];
+            }
+
+            $score = isset($manualData[$inst['id']]) ? (float)$manualData[$inst['id']] : 0.0;
+            $skor_ya = (float)($inst['skor_ya'] > 0 ? $inst['skor_ya'] : 100);
+            $batches[$clean_kat][$urutan]['achieved_score'] += $score;
+            $batches[$clean_kat][$urutan]['max_score'] += $skor_ya;
+            if ((int)$inst['id'] > $batches[$clean_kat][$urutan]['max_id']) {
+                $batches[$clean_kat][$urutan]['max_id'] = (int)$inst['id'];
+            }
+        }
+
+        $has_perangkat = isset($batches['Perangkat Mengajar']);
+        $bobot_map = [
+            'Perangkat Mengajar' => 10,
+            'Kehadiran' => 20,
+            'Keikutsertaan dalam rapat/kedinasan' => ($is_staff && !$has_perangkat) ? 20 : 10,
+            'Partisipasi kegiatan sekolah' => 30,
+        ];
+
+        $grouped_manual = [];
+        foreach ($batches as $clean_kat => $urutanGroups) {
+            // Pick the active batch (prefer filled non-zero scores, tie-break by newest id / urutan 0)
+            usort($urutanGroups, function ($a, $b) {
+                $aHas = $a['achieved_score'] > 0 ? 1 : 0;
+                $bHas = $b['achieved_score'] > 0 ? 1 : 0;
+                if ($aHas !== $bHas) return $bHas - $aHas;
+                if ($a['achieved_score'] != $b['achieved_score']) return ($b['achieved_score'] > $a['achieved_score']) ? 1 : -1;
+                return $b['max_id'] - $a['max_id'];
+            });
+            $chosen = $urutanGroups[0];
+            $total_bobot = $bobot_map[$clean_kat] ?? 10;
+            $avg_score = $chosen['max_score'] > 0 ? ($chosen['achieved_score'] / $chosen['max_score']) * 100 : 0.0;
+            $group_nilai = round($avg_score * ($total_bobot / 100), 0);
+
+            $grouped_manual[$clean_kat] = [
+                'total_bobot' => $total_bobot,
+                'achieved_score' => $chosen['achieved_score'],
+                'max_score' => $chosen['max_score'],
+                'avg_score' => $avg_score,
+                'group_nilai' => $group_nilai,
+                'items' => [],
+            ];
+        }
+
+        $stdOrderManual = $has_perangkat ? [
+            'Perangkat Mengajar',
+            'Kehadiran',
+            'Keikutsertaan dalam rapat/kedinasan',
+            'Partisipasi kegiatan sekolah',
+        ] : [
+            'Kehadiran',
+            'Keikutsertaan dalam rapat/kedinasan',
+            'Partisipasi kegiatan sekolah',
+        ];
+
+        $ordered_manual = [];
+        foreach ($stdOrderManual as $stdKey) {
+            if (isset($grouped_manual[$stdKey])) {
+                $ordered_manual[$stdKey] = $grouped_manual[$stdKey];
+            }
+        }
+        foreach ($grouped_manual as $k => $v) {
+            if (!isset($ordered_manual[$k])) {
+                $ordered_manual[$k] = $v;
+            }
+        }
+
+        return $ordered_manual;
+    }
+}
+
+if (!function_exists('calculateAngketScores')) {
+    /**
+     * Aggregate angket evaluations, separate main vs Tugas Tambahan, and convert to scale 100.
+     */
+    function calculateAngketScores($rawScores, $is_staff, $is_waka, $allowed_tambahan, $penilai_list) {
+        $allKats = [];
+        foreach ($rawScores as $r) {
+            $k = normalizeAngketKategori($r['kategori'], $is_staff);
+            if ($k && !in_array($k, $allKats, true)) {
+                $allKats[] = $k;
+            }
+        }
+
+        $kategori_list = [];
+        $kategori_tambahan_list = [];
+        foreach ($allKats as $k) {
+            if (in_array($k, $allowed_tambahan, true)) {
+                $kategori_tambahan_list[] = $k;
+            } else {
+                $kategori_list[] = $k;
+            }
+        }
+
+        $stdOrder = $is_staff
+            ? ['Kepribadian', 'Sosial', 'Teknis']
+            : ['Pedagogik', 'Kepribadian', 'Sosial', 'Profesional'];
+        $ordered_kats = array_values(array_intersect($stdOrder, $kategori_list));
+        foreach ($kategori_list as $k) {
+            if (!in_array($k, $ordered_kats, true)) {
+                $ordered_kats[] = $k;
+            }
+        }
+        $kategori_list = $ordered_kats;
+
+        if ($is_waka) {
+            $stdOrderWaka = ['Manajerial', 'Kepemimpinan', 'Teknis', 'Kewirausahaan'];
+            $kategori_tambahan_list = array_values(array_intersect($stdOrderWaka, $kategori_tambahan_list));
+        }
+
+        $agg = [];
+        $agg_tambahan = [];
+        foreach ($rawScores as $row) {
+            $ptype_raw = strtolower(trim((string)$row['penilai_type']));
+            if (strpos($ptype_raw, 'siswa') !== false || strpos($ptype_raw, 'murid') !== false) {
+                $ptype = 'siswa';
+            } elseif ($ptype_raw === 'kepala sekolah' || strpos($ptype_raw, 'kepsek') !== false) {
+                $ptype = 'kepsek';
+            } elseif ($row['rater_ptk_id'] != null && (int)$row['rater_ptk_id'] === (int)$row['dinilai_ptk_id']) {
+                $ptype = 'sendiri';
+            } else {
+                $ptype = 'teman';
+            }
+
+            $k = normalizeAngketKategori($row['kategori'], $is_staff);
+            if (in_array($k, $kategori_list, true)) {
+                if (!isset($agg[$ptype][$k])) $agg[$ptype][$k] = ['sum' => 0.0, 'count' => 0];
+                $agg[$ptype][$k]['sum'] += (float)$row['nilai'];
+                $agg[$ptype][$k]['count']++;
+            } elseif (in_array($k, $kategori_tambahan_list, true)) {
+                if (!isset($agg_tambahan[$ptype][$k])) $agg_tambahan[$ptype][$k] = ['sum' => 0.0, 'count' => 0];
+                $agg_tambahan[$ptype][$k]['sum'] += (float)$row['nilai'];
+                $agg_tambahan[$ptype][$k]['count']++;
+            }
+        }
+
+        $scores = [];
+        $total_nilai_akhir = 0.0;
+        foreach ($penilai_list as $key => $p) {
+            $scores[$key] = ['total_avg' => 0.0, 'nilai' => 0.0, 'kategori' => []];
+            $sum_kat = 0.0;
+            $count_kat = 0;
+            foreach ($kategori_list as $kat) {
+                $val = 0.0;
+                if (isset($agg[$key][$kat]) && $agg[$key][$kat]['count'] > 0) {
+                    $val = $agg[$key][$kat]['sum'] / $agg[$key][$kat]['count'];
+                }
+                $scores[$key]['kategori'][$kat] = $val;
+                if ($val > 0) {
+                    $sum_kat += $val;
+                    $count_kat++;
+                }
+            }
+            $scores[$key]['total_avg'] = $count_kat > 0 ? ($sum_kat / $count_kat) : 0.0;
+            $scores[$key]['nilai'] = $scores[$key]['total_avg'] * $p['bobot'];
+            $total_nilai_akhir += round($scores[$key]['nilai'], 3);
+        }
+
+        $konversi = [];
+        foreach ($kategori_list as $kat) {
+            $sum_val = 0.0;
+            $count_penilai = 0;
+            foreach ($scores as $data) {
+                if ($data['kategori'][$kat] > 0) {
+                    $sum_val += $data['kategori'][$kat];
+                    $count_penilai++;
+                }
+            }
+            $max_skor = $count_penilai * 5;
+            $konversi[$kat] = $max_skor > 0 ? ($sum_val / $max_skor) * 100 : 0.0;
+        }
+
+        $angket_score = count($konversi) > 0 ? (array_sum($konversi) / count($konversi)) : 0.0;
+        $bobot_angket = 30;
+        $rounded_nilai_angket = round($angket_score * ($bobot_angket / 100), 0);
+
+        $tambahan_results = [];
+        $tambahan_sum = 0.0;
+        $tambahan_count = 0;
+        foreach ($kategori_tambahan_list as $kat) {
+            $score = 0.0;
+            if (isset($agg_tambahan['kepsek'][$kat]) && $agg_tambahan['kepsek'][$kat]['count'] > 0) {
+                $score = $agg_tambahan['kepsek'][$kat]['sum'] / $agg_tambahan['kepsek'][$kat]['count'];
+            }
+            $tambahan_results[] = [
+                'kategori' => $kat,
+                'score' => $score,
+                'konversi' => ($score / 5) * 100,
+            ];
+            $tambahan_sum += $score;
+            $tambahan_count++;
+        }
+
+        return [
+            'kategori_list' => $kategori_list,
+            'kategori_tambahan_list' => $kategori_tambahan_list,
+            'scores' => $scores,
+            'total_nilai_akhir' => $total_nilai_akhir,
+            'konversi' => $konversi,
+            'angket_score' => $angket_score,
+            'bobot_angket' => $bobot_angket,
+            'rounded_nilai_angket' => $rounded_nilai_angket,
+            'has_tambahan' => count($kategori_tambahan_list) > 0,
+            'tambahan_results' => $tambahan_results,
+            'tambahan_sum' => $tambahan_sum,
+            'tambahan_count' => $tambahan_count,
+        ];
+    }
+}
+
+if (!function_exists('formatPerfNumber')) {
+    /**
+     * Format numeric report values cleanly (omit .00 on whole integers; optionally trim trailing zeros).
+     */
+    function formatPerfNumber($val, int $decimals = 2, bool $trimTrailingZeros = false): string {
+        $num = round((float)$val, $decimals);
+        if (abs($num - round($num)) < (0.5 * pow(10, -$decimals))) {
+            return number_format(round($num), 0, '.', '');
+        }
+        $formatted = number_format($num, $decimals, '.', '');
+        if ($trimTrailingZeros) {
+            $formatted = rtrim(rtrim($formatted, '0'), '.');
+        }
+        return $formatted;
+    }
+}

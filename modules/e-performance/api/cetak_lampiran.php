@@ -71,23 +71,15 @@ if ($setting_kepsek) {
 }
 
 $school_name = get_setting('nama_sekolah', 'Sekolah');
-$ptk_jenis = trim($ptk['jenis_ptk'] ? $ptk['jenis_ptk'] : ($ptk['tupoksi'] ? $ptk['tupoksi'] : 'Guru'));
-$group_role = normalizeTupoksiGroup($ptk_jenis);
-$is_staff = ($group_role !== 'Guru');
-
-// Deteksi Tugas Tambahan (Waka / Ka. TU / Ka. Perpus / Ka. Lab)
-$jabatan_full = strtolower(trim(($ptk['jabatan'] ?? '') . ' ' . $ptk_jenis));
-$is_waka = (strpos($jabatan_full, 'waka') !== false || strpos($jabatan_full, 'wakil') !== false);
-$is_ka_tu = (strpos($jabatan_full, 'kepala tu') !== false || strpos($jabatan_full, 'ka. tu') !== false);
-$is_ka_perpus = (strpos($jabatan_full, 'kepala perpus') !== false || strpos($jabatan_full, 'ka. perpus') !== false);
-$is_ka_lab = (strpos($jabatan_full, 'kepala lab') !== false || strpos($jabatan_full, 'ka. lab') !== false);
-
-$allowed_tambahan = [];
-if ($is_waka) {
-    $allowed_tambahan = ['Manajerial', 'Kepemimpinan', 'Teknis', 'Kewirausahaan'];
-} elseif ($is_ka_tu || $is_ka_perpus || $is_ka_lab) {
-    $allowed_tambahan = ['Manajerial'];
-}
+$roleFlags = getPtkRoleFlags($ptk);
+$ptk_jenis = $roleFlags['ptk_jenis'];
+$group_role = $roleFlags['group_role'];
+$is_staff = $roleFlags['is_staff'];
+$is_waka = $roleFlags['is_waka'];
+$is_ka_tu = $roleFlags['is_ka_tu'];
+$is_ka_perpus = $roleFlags['is_ka_perpus'];
+$is_ka_lab = $roleFlags['is_ka_lab'];
+$allowed_tambahan = $roleFlags['allowed_tambahan'];
 
 // 4. Query Penilaian Angket (perf_penilaian)
 $stmtNilai = $db->prepare("
@@ -101,57 +93,10 @@ $stmtNilai = $db->prepare("
     FROM perf_penilaian p
     JOIN perf_instrumen i ON p.instrumen_id = i.id
     LEFT JOIN perf_users u ON p.penilai_id = u.id
-    WHERE p.periode_id = ? AND p.dinilai_ptk_id = ?
+    WHERE p.periode_id = ? AND p.dinilai_ptk_id = ? AND i.is_manual = 0
 ");
 $stmtNilai->execute([$periode_id, $ptk_id]);
 $rawScores = $stmtNilai->fetchAll(PDO::FETCH_ASSOC);
-
-// Kumpulkan Kategori dari Penilaian
-$allKats = [];
-foreach ($rawScores as $r) {
-    $k = trim($r['kategori']);
-    if ($k && !in_array($k, $allKats)) {
-        $allKats[] = $k;
-    }
-}
-
-// Pisahkan Kategori Utama vs Tugas Tambahan
-$kategori_list = [];
-$kategori_tambahan_list = [];
-
-foreach ($allKats as $k) {
-    if (in_array($k, $allowed_tambahan)) {
-        $kategori_tambahan_list[] = $k;
-    } else {
-        $kategori_list[] = $k;
-    }
-}
-
-// Urutkan Kategori Utama sesuai standar Guideline jika ada
-if (!$is_staff) {
-    $stdOrder = ['Pedagogik', 'Kepribadian', 'Sosial', 'Profesional'];
-    $kategori_list = array_values(array_intersect($stdOrder, $kategori_list));
-    // Jika ada yang belum masuk standar (misal BK)
-    foreach ($allKats as $k) {
-        if (!in_array($k, $allowed_tambahan) && !in_array($k, $kategori_list)) {
-            $kategori_list[] = $k;
-        }
-    }
-} else {
-    $stdOrderStaff = ['Kepribadian', 'Sosial', 'Teknis'];
-    $kategori_list = array_values(array_intersect($stdOrderStaff, $kategori_list));
-    foreach ($allKats as $k) {
-        if (!in_array($k, $allowed_tambahan) && !in_array($k, $kategori_list)) {
-            $kategori_list[] = $k;
-        }
-    }
-}
-
-// Urutkan Kategori Tambahan
-if ($is_waka) {
-    $stdOrderWaka = ['Manajerial', 'Kepemimpinan', 'Teknis', 'Kewirausahaan'];
-    $kategori_tambahan_list = array_values(array_intersect($stdOrderWaka, $kategori_tambahan_list));
-}
 
 // Struktur Penilai
 $penilai_list = [
@@ -161,116 +106,23 @@ $penilai_list = [
     'siswa'   => ['label' => 'Murid', 'bobot' => 0.30]
 ];
 
-// Agregasi Nilai
-$agg = [];
-$agg_tambahan = [];
-
-foreach ($rawScores as $row) {
-    $ptype_raw = strtolower(trim($row['penilai_type']));
-    if (strpos($ptype_raw, 'siswa') !== false || strpos($ptype_raw, 'murid') !== false) {
-        $ptype = 'siswa';
-    } elseif ($ptype_raw === 'kepala sekolah' || strpos($ptype_raw, 'kepsek') !== false) {
-        $ptype = 'kepsek';
-    } else {
-        if ($row['rater_ptk_id'] != null && (int)$row['rater_ptk_id'] === (int)$row['dinilai_ptk_id']) {
-            $ptype = 'sendiri';
-        } else {
-            $ptype = 'teman';
-        }
-    }
-    
-    $k = trim($row['kategori']);
-    if (in_array($k, $kategori_list)) {
-        if (!isset($agg[$ptype][$k])) $agg[$ptype][$k] = ['sum' => 0, 'count' => 0];
-        $agg[$ptype][$k]['sum'] += (float)$row['nilai'];
-        $agg[$ptype][$k]['count']++;
-    } elseif (in_array($k, $kategori_tambahan_list)) {
-        if (!isset($agg_tambahan[$ptype][$k])) $agg_tambahan[$ptype][$k] = ['sum' => 0, 'count' => 0];
-        $agg_tambahan[$ptype][$k]['sum'] += (float)$row['nilai'];
-        $agg_tambahan[$ptype][$k]['count']++;
-    }
-}
-
-// Inisialisasi Score Data
-$scores = [];
-foreach ($penilai_list as $key => $p) {
-    $scores[$key] = [
-        'total_avg' => 0,
-        'nilai' => 0,
-        'kategori' => []
-    ];
-    foreach ($kategori_list as $kat) {
-        $scores[$key]['kategori'][$kat] = 0;
-        if (isset($agg[$key][$kat]) && $agg[$key][$kat]['count'] > 0) {
-            $scores[$key]['kategori'][$kat] = $agg[$key][$kat]['sum'] / $agg[$key][$kat]['count'];
-        }
-    }
-}
-
-// Menghitung Rata-rata Penilai (Total_Avg) & Nilai Berbobot (Skala 1-5)
-$total_nilai_akhir = 0;
-foreach ($scores as $ptype => &$data) {
-    $sum_kat = 0;
-    $count_kat = 0;
-    foreach ($kategori_list as $kat) {
-        if ($data['kategori'][$kat] > 0) {
-            $sum_kat += $data['kategori'][$kat];
-            $count_kat++;
-        }
-    }
-    $data['total_avg'] = $count_kat > 0 ? ($sum_kat / $count_kat) : 0;
-    $data['nilai'] = $data['total_avg'] * $penilai_list[$ptype]['bobot'];
-    $total_nilai_akhir += round($data['nilai'], 3);
-}
-unset($data);
+$angketCalc = calculateAngketScores($rawScores, $is_staff, $is_waka, $allowed_tambahan, $penilai_list);
+$kategori_list = $angketCalc['kategori_list'];
+$kategori_tambahan_list = $angketCalc['kategori_tambahan_list'];
+$scores = $angketCalc['scores'];
+$total_nilai_akhir = $angketCalc['total_nilai_akhir'];
+$konversi = $angketCalc['konversi'];
+$angket_score = $angketCalc['angket_score'];
+$bobot_angket = $angketCalc['bobot_angket'];
+$rounded_nilai_angket = $angketCalc['rounded_nilai_angket'];
+$has_tambahan = $angketCalc['has_tambahan'];
+$tambahan_results = $angketCalc['tambahan_results'];
+$tambahan_sum = $angketCalc['tambahan_sum'];
+$tambahan_count = $angketCalc['tambahan_count'];
 
 // Predikat & Deskripsi untuk Lampiran 1 (Skala 1-5)
 $predikat_l1 = getPredikatSkala5($total_nilai_akhir);
 $deskripsi_l1 = getDeskripsiAngketLampiran($db, $ptk_jenis, $total_nilai_akhir);
-
-// Konversi Angket ke Skala 100 per Kategori
-$konversi = [];
-foreach ($kategori_list as $kat) {
-    $sum_val = 0;
-    $count_penilai = 0;
-    foreach ($scores as $ptype => $data) {
-        if ($data['kategori'][$kat] > 0) {
-            $sum_val += $data['kategori'][$kat];
-            $count_penilai++;
-        }
-    }
-    $max_skor = $count_penilai * 5;
-    $konversi[$kat] = $max_skor > 0 ? ($sum_val / $max_skor) * 100 : 0;
-}
-
-// Rata-rata Angket Skala 100
-$angket_score = count($konversi) > 0 ? (array_sum($konversi) / count($konversi)) : 0;
-$bobot_angket = 30; // Selalu 30% sesuai Guideline
-$rounded_nilai_angket = round($angket_score * ($bobot_angket / 100), 2);
-
-// Proses Tugas Tambahan
-$has_tambahan = count($kategori_tambahan_list) > 0;
-$tambahan_results = [];
-$tambahan_sum = 0;
-$tambahan_count = 0;
-
-if ($has_tambahan) {
-    foreach ($kategori_tambahan_list as $kat) {
-        // Dinilai oleh Kepala Sekolah
-        $score = 0;
-        if (isset($agg_tambahan['kepsek'][$kat]) && $agg_tambahan['kepsek'][$kat]['count'] > 0) {
-            $score = $agg_tambahan['kepsek'][$kat]['sum'] / $agg_tambahan['kepsek'][$kat]['count'];
-        }
-        $konversi_score = ($score / 5) * 100;
-        $tambahan_results[] = [
-            'kategori' => $kat,
-            'score' => $score,
-            'konversi' => $konversi_score
-        ];
-        $tambahan_sum += $score;
-        $tambahan_count++;
-    }
-}
 
 // 5. Fetch Manual Instruments (Page 1)
 $stmtManual = $db->prepare("SELECT data FROM perf_penilaian_manual WHERE periode_id = ? AND ptk_id = ? LIMIT 1");
@@ -278,97 +130,18 @@ $stmtManual->execute([$periode_id, $ptk_id]);
 $manualRow = $stmtManual->fetch(PDO::FETCH_ASSOC);
 $manualData = ($manualRow && $manualRow['data']) ? json_decode($manualRow['data'], true) : [];
 
-$stmtManualInst = $db->prepare("SELECT id, kategori, pertanyaan, bobot, skor_ya, target_dinilai FROM perf_instrumen WHERE periode_id = ? AND is_manual = 1 ORDER BY urutan ASC, id ASC");
+$stmtManualInst = $db->prepare("SELECT id, kategori, pertanyaan, bobot, skor_ya, target_dinilai, urutan FROM perf_instrumen WHERE periode_id = ? AND is_manual = 1 ORDER BY urutan ASC, id ASC");
 $stmtManualInst->execute([$periode_id]);
 $allManualInstRaw = $stmtManualInst->fetchAll(PDO::FETCH_ASSOC);
 
-// Filter instrumen manual sesuai target PTK
-$main_manual = [];
-foreach ($allManualInstRaw as $inst) {
-    $targetsStr = trim($inst['target_dinilai'] ? $inst['target_dinilai'] : 'Semua');
-    $targets = array_map('trim', explode(',', $targetsStr));
-    if ($targetsStr !== 'Semua' && !in_array('Semua', $targets) && !in_array($ptk_jenis, $targets)) {
-        continue;
-    }
-    if ((float)$inst['bobot'] > 0) {
-        $main_manual[] = $inst;
-    }
-}
-
-// Kelompokkan Manual berdasarkan Kategori & Atur Bobot Resmi
-$grouped_manual = [];
-foreach ($main_manual as $inst) {
-    $kat = trim($inst['kategori']);
-    $k_lower = strtolower($kat);
-    
-    // Tentukan nama standar dan bobot resmi
-    $clean_kat = $kat;
-    $bobot_kat = 10;
-    
-    if (strpos($k_lower, 'perangkat') !== false) {
-        $clean_kat = 'Perangkat Mengajar';
-        $bobot_kat = 10;
-    } elseif (strpos($k_lower, 'hadir') !== false) {
-        $clean_kat = 'Kehadiran';
-        $bobot_kat = 20;
-    } elseif (strpos($k_lower, 'rapat') !== false || strpos($k_lower, 'kedinasan') !== false) {
-        $clean_kat = 'Keikutsertaan dalam rapat/kedinasan';
-        $bobot_kat = $is_staff ? 20 : 10;
-    } elseif (strpos($k_lower, 'partisipasi') !== false) {
-        $clean_kat = 'Partisipasi kegiatan sekolah';
-        $bobot_kat = 30;
-    }
-
-    if (!isset($grouped_manual[$clean_kat])) {
-        $grouped_manual[$clean_kat] = [
-            'total_bobot' => $bobot_kat,
-            'achieved_score' => 0,
-            'max_score' => 0,
-            'items' => []
-        ];
-    }
-    $score = isset($manualData[$inst['id']]) ? (float)$manualData[$inst['id']] : 0;
-    $skor_ya = (float)($inst['skor_ya'] > 0 ? $inst['skor_ya'] : 100);
-
-    $grouped_manual[$clean_kat]['achieved_score'] += $score;
-    $grouped_manual[$clean_kat]['max_score'] += $skor_ya;
-}
-
-// Urutkan Manual Sesuai Standar Guideline (Perangkat, Kehadiran, Rapat, Partisipasi)
-$stdOrderManual = $is_staff ? [
-    'Kehadiran',
-    'Keikutsertaan dalam rapat/kedinasan',
-    'Partisipasi kegiatan sekolah'
-] : [
-    'Perangkat Mengajar',
-    'Kehadiran',
-    'Keikutsertaan dalam rapat/kedinasan',
-    'Partisipasi kegiatan sekolah'
-];
-
-$ordered_manual = [];
-foreach ($stdOrderManual as $stdKey) {
-    if (isset($grouped_manual[$stdKey])) {
-        $ordered_manual[$stdKey] = $grouped_manual[$stdKey];
-    }
-}
-foreach ($grouped_manual as $k => $v) {
-    if (!isset($ordered_manual[$k])) {
-        $ordered_manual[$k] = $v;
-    }
-}
-$grouped_manual = $ordered_manual;
+$grouped_manual = calculateManualGroups($allManualInstRaw, $manualData, $ptk_jenis, $is_staff);
+$no_angket = count($grouped_manual) + 1;
 
 // Hitung Total Nilai Rapor Kinerja Utama
 $total_nilai_page1 = 0;
-foreach ($grouped_manual as $kat => &$group) {
-    $avg_score = $group['max_score'] > 0 ? ($group['achieved_score'] / $group['max_score']) * 100 : 0;
-    $group_nilai = round($avg_score * ($group['total_bobot'] / 100), 2);
-    $group['avg_score'] = $avg_score;
-    $group['group_nilai'] = $group_nilai;
-    $total_nilai_page1 += $group_nilai;
+foreach ($grouped_manual as $kat => $group) {
+    $total_nilai_page1 += $group['group_nilai'];
 }
-unset($group);
 
 // Tambahkan Nilai Angket ke Total Halaman 1
 $total_nilai_page1 += $rounded_nilai_angket;
@@ -600,9 +373,9 @@ $qr_url = $full_base_url . "/modules/e-xam-card/api/qr.php?size=4&data=" . urlen
                 echo "<tr>";
                 echo "<td class='text-center'>{$no}</td>";
                 echo "<td>".htmlspecialchars($kat)."</td>";
-                echo "<td class='text-center'>".number_format($group['avg_score'], 0)."</td>";
+                echo "<td class='text-center'>".number_format(round($group['avg_score']), 0)."</td>";
                 echo "<td class='text-center'>".number_format($group['total_bobot'], 0)."%</td>";
-                echo "<td class='text-center'>".(fmod($group['group_nilai'], 1) !== 0.0 ? number_format($group['group_nilai'], 2) : number_format($group['group_nilai'], 0))."</td>";
+                echo "<td class='text-center'>".number_format(round($group['group_nilai']), 0)."</td>";
                 echo "</tr>";
                 $no++;
             }
@@ -612,9 +385,9 @@ $qr_url = $full_base_url . "/modules/e-xam-card/api/qr.php?size=4&data=" . urlen
             echo "<tr>";
             echo "<td class='text-center'>{$no_angket}</td>";
             echo "<td>Angket</td>";
-            echo "<td class='text-center'>".number_format($angket_score, 2)."</td>";
+            echo "<td class='text-center'>".number_format(round($angket_score), 0)."</td>";
             echo "<td class='text-center'>{$bobot_angket}%</td>";
-            echo "<td class='text-center'>".(fmod($rounded_nilai_angket, 1) !== 0.0 ? number_format($rounded_nilai_angket, 2) : number_format($rounded_nilai_angket, 0))."</td>";
+            echo "<td class='text-center'>".number_format(round($rounded_nilai_angket), 0)."</td>";
             echo "</tr>";
 
             // Sub-kategori Angket Utama (5.1, 5.2, 5.3, 5.4)
@@ -624,7 +397,7 @@ $qr_url = $full_base_url . "/modules/e-xam-card/api/qr.php?size=4&data=" . urlen
                 echo "<tr>";
                 echo "<td></td>";
                 echo "<td>{$no_angket}.{$sub_no}. Kompetensi {$kat}</td>";
-                echo "<td class='text-center'>".number_format($val_k, 0)."</td>";
+                echo "<td class='text-center'>".number_format(round($val_k), 0)."</td>";
                 echo "<td class='bg-gray'></td><td class='bg-gray'></td>";
                 echo "</tr>";
                 $sub_no++;
@@ -632,20 +405,20 @@ $qr_url = $full_base_url . "/modules/e-xam-card/api/qr.php?size=4&data=" . urlen
 
             // 3. Jika Ada Tugas Tambahan, tampilkan di bawahnya
             if ($has_tambahan) {
-                echo "<tr><td></td><td><b>Tugas Tambahan</b></td><td class='bg-gray'></td><td class='bg-gray'></td><td class='bg-gray'></td></tr>";
+                echo "<tr><td></td><td>Tugas Tambahan</td><td class='bg-gray'></td><td class='bg-gray'></td><td class='bg-gray'></td></tr>";
                 foreach ($tambahan_results as $tt) {
                     echo "<tr>";
                     echo "<td></td>";
                     echo "<td>{$no_angket}.{$sub_no}. Kompetensi ".htmlspecialchars($tt['kategori'])."</td>";
-                    echo "<td class='text-center'>".number_format($tt['konversi'], 0)."</td>";
+                    echo "<td class='text-center'>".number_format(round($tt['konversi']), 0)."</td>";
                     echo "<td class='bg-gray'></td><td class='bg-gray'></td>";
                     echo "</tr>";
                     $sub_no++;
                 }
             }
 
-            echo "<tr><td colspan='4' class='text-right'><b>JUMLAH</b></td><td class='text-center'><b>".number_format($total_nilai_page1, 2)."</b></td></tr>";
-            echo "<tr><td colspan='4' class='text-right'><b>PREDIKAT</b></td><td class='text-center'><b>{$predikat_page1}</b></td></tr>";
+            echo "<tr><td></td><td class='text-right' style='padding-right:8px;'><b>JUMLAH</b></td><td class='bg-gray'></td><td class='bg-gray'></td><td class='text-center'><b>".number_format(round($total_nilai_page1), 0)."</b></td></tr>";
+            echo "<tr><td></td><td class='text-right' style='padding-right:8px;'><b>PREDIKAT</b></td><td class='bg-gray'></td><td class='bg-gray'></td><td class='text-center'><b>{$predikat_page1}</b></td></tr>";
             ?>
         </table>
 
@@ -726,9 +499,9 @@ $qr_url = $full_base_url . "/modules/e-xam-card/api/qr.php?size=4&data=" . urlen
                 echo "<tr>";
                 echo "<td class='text-center'>{$no}</td>";
                 echo "<td><b>{$p['label']}</b></td>";
-                echo "<td class='text-center'>".number_format($data['total_avg'], 2)."</td>";
+                echo "<td class='text-center'>".number_format(round($data['total_avg']), 0)."</td>";
                 echo "<td class='text-center'>".($p['bobot']*100)."%</td>";
-                echo "<td class='text-center'>".($data['nilai'] > 0 ? (fmod($data['nilai'], 1) !== 0.0 ? number_format($data['nilai'], 3) : number_format($data['nilai'], 0)) : '')."</td>";
+                echo "<td class='text-center'>".($data['nilai'] > 0 ? number_format(round($data['nilai']), 0) : '')."</td>";
                 echo "</tr>";
 
                 $a_idx = 0;
@@ -737,7 +510,7 @@ $qr_url = $full_base_url . "/modules/e-xam-card/api/qr.php?size=4&data=" . urlen
                     echo "<tr>";
                     echo "<td></td>";
                     echo "<td>&nbsp;&nbsp;&nbsp;&nbsp; {$alphas[$a_idx]}. {$kat}</td>";
-                    echo "<td class='text-center'>".($val > 0 ? (fmod($val, 1) !== 0.0 ? number_format($val, 2) : number_format($val, 0)) : '')."</td>";
+                    echo "<td class='text-center'>".($val > 0 ? number_format(round($val), 0) : '')."</td>";
                     echo "<td class='bg-gray'></td>";
                     echo "<td class='bg-gray'></td>";
                     echo "</tr>";
@@ -748,13 +521,15 @@ $qr_url = $full_base_url . "/modules/e-xam-card/api/qr.php?size=4&data=" . urlen
             ?>
 
             <tr>
-                <td colspan="2" class="text-right" style="text-align:right; padding-right:10px;"><b>Total</b></td>
+                <td></td>
+                <td class="text-right" style="text-align:right; padding-right:10px;"><b>Total</b></td>
                 <td class="bg-gray"></td>
                 <td class="bg-gray"></td>
-                <td class="text-center"><b><?php echo (fmod($total_nilai_akhir, 1) !== 0.0 ? number_format($total_nilai_akhir, 3) : number_format($total_nilai_akhir, 0)); ?></b></td>
+                <td class="text-center"><b><?php echo number_format(round($total_nilai_akhir), 0); ?></b></td>
             </tr>
             <tr>
-                <td colspan="2" class="text-right" style="text-align:right; padding-right:10px;"><b>Predikat</b></td>
+                <td></td>
+                <td class="text-right" style="text-align:right; padding-right:10px;"><b>Predikat</b></td>
                 <td class="bg-gray"></td>
                 <td class="bg-gray"></td>
                 <td class="text-center"><b><?php echo $predikat_l1; ?></b></td>
@@ -762,33 +537,25 @@ $qr_url = $full_base_url . "/modules/e-xam-card/api/qr.php?size=4&data=" . urlen
         </table>
 
         <!-- Tabel Konversi Angket ke Skala 100 -->
-        <table style="width:100%; border:none; margin-bottom:5px;">
+        <table class="konversi-table" style="width:100%; margin-bottom:10px;">
             <tr>
-                <td width="20%" style="vertical-align:top;">
-                    <div class="text-center" style="background:#d1d5db; border:1px solid #000; padding:12px 5px; font-weight:normal;">
-                        Tabel<br>Konversi
-                    </div>
+                <td width="22%" rowspan="<?php echo count($kategori_list) + 1; ?>" class="text-center" style="vertical-align:top; padding-top:8px;">
+                    Tabel<br>Konversi
                 </td>
-                <td width="80%">
-                    <table class="konversi-table" style="margin-bottom:0; width:100%;">
-                        <tr>
-                            <td width="80%"><b>Angket</b></td>
-                            <td width="20%"></td>
-                        </tr>
-                        <?php
-                        $idx = 1;
-                        foreach ($kategori_list as $kat) {
-                            $val = isset($konversi[$kat]) ? $konversi[$kat] : 0;
-                            echo "<tr>";
-                            echo "<td>5.{$idx}. Kompetensi {$kat}</td>";
-                            echo "<td class='text-center'>".number_format($val, 0)."</td>";
-                            echo "</tr>";
-                            $idx++;
-                        }
-                        ?>
-                    </table>
-                </td>
+                <td width="58%"><b>Angket</b></td>
+                <td width="20%"></td>
             </tr>
+            <?php
+            $idx = 1;
+            foreach ($kategori_list as $kat) {
+                $val = isset($konversi[$kat]) ? $konversi[$kat] : 0;
+                echo "<tr>";
+                echo "<td>{$no_angket}.{$idx}. Kompetensi {$kat}</td>";
+                echo "<td class='text-center'>".number_format(round($val), 0)."</td>";
+                echo "</tr>";
+                $idx++;
+            }
+            ?>
         </table>
 
         <!-- Deskripsi Lampiran 1 -->
@@ -864,16 +631,16 @@ $qr_url = $full_base_url . "/modules/e-xam-card/api/qr.php?size=4&data=" . urlen
                 <th width="20%">Konversi</th>
             </tr>
             <tr>
-                <td class="text-center" rowspan="<?php echo $tambahan_count + 3; ?>">1</td>
-                <td colspan="3"><b>Tugas Tambahan</b></td>
+                <td class="text-center" rowspan="<?php echo $tambahan_count + 1; ?>">1</td>
+                <td colspan="3">Tugas Tambahan</td>
             </tr>
             <?php
-            $idx = 5;
+            $idx = count($kategori_list) + 1;
             foreach ($tambahan_results as $res) {
                 echo "<tr>";
-                echo "<td>5.{$idx}. Kompetensi {$res['kategori']}</td>";
-                echo "<td class='text-center'>" . (fmod($res['score'], 1) !== 0.0 ? number_format($res['score'], 2) : number_format($res['score'], 0)) . "</td>";
-                echo "<td class='text-center'>" . number_format($res['konversi'], 0) . "</td>";
+                echo "<td>{$no_angket}.{$idx}. Kompetensi {$res['kategori']}</td>";
+                echo "<td class='text-center'>" . number_format(round($res['score']), 0) . "</td>";
+                echo "<td class='text-center'>" . number_format(round($res['konversi']), 0) . "</td>";
                 echo "</tr>";
                 $idx++;
             }
@@ -885,12 +652,14 @@ $qr_url = $full_base_url . "/modules/e-xam-card/api/qr.php?size=4&data=" . urlen
             $pred_tambahan_konv = getPredikatSkala5($tambahan_avg);
             ?>
             <tr>
-                <td colspan="2" class="text-right" style="padding-right:10px;"><b>Rata-rata</b></td>
-                <td class="text-center"><b><?php echo (fmod($tambahan_avg, 1) !== 0.0 ? number_format($tambahan_avg, 2) : number_format($tambahan_avg, 0)); ?></b></td>
-                <td class="text-center"><b><?php echo number_format($tambahan_avg_konv, 0); ?></b></td>
+                <td></td>
+                <td class="text-right" style="padding-right:10px;"><b>Rata-rata</b></td>
+                <td class="text-center"><b><?php echo number_format(round($tambahan_avg), 0); ?></b></td>
+                <td class="text-center"><b><?php echo number_format(round($tambahan_avg_konv), 0); ?></b></td>
             </tr>
             <tr>
-                <td colspan="2" class="text-right" style="padding-right:10px;"><b>Predikat</b></td>
+                <td></td>
+                <td class="text-right" style="padding-right:10px;"><b>Predikat</b></td>
                 <td class="text-center"><b><?php echo $pred_tambahan_raw; ?></b></td>
                 <td class="text-center"><b><?php echo $pred_tambahan_konv; ?></b></td>
             </tr>
