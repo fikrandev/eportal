@@ -647,14 +647,29 @@ if (!function_exists('calculateAngketScores')) {
             $rater_role = strtolower(trim((string)($row['rater_role'] ?? '')));
             $t_jab = trim((string)($row['target_jabatan'] ?? ''));
 
+            $isWakaOrHeadStaffPtype = (
+                strpos($ptype_raw, 'wakil') !== false ||
+                strpos($ptype_raw, 'waka') !== false ||
+                strpos($ptype_raw, 'kepala tu') !== false ||
+                strpos($ptype_raw, 'ka. tu') !== false ||
+                strpos($ptype_raw, 'kepala perpus') !== false ||
+                strpos($ptype_raw, 'ka. perpus') !== false ||
+                strpos($ptype_raw, 'kepala lab') !== false ||
+                strpos($ptype_raw, 'ka. lab') !== false
+            );
+
             if (strpos($ptype_raw, 'siswa') !== false || strpos($ptype_raw, 'murid') !== false || $rater_role === 'siswa') {
                 $ptype = 'siswa';
             } elseif (
-                $ptype_raw === 'kepala sekolah' ||
-                strpos($ptype_raw, 'kepsek') !== false ||
-                strpos($ptype_raw, 'kepala sekolah') !== false ||
-                $rater_role === 'kepsek' ||
-                strcasecmp($t_jab, 'Kepala Sekolah') === 0
+                !$isWakaOrHeadStaffPtype && (
+                    $ptype_raw === 'kepala sekolah' ||
+                    $ptype_raw === 'plt. kepala sekolah' ||
+                    $ptype_raw === 'plt kepala sekolah' ||
+                    strpos($ptype_raw, 'kepsek') !== false ||
+                    strpos($ptype_raw, 'kepala sekolah') !== false ||
+                    $rater_role === 'kepsek' ||
+                    strcasecmp($t_jab, 'Kepala Sekolah') === 0
+                )
             ) {
                 $ptype = 'kepsek';
             } elseif ($row['rater_ptk_id'] != null && (int)$row['rater_ptk_id'] === (int)$row['dinilai_ptk_id']) {

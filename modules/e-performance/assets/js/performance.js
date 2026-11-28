@@ -277,7 +277,9 @@ const Perf = {
         }
 
         let ptkHasilHtml = '';
-        if (!isAdmin && ['kepsek','guru','tu','it','pustakawan'].includes(role) && perms.length === 0) {
+        const userTupoksiLower = (u.tupoksi || '').toLowerCase().trim();
+        const isStrictlyKepsek = (userTupoksiLower === 'kepala sekolah' || userTupoksiLower === 'plt. kepala sekolah' || userTupoksiLower === 'plt kepala sekolah' || (!userTupoksiLower && role === 'kepsek'));
+        if (!isAdmin && !isStrictlyKepsek && ['guru','tu','it','pustakawan'].includes(role) && !perms.includes('hasil')) {
             ptkHasilHtml += `
                 <button class="pf-nav-item" data-route="hasil_saya">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
@@ -315,8 +317,9 @@ const Perf = {
     // PHASE 2 - ISI PENILAIAN
     // ==============================================
     renderPenilaian($c) {
-        const tupoksi = (this.state.user.tupoksi || '').toLowerCase();
-        if (tupoksi === 'kepala sekolah') {
+        const tupoksi = (this.state.user.tupoksi || '').toLowerCase().trim();
+        const isKepsek = (tupoksi === 'kepala sekolah' || tupoksi === 'plt. kepala sekolah' || tupoksi === 'plt kepala sekolah' || (!tupoksi && this.state.user.role === 'kepsek'));
+        if (isKepsek) {
             this.renderMatrixKepsek($c);
             return;
         }
@@ -1332,7 +1335,7 @@ const Perf = {
     renderDashboard($c) {
         const role = this.state.user.role;
         const perms = this.state.user.permissions || [];
-        const isDashboardAdmin = (role === 'admin' || role === 'superadmin' || perms.includes('dashboard') || perms.includes('progress') || perms.includes('hasil') || perms.includes('akses_modul'));
+        const isDashboardAdmin = (role === 'admin' || role === 'superadmin' || perms.includes('ptk') || perms.includes('siswa') || perms.includes('periode') || perms.includes('instrumen') || perms.includes('progress') || perms.includes('hasil') || perms.includes('akses_modul'));
 
         if (isDashboardAdmin) {
             $c.html(`

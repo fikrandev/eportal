@@ -94,15 +94,22 @@ function listTarget() {
     $perf_user_id = $resolved['perf_user_id'];
     $ptk_id = $resolved['ptk_id'];
     
-    $actualTupoksi = 'Guru';
+    $actualTupoksi = !empty($auth['tupoksi']) ? $auth['tupoksi'] : '';
     if ($role !== 'siswa') {
         $stmtTupoksi = $db->prepare("SELECT tupoksi FROM users WHERE username = ? AND status = 1 LIMIT 1");
         $stmtTupoksi->execute([$auth['username']]);
         $tupoksiRow = $stmtTupoksi->fetch(PDO::FETCH_ASSOC);
         if ($tupoksiRow && !empty($tupoksiRow['tupoksi'])) {
             $actualTupoksi = $tupoksiRow['tupoksi'];
+        } elseif ($actualTupoksi === '' && $ptk_id > 0) {
+            $stmtPtkTup = $db->prepare("SELECT jenis_ptk FROM perf_ptk WHERE id = ? LIMIT 1");
+            $stmtPtkTup->execute([$ptk_id]);
+            $ptkJenisVal = $stmtPtkTup->fetchColumn();
+            if ($ptkJenisVal) $actualTupoksi = $ptkJenisVal;
         }
+        if ($actualTupoksi === '') $actualTupoksi = 'Guru';
     }
+    $isKepsekRater = perf_is_kepsek_rater($auth, $actualTupoksi);
     
     $targets = [];
 
@@ -173,7 +180,7 @@ function listTarget() {
                 'target_type' => 'Guru/Staf' // Dari sudut pandang siswa, ini Guru/Staf
             ];
         }
-    } else if (strtolower($actualTupoksi) === 'kepala sekolah' || strtolower($actualTupoksi) === 'plt. kepala sekolah' || strtolower($role) === 'kepsek') {
+    } else if ($isKepsekRater) {
         // Kepala Sekolah menilai SEMUA PTK (selain Kepala Sekolah sendiri)
         $stmt = $db->prepare("SELECT id, nama, jenis_ptk, jabatan, mata_pelajaran FROM perf_ptk WHERE status = 1 AND jenis_ptk != 'Kepala Sekolah' ORDER BY nama ASC");
         $stmt->execute();
@@ -322,7 +329,6 @@ function listTarget() {
     
     // Cek progress pengisian untuk masing-masing target
     $allPeriodInstrumen = perfLoadPeriodInstrumen($db, (int)$periode_id);
-    $isKepsekRater = (strtolower($actualTupoksi) === 'kepala sekolah' || strtolower($actualTupoksi) === 'plt. kepala sekolah' || strtolower($role) === 'kepsek');
 
     foreach ($targets as &$t) {
         if ($role === 'siswa') {
@@ -392,22 +398,28 @@ function getForm() {
     $perf_user_id = $resolved['perf_user_id'];
     $ptk_id = $resolved['ptk_id'];
     
-    $actualTupoksi = 'Guru';
+    $actualTupoksi = !empty($auth['tupoksi']) ? $auth['tupoksi'] : '';
     if ($role !== 'siswa') {
         $stmtTupoksi = $db->prepare("SELECT tupoksi FROM users WHERE username = ? AND status = 1 LIMIT 1");
         $stmtTupoksi->execute([$auth['username']]);
         $tupoksiRow = $stmtTupoksi->fetch(PDO::FETCH_ASSOC);
         if ($tupoksiRow && !empty($tupoksiRow['tupoksi'])) {
             $actualTupoksi = $tupoksiRow['tupoksi'];
+        } elseif ($actualTupoksi === '' && $ptk_id > 0) {
+            $stmtPtkTup = $db->prepare("SELECT jenis_ptk FROM perf_ptk WHERE id = ? LIMIT 1");
+            $stmtPtkTup->execute([$ptk_id]);
+            $ptkJenisVal = $stmtPtkTup->fetchColumn();
+            if ($ptkJenisVal) $actualTupoksi = $ptkJenisVal;
         }
+        if ($actualTupoksi === '') $actualTupoksi = 'Guru';
     }
+    $isKepsekRater = perf_is_kepsek_rater($auth, $actualTupoksi);
     
     $stmtT = $db->prepare("SELECT jenis_ptk, jabatan FROM perf_ptk WHERE id = ?");
     $stmtT->execute([$target_id]);
     $target_ptk = $stmtT->fetch(PDO::FETCH_ASSOC);
 
     $penilai_type = 'guru';
-    $isKepsekRater = (strtolower($actualTupoksi) === 'kepala sekolah' || strtolower($actualTupoksi) === 'plt. kepala sekolah' || strtolower($role) === 'kepsek');
 
     if ($role === 'siswa') {
         $penilai_type = 'siswa';
@@ -519,15 +531,22 @@ function dashboardStats() {
     $perf_user_id = $resolved['perf_user_id'];
     $ptk_id = $resolved['ptk_id'];
     
-    $actualTupoksi = 'Guru';
+    $actualTupoksi = !empty($auth['tupoksi']) ? $auth['tupoksi'] : '';
     if ($role !== 'siswa') {
         $stmtTupoksi = $db->prepare("SELECT tupoksi FROM users WHERE username = ? AND status = 1 LIMIT 1");
         $stmtTupoksi->execute([$auth['username']]);
         $tupoksiRow = $stmtTupoksi->fetch(PDO::FETCH_ASSOC);
         if ($tupoksiRow && !empty($tupoksiRow['tupoksi'])) {
             $actualTupoksi = $tupoksiRow['tupoksi'];
+        } elseif ($actualTupoksi === '' && $ptk_id > 0) {
+            $stmtPtkTup = $db->prepare("SELECT jenis_ptk FROM perf_ptk WHERE id = ? LIMIT 1");
+            $stmtPtkTup->execute([$ptk_id]);
+            $ptkJenisVal = $stmtPtkTup->fetchColumn();
+            if ($ptkJenisVal) $actualTupoksi = $ptkJenisVal;
         }
+        if ($actualTupoksi === '') $actualTupoksi = 'Guru';
     }
+    $isKepsekRater = perf_is_kepsek_rater($auth, $actualTupoksi);
     
     $periode_id = check_periode_active($db, false);
     
@@ -550,18 +569,18 @@ function dashboardStats() {
         ");
         $stmt->execute([$siswa_id]);
         $targets = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    } else if (strtolower($actualTupoksi) === 'kepala sekolah') {
-        $stmt = $db->prepare("SELECT id as target_id, jenis_ptk FROM perf_ptk WHERE status = 1 AND jenis_ptk != 'Kepala Sekolah'");
+    } else if ($isKepsekRater) {
+        $stmt = $db->prepare("SELECT id as target_id, jenis_ptk, jabatan FROM perf_ptk WHERE status = 1 AND jenis_ptk != 'Kepala Sekolah'");
         $stmt->execute();
         $targets = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } else {
-        $stmtSelf = $db->prepare("SELECT id as target_id, jenis_ptk FROM perf_ptk WHERE id = ?");
+        $stmtSelf = $db->prepare("SELECT id as target_id, jenis_ptk, jabatan FROM perf_ptk WHERE id = ?");
         $stmtSelf->execute([$ptk_id]);
         if ($selfRow = $stmtSelf->fetch(PDO::FETCH_ASSOC)) {
             $targets[] = $selfRow;
         }
         
-        $stmt = $db->prepare("SELECT p.dinilai_ptk_id as target_id, pt.jenis_ptk FROM perf_penugasan_sejawat p JOIN perf_ptk pt ON p.dinilai_ptk_id = pt.id WHERE p.penilai_ptk_id = ? AND p.periode_id = ?");
+        $stmt = $db->prepare("SELECT p.dinilai_ptk_id as target_id, pt.jenis_ptk, pt.jabatan FROM perf_penugasan_sejawat p JOIN perf_ptk pt ON p.dinilai_ptk_id = pt.id WHERE p.penilai_ptk_id = ? AND p.periode_id = ?");
         $stmt->execute([$ptk_id, $periode_id]);
         $peers = $stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($peers as $p) {
@@ -572,7 +591,6 @@ function dashboardStats() {
     $total_targets = count($targets);
     $selesai = 0;
     $allPeriodInstrumen = perfLoadPeriodInstrumen($db, (int)$periode_id);
-    $isKepsekRater = (strtolower($actualTupoksi) === 'kepala sekolah' || strtolower($actualTupoksi) === 'plt. kepala sekolah' || strtolower($role) === 'kepsek');
 
     foreach ($targets as $t) {
         if ($role === 'siswa') {
@@ -625,14 +643,8 @@ function getMatrixKepsek() {
         $auth = perf_auth_check();
         $db = db();
         
-        // Strict Kepsek check
-        $isKepsek = false;
-        $tupoksi = strtolower(trim($auth['tupoksi'] ?? ''));
-        if ($tupoksi === 'kepala sekolah' || $tupoksi === 'plt. kepala sekolah') {
-            $isKepsek = true;
-        } else if (isset($auth['type']) && $auth['type'] === 'perf' && strtolower($auth['role'] ?? '') === 'kepsek') {
-            $isKepsek = true;
-        }
+        // Strict Kepsek check (Wakil Kepala Sekolah / Kepala TU dsb. ditolak dari matriks Kepsek)
+        $isKepsek = perf_is_kepsek_rater($auth);
 
         if (!$isKepsek) {
             json_response(403, false, 'Akses ditolak. Halaman ini khusus untuk Kepala Sekolah.');
@@ -729,13 +741,7 @@ function submitMatrixSingle() {
     $auth = perf_auth_check();
     $db = db();
 
-    $isKepsek = false;
-    $tupoksiLower = strtolower(trim($auth['tupoksi'] ?? ''));
-    if (isset($auth['type']) && $auth['type'] === 'perf') {
-        if (strtolower($auth['role'] ?? '') === 'kepsek') $isKepsek = true;
-    } else {
-        if ($tupoksiLower === 'kepala sekolah' || $tupoksiLower === 'plt. kepala sekolah') $isKepsek = true;
-    }
+    $isKepsek = perf_is_kepsek_rater($auth);
 
     if (!$isKepsek) {
         json_response(403, false, 'Akses ditolak.');
@@ -781,13 +787,7 @@ function submitMatrixMassal() {
     $auth = perf_auth_check();
     $db = db();
 
-    $isKepsek = false;
-    $tupoksiLower = strtolower(trim($auth['tupoksi'] ?? ''));
-    if (isset($auth['type']) && $auth['type'] === 'perf') {
-        if (strtolower($auth['role'] ?? '') === 'kepsek') $isKepsek = true;
-    } else {
-        if ($tupoksiLower === 'kepala sekolah' || $tupoksiLower === 'plt. kepala sekolah') $isKepsek = true;
-    }
+    $isKepsek = perf_is_kepsek_rater($auth);
 
     if (!$isKepsek) {
         json_response(403, false, 'Akses ditolak.');

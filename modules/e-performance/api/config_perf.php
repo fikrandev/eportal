@@ -9,6 +9,50 @@ require_once __DIR__ . '/../../../api/config.php';
 define('PERF_SESSION_DURATION', 86400); // 24 hours
 
 /**
+ * Map jenis_ptk / tupoksi & jabatan into valid perf_users.role slug.
+ * Ensures Wakil Kepala Sekolah, Kepala TU, Kepala Perpustakaan, Kepala Lab
+ * are NEVER mapped to 'kepsek'.
+ */
+function perf_map_ptk_to_user_role($jenisPtk, $jabatan = '') {
+    $t = strtolower(trim((string)$jenisPtk));
+    $j = strtolower(trim((string)$jabatan));
+
+    if (strpos($t, 'wakil') !== false || strpos($t, 'waka') !== false || strpos($j, 'wakil') !== false || strpos($j, 'waka') !== false) {
+        return 'guru';
+    }
+    if (in_array($t, ['kepala sekolah', 'plt. kepala sekolah', 'plt kepala sekolah', 'kepsek'], true)) {
+        return 'kepsek';
+    }
+    if (strpos($t, 'tu') !== false || strpos($t, 'tata') !== false || strpos($t, 'administrasi') !== false) {
+        return 'tu';
+    }
+    if (strpos($t, 'it') !== false || strpos($t, 'teknologi') !== false) {
+        return 'it';
+    }
+    if (strpos($t, 'pustaka') !== false || strpos($t, 'perpus') !== false) {
+        return 'pustakawan';
+    }
+    if (in_array($t, ['guru', 'tu', 'it', 'pustakawan', 'siswa'], true)) {
+        return $t;
+    }
+    return 'guru';
+}
+
+/**
+ * Strict check whether the authenticated user is truly Kepala Sekolah (and NOT Wakil Kepala Sekolah / Kepala TU / etc.).
+ */
+function perf_is_kepsek_rater(array $auth, $actualTupoksi = '') {
+    $tup = strtolower(trim($actualTupoksi !== '' ? (string)$actualTupoksi : (string)($auth['tupoksi'] ?? '')));
+    if ($tup !== '') {
+        if (strpos($tup, 'wakil') !== false || strpos($tup, 'waka') !== false) {
+            return false;
+        }
+        return in_array($tup, ['kepala sekolah', 'plt. kepala sekolah', 'plt kepala sekolah', 'kepsek'], true);
+    }
+    return empty($auth['ptk_id']) && strtolower(trim((string)($auth['role'] ?? ''))) === 'kepsek';
+}
+
+/**
  * Authenticate request for E-Performance
  * Supports both eportal token (admin/superadmin) and perf_sessions token
  * Returns: ['type' => 'eportal'|'perf', 'user' => [...], 'role' => '...']
@@ -23,10 +67,10 @@ function perf_auth_check() {
     // Try eportal session first
     try {
         $stmt = db()->prepare("
-            SELECT s.*, u.id as user_id, u.username, u.nama_lengkap, u.role, u.tupoksi, u.avatar, u.status,
+            SELECT s.*, u.id as user_id, u.username, u.nama_lengkap, u.role, u.tupoksi, u.jabatan as u_jabatan, u.avatar, u.status,
                    pu.id as perf_user_id, pu.role as pu_role, pu.perf_ptk_id,
                    COALESCE(r_pu.permissions, r_u.permissions) as permissions,
-                   pp.id as resolved_ptk_id
+                   pp.id as resolved_ptk_id, pp.jenis_ptk as pp_jenis_ptk, pp.jabatan as pp_jabatan
             FROM sessions s 
             JOIN users u ON s.user_id = u.id 
             LEFT JOIN perf_users pu ON pu.username COLLATE utf8mb4_unicode_ci = u.username COLLATE utf8mb4_unicode_ci AND pu.status = 1
@@ -41,7 +85,14 @@ function perf_auth_check() {
         if ($session) {
             $permissions = json_decode($session['permissions'] ?: '[]', true);
             if (!is_array($permissions)) $permissions = [];
+            $ptkId = !empty($session['perf_ptk_id']) ? (int)$session['perf_ptk_id'] : (!empty($session['resolved_ptk_id']) ? (int)$session['resolved_ptk_id'] : null);
+            $resolvedTupoksi = !empty($session['tupoksi']) ? $session['tupoksi'] : ($session['pp_jenis_ptk'] ?? '');
+            $resolvedJabatan = !empty($session['u_jabatan']) ? $session['u_jabatan'] : ($session['pp_jabatan'] ?? '');
+
             $effectiveRole = !empty($session['pu_role']) ? $session['pu_role'] : $session['role'];
+            if ($effectiveRole === 'kepsek' && !perf_is_kepsek_rater(['tupoksi' => $resolvedTupoksi, 'ptk_id' => $ptkId, 'role' => $effectiveRole])) {
+                $effectiveRole = perf_map_ptk_to_user_role($resolvedTupoksi ?: 'guru', $resolvedJabatan);
+            }
             $perfRole = $effectiveRole;
 
             if ($session['role'] === 'superadmin' || $effectiveRole === 'admin' || in_array('akses_modul', $permissions, true)) {
@@ -54,8 +105,6 @@ function perf_auth_check() {
                 }
             }
 
-            $ptkId = !empty($session['perf_ptk_id']) ? (int)$session['perf_ptk_id'] : (!empty($session['resolved_ptk_id']) ? (int)$session['resolved_ptk_id'] : null);
-
             return [
                 'type' => 'eportal',
                 'user_id' => $session['user_id'],
@@ -64,7 +113,7 @@ function perf_auth_check() {
                 'username' => $session['username'],
                 'nama_lengkap' => $session['nama_lengkap'],
                 'role' => $perfRole,
-                'tupoksi' => $session['tupoksi'] ?? '',
+                'tupoksi' => $resolvedTupoksi,
                 'eportal_role' => $session['role'],
                 'avatar' => $session['avatar'],
                 'permissions' => $permissions
@@ -78,22 +127,31 @@ function perf_auth_check() {
     try {
         $stmt = db()->prepare("
             SELECT ps.*, pu.id as perf_user_id, pu.username, pu.nama_lengkap, pu.role, 
-                   pu.perf_ptk_id, pu.status, pr.permissions
+                   pu.perf_ptk_id, pu.status, pr.permissions,
+                   pp.jenis_ptk as pp_jenis_ptk, pp.jabatan as pp_jabatan
             FROM perf_sessions ps
             JOIN perf_users pu ON ps.perf_user_id = pu.id
             LEFT JOIN perf_roles pr ON pu.role = pr.role_slug
+            LEFT JOIN perf_ptk pp ON pu.perf_ptk_id = pp.id
             WHERE ps.token = ? AND ps.expired_at > NOW() AND pu.status = 1
         ");
         $stmt->execute([$token]);
         $session = $stmt->fetch();
 
         if ($session) {
+            $resolvedTupoksi = $session['pp_jenis_ptk'] ?? '';
+            $resolvedRole = $session['role'];
+            if ($resolvedRole === 'kepsek' && !perf_is_kepsek_rater(['tupoksi' => $resolvedTupoksi, 'ptk_id' => $session['perf_ptk_id'], 'role' => $resolvedRole])) {
+                $resolvedRole = perf_map_ptk_to_user_role($resolvedTupoksi ?: 'guru', $session['pp_jabatan'] ?? '');
+            }
+
             return [
                 'type' => 'perf',
                 'user_id' => $session['perf_user_id'],
                 'username' => $session['username'],
                 'nama_lengkap' => $session['nama_lengkap'],
-                'role' => $session['role'],
+                'role' => $resolvedRole,
+                'tupoksi' => $resolvedTupoksi,
                 'ptk_id' => $session['perf_ptk_id'],
                 'avatar' => null,
                 'permissions' => $session['permissions'] ? json_decode($session['permissions'], true) : []

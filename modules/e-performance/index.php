@@ -6,6 +6,7 @@
  */
 require_once __DIR__ . '/../../api/config.php';
 require_once __DIR__ . '/../../api/theme_helper.php';
+require_once __DIR__ . '/api/config_perf.php';
 
 // ============================================
 // AUTH: Validate token
@@ -22,7 +23,7 @@ if (!empty($token)) {
         try {
             $stmt = db()->prepare("
                 SELECT ps.*, pu.id as perf_user_id, pu.username, pu.nama_lengkap, pu.role,
-                       pu.perf_ptk_id, pt.jenis_ptk, r.permissions
+                       pu.perf_ptk_id, pt.jenis_ptk, pt.jabatan as pt_jabatan, r.permissions
                 FROM perf_sessions ps
                 JOIN perf_users pu ON ps.perf_user_id = pu.id
                 LEFT JOIN perf_ptk pt ON pu.perf_ptk_id = pt.id
@@ -33,24 +34,29 @@ if (!empty($token)) {
             $session = $stmt->fetch();
 
             if ($session) {
+                $tupoksiVal = !empty($session['jenis_ptk']) ? $session['jenis_ptk'] : '';
+                $resolvedRole = $session['role'];
+                if ($resolvedRole === 'kepsek' && !perf_is_kepsek_rater(['tupoksi' => $tupoksiVal, 'ptk_id' => $session['perf_ptk_id'], 'role' => $resolvedRole])) {
+                    $resolvedRole = perf_map_ptk_to_user_role($tupoksiVal ?: 'guru', $session['pt_jabatan'] ?? '');
+                }
                 $user = [
                     'user_id' => (int)$session['perf_user_id'],
                     'ptk_id' => !empty($session['perf_ptk_id']) ? (int)$session['perf_ptk_id'] : null,
                     'username' => $session['username'],
                     'nama_lengkap' => $session['nama_lengkap'],
-                    'role' => $session['role'],
-                    'tupoksi' => !empty($session['jenis_ptk']) ? $session['jenis_ptk'] : '',
+                    'role' => $resolvedRole,
+                    'tupoksi' => $tupoksiVal,
                     'avatar' => '',
                     'permissions' => json_decode($session['permissions'] ?: '[]')
                 ];
-                $perfRole = $session['role'];
+                $perfRole = $resolvedRole;
             }
         } catch (PDOException $e) { $user = null; }
     } else {
         // Eportal session token (admin/superadmin/guru)
         try {
             $stmt = db()->prepare("
-                SELECT u.id as user_id, u.username, u.nama_lengkap, u.role, u.avatar, u.tupoksi, r.permissions
+                SELECT u.id as user_id, u.username, u.nama_lengkap, u.role, u.avatar, u.tupoksi, u.jabatan, r.permissions
                 FROM sessions s 
                 JOIN users u ON s.user_id = u.id 
                 LEFT JOIN perf_roles r ON u.role COLLATE utf8mb4_unicode_ci = r.role_slug COLLATE utf8mb4_unicode_ci
@@ -62,19 +68,33 @@ if (!empty($token)) {
                 $perfRole = ($user['role'] === 'superadmin') ? 'admin' : $user['role'];
                 if (empty($user['tupoksi'])) $user['tupoksi'] = '';
                 $user['permissions'] = json_decode($user['permissions'] ?: '[]');
-                // Resolve ptk_id via perf_users or perf_ptk so 'Hasil Saya' works in eportal mode
+                // Resolve ptk_id & fallback tupoksi via perf_users or perf_ptk so 'Hasil Saya' & role detection work accurately
                 $ptkId = null;
                 try {
                     $stmtPu = db()->prepare("SELECT perf_ptk_id FROM perf_users WHERE username = ? AND perf_ptk_id IS NOT NULL LIMIT 1");
                     $stmtPu->execute([$user['username']]);
                     $ptkId = $stmtPu->fetchColumn() ?: null;
                     if (!$ptkId) {
-                        $stmtPt = db()->prepare("SELECT id FROM perf_ptk WHERE status = 1 AND (niy = ? OR nama = ?) LIMIT 1");
+                        $stmtPt = db()->prepare("SELECT id, jenis_ptk FROM perf_ptk WHERE status = 1 AND (niy = ? OR nama = ?) LIMIT 1");
                         $stmtPt->execute([$user['username'], $user['nama_lengkap']]);
-                        $ptkId = $stmtPt->fetchColumn() ?: null;
+                        $ptRow = $stmtPt->fetch(PDO::FETCH_ASSOC);
+                        if ($ptRow) {
+                            $ptkId = $ptRow['id'];
+                            if ($user['tupoksi'] === '' && !empty($ptRow['jenis_ptk'])) {
+                                $user['tupoksi'] = $ptRow['jenis_ptk'];
+                            }
+                        }
+                    } elseif ($user['tupoksi'] === '') {
+                        $stmtPt = db()->prepare("SELECT jenis_ptk FROM perf_ptk WHERE id = ? LIMIT 1");
+                        $stmtPt->execute([$ptkId]);
+                        $ptJenis = $stmtPt->fetchColumn();
+                        if ($ptJenis) $user['tupoksi'] = $ptJenis;
                     }
                 } catch (Exception $ex) {}
                 $user['ptk_id'] = $ptkId ? (int)$ptkId : null;
+                if ($perfRole === 'kepsek' && !perf_is_kepsek_rater(['tupoksi' => $user['tupoksi'], 'ptk_id' => $user['ptk_id'], 'role' => $perfRole])) {
+                    $perfRole = perf_map_ptk_to_user_role($user['tupoksi'] ?: 'guru', $user['jabatan'] ?? '');
+                }
             }
         } catch (PDOException $e) { $user = null; }
     }

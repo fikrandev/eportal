@@ -174,7 +174,10 @@ function sch_build_problem_context(PDO $pdo): array {
         $totalRequiredJp += $jp;
     }
 
+    $nHari = count($hariList);
+    $allHariSet = ($nHari > 0 ? array_fill(0, $nHari, true) : []);
     $guruKes = [0 => ($nSlots > 0 ? array_fill(0, $nSlots, true) : [])];
+    $guruHariKes = [0 => $allHariSet];
     $diagnostics = [
         'teachers_without_kesediaan' => [],
         'run_bottlenecks' => []
@@ -194,13 +197,18 @@ function sch_build_problem_context(PDO $pdo): array {
     foreach ($guruTotalJp as $gId => $totJp) {
         if (!empty($rawGuruKes[$gId])) {
             $guruKes[$gId] = $rawGuruKes[$gId];
+            $guruHariKes[$gId] = [];
+            foreach ($rawGuruKes[$gId] as $s => $_) {
+                $guruHariKes[$gId][$slotHari[$s]] = true;
+            }
             $availCount = count($guruKes[$gId]);
             if ($totJp > $availCount) {
                 $errors[] = "Guru {$guruNames[$gId]} memiliki beban {$totJp} JP tetapi hanya memilih {$availCount} slot kesediaan mengajar.";
             }
         } else {
-            // Guru di distribusi yang belum mengisi kesediaan dianggap bersedia pada seluruh slot pembelajaran
+            // Guru di distribusi yang belum mengisi kesediaan dianggap bersedia pada seluruh slot & hari pembelajaran
             $guruKes[$gId] = ($nSlots > 0 ? array_fill(0, $nSlots, true) : []);
+            $guruHariKes[$gId] = $allHariSet;
             $diagnostics['teachers_without_kesediaan'][] = $guruNames[$gId];
         }
     }
@@ -211,8 +219,29 @@ function sch_build_problem_context(PDO $pdo): array {
         }
     }
 
-    // Diagnosa kapasitas run & slot untuk mendeteksi bottleneck kesediaan sejak awal
+    // Diagnosa kapasitas per hari, run & slot untuk mendeteksi bottleneck kesediaan sejak awal
     $nKelas = count($kelasRows);
+    if ($nSlots > 0 && $nKelas > 0 && empty($errors)) {
+        $slotsPerHari = [];
+        for ($s = 0; $s < $nSlots; $s++) {
+            $slotsPerHari[$slotHari[$s]][] = $s;
+        }
+        foreach ($slotsPerHari as $hIdx => $hSlots) {
+            $daySlotCnt = count($hSlots);
+            $reqDayJp = $nKelas * $daySlotCnt;
+            $capDayJp = 0;
+            foreach ($guruTotalJp as $gId => $totJp) {
+                if (isset($guruHariKes[$gId][$hIdx])) {
+                    $capDayJp += min($totJp, $daySlotCnt);
+                }
+            }
+            if ($capDayJp < $reqDayJp) {
+                $hName = $hariList[$hIdx] ?? "Hari #{$hIdx}";
+                $errors[] = "Kapasitas guru yang aktif/bersedia pada hari {$hName} ({$capDayJp} JP) kurang dari kebutuhan seluruh rombel ({$reqDayJp} JP).";
+            }
+        }
+    }
+
     if ($nSlots > 0 && $nKelas > 0 && empty($errors)) {
         foreach ($runs as $run) {
             $len = count($run['slots']);
@@ -271,6 +300,9 @@ function sch_build_problem_context(PDO $pdo): array {
     $guruKesList = [];
     $guruPairs = [];
     $guruTriples = [];
+    $guruDaySlots = [];
+    $guruDayPairs = [];
+    $guruDayTriples = [];
     foreach ($guruKes as $gid => $smap) {
         $guruKesList[$gid] = array_keys($smap);
         $guruPairs[$gid] = [];
@@ -281,12 +313,27 @@ function sch_build_problem_context(PDO $pdo): array {
         foreach ($allTriples as $t) {
             if (isset($smap[$t[0]]) && isset($smap[$t[1]]) && isset($smap[$t[2]])) $guruTriples[$gid][] = $t;
         }
+
+        $hmap = $guruHariKes[$gid] ?? $allHariSet;
+        $guruDaySlots[$gid] = [];
+        for ($s = 0; $s < $nSlots; $s++) {
+            if (isset($hmap[$slotHari[$s]])) $guruDaySlots[$gid][] = $s;
+        }
+        $guruDayPairs[$gid] = [];
+        foreach ($allPairs as $p) {
+            if (isset($hmap[$slotHari[$p[0]]])) $guruDayPairs[$gid][] = $p;
+        }
+        $guruDayTriples[$gid] = [];
+        foreach ($allTriples as $t) {
+            if (isset($hmap[$slotHari[$t[0]]])) $guruDayTriples[$gid][] = $t;
+        }
     }
 
     return [
         'allJamRows' => $allJamRows,
         'jams' => $jams,
         'nSlots' => $nSlots,
+        'hariList' => $hariList,
         'slotHari' => $slotHari,
         'slotHariName' => $slotHariName,
         'slotJamKe' => $slotJamKe,
@@ -305,9 +352,13 @@ function sch_build_problem_context(PDO $pdo): array {
         'distRows' => $distRows,
         'distMeta' => $distMeta,
         'guruKes' => $guruKes,
+        'guruHariKes' => $guruHariKes,
         'guruKesList' => $guruKesList,
         'guruPairs' => $guruPairs,
         'guruTriples' => $guruTriples,
+        'guruDaySlots' => $guruDaySlots,
+        'guruDayPairs' => $guruDayPairs,
+        'guruDayTriples' => $guruDayTriples,
         'totalRequiredJp' => $totalRequiredJp,
         'errors' => $errors,
         'diagnostics' => $diagnostics
@@ -425,13 +476,69 @@ function sch_eval_dist_slots(int $d, array $sl, array &$distMeta, array &$slotRu
 }
 
 /**
+ * Cek apakah seluruh slice dalam $slList dapat dicocokkan 1-ke-1 ke blok dalam $bList
+ * tanpa melanggar kesediaan hari ($guruHariKes) dan tanpa menempatkan 2 slice distribusi yang sama pada run yang sama.
+ */
+function sch_can_match_slices_by_day(array $slList, array $bList, array &$distMeta, array &$guruHariKes, array &$slotHari): bool {
+    $nSl = count($slList);
+    $nB = count($bList);
+    if ($nSl !== $nB) return false;
+    if ($nSl === 0) return true;
+
+    $adj = [];
+    for ($i = 0; $i < $nSl; $i++) {
+        $g = $distMeta[$slList[$i]]['guru_id'];
+        $adj[$i] = [];
+        for ($j = 0; $j < $nB; $j++) {
+            $bHari = $slotHari[$bList[$j]['slots'][0]];
+            if (isset($guruHariKes[$g][$bHari])) {
+                $adj[$i][] = $j;
+            }
+        }
+        if (empty($adj[$i])) return false;
+    }
+
+    $bToSl = array_fill(0, $nB, -1);
+    for ($i = 0; $i < $nSl; $i++) {
+        $visited = [];
+        $dfs = static function (int $u) use (&$dfs, &$adj, &$bToSl, &$visited, &$bList, &$slList): bool {
+            $uDist = $slList[$u];
+            foreach ($adj[$u] as $v) {
+                if (isset($visited[$v])) continue;
+                $visited[$v] = true;
+                $vRun = $bList[$v]['run'];
+                $conflict = false;
+                for ($otherB = 0; $otherB < count($bList); $otherB++) {
+                    if ($otherB !== $v && $bList[$otherB]['run'] === $vRun && $bToSl[$otherB] !== -1) {
+                        if ($slList[$bToSl[$otherB]] === $uDist) {
+                            $conflict = true;
+                            break;
+                        }
+                    }
+                }
+                if ($conflict) continue;
+                if ($bToSl[$v] === -1 || $dfs($bToSl[$v])) {
+                    $bToSl[$v] = $u;
+                    return true;
+                }
+            }
+            return false;
+        };
+        if (!$dfs($i)) return false;
+    }
+    return true;
+}
+
+/**
  * Analisis kapasitas run dan guru ketat lintas kelas sebelum membentuk template blok per kelas.
  */
 function sch_prepare_init_plan(array &$ctx): array {
     $runs = &$ctx['runs'];
     $distMeta = &$ctx['distMeta'];
     $guruKes = &$ctx['guruKes'];
+    $guruHariKes = &$ctx['guruHariKes'];
     $guruKesList = &$ctx['guruKesList'];
+    $slotHari = &$ctx['slotHari'];
     $kelasIds = $ctx['kelasIds'];
     $nClasses = count($kelasIds);
 
@@ -463,6 +570,7 @@ function sch_prepare_init_plan(array &$ctx): array {
         $sl = $runs[$rIdx]['slots'];
         $sA = $sl[0];
         $sB = $sl[1];
+        $rHari = $slotHari[$sA];
         foreach ($guruLoad as $g => $load) {
             $avail = count($guruKesList[$g] ?? []);
             if ($avail - $load > 1) continue;
@@ -471,10 +579,17 @@ function sch_prepare_init_plan(array &$ctx): array {
             if ($hasA !== $hasB) {
                 $candClasses = [];
                 foreach ($guruDists[$g] ?? [] as $d) {
-                    $kId = $distMeta[$d]['kelas_id'];
+                    $mD = $distMeta[$d];
+                    if ($mD['is_pjok'] || !in_array($mD['jp'], [1, 3, 4, 5], true)) continue;
+                    $kId = $mD['kelas_id'];
                     $blocked = false;
+                    $other1Cap = 0;
                     foreach ($ctx['kelasDists'][$kId] as $d2) {
-                        $g2 = $distMeta[$d2]['guru_id'];
+                        $m2 = $distMeta[$d2];
+                        $g2 = $m2['guru_id'];
+                        if ($d2 !== $d && !$m2['is_pjok'] && in_array($m2['jp'], [1, 3, 5], true) && isset($guruHariKes[$g2][$rHari])) {
+                            $other1Cap++;
+                        }
                         if ($g2 === $g) continue;
                         $av2 = count($guruKesList[$g2] ?? []);
                         if ($av2 - ($guruLoad[$g2] ?? 0) === 0 && isset($guruKes[$g2][$sA]) && isset($guruKes[$g2][$sB])) {
@@ -482,7 +597,7 @@ function sch_prepare_init_plan(array &$ctx): array {
                             break;
                         }
                     }
-                    if (!$blocked) $candClasses[] = $kId;
+                    if (!$blocked && $other1Cap >= 1) $candClasses[] = $kId;
                 }
                 if (!empty($candClasses)) {
                     $pickK = $candClasses[array_rand($candClasses)];
@@ -534,23 +649,30 @@ function sch_prepare_init_plan(array &$ctx): array {
     foreach ($kelasIds as $kId) $classForceSplitRun[$kId] = [];
     foreach ($splitRunCounts as $rIdx => $needSplits) {
         $sl = $runs[$rIdx]['slots'];
+        $rHari = $slotHari[$sl[0]];
         $scored = [];
         foreach ($kelasIds as $kId) {
             $score = 0;
             $extra3 = 0;
+            $day1Cap = 0;
             foreach ($ctx['kelasDists'][$kId] as $d) {
                 $m = $distMeta[$d];
-                if ($m['jp'] === 3 && !$m['is_pjok']) $extra3++;
                 $g = $m['guru_id'];
+                if ($m['jp'] === 3 && !$m['is_pjok']) $extra3++;
+                if (!$m['is_pjok'] && in_array($m['jp'], [1, 3, 5], true) && isset($guruHariKes[$g][$rHari])) {
+                    $day1Cap++;
+                }
                 $slack = count($guruKesList[$g] ?? []) - ($guruLoad[$g] ?? 0);
-                if ($slack <= 2) {
+                if ($slack <= 2 && isset($guruHariKes[$g][$rHari])) {
                     $a0 = isset($guruKes[$g][$sl[0]]);
                     $a1 = isset($guruKes[$g][$sl[1]]);
                     $a2 = isset($guruKes[$g][$sl[2]]);
                     if (($a0 && !$a1 && !$a2) || (!$a0 && $a1 && $a2)) $score += 100;
                 }
             }
-            $score += $extra3 * 2 + mt_rand(0, 3);
+            // Hanya pecah run len-3 di kelas yang memiliki guru 1-JP / 3-JP / 5-JP aktif pada hari tersebut
+            if ($day1Cap === 0) continue;
+            $score += $day1Cap * 10 + $extra3 * 2 + mt_rand(0, 3);
             $scored[] = ['k' => $kId, 'score' => $score];
         }
         usort($scored, static fn($a, $b) => $b['score'] <=> $a['score']);
@@ -572,7 +694,8 @@ function sch_prepare_init_plan(array &$ctx): array {
 }
 
 /**
- * Bentuk template pemecahan slice & target blok slot untuk satu kelas.
+ * Bentuk template pemecahan slice & target blok slot untuk satu kelas
+ * dengan jaminan kecocokan kesediaan hari (guruHariKes) 100%.
  */
 function sch_generate_class_block_template(array &$ctx, int $kId, ?array $plan = null): array {
     if ($plan === null) {
@@ -581,8 +704,11 @@ function sch_generate_class_block_template(array &$ctx, int $kId, ?array $plan =
     $runs = &$ctx['runs'];
     $distMeta = &$ctx['distMeta'];
     $guruKes = &$ctx['guruKes'];
+    $guruHariKes = &$ctx['guruHariKes'];
     $guruKesList = &$ctx['guruKesList'];
     $guruTriples = &$ctx['guruTriples'];
+    $guruDayTriples = &$ctx['guruDayTriples'];
+    $slotHari = &$ctx['slotHari'];
     $dists = $ctx['kelasDists'][$kId];
 
     $len4Runs = $plan['len4Runs'];
@@ -617,7 +743,8 @@ function sch_generate_class_block_template(array &$ctx, int $kId, ?array $plan =
     // Guru tanpa kesediaan 3-blok berurutan wajib dipecah ke [2, 1] / [2, 2, 1] sejak awal
     $forcedSplits35 = [];
     foreach (array_merge($j3, $j5) as $d) {
-        if (empty($guruTriples[$distMeta[$d]['guru_id']])) {
+        $g = $distMeta[$d]['guru_id'];
+        if (empty($guruTriples[$g]) || empty($guruDayTriples[$g])) {
             $forcedSplits35[$d] = true;
         }
     }
@@ -640,6 +767,26 @@ function sch_generate_class_block_template(array &$ctx, int $kId, ?array $plan =
         return $rb <=> $ra;
     });
 
+    // Hitung kebutuhan hari untuk blok 1-JP yang dipaksa pecah (misal Jumat jam 10-12 -> [1, 2])
+    $needDay1 = [];
+    foreach ($forceSplitLen3 as $rIdx => $_) {
+        $h = $slotHari[$runs[$rIdx]['slots'][0]];
+        $needDay1[$h] = ($needDay1[$h] ?? 0) + 1;
+    }
+    foreach ($forceSplitLen2 as $rIdx => $_) {
+        $h = $slotHari[$runs[$rIdx]['slots'][0]];
+        $needDay1[$h] = ($needDay1[$h] ?? 0) + 2;
+    }
+    foreach ($s1 as $d) {
+        $g = $distMeta[$d]['guru_id'];
+        foreach ($needDay1 as $h => $cnt) {
+            if ($cnt > 0 && isset($guruHariKes[$g][$h])) {
+                $needDay1[$h]--;
+                break;
+            }
+        }
+    }
+
     // Keseimbangan matematis slot: count(s3) - count(s1) = len(len3Runs) - 2*k3 - 2*k2
     $nLen3 = count($len3Runs);
     $forcedK3 = count($forceSplitLen3);
@@ -647,38 +794,99 @@ function sch_generate_class_block_template(array &$ctx, int $kId, ?array $plan =
     $targetDiff = $nLen3 - 2 * $forcedK3 - 2 * $forcedK2;
 
     while ((count($s3) - count($s1)) > $targetDiff) {
-        $found = false;
-        for ($i = count($s3) - 1; $i >= 0; $i--) {
-            $d = $s3[$i];
-            if ($distMeta[$d]['jp'] === 3 && !$distMeta[$d]['is_pjok']) {
-                array_splice($s3, $i, 1);
-                $s2[] = $d; $s1[] = $d;
-                $found = true; break;
-            }
-        }
-        if (!$found) {
+        $pickedIdx = -1;
+        // Prioritas 1: Pecah mapel 3-JP / 5-JP yang gurunya aktif pada hari yang butuh slice 1-JP (misal Jumat)
+        foreach ([3, 5] as $prefJp) {
             for ($i = count($s3) - 1; $i >= 0; $i--) {
                 $d = $s3[$i];
-                if ($distMeta[$d]['jp'] === 5) {
-                    array_splice($s3, $i, 1);
-                    $s2[] = $d; $s1[] = $d;
-                    $found = true; break;
+                if ($distMeta[$d]['jp'] !== $prefJp || $distMeta[$d]['is_pjok']) continue;
+                $g = $distMeta[$d]['guru_id'];
+                foreach ($needDay1 as $h => $cnt) {
+                    if ($cnt > 0 && isset($guruHariKes[$g][$h])) {
+                        $pickedIdx = $i;
+                        $needDay1[$h]--;
+                        break 3;
+                    }
                 }
             }
         }
-        if (!$found) break;
+        // Prioritas 2: Pecah mapel 3-JP / 5-JP mana pun yang non-PJOK
+        if ($pickedIdx === -1) {
+            foreach ([3, 5] as $prefJp) {
+                for ($i = count($s3) - 1; $i >= 0; $i--) {
+                    $d = $s3[$i];
+                    if ($distMeta[$d]['jp'] === $prefJp && !$distMeta[$d]['is_pjok']) {
+                        $pickedIdx = $i;
+                        break 2;
+                    }
+                }
+            }
+        }
+        if ($pickedIdx === -1) break;
+        $dPick = $s3[$pickedIdx];
+        array_splice($s3, $pickedIdx, 1);
+        $s2[] = $dPick;
+        $s1[] = $dPick;
+    }
+
+    // Jika masih ada hari di $forceSplitLen3 yang belum tercover oleh guru di $s1, tukar 1 mapel pecah dengan mapel di $s3 yang aktif di hari tsb
+    foreach ($needDay1 as $h => $remNeed) {
+        while ($remNeed > 0) {
+            $swapS3Idx = -1;
+            for ($i = count($s3) - 1; $i >= 0; $i--) {
+                $d = $s3[$i];
+                if (!$distMeta[$d]['is_pjok'] && in_array($distMeta[$d]['jp'], [3, 5], true) && isset($guruHariKes[$distMeta[$d]['guru_id']][$h])) {
+                    $swapS3Idx = $i;
+                    break;
+                }
+            }
+            $mergeS1Idx = -1;
+            for ($i = count($s1) - 1; $i >= 0; $i--) {
+                $d = $s1[$i];
+                if (!isset($forcedSplits35[$d]) && !$distMeta[$d]['is_pjok'] && in_array($distMeta[$d]['jp'], [3, 5], true) && !isset($guruHariKes[$distMeta[$d]['guru_id']][$h])) {
+                    $mergeS1Idx = $i;
+                    break;
+                }
+            }
+            if ($swapS3Idx !== -1 && $mergeS1Idx !== -1) {
+                $dToSplit = $s3[$swapS3Idx];
+                $dToMerge = $s1[$mergeS1Idx];
+                $s3[$swapS3Idx] = $dToMerge;
+                array_splice($s1, $mergeS1Idx, 1);
+                $s2Idx = array_search($dToMerge, $s2, true);
+                if ($s2Idx !== false) array_splice($s2, $s2Idx, 1);
+                $s2[] = $dToSplit;
+                $s1[] = $dToSplit;
+                $remNeed--;
+            } else {
+                // Batalkan pemaksaan split len-3 pada hari $h untuk kelas ini agar tidak memaksa guru libur masuk
+                foreach (array_keys($forceSplitLen3) as $rIdx) {
+                    if ($slotHari[$runs[$rIdx]['slots'][0]] === $h) {
+                        unset($forceSplitLen3[$rIdx]);
+                        $remNeed--;
+                        break;
+                    }
+                }
+                break;
+            }
+        }
     }
 
     $c3 = count($s3);
     $c1 = count($s1);
-    $k2 = $forcedK2;
+    $k2 = count($forceSplitLen2);
     $k3 = max(0, (int)floor(($nLen3 - 2 * $k2 - ($c3 - $c1)) / 2));
     $k4 = max(0, $c1 - $k3 - 2 * $k2);
 
     $len4Scored = [];
     foreach ($len4Runs as $rIdx) {
         $sl = $runs[$rIdx]['slots'];
+        $rHari = $slotHari[$sl[0]];
         $want22 = 0; $want31 = 0;
+        $s1DayCompat = 0;
+        foreach ($s1 as $d1) {
+            if (isset($guruHariKes[$distMeta[$d1]['guru_id']][$rHari])) $s1DayCompat++;
+        }
         foreach ($dists as $d) {
             $g = $distMeta[$d]['guru_id'];
             $slack = count($guruKesList[$g] ?? []) - ($guruLoad[$g] ?? 0);
@@ -689,85 +897,186 @@ function sch_generate_class_block_template(array &$ctx, int $kId, ?array $plan =
             if ($cnt === 2 && (($a0 && $a1) || ($a2 && $a3))) $want22 += (6 - $slack);
             if ($cnt === 3) $want31 += (6 - $slack);
         }
-        $len4Scored[] = ['rIdx' => $rIdx, 'pref31' => $want31 - $want22];
+        $dayBonus = ($s1DayCompat > 0) ? ($s1DayCompat * 20) : -5000;
+        $len4Scored[] = ['rIdx' => $rIdx, 'pref31' => ($want31 - $want22) + $dayBonus];
     }
     usort($len4Scored, static fn($a, $b) => $b['pref31'] <=> $a['pref31']);
 
-    $blocks3 = []; $blocks2 = []; $blocks1 = [];
-    for ($i = 0; $i < count($len4Scored); $i++) {
-        $rIdx = $len4Scored[$i]['rIdx'];
-        $sl = $runs[$rIdx]['slots'];
-        if ($i < $k4) {
-            $pref13 = 0;
-            foreach ($dists as $d) {
-                $g = $distMeta[$d]['guru_id'];
-                if (!isset($guruKes[$g][$sl[0]]) && isset($guruKes[$g][$sl[1]]) && isset($guruKes[$g][$sl[2]]) && isset($guruKes[$g][$sl[3]])) {
-                    $pref13++;
+    $buildBlocksFromSplits = static function (array $split4Set, array $split3Set, array $split2Set) use (
+        &$runs, &$len4Runs, &$len3Runs, &$len2Runs, &$dists, &$distMeta, &$guruKes, &$guruKesList, &$guruLoad, &$splitRunOrient
+    ): array {
+        $blocks3 = []; $blocks2 = []; $blocks1 = [];
+        foreach ($len4Runs as $rIdx) {
+            $sl = $runs[$rIdx]['slots'];
+            if (isset($split4Set[$rIdx])) {
+                $pref13 = 0;
+                foreach ($dists as $d) {
+                    $g = $distMeta[$d]['guru_id'];
+                    if (!isset($guruKes[$g][$sl[0]]) && isset($guruKes[$g][$sl[1]]) && isset($guruKes[$g][$sl[2]]) && isset($guruKes[$g][$sl[3]])) {
+                        $pref13++;
+                    }
                 }
-            }
-            if ($pref13 > 0) {
-                $blocks1[] = ['slots' => array_slice($sl, 0, 1), 'run' => $rIdx];
-                $blocks3[] = ['slots' => array_slice($sl, 1, 3), 'run' => $rIdx];
-            } else {
-                $blocks3[] = ['slots' => array_slice($sl, 0, 3), 'run' => $rIdx];
-                $blocks1[] = ['slots' => array_slice($sl, 3, 1), 'run' => $rIdx];
-            }
-        } else {
-            $blocks2[] = ['slots' => array_slice($sl, 0, 2), 'run' => $rIdx];
-            $blocks2[] = ['slots' => array_slice($sl, 2, 2), 'run' => $rIdx];
-        }
-    }
-
-    $remK3 = $k3;
-    foreach ($len3Runs as $rIdx) {
-        $sl = $runs[$rIdx]['slots'];
-        if (isset($forceSplitLen3[$rIdx]) && $remK3 > 0) {
-            $use12 = (($splitRunOrient[$rIdx] ?? '12') === '12');
-            foreach ($dists as $d) {
-                $g = $distMeta[$d]['guru_id'];
-                $slack = count($guruKesList[$g] ?? []) - ($guruLoad[$g] ?? 0);
-                if ($slack <= 3) {
-                    if (isset($guruKes[$g][$sl[1]]) && isset($guruKes[$g][$sl[2]]) && !isset($guruKes[$g][$sl[0]])) $use12 = true;
-                    if (isset($guruKes[$g][$sl[0]]) && !isset($guruKes[$g][$sl[1]]) && !isset($guruKes[$g][$sl[2]])) $use12 = true;
+                if ($pref13 > 0) {
+                    $blocks1[] = ['slots' => array_slice($sl, 0, 1), 'run' => $rIdx];
+                    $blocks3[] = ['slots' => array_slice($sl, 1, 3), 'run' => $rIdx];
+                } else {
+                    $blocks3[] = ['slots' => array_slice($sl, 0, 3), 'run' => $rIdx];
+                    $blocks1[] = ['slots' => array_slice($sl, 3, 1), 'run' => $rIdx];
                 }
-            }
-            if ($use12) {
-                $blocks1[] = ['slots' => array_slice($sl, 0, 1), 'run' => $rIdx];
-                $blocks2[] = ['slots' => array_slice($sl, 1, 2), 'run' => $rIdx];
             } else {
                 $blocks2[] = ['slots' => array_slice($sl, 0, 2), 'run' => $rIdx];
-                $blocks1[] = ['slots' => array_slice($sl, 2, 1), 'run' => $rIdx];
+                $blocks2[] = ['slots' => array_slice($sl, 2, 2), 'run' => $rIdx];
             }
-            $remK3--;
-        } else {
-            $blocks3[] = ['slots' => $sl, 'run' => $rIdx];
         }
-    }
-    if ($remK3 > 0) {
         foreach ($len3Runs as $rIdx) {
-            if ($remK3 <= 0) break;
-            if (isset($forceSplitLen3[$rIdx])) continue;
-            foreach ($blocks3 as $bIdx => $b) {
-                if ($b['run'] === $rIdx) {
-                    $sl = $runs[$rIdx]['slots'];
-                    array_splice($blocks3, $bIdx, 1);
+            $sl = $runs[$rIdx]['slots'];
+            if (isset($split3Set[$rIdx])) {
+                $use12 = (($splitRunOrient[$rIdx] ?? '12') === '12');
+                foreach ($dists as $d) {
+                    $g = $distMeta[$d]['guru_id'];
+                    $slack = count($guruKesList[$g] ?? []) - ($guruLoad[$g] ?? 0);
+                    if ($slack <= 3) {
+                        if (isset($guruKes[$g][$sl[1]]) && isset($guruKes[$g][$sl[2]]) && !isset($guruKes[$g][$sl[0]])) $use12 = true;
+                        if (isset($guruKes[$g][$sl[0]]) && !isset($guruKes[$g][$sl[1]]) && !isset($guruKes[$g][$sl[2]])) $use12 = true;
+                    }
+                }
+                if ($use12) {
+                    $blocks1[] = ['slots' => array_slice($sl, 0, 1), 'run' => $rIdx];
+                    $blocks2[] = ['slots' => array_slice($sl, 1, 2), 'run' => $rIdx];
+                } else {
                     $blocks2[] = ['slots' => array_slice($sl, 0, 2), 'run' => $rIdx];
                     $blocks1[] = ['slots' => array_slice($sl, 2, 1), 'run' => $rIdx];
-                    $remK3--;
-                    break;
+                }
+            } else {
+                $blocks3[] = ['slots' => $sl, 'run' => $rIdx];
+            }
+        }
+        foreach ($len2Runs as $rIdx) {
+            $sl = $runs[$rIdx]['slots'];
+            if (isset($split2Set[$rIdx])) {
+                $blocks1[] = ['slots' => [$sl[0]], 'run' => $rIdx];
+                $blocks1[] = ['slots' => [$sl[1]], 'run' => $rIdx];
+            } else {
+                $blocks2[] = ['slots' => $sl, 'run' => $rIdx];
+            }
+        }
+        return [$blocks3, $blocks2, $blocks1];
+    };
+
+    $split4Set = [];
+    for ($i = 0; $i < min($k4, count($len4Scored)); $i++) {
+        $split4Set[$len4Scored[$i]['rIdx']] = true;
+    }
+    $split3Set = [];
+    $remK3 = $k3;
+    foreach ($len3Runs as $rIdx) {
+        if ($remK3 > 0 && isset($forceSplitLen3[$rIdx])) {
+            $split3Set[$rIdx] = true;
+            $remK3--;
+        }
+    }
+    foreach ($len3Runs as $rIdx) {
+        if ($remK3 <= 0) break;
+        if (!isset($split3Set[$rIdx])) {
+            $split3Set[$rIdx] = true;
+            $remK3--;
+        }
+    }
+    $split2Set = $forceSplitLen2;
+
+    [$blocks3, $blocks2, $blocks1] = $buildBlocksFromSplits($split4Set, $split3Set, $split2Set);
+
+    $allDayMatchOk = static function (array $cS3, array $cS2, array $cS1, array $b3, array $b2, array $b1) use (&$distMeta, &$guruHariKes, &$slotHari): bool {
+        return sch_can_match_slices_by_day($cS1, $b1, $distMeta, $guruHariKes, $slotHari)
+            && sch_can_match_slices_by_day($cS3, $b3, $distMeta, $guruHariKes, $slotHari)
+            && sch_can_match_slices_by_day($cS2, $b2, $distMeta, $guruHariKes, $slotHari);
+    };
+
+    // Repair 1: Geser pilihan run len-4 yang dipecah [3, 1] jika ada benturan hari dengan $s1 / $s3
+    if (!$allDayMatchOk($s3, $s2, $s1, $blocks3, $blocks2, $blocks1) && !empty($split4Set)) {
+        foreach (array_keys($split4Set) as $rOld) {
+            foreach ($len4Runs as $rNew) {
+                if (isset($split4Set[$rNew])) continue;
+                $try4 = $split4Set;
+                unset($try4[$rOld]);
+                $try4[$rNew] = true;
+                [$tb3, $tb2, $tb1] = $buildBlocksFromSplits($try4, $split3Set, $split2Set);
+                if ($allDayMatchOk($s3, $s2, $s1, $tb3, $tb2, $tb1)) {
+                    $split4Set = $try4;
+                    [$blocks3, $blocks2, $blocks1] = [$tb3, $tb2, $tb1];
+                    break 2;
                 }
             }
         }
     }
 
-    foreach ($len2Runs as $rIdx) {
-        $sl = $runs[$rIdx]['slots'];
-        if (isset($forceSplitLen2[$rIdx])) {
-            $blocks1[] = ['slots' => [$sl[0]], 'run' => $rIdx];
-            $blocks1[] = ['slots' => [$sl[1]], 'run' => $rIdx];
-        } else {
-            $blocks2[] = ['slots' => $sl, 'run' => $rIdx];
+    // Repair 2: Geser pilihan run len-3 yang dipecah [1, 2] ke run len-3 di hari lain jika perlu
+    if (!$allDayMatchOk($s3, $s2, $s1, $blocks3, $blocks2, $blocks1) && !empty($split3Set)) {
+        foreach (array_keys($split3Set) as $rOld) {
+            foreach ($len3Runs as $rNew) {
+                if (isset($split3Set[$rNew])) continue;
+                $try3 = $split3Set;
+                unset($try3[$rOld]);
+                $try3[$rNew] = true;
+                [$tb3, $tb2, $tb1] = $buildBlocksFromSplits($split4Set, $try3, $split2Set);
+                if ($allDayMatchOk($s3, $s2, $s1, $tb3, $tb2, $tb1)) {
+                    $split3Set = $try3;
+                    [$blocks3, $blocks2, $blocks1] = [$tb3, $tb2, $tb1];
+                    break 2;
+                }
+            }
         }
+    }
+
+    // Repair 3: Unsplit run len-3 + satukan kembali 1 distribusi [2, 1] -> [3] jika kelas kekurangan slice 1-JP di hari tsb
+    if (!$allDayMatchOk($s3, $s2, $s1, $blocks3, $blocks2, $blocks1) && !empty($split3Set)) {
+        foreach (array_keys($split3Set) as $rOld) {
+            for ($i = count($s1) - 1; $i >= 0; $i--) {
+                $dMerge = $s1[$i];
+                if ($distMeta[$dMerge]['is_pjok'] || !in_array($distMeta[$dMerge]['jp'], [3, 5], true) || empty($guruDayTriples[$distMeta[$dMerge]['guru_id']])) continue;
+                $tryS3 = $s3; $tryS3[] = $dMerge;
+                $tryS1 = $s1; array_splice($tryS1, $i, 1);
+                $tryS2 = $s2;
+                $idx2 = array_search($dMerge, $tryS2, true);
+                if ($idx2 === false) continue;
+                array_splice($tryS2, $idx2, 1);
+                $try3 = $split3Set;
+                unset($try3[$rOld]);
+                [$tb3, $tb2, $tb1] = $buildBlocksFromSplits($split4Set, $try3, $split2Set);
+                if ($allDayMatchOk($tryS3, $tryS2, $tryS1, $tb3, $tb2, $tb1)) {
+                    $s3 = $tryS3; $s2 = $tryS2; $s1 = $tryS1;
+                    $split3Set = $try3;
+                    [$blocks3, $blocks2, $blocks1] = [$tb3, $tb2, $tb1];
+                    break 2;
+                }
+            }
+        }
+    }
+
+    // Repair 4: Pecah 1 run len-3 tambahan (misal hari di mana guru 3-JP/5-JP sedang off-day) + pecah 1 mapel [3] -> [2, 1]
+    for ($repStep = 0; $repStep < 2 && !$allDayMatchOk($s3, $s2, $s1, $blocks3, $blocks2, $blocks1); $repStep++) {
+        $repaired = false;
+        foreach ($len3Runs as $rNew) {
+            if (isset($split3Set[$rNew])) continue;
+            for ($i = count($s3) - 1; $i >= 0; $i--) {
+                $dSplit = $s3[$i];
+                if ($distMeta[$dSplit]['is_pjok'] || !in_array($distMeta[$dSplit]['jp'], [3, 5], true)) continue;
+                $tryS3 = $s3; array_splice($tryS3, $i, 1);
+                $tryS2 = $s2; $tryS2[] = $dSplit;
+                $tryS1 = $s1; $tryS1[] = $dSplit;
+                $try3 = $split3Set;
+                $try3[$rNew] = true;
+                [$tb3, $tb2, $tb1] = $buildBlocksFromSplits($split4Set, $try3, $split2Set);
+                if ($allDayMatchOk($tryS3, $tryS2, $tryS1, $tb3, $tb2, $tb1)) {
+                    $s3 = $tryS3; $s2 = $tryS2; $s1 = $tryS1;
+                    $split3Set = $try3;
+                    [$blocks3, $blocks2, $blocks1] = [$tb3, $tb2, $tb1];
+                    $repaired = true;
+                    break 2;
+                }
+            }
+        }
+        if (!$repaired) break;
     }
 
     return [
@@ -788,7 +1097,10 @@ function sch_init_grid(array &$ctx, ?array $existingGrid = null): array {
     $nSlots = $ctx['nSlots'];
     $distMeta = &$ctx['distMeta'];
     $guruKes = &$ctx['guruKes'];
+    $guruHariKes = &$ctx['guruHariKes'];
     $guruKesList = &$ctx['guruKesList'];
+    $guruDaySlots = &$ctx['guruDaySlots'];
+    $slotHari = &$ctx['slotHari'];
     $grid = [];
     $hasSoftKes = false;
 
@@ -824,26 +1136,37 @@ function sch_init_grid(array &$ctx, ?array $existingGrid = null): array {
 
                 $order = range(0, $nSl - 1);
                 $adj = [];
+                $adjDay = [];
                 for ($i = 0; $i < $nSl; $i++) {
                     $d = $slList[$i];
                     $g = $distMeta[$d]['guru_id'];
                     $freeList = [];
                     $busyList = [];
+                    $dayFreeList = [];
+                    $dayBusyList = [];
                     for ($j = 0; $j < $nB; $j++) {
+                        $bHari = $slotHari[$bList[$j]['slots'][0]];
+                        if (!isset($guruHariKes[$g][$bHari])) continue;
                         $ok = true;
                         $clash = false;
                         foreach ($bList[$j]['slots'] as $s) {
-                            if (!isset($guruKes[$g][$s])) { $ok = false; break; }
+                            if (!isset($guruKes[$g][$s])) $ok = false;
                             if (!empty($globalGuruUsed[$g][$s])) $clash = true;
                         }
                         if ($ok) {
                             if ($clash) $busyList[] = $j;
                             else $freeList[] = $j;
+                        } else {
+                            if ($clash) $dayBusyList[] = $j;
+                            else $dayFreeList[] = $j;
                         }
                     }
                     shuffle($freeList);
                     shuffle($busyList);
+                    shuffle($dayFreeList);
+                    shuffle($dayBusyList);
                     $adj[$i] = array_merge($freeList, $busyList);
+                    $adjDay[$i] = array_merge($freeList, $busyList, $dayFreeList, $dayBusyList);
                 }
                 usort($order, static fn($a, $b) => count($adj[$a]) <=> count($adj[$b]));
 
@@ -871,30 +1194,61 @@ function sch_init_grid(array &$ctx, ?array $existingGrid = null): array {
                     if (!$dfs($i)) $unmatched[] = $i;
                 }
 
+                // Pass 2: Penempatan ketat berbasis kesediaan HARI (guru TIDAK BOLEH ditaruh pada hari libur/tanpa kesediaan)
                 if (!empty($unmatched)) {
                     $hasSoftKes = true;
-                    $freeB = [];
-                    for ($j = 0; $j < $nB; $j++) if ($bToSl[$j] === -1) $freeB[] = $j;
-                    shuffle($freeB);
-                    foreach ($unmatched as $idx => $u) {
-                        if (isset($freeB[$idx])) $bToSl[$freeB[$idx]] = $u;
+                    $stillUnmatched = [];
+                    foreach ($unmatched as $i) {
+                        $visited = [];
+                        $dfsDay = function ($u) use (&$dfsDay, &$adjDay, &$bToSl, &$visited, &$bList, &$slList): bool {
+                            $uDist = $slList[$u];
+                            foreach ($adjDay[$u] as $v) {
+                                if (isset($visited[$v])) continue;
+                                $visited[$v] = true;
+                                $vRun = $bList[$v]['run'];
+                                $conflict = false;
+                                for ($otherB = 0; $otherB < count($bList); $otherB++) {
+                                    if ($otherB !== $v && $bList[$otherB]['run'] === $vRun && $bToSl[$otherB] !== -1) {
+                                        if ($slList[$bToSl[$otherB]] === $uDist) { $conflict = true; break; }
+                                    }
+                                }
+                                if ($conflict) continue;
+                                if ($bToSl[$v] === -1 || $dfsDay($bToSl[$v])) { $bToSl[$v] = $u; return true; }
+                            }
+                            return false;
+                        };
+                        if (!$dfsDay($i)) $stillUnmatched[] = $i;
+                    }
+                    if (!empty($stillUnmatched)) {
+                        $freeB = [];
+                        for ($j = 0; $j < $nB; $j++) if ($bToSl[$j] === -1) $freeB[] = $j;
+                        shuffle($freeB);
+                        foreach ($stillUnmatched as $idx => $u) {
+                            if (isset($freeB[$idx])) $bToSl[$freeB[$idx]] = $u;
+                        }
                     }
                 }
 
-                // Pastikan tidak ada 2 slice dari distribusi yang sama di run yang sama (misal jika fallback menempatkannya bersama)
+                // Pastikan tidak ada 2 slice dari distribusi yang sama di run yang sama tanpa melanggar kesediaan hari
                 for ($j1 = 0; $j1 < $nB; $j1++) {
                     for ($j2 = $j1 + 1; $j2 < $nB; $j2++) {
                         if ($bToSl[$j1] !== -1 && $bToSl[$j2] !== -1 && $bList[$j1]['run'] === $bList[$j2]['run']) {
                             $u1 = $bToSl[$j1];
                             $u2 = $bToSl[$j2];
                             if ($slList[$u1] === $slList[$u2]) {
+                                $g2 = $distMeta[$slList[$u2]]['guru_id'];
+                                $h2 = $slotHari[$bList[$j2]['slots'][0]];
                                 for ($j3 = 0; $j3 < $nB; $j3++) {
                                     if ($bList[$j3]['run'] !== $bList[$j1]['run']) {
                                         $u3 = $bToSl[$j3];
                                         if ($u3 !== -1 && $slList[$u3] !== $slList[$u1]) {
-                                            $bToSl[$j2] = $u3;
-                                            $bToSl[$j3] = $u2;
-                                            break;
+                                            $g3 = $distMeta[$slList[$u3]]['guru_id'];
+                                            $h3 = $slotHari[$bList[$j3]['slots'][0]];
+                                            if (isset($guruHariKes[$g2][$h3]) && isset($guruHariKes[$g3][$h2])) {
+                                                $bToSl[$j2] = $u3;
+                                                $bToSl[$j3] = $u2;
+                                                break;
+                                            }
                                         }
                                     }
                                 }
@@ -937,7 +1291,7 @@ function sch_init_grid(array &$ctx, ?array $existingGrid = null): array {
                 $d = $existingGrid[$k][$s] ?? 0;
                 if ($d > 0 && isset($remCounts[$d]) && $remCounts[$d] > 0) {
                     $g = $distMeta[$d]['guru_id'];
-                    if (isset($guruKes[$g][$s])) {
+                    if (isset($guruKes[$g][$s]) && isset($guruHariKes[$g][$slotHari[$s]])) {
                         $row[$s] = $d;
                         $remCounts[$d]--;
                         continue;
@@ -968,6 +1322,7 @@ function sch_init_grid(array &$ctx, ?array $existingGrid = null): array {
         }
 
         $tokAdj = [];
+        $tokDayAdj = [];
         foreach ($tokens as $ti => $d) {
             $g = $distMeta[$d]['guru_id'];
             $adj = [];
@@ -976,6 +1331,13 @@ function sch_init_grid(array &$ctx, ?array $existingGrid = null): array {
             }
             shuffle($adj);
             $tokAdj[$ti] = $adj;
+
+            $dAdj = [];
+            foreach ($guruDaySlots[$g] ?? [] as $s) {
+                if (isset($freeSlotSet[$s]) && !isset($guruKes[$g][$s])) $dAdj[] = $s;
+            }
+            shuffle($dAdj);
+            $tokDayAdj[$ti] = array_merge($adj, $dAdj);
         }
 
         $unmatchedTokens = [];
@@ -999,14 +1361,34 @@ function sch_init_grid(array &$ctx, ?array $existingGrid = null): array {
 
         if (!empty($unmatchedTokens)) {
             $hasSoftKes = true;
-            $remFree = [];
-            foreach ($slotToTok as $s => $ti) {
-                if ($ti === -1) $remFree[] = $s;
+            $stillUnmatched = [];
+            foreach ($unmatchedTokens as $ti) {
+                $visited = [];
+                $dfsDay = function ($u) use (&$dfsDay, &$tokDayAdj, &$slotToTok, &$visited): bool {
+                    foreach ($tokDayAdj[$u] as $s) {
+                        if (isset($visited[$s])) continue;
+                        $visited[$s] = true;
+                        if ($slotToTok[$s] === -1 || $dfsDay($slotToTok[$s])) {
+                            $slotToTok[$s] = $u;
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+                if (!$dfsDay($ti)) {
+                    $stillUnmatched[] = $ti;
+                }
             }
-            shuffle($remFree);
-            foreach ($unmatchedTokens as $idx => $ti) {
-                if (isset($remFree[$idx])) {
-                    $slotToTok[$remFree[$idx]] = $ti;
+            if (!empty($stillUnmatched)) {
+                $remFree = [];
+                foreach ($slotToTok as $s => $ti) {
+                    if ($ti === -1) $remFree[] = $s;
+                }
+                shuffle($remFree);
+                foreach ($stillUnmatched as $idx => $ti) {
+                    if (isset($remFree[$idx])) {
+                        $slotToTok[$remFree[$idx]] = $ti;
+                    }
                 }
             }
         }
@@ -1035,9 +1417,12 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
     $nKelas = count($kelasIds);
     $distMeta = &$ctx['distMeta'];
     $guruKes = &$ctx['guruKes'];
+    $guruHariKes = &$ctx['guruHariKes'];
     $guruKesList = &$ctx['guruKesList'];
     $guruPairs = &$ctx['guruPairs'];
     $guruTriples = &$ctx['guruTriples'];
+    $guruDayPairs = &$ctx['guruDayPairs'];
+    $guruDayTriples = &$ctx['guruDayTriples'];
     $slotRun = &$ctx['slotRun'];
     $slotHari = &$ctx['slotHari'];
     $slotPrev = &$ctx['slotPrev'];
@@ -1061,12 +1446,12 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
     $distBlk = [0 => 0];
     $distPjok = [0 => 0];
     $distSd = [0 => 0];
-    $totKes = 0; $totCl = 0; $totBlk = 0; $totPjok = 0; $totSd = 0;
+    $totDayViol = 0; $totKes = 0; $totCl = 0; $totBlk = 0; $totPjok = 0; $totSd = 0;
 
     $computeGridState = static function (array $sourceGrid) use (
         &$grid, &$guruCnt, &$distSlots, &$kelasIds, &$distMeta,
-        &$distBlk, &$distPjok, &$distSd, &$totKes, &$totCl, &$totBlk, &$totPjok, &$totSd,
-        &$guruKes, &$slotRun, &$slotHari, $nSlots
+        &$distBlk, &$distPjok, &$distSd, &$totDayViol, &$totKes, &$totCl, &$totBlk, &$totPjok, &$totSd,
+        &$guruKes, &$guruHariKes, &$slotRun, &$slotHari, $nSlots
     ): void {
         $grid = $sourceGrid;
         foreach ($guruCnt as &$arr) $arr = array_fill(0, $nSlots, 0);
@@ -1074,6 +1459,7 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
         foreach ($distSlots as &$arr) $arr = [];
         unset($arr);
 
+        $totDayViol = 0;
         $totKes = 0;
         foreach ($kelasIds as $k) {
             for ($s = 0; $s < $nSlots; $s++) {
@@ -1083,6 +1469,7 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
                     $g = $distMeta[$d]['guru_id'];
                     $guruCnt[$g][$s]++;
                     if (!isset($guruKes[$g][$s])) $totKes++;
+                    if (!isset($guruHariKes[$g][$slotHari[$s]])) $totDayViol++;
                 }
             }
         }
@@ -1109,15 +1496,13 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
 
     $computeGridState($initGrid);
 
-    // Hierarki prioritas mutlak: 0 PJOK terpisah > 0 pelanggaran blok JP > 0 bentrok guru > min kesediaan > min pecah hari
-    $bestScore = [$totPjok, $totBlk, $totCl, $totKes, $totSd];
+    // Hierarki leksikografis mutlak:
+    // 0 pelanggaran HARI kesediaan > 0 PJOK terpisah > 0 pelanggaran blok JP > 0 bentrok guru > min penyesuaian jam > min pecah hari
+    $bestScore = [$totDayViol, $totPjok, $totBlk, $totCl, $totKes, $totSd];
     $bestGrid = $grid;
-    $isBetter = static function (array $a, array $b): bool {
-        $hardA = $a[0] * 100000 + $a[1] * 20000 + $a[2] * 3000 + $a[3] * 80 + $a[4];
-        $hardB = $b[0] * 100000 + $b[1] * 20000 + $b[2] * 3000 + $b[3] * 80 + $b[4];
-        return $hardA < $hardB;
-    };
+    $isBetter = static fn(array $a, array $b): bool => ($a < $b);
 
+    $W_DAY  = 12000;
     $W_PJOK = 2500;
     $W_BLK  = 1100;
     $W_CL   = 360;
@@ -1125,13 +1510,14 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
     $W_SD   = 8;
 
     $applyPerm = function (int $k, array $srcSlots, array $dstSlots, float $T, int $mode) use (
-        &$grid, &$distMeta, &$guruKes, &$guruCnt, &$distSlots, &$distBlk, &$distPjok, &$distSd,
-        &$totKes, &$totCl, &$totBlk, &$totPjok, &$totSd, &$slotRun, &$slotHari,
-        &$W_KES, &$W_CL, &$W_PJOK, &$W_BLK, &$W_SD, &$bestScore, &$bestGrid, $isBetter
+        &$grid, &$distMeta, &$guruKes, &$guruHariKes, &$guruCnt, &$distSlots, &$distBlk, &$distPjok, &$distSd,
+        &$totDayViol, &$totKes, &$totCl, &$totBlk, &$totPjok, &$totSd, &$slotRun, &$slotHari,
+        &$W_DAY, &$W_KES, &$W_CL, &$W_PJOK, &$W_BLK, &$W_SD, &$bestScore, &$bestGrid, $isBetter
     ): bool {
         $len = count($srcSlots);
         $dArr = [];
         $changed = false;
+        $dDayViol = 0;
         $dKes = 0;
 
         for ($i = 0; $i < $len; $i++) {
@@ -1140,12 +1526,18 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
             if ($d !== $grid[$k][$dstSlots[$i]]) $changed = true;
             $g = $distMeta[$d]['guru_id'];
             if ($d > 0) {
+                $okDaySrc = isset($guruHariKes[$g][$slotHari[$srcSlots[$i]]]) ? 1 : 0;
+                $okDayDst = isset($guruHariKes[$g][$slotHari[$dstSlots[$i]]]) ? 1 : 0;
+                $dDayViol += ($okDaySrc - $okDayDst);
+
                 $okSrc = isset($guruKes[$g][$srcSlots[$i]]) ? 1 : 0;
                 $okDst = isset($guruKes[$g][$dstSlots[$i]]) ? 1 : 0;
                 $dKes += ($okSrc - $okDst);
             }
         }
         if (!$changed) return false;
+        // Kunci mutlak: jangan pernah menaruh guru pada hari tanpa kesediaan/distribusi!
+        if ($dDayViol > 0 && ($totDayViol === 0 || $mode >= 1)) return false;
 
         $touchedG = [];
         for ($i = 0; $i < $len; $i++) {
@@ -1200,8 +1592,8 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
         if (($mode === 1 || $mode === 2) && ($dPjok > 0 || $dBlk > 0)) return false;
 
         $delta = ($mode === 2)
-            ? ($dKes * $W_KES + $dSd * $W_SD)
-            : ($dKes * $W_KES + $dCl * $W_CL + $dPjok * $W_PJOK + $dBlk * $W_BLK + $dSd * $W_SD);
+            ? ($dDayViol * $W_DAY + $dKes * $W_KES + $dSd * $W_SD)
+            : ($dDayViol * $W_DAY + $dKes * $W_KES + $dCl * $W_CL + $dPjok * $W_PJOK + $dBlk * $W_BLK + $dSd * $W_SD);
 
         if ($delta <= 0 || ($T > 0.01 && (mt_rand() / mt_getrandmax()) < exp(-$delta / $T))) {
             for ($i = 0; $i < $len; $i++) $grid[$k][$dstSlots[$i]] = $dArr[$i];
@@ -1214,12 +1606,13 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
                 $distPjok[$d] = $newEval[$d][1];
                 $distSd[$d] = $newEval[$d][2];
             }
+            $totDayViol += $dDayViol;
             $totKes += $dKes;
             $totCl += $dCl;
             $totBlk += $dBlk;
             $totPjok += $dPjok;
             $totSd += $dSd;
-            $cur = [$totPjok, $totBlk, $totCl, $totKes, $totSd];
+            $cur = [$totDayViol, $totPjok, $totBlk, $totCl, $totKes, $totSd];
             if ($isBetter($cur, $bestScore)) {
                 $bestScore = $cur;
                 $bestGrid = $grid;
@@ -1296,6 +1689,18 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
         }
         if (empty($sameLen)) return false;
         $bB = $sameLen[mt_rand(0, count($sameLen) - 1)];
+        if (count($sameLen) >= 2 && mt_rand(0, 3) === 0) {
+            $bC = $sameLen[mt_rand(0, count($sameLen) - 1)];
+            if ($bC['slots'][0] !== $bB['slots'][0] && $bC['d'] !== $bB['d']) {
+                return $applyPerm(
+                    $k,
+                    array_merge($bA['slots'], $bB['slots'], $bC['slots']),
+                    array_merge($bB['slots'], $bC['slots'], $bA['slots']),
+                    $T,
+                    $mode
+                );
+            }
+        }
         return $applyPerm($k, array_merge($bA['slots'], $bB['slots']), array_merge($bB['slots'], $bA['slots']), $T, $mode);
     };
 
@@ -1309,11 +1714,53 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
         }
         if (empty($szPool)) return false;
         $list = $byLen[$szPool[mt_rand(0, count($szPool) - 1)]];
-        $i1 = mt_rand(0, count($list) - 1);
-        $i2 = mt_rand(0, count($list) - 2);
+        $cnt = count($list);
+        $i1 = mt_rand(0, $cnt - 1);
+        $i2 = mt_rand(0, $cnt - 2);
         if ($i2 >= $i1) $i2++;
         if ($list[$i1]['d'] === $list[$i2]['d']) return false;
+        if ($cnt >= 3 && mt_rand(0, 3) === 0) {
+            $i3 = mt_rand(0, $cnt - 1);
+            if ($i3 !== $i1 && $i3 !== $i2 && $list[$i3]['d'] !== $list[$i1]['d'] && $list[$i3]['d'] !== $list[$i2]['d']) {
+                return $applyPerm(
+                    $k,
+                    array_merge($list[$i1]['slots'], $list[$i2]['slots'], $list[$i3]['slots']),
+                    array_merge($list[$i2]['slots'], $list[$i3]['slots'], $list[$i1]['slots']),
+                    $T,
+                    $mode
+                );
+            }
+        }
         return $applyPerm($k, array_merge($list[$i1]['slots'], $list[$i2]['slots']), array_merge($list[$i2]['slots'], $list[$i1]['slots']), $T, $mode);
+    };
+
+    // Tukar bentuk partisi [3] <-> [2, 1] antar dua distribusi 3-JP / 5-JP non-PJOK di kelas yang sama
+    $trySwap3With21 = static function (int $k, float $T, int $mode) use ($getClassBlocks, &$distMeta, $applyPerm): bool {
+        $blks = $getClassBlocks($k);
+        $byDist = [];
+        foreach ($blks as $b) {
+            if ($b['d'] > 0) $byDist[$b['d']][] = $b;
+        }
+        $cand3 = [];
+        $cand21 = [];
+        foreach ($byDist as $d => $dBlks) {
+            $m = $distMeta[$d];
+            if ($m['is_pjok'] || !in_array($m['jp'], [3, 5], true)) continue;
+            $has3 = null; $b2 = null; $b1 = null;
+            foreach ($dBlks as $b) {
+                if ($b['len'] === 3) $has3 = $b;
+                elseif ($b['len'] === 2 && $b2 === null) $b2 = $b;
+                elseif ($b['len'] === 1 && $b1 === null) $b1 = $b;
+            }
+            if ($has3 !== null) $cand3[] = ['d' => $d, 'b3' => $has3];
+            elseif ($b2 !== null && $b1 !== null) $cand21[] = ['d' => $d, 'b2' => $b2, 'b1' => $b1];
+        }
+        if (empty($cand3) || empty($cand21)) return false;
+        $cA = $cand3[mt_rand(0, count($cand3) - 1)];
+        $cB = $cand21[mt_rand(0, count($cand21) - 1)];
+        $sA = $cA['b3']['slots'];
+        $sB = array_merge($cB['b2']['slots'], $cB['b1']['slots']);
+        return $applyPerm($k, array_merge($sA, $sB), array_merge($sB, $sA), $T, $mode);
     };
 
     $tryRunMove = static function (int $k, float $T, int $mode) use (&$runs, &$runsByLen, $applyPerm): bool {
@@ -1338,10 +1785,10 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
         return $list[mt_rand(0, count($list) - 1)];
     };
 
-    $refreshActiveLists = static function (array &$badDists, array &$clashCells, array &$kesCells, array &$sdDists) use (
-        &$distBlk, &$distSd, &$kelasIds, &$grid, &$distMeta, &$guruCnt, &$guruKes, $nSlots
+    $refreshActiveLists = static function (array &$dayViolCells, array &$badDists, array &$clashCells, array &$kesCells, array &$sdDists) use (
+        &$distBlk, &$distSd, &$kelasIds, &$grid, &$distMeta, &$guruCnt, &$guruKes, &$guruHariKes, &$slotHari, $nSlots
     ): void {
-        $badDists = []; $sdDists = []; $clashCells = []; $kesCells = [];
+        $dayViolCells = []; $badDists = []; $sdDists = []; $clashCells = []; $kesCells = [];
         foreach ($distBlk as $d => $b) if ($b > 0) $badDists[] = $d;
         foreach ($distSd as $d => $v) if ($v > 0) $sdDists[] = $d;
         foreach ($kelasIds as $k) {
@@ -1349,6 +1796,7 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
                 $d = $grid[$k][$s];
                 if ($d > 0) {
                     $g = $distMeta[$d]['guru_id'];
+                    if (!isset($guruHariKes[$g][$slotHari[$s]])) $dayViolCells[] = [$k, $s];
                     if ($guruCnt[$g][$s] > 1) $clashCells[] = [$k, $s];
                     if (!isset($guruKes[$g][$s])) $kesCells[] = [$k, $s];
                 }
@@ -1361,40 +1809,50 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
     $itersPerCycle = 85000;
     for ($cycle = 0; $cycle < 8; $cycle++) {
         if (microtime(true) > $p1End) break;
-        if ($bestScore[0] === 0 && $bestScore[1] === 0 && $bestScore[2] === 0 && $bestScore[3] === 0 && $bestScore[4] === 0) break;
+        if ($bestScore === [0, 0, 0, 0, 0, 0]) break;
         if ($cycle > 0) $computeGridState($bestGrid);
 
+        $W_DAY  = 12000;
         $W_PJOK = 3200;
-        $W_KES = 650;
-        $W_BLK = ($cycle >= 2) ? 2000 : 1400;
-        $W_CL  = ($cycle >= 2 && $bestScore[2] > 0) ? 450 : 320;
+        $W_KES  = ($cycle >= 3 && $bestScore[3] > 0) ? 280 : 580;
+        $W_BLK  = ($cycle >= 2) ? 2000 : 1400;
+        $W_CL   = ($cycle >= 3 && $bestScore[3] > 0) ? 780 : (($cycle >= 2 && $bestScore[3] > 0) ? 520 : 340);
         $Tstart = ($cycle === 0) ? 55.0 : 30.0;
         $Tend = 1.2;
         $cool = pow($Tend / $Tstart, 1.0 / $itersPerCycle);
         $T = $Tstart;
 
-        $badDists = []; $clashCells = []; $kesCells = []; $sdDists = [];
-        $refreshActiveLists($badDists, $clashCells, $kesCells, $sdDists);
+        $dayViolCells = []; $badDists = []; $clashCells = []; $kesCells = []; $sdDists = [];
+        $refreshActiveLists($dayViolCells, $badDists, $clashCells, $kesCells, $sdDists);
 
         for ($it = 0; $it < $itersPerCycle; $it++) {
             if (($it & 511) === 0) {
                 if (microtime(true) > $p1End) break;
-                $refreshActiveLists($badDists, $clashCells, $kesCells, $sdDists);
-                if (empty($clashCells) && empty($badDists) && empty($kesCells) && empty($sdDists)) break;
+                $refreshActiveLists($dayViolCells, $badDists, $clashCells, $kesCells, $sdDists);
+                if (empty($dayViolCells) && empty($clashCells) && empty($badDists) && empty($kesCells) && empty($sdDists)) break;
             }
             $r = mt_rand(0, 99);
-            if ($r < 36 && !empty($clashCells)) {
+            if (!empty($dayViolCells) && $r < 45) {
+                $dc = $dayViolCells[mt_rand(0, count($dayViolCells) - 1)];
+                $k = $dc[0]; $s1s = $dc[1];
+                $g1 = $distMeta[$grid[$k][$s1s]]['guru_id'];
+                if (!$trySwapSameLenBlockAt($k, $s1s, $T, 0)) {
+                    $swap1($k, $s1s, $pickCand($g1), $T, 0);
+                }
+            } elseif ($r < 36 && !empty($clashCells)) {
                 $cc = $clashCells[mt_rand(0, count($clashCells) - 1)];
                 $k = $cc[0]; $s1s = $cc[1];
                 $g1 = $distMeta[$grid[$k][$s1s]]['guru_id'];
                 $blk1 = $getBlockAt($k, $s1s);
                 $len1 = count($blk1);
-                if ($len1 === 2 && !empty($guruPairs[$g1]) && mt_rand(0, 9) < 8) {
-                    $pB = $guruPairs[$g1][mt_rand(0, count($guruPairs[$g1]) - 1)];
+                if ($len1 === 2 && (!empty($guruPairs[$g1]) || !empty($guruDayPairs[$g1])) && mt_rand(0, 9) < 8) {
+                    $pool = (!empty($guruPairs[$g1]) && mt_rand(0, 9) < 8) ? $guruPairs[$g1] : $guruDayPairs[$g1];
+                    $pB = $pool[mt_rand(0, count($pool) - 1)];
                     if (mt_rand(0, 1)) $pB = [$pB[1], $pB[0]];
                     $swapPair($k, $blk1, $pB, $T, 0);
-                } elseif ($len1 === 3 && !empty($guruTriples[$g1]) && mt_rand(0, 9) < 8) {
-                    $swapTriple($k, $blk1, $guruTriples[$g1][mt_rand(0, count($guruTriples[$g1]) - 1)], $T, 0);
+                } elseif ($len1 === 3 && (!empty($guruTriples[$g1]) || !empty($guruDayTriples[$g1])) && mt_rand(0, 9) < 8) {
+                    $pool = (!empty($guruTriples[$g1]) && mt_rand(0, 9) < 8) ? $guruTriples[$g1] : $guruDayTriples[$g1];
+                    $swapTriple($k, $blk1, $pool[mt_rand(0, count($pool) - 1)], $T, 0);
                 } elseif ($len1 === 1) {
                     $swap1($k, $s1s, $pickCand($g1), $T, 0);
                 } else {
@@ -1421,7 +1879,7 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
                         }
                     }
                 }
-            } elseif ($r < 84) {
+            } elseif ($r < 82) {
                 $k = $kelasIds[mt_rand(0, $nKelas - 1)];
                 $s1s = mt_rand(0, $nSlots - 1);
                 $g1 = $distMeta[$grid[$k][$s1s]]['guru_id'];
@@ -1435,8 +1893,10 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
                 } else {
                     $swap1($k, $s1s, $pickCand($g1), $T, 0);
                 }
-            } elseif ($r < 95) {
+            } elseif ($r < 92) {
                 $tryRunMove($kelasIds[mt_rand(0, $nKelas - 1)], $T, 0);
+            } elseif ($r < 96) {
+                $trySwap3With21($kelasIds[mt_rand(0, $nKelas - 1)], $T, 0);
             } else {
                 $k = $kelasIds[mt_rand(0, $nKelas - 1)];
                 $s1s = mt_rand(0, $nSlots - 1);
@@ -1452,42 +1912,52 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
         }
     }
 
-    // Pastikan Fase 2 memulai dari state tanpa pelanggaran blok/PJOK bila initGrid valid,
-    // sehingga Fase 2 & 3 menjamin 100% aturan blok & PJOK tetap terkunci = 0.
-    if ($bestScore[0] > 0 || $bestScore[1] > 0) {
+    // Pastikan Fase 2 memulai dari state tanpa pelanggaran hari/blok/PJOK bila initGrid valid,
+    // sehingga Fase 2 & 3 menjamin 100% aturan hari kesediaan, blok & PJOK tetap terkunci = 0.
+    if ($bestScore[0] > 0 || $bestScore[1] > 0 || $bestScore[2] > 0) {
         $computeGridState($initGrid);
-        if ($totPjok === 0 && $totBlk === 0) {
+        if ($totDayViol === 0 && $totPjok === 0 && $totBlk === 0) {
             $bestGrid = $initGrid;
-            $bestScore = [$totPjok, $totBlk, $totCl, $totKes, $totSd];
+            $bestScore = [$totDayViol, $totPjok, $totBlk, $totCl, $totKes, $totSd];
         } else {
             $computeGridState($bestGrid);
         }
     } else {
         $computeGridState($bestGrid);
     }
-    if ($bestScore[2] > 0) {
+
+    if ($bestScore[3] > 0) {
         $p2End = $t0 + $totalBudget * 0.85;
         $W_CL = 750;
         $W_KES = 140;
         $W_SD = 6;
-        $p2Iters = 140000;
+        $p2Iters = 150000;
         $T = 35.0;
         $cool = pow(0.3 / 35.0, 1.0 / $p2Iters);
-        $badDists = []; $clashCells = []; $kesCells = []; $sdDists = [];
-        $refreshActiveLists($badDists, $clashCells, $kesCells, $sdDists);
+        $dayViolCells = []; $badDists = []; $clashCells = []; $kesCells = []; $sdDists = [];
+        $refreshActiveLists($dayViolCells, $badDists, $clashCells, $kesCells, $sdDists);
 
         for ($it = 0; $it < $p2Iters; $it++) {
-            if ($bestScore[2] === 0 && $bestScore[0] === 0 && $bestScore[1] === 0) break;
+            if ($bestScore[0] === 0 && $bestScore[1] === 0 && $bestScore[2] === 0 && $bestScore[3] === 0) break;
             if (($it & 255) === 0) {
                 if (microtime(true) > $p2End) break;
-                $refreshActiveLists($badDists, $clashCells, $kesCells, $sdDists);
+                $refreshActiveLists($dayViolCells, $badDists, $clashCells, $kesCells, $sdDists);
             }
             $r = mt_rand(0, 99);
-            if ($r < 50 && !empty($clashCells)) {
+            if ($r < 52 && !empty($clashCells)) {
                 $cc = $clashCells[mt_rand(0, count($clashCells) - 1)];
-                $trySwapSameLenBlockAt($cc[0], $cc[1], $T, 1);
-            } elseif ($r < 82) {
+                if (mt_rand(0, 4) === 0) {
+                    $rSl = $runs[$slotRun[$cc[1]]]['slots'];
+                    if (count($rSl) >= 2) {
+                        $applyPerm($cc[0], $rSl, array_reverse($rSl), $T, 1);
+                    }
+                } else {
+                    $trySwapSameLenBlockAt($cc[0], $cc[1], $T, 1);
+                }
+            } elseif ($r < 76) {
                 $tryRandomSameLenBlockSwap($kelasIds[mt_rand(0, $nKelas - 1)], $T, 1);
+            } elseif ($r < 86) {
+                $trySwap3With21($kelasIds[mt_rand(0, $nKelas - 1)], $T, 1);
             } else {
                 $tryRunMove($kelasIds[mt_rand(0, $nKelas - 1)], $T, 1);
             }
@@ -1495,33 +1965,35 @@ function sch_solve_sa(array &$ctx, array $initGrid, bool $hasSoftKes, float $sta
         }
     }
 
-    // Fase 3: Strict Polish (kunci bentrok, blok JP, PJOK; minimalkan pelanggaran kesediaan & pecah hari)
+    // Fase 3: Strict Polish (kunci 0 pelanggaran hari, 0 bentrok, 0 blok JP, 0 PJOK; minimalkan penyesuaian jam & pecah hari)
     $computeGridState($bestGrid);
     $p3End = $t0 + $totalBudget;
     $W_KES = 350;
     $W_SD = 25;
-    $p3Iters = 100000;
+    $p3Iters = 110000;
     $T = 16.0;
     $cool = pow(0.2 / 16.0, 1.0 / $p3Iters);
-    $badDists = []; $clashCells = []; $kesCells = []; $sdDists = [];
-    $refreshActiveLists($badDists, $clashCells, $kesCells, $sdDists);
+    $dayViolCells = []; $badDists = []; $clashCells = []; $kesCells = []; $sdDists = [];
+    $refreshActiveLists($dayViolCells, $badDists, $clashCells, $kesCells, $sdDists);
 
     for ($it = 0; $it < $p3Iters; $it++) {
         if (($it & 511) === 0) {
             if (microtime(true) > $p3End) break;
-            $refreshActiveLists($badDists, $clashCells, $kesCells, $sdDists);
+            $refreshActiveLists($dayViolCells, $badDists, $clashCells, $kesCells, $sdDists);
             if (empty($kesCells) && empty($sdDists)) break;
         }
         $r = mt_rand(0, 99);
-        if ($r < 35 && !empty($kesCells)) {
+        if ($r < 36 && !empty($kesCells)) {
             $kc = $kesCells[mt_rand(0, count($kesCells) - 1)];
             $trySwapSameLenBlockAt($kc[0], $kc[1], $T, 2);
-        } elseif ($r < 65 && !empty($sdDists)) {
+        } elseif ($r < 62 && !empty($sdDists)) {
             $d = $sdDists[mt_rand(0, count($sdDists) - 1)];
             $sl = $distSlots[$d];
             $trySwapSameLenBlockAt($distMeta[$d]['kelas_id'], $sl[mt_rand(0, count($sl) - 1)], $T, 2);
-        } elseif ($r < 85) {
+        } elseif ($r < 80) {
             $tryRandomSameLenBlockSwap($kelasIds[mt_rand(0, $nKelas - 1)], $T, 2);
+        } elseif ($r < 90) {
+            $trySwap3With21($kelasIds[mt_rand(0, $nKelas - 1)], $T, 2);
         } else {
             $k = $kelasIds[mt_rand(0, $nKelas - 1)];
             $sl = $runs[mt_rand(0, count($runs) - 1)]['slots'];
@@ -1544,10 +2016,13 @@ function sch_audit_grid(array &$ctx, array $grid): array {
     $nKelas = count($ctx['kelasIds']);
     $distMeta = &$ctx['distMeta'];
     $guruKes = &$ctx['guruKes'];
+    $guruHariKes = &$ctx['guruHariKes'];
     $slotRun = &$ctx['slotRun'];
     $slotHari = &$ctx['slotHari'];
 
     $totalPlaced = 0;
+    $dayKesViol = 0;
+    $dayKesDetails = [];
     $kesViol = 0;
     $kesDetails = [];
     $gCheck = [];
@@ -1559,6 +2034,13 @@ function sch_audit_grid(array &$ctx, array $grid): array {
             if ($d === 0) continue;
             $totalPlaced++;
             $g = $distMeta[$d]['guru_id'];
+            if (!isset($guruHariKes[$g][$slotHari[$s]])) {
+                $dayKesViol++;
+                if (count($dayKesDetails) < 10) {
+                    $m = $distMeta[$d];
+                    $dayKesDetails[] = "{$m['nama_kelas']} {$m['kode']} ({$m['nama_guru']}) - {$ctx['slotHariName'][$s]} Jam {$ctx['slotJamKe'][$s]} (off-day)";
+                }
+            }
             if (!isset($guruKes[$g][$s])) {
                 $kesViol++;
                 if (count($kesDetails) < 10) {
@@ -1604,6 +2086,8 @@ function sch_audit_grid(array &$ctx, array $grid): array {
         'unplaced_slots' => max(0, $totalRequiredJp - $totalPlaced),
         'total_clashes' => $clashes,
         'has_clashes' => ($clashes > 0),
+        'day_kesediaan_violations' => $dayKesViol,
+        'day_kesediaan_violation_details' => $dayKesDetails,
         'kesediaan_violations' => $kesViol,
         'kesediaan_violation_details' => $kesDetails,
         'pjok_violations' => $pjokViol,
@@ -1640,12 +2124,13 @@ function sch_persist_grid(PDO $pdo, array &$ctx, array $grid): void {
 }
 
 /**
- * Jalankan multi-start solver agar 100% patuh seluruh aturan blok JP, PJOK, TIK, dan 0 bentrok guru,
- * serta memilih kandidat dengan pelanggaran kesediaan dan pecah hari paling minimum.
+ * Jalankan multi-start solver agar 100% patuh hari kesediaan guru, aturan blok JP, PJOK, TIK, dan 0 bentrok guru,
+ * serta memilih kandidat dengan penyesuaian jam kesediaan dan pecah hari paling minimum.
  */
 function sch_run_best_solver(array &$ctx, ?array $existingGrid = null, bool $isFillMode = false): array {
     $tAll = microtime(true);
     $rankOf = static fn(array $a): array => [
+        $a['day_kesediaan_violations'],
         $a['pjok_violations'],
         $a['block_violations'],
         $a['total_clashes'],
@@ -1658,16 +2143,16 @@ function sch_run_best_solver(array &$ctx, ?array $existingGrid = null, bool $isF
     $bestAudit = null;
     $bestRank = null;
 
-    $maxAttempts = $isFillMode ? 1 : 4;
-    $maxTotalSeconds = $isFillMode ? 18.0 : 32.0;
+    $maxAttempts = $isFillMode ? 2 : 7;
+    $maxTotalSeconds = $isFillMode ? 22.0 : 48.0;
 
     for ($attempt = 1; $attempt <= $maxAttempts; $attempt++) {
-        if ($attempt > 1 && (microtime(true) - $tAll) > ($maxTotalSeconds - 7.0)) {
+        if ($attempt > 1 && (microtime(true) - $tAll) > ($maxTotalSeconds - 6.5)) {
             break;
         }
         $init = sch_init_grid($ctx, $attempt === 1 ? $existingGrid : null);
-        $stage1Budget = $isFillMode ? 4.5 : 6.0;
-        $stage2Budget = $isFillMode ? 2.5 : 3.0;
+        $stage1Budget = $isFillMode ? 4.2 : 4.5;
+        $stage2Budget = $isFillMode ? 2.4 : 2.6;
         $res = sch_solve_sa($ctx, $init['grid'], $init['hasSoftKes'], $stage1Budget, $stage2Budget);
         $aud = sch_audit_grid($ctx, $res['grid']);
         $rk = $rankOf($aud);
@@ -1678,10 +2163,10 @@ function sch_run_best_solver(array &$ctx, ?array $existingGrid = null, bool $isF
             $bestAudit = $aud;
         }
 
-        if ($isFillMode && ($aud['pjok_violations'] > 0 || $aud['block_violations'] > 0 || $aud['total_clashes'] > 0)) {
-            // Fallback clean run untuk mode pemadatan bila grid lama menyisakan blok tidak valid
+        if ($isFillMode && ($aud['day_kesediaan_violations'] > 0 || $aud['pjok_violations'] > 0 || $aud['block_violations'] > 0 || $aud['total_clashes'] > 0)) {
+            // Fallback clean run untuk mode pemadatan bila grid lama menyisakan pelanggaran hari/blok/bentrok
             $cleanInit = sch_init_grid($ctx, null);
-            $resClean = sch_solve_sa($ctx, $cleanInit['grid'], $cleanInit['hasSoftKes'], 6.0, 3.0);
+            $resClean = sch_solve_sa($ctx, $cleanInit['grid'], $cleanInit['hasSoftKes'], 4.5, 2.6);
             $audClean = sch_audit_grid($ctx, $resClean['grid']);
             $rkClean = $rankOf($audClean);
             if ($rkClean < $bestRank) {
@@ -1691,7 +2176,11 @@ function sch_run_best_solver(array &$ctx, ?array $existingGrid = null, bool $isF
             }
         }
 
-        if ($bestRank === [0, 0, 0, 0, 0, 0]) {
+        // Berhenti cepat bila sudah 100% bebas pelanggaran hari, PJOK, blok JP, bentrok, slot kosong, dan penyesuaian jam minimal
+        if ($bestRank[0] === 0 && $bestRank[1] === 0 && $bestRank[2] === 0 && $bestRank[3] === 0 && $bestRank[4] === 0 && $bestRank[5] <= 2) {
+            break;
+        }
+        if ($attempt >= 3 && $bestRank[0] === 0 && $bestRank[1] === 0 && $bestRank[2] === 0 && $bestRank[3] === 0 && $bestRank[4] === 0 && $bestRank[5] <= 4) {
             break;
         }
     }
@@ -1708,6 +2197,8 @@ function sch_build_solver_response(array &$ctx, array $audit, float $elapsed, st
     $reqJp = $audit['total_required_jp'];
     $emptySlots = $audit['empty_slots'];
     $clashes = $audit['total_clashes'];
+    $dayKesViol = $audit['day_kesediaan_violations'] ?? 0;
+    $dayKesDetails = $audit['day_kesediaan_violation_details'] ?? [];
     $kesViol = $audit['kesediaan_violations'];
     $kesDetails = $audit['kesediaan_violation_details'] ?? [];
     $pjokViol = $audit['pjok_violations'];
@@ -1718,26 +2209,30 @@ function sch_build_solver_response(array &$ctx, array $audit, float $elapsed, st
     $summaryParts = [
         "{$placed}/{$reqJp} JP terisi" . ($emptySlots > 0 ? " ({$emptySlots} slot kosong)" : " tanpa jam kosong"),
         "{$clashes} bentrok guru",
+        "{$dayKesViol} pelanggaran hari mengajar",
         "{$blkViol} pelanggaran blok JP",
         "{$pjokViol} pelanggaran PJOK",
-        "{$kesViol} penyesuaian kesediaan",
+        "{$kesViol} penyesuaian jam di hari aktif",
         "{$sdSplits} mapel terpecah di hari sama"
     ];
 
-    if ($clashes === 0 && $kesViol === 0 && $pjokViol === 0 && $blkViol === 0 && $emptySlots === 0) {
+    if ($clashes === 0 && $dayKesViol === 0 && $kesViol === 0 && $pjokViol === 0 && $blkViol === 0 && $emptySlots === 0) {
         $msg = "Jadwal berhasil {$verbLabel} 100% optimal! (" . implode(', ', $summaryParts) . ").";
-    } elseif ($clashes === 0 && $pjokViol === 0 && $blkViol === 0) {
-        $msg = "Jadwal berhasil {$verbLabel} dengan 0 bentrok guru & 100% patuh seluruh aturan blok JP (1-5 JP, PJOK, TIK)! (" . implode(', ', $summaryParts) . ").";
+    } elseif ($clashes === 0 && $dayKesViol === 0 && $pjokViol === 0 && $blkViol === 0) {
+        $msg = "Jadwal berhasil {$verbLabel} dengan 0 bentrok guru, 100% patuh hari kesediaan mengajar & seluruh aturan blok JP (1-5 JP, PJOK, TIK)! (" . implode(', ', $summaryParts) . ").";
         if ($kesViol > 0 && !empty($kesDetails)) {
-            $msg .= ' Penyesuaian kesediaan: ' . implode('; ', $kesDetails) . '.';
+            $msg .= ' Penyesuaian jam di hari aktif: ' . implode('; ', $kesDetails) . '.';
         }
-    } elseif ($clashes === 0 && $kesViol === 0 && $pjokViol === 0) {
+    } elseif ($clashes === 0 && $dayKesViol === 0 && $kesViol === 0 && $pjokViol === 0) {
         $msg = "Jadwal selesai {$verbLabel} dengan 0 bentrok guru & 100% patuh kesediaan (" . implode(', ', $summaryParts) . ").";
         if ($blkViol > 0 && !empty($bottlenecks)) {
             $msg .= ' Catatan kapasitas kesediaan: ' . implode(' | ', $bottlenecks);
         }
     } else {
         $msg = "Jadwal selesai {$verbLabel} dengan catatan kendala: " . implode(', ', $summaryParts) . ".";
+        if ($dayKesViol > 0 && !empty($dayKesDetails)) {
+            $msg .= ' Pelanggaran hari: ' . implode('; ', $dayKesDetails) . '.';
+        }
     }
 
     return [
@@ -1750,6 +2245,7 @@ function sch_build_solver_response(array &$ctx, array $audit, float $elapsed, st
             'unplaced_blocks' => $audit['unplaced_slots'],
             'total_clashes' => $clashes,
             'has_clashes' => ($clashes > 0),
+            'day_kesediaan_violations' => $dayKesViol,
             'kesediaan_violations' => $kesViol,
             'pjok_violations' => $pjokViol,
             'block_violations' => $blkViol,
@@ -1758,6 +2254,7 @@ function sch_build_solver_response(array &$ctx, array $audit, float $elapsed, st
             'diagnostics' => [
                 'teachers_without_kesediaan' => $ctx['diagnostics']['teachers_without_kesediaan'] ?? [],
                 'run_bottlenecks' => $bottlenecks,
+                'day_kesediaan_violation_details' => $dayKesDetails,
                 'kesediaan_violation_details' => $kesDetails,
                 'block_violation_details' => $audit['block_violation_details']
             ]
@@ -2131,8 +2628,31 @@ switch ($action) {
                 $msg .= ' Peringatan: Terdapat guru bentrok pada jam ini (ditandai merah).';
             }
 
+            // Cek apakah slot yang dipindahkan/ditukar menempatkan guru pada hari tanpa kesediaan mengajar
+            $movedIds = [$source_id];
+            if ($targetSlot) $movedIds[] = (int)$targetSlot['id'];
+            $inPh = implode(',', array_map('intval', $movedIds));
+            $offDayRows = db()->query("
+                SELECT DISTINCT g.nama_guru, jb.hari,
+                    (SELECT COUNT(*) FROM sch_kesediaan ks WHERE ks.guru_id = g.id) as tot_kes,
+                    (SELECT COUNT(*) FROM sch_kesediaan ks JOIN sch_jam_belajar jb2 ON ks.jam_belajar_id = jb2.id WHERE ks.guru_id = g.id AND jb2.hari = jb.hari AND jb2.tipe = 'Pembelajaran') as day_kes
+                FROM sch_jadwal j
+                JOIN sch_distribusi d ON j.distribusi_id = d.id
+                JOIN sch_guru g ON d.guru_id = g.id
+                JOIN sch_jam_belajar jb ON j.jam_belajar_id = jb.id
+                WHERE j.id IN ($inPh)
+                HAVING tot_kes > 0 AND day_kes = 0
+            ")->fetchAll(PDO::FETCH_ASSOC);
+
+            $hasDayWarning = count($offDayRows) > 0;
+            if ($hasDayWarning) {
+                $warnList = array_map(static fn($r) => "{$r['nama_guru']} ({$r['hari']})", $offDayRows);
+                $msg .= ' Peringatan: Guru ' . implode(', ', $warnList) . ' tidak memiliki kesediaan/distribusi mengajar pada hari tersebut.';
+            }
+
             json_response(200, true, $msg, [
                 'has_clashes' => $hasClashes,
+                'has_day_warning' => $hasDayWarning,
                 'total_clashes' => count($clashes),
                 'clashes' => $clashes
             ]);

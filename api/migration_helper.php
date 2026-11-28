@@ -58,7 +58,7 @@ function run_auto_migrations() {
     if ($ran) return;
     $ran = true;
 
-    $target_version = 26;
+    $target_version = 27;
     
     // 1. Get current version (default to 0 if not set or if table settings doesn't exist yet)
     $current_version = 0;
@@ -1290,6 +1290,46 @@ function run_auto_migrations() {
                 $stmtSet->execute($ds);
             }
         } catch (Exception $e) {}
+    }
+
+    // Version 27: Perbaiki role perf_users pada Wakil Kepala Sekolah, Kepala TU, Kepala Perpus, Kepala Lab yang sebelumnya terpetakan ke 'kepsek'
+    if ($current_version < 27) {
+        try {
+            if (mig_has_table($pdo, 'perf_users') && mig_has_table($pdo, 'perf_ptk')) {
+                $rowsPu = $pdo->query("
+                    SELECT pu.id, pu.role, pp.jenis_ptk, pp.jabatan
+                    FROM perf_users pu
+                    JOIN perf_ptk pp ON pu.perf_ptk_id = pp.id
+                    WHERE pu.role = 'kepsek'
+                ")->fetchAll(PDO::FETCH_ASSOC);
+
+                $stmtFixRole = $pdo->prepare("UPDATE perf_users SET role = ? WHERE id = ?");
+                foreach ($rowsPu as $r) {
+                    $t = strtolower(trim((string)($r['jenis_ptk'] ?? '')));
+                    $j = strtolower(trim((string)($r['jabatan'] ?? '')));
+                    $isTrueKepsek = (
+                        strpos($t, 'wakil') === false &&
+                        strpos($t, 'waka') === false &&
+                        strpos($j, 'wakil') === false &&
+                        strpos($j, 'waka') === false &&
+                        in_array($t, ['kepala sekolah', 'plt. kepala sekolah', 'plt kepala sekolah', 'kepsek'], true)
+                    );
+                    if (!$isTrueKepsek) {
+                        $newRole = 'guru';
+                        if (strpos($t, 'tu') !== false || strpos($t, 'tata') !== false || strpos($t, 'administrasi') !== false) {
+                            $newRole = 'tu';
+                        } elseif (strpos($t, 'it') !== false || strpos($t, 'teknologi') !== false) {
+                            $newRole = 'it';
+                        } elseif (strpos($t, 'pustaka') !== false || strpos($t, 'perpus') !== false) {
+                            $newRole = 'pustakawan';
+                        }
+                        $stmtFixRole->execute([$newRole, (int)$r['id']]);
+                    }
+                }
+            }
+        } catch (Exception $e) {
+            error_log('Migration v27 error: ' . $e->getMessage());
+        }
     }
 
     // Update DB migration version to target_version

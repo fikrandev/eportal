@@ -118,12 +118,13 @@ function createPtk()
         $ptkId = db()->lastInsertId();
 
         // Auto-create login user with NIY as username & password
+        $userRole = perf_map_ptk_to_user_role($jenis, $input['jabatan'] ?? '');
         $hashedPw = password_hash($niy, PASSWORD_DEFAULT);
         $stmt = db()->prepare("
             INSERT INTO perf_users (username, password, perf_ptk_id, nama_lengkap, role)
             VALUES (?, ?, ?, ?, ?)
         ");
-        $stmt->execute([$niy, $hashedPw, $ptkId, $nama, $jenis]);
+        $stmt->execute([$niy, $hashedPw, $ptkId, $nama, $userRole]);
 
         json_response(201, true, 'PTK berhasil ditambahkan.', ['id' => $ptkId]);
     } catch (PDOException $e) {
@@ -160,8 +161,9 @@ function updatePtk()
         ]);
 
         // Update the corresponding perf_users record
+        $userRole = perf_map_ptk_to_user_role($input['jenis_ptk'] ?? 'guru', $input['jabatan'] ?? '');
         $stmt = db()->prepare("UPDATE perf_users SET nama_lengkap=?, role=? WHERE perf_ptk_id=?");
-        $stmt->execute([sanitize($input['nama'] ?? ''), sanitize($input['jenis_ptk'] ?? 'guru'), $id]);
+        $stmt->execute([sanitize($input['nama'] ?? ''), $userRole, $id]);
 
         json_response(200, true, 'PTK berhasil diperbarui.');
     } catch (PDOException $e) {
@@ -241,24 +243,16 @@ function importPtk()
         foreach ($rows as $row) {
             $niy = trim($row['NIY'] ?? $row['niy'] ?? '');
             $nama = trim($row['Nama'] ?? $row['nama'] ?? '');
-            $jenis = strtolower(trim($row['Jabatan PTK'] ?? $row['jenis_ptk'] ?? 'guru'));
+            $rawJenis = trim($row['Jabatan PTK'] ?? $row['jenis_ptk'] ?? 'guru');
+            $jabatanRow = trim($row['Jabatan'] ?? $row['jabatan'] ?? '');
 
             if (empty($niy) || empty($nama)) {
                 $skipped++;
                 continue;
             }
 
-            // Map jabatan to jenis_ptk
-            if (strpos($jenis, 'kepala') !== false)
-                $jenis = 'kepsek';
-            elseif (strpos($jenis, 'tu') !== false || strpos($jenis, 'tata') !== false)
-                $jenis = 'tu';
-            elseif (strpos($jenis, 'it') !== false || strpos($jenis, 'teknologi') !== false)
-                $jenis = 'it';
-            elseif (strpos($jenis, 'pustaka') !== false)
-                $jenis = 'pustakawan';
-            elseif (!in_array($jenis, ['guru', 'tu', 'it', 'pustakawan', 'kepsek']))
-                $jenis = 'guru';
+            $jenis = ($rawJenis === '' || $rawJenis === '-') ? 'guru' : $rawJenis;
+            $userRole = perf_map_ptk_to_user_role($jenis, $jabatanRow);
 
             // Skip duplicate NIY
             $check = db()->prepare("SELECT id FROM perf_ptk WHERE niy = ?");
@@ -278,7 +272,7 @@ function importPtk()
                 $row['TMT'] ?? $row['tmt'] ?? null,
                 $row['Tempat Lahir'] ?? $row['tempat_lahir'] ?? '',
                 $row['Tgl Lahir'] ?? $row['tgl_lahir'] ?? null,
-                $row['Jabatan'] ?? $row['jabatan'] ?? '',
+                $jabatanRow,
                 $row['Mata Pelajaran'] ?? $row['mata_pelajaran'] ?? '',
                 $jenis
             ]);
@@ -288,7 +282,7 @@ function importPtk()
             // Auto-create login
             $hashedPw = password_hash($niy, PASSWORD_DEFAULT);
             $stmt2 = db()->prepare("INSERT INTO perf_users (username, password, perf_ptk_id, nama_lengkap, role) VALUES (?, ?, ?, ?, ?)");
-            $stmt2->execute([$niy, $hashedPw, $ptkId, $nama, $jenis]);
+            $stmt2->execute([$niy, $hashedPw, $ptkId, $nama, $userRole]);
 
             $inserted++;
         }
@@ -390,18 +384,8 @@ function importPortalPtk()
             ]);
             $ptkId = db()->lastInsertId();
 
-            // Determine valid enum role for perf_users login
-            $userRole = strtolower($jenisPtk);
-            if (strpos($userRole, 'kepala') !== false)
-                $userRole = 'kepsek';
-            elseif (strpos($userRole, 'tu') !== false || strpos($userRole, 'tata') !== false)
-                $userRole = 'tu';
-            elseif (strpos($userRole, 'it') !== false || strpos($userRole, 'teknologi') !== false)
-                $userRole = 'it';
-            elseif (strpos($userRole, 'pustaka') !== false)
-                $userRole = 'pustakawan';
-            elseif (!in_array($userRole, ['guru', 'tu', 'it', 'pustakawan', 'kepsek']))
-                $userRole = 'guru';
+            // Determine valid enum role for perf_users login (Wakil Kepala Sekolah -> guru, Kepala TU -> tu, Kepala Sekolah -> kepsek)
+            $userRole = perf_map_ptk_to_user_role($jenisPtk, $t['jabatan'] ?? '');
 
             // Auto-create perf_users login (password same as username/niy)
             $hashedPw = password_hash($t['username'], PASSWORD_DEFAULT);

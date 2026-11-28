@@ -9056,7 +9056,7 @@ exportJadwalExcel() {
         });
         $('#jdwFilter').on('change', (e) => this.viewJadwal($(e.target).val()));
 
-        this.loadDailyRekap();
+        this.loadDailyRekap(this.state.selectedRekapHari);
         this.viewJadwal($('#jdwFilter').val() || '');
     },
 
@@ -9829,7 +9829,7 @@ title: 'Gagal Mengunci',
                 }
             }).done(res => {
                 EModal.close(loader);
-                if (res.data?.has_clashes) {
+                if (res.data?.has_clashes || res.data?.has_day_warning) {
                     EModal.toast({
                         type: 'warning',
                         title: 'Perhatian!',
